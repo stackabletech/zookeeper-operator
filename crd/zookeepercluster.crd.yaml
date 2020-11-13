@@ -1,0 +1,33 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: zookeeperclusters.zookeeper.stackable.de
+spec:
+  group: zookeeper.stackable.de
+  names:
+    kind: ZooKeeperCluster
+    plural: zookeeperclusters
+    singular: zookeepercluster
+  scope: Namespaced
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                version:
+                  type: string
+                  enum: [ v3.6.2, v3.5.8 ]
+              required: [ "version" ]
+            status:
+               type: object
+               properties:
+                 is_bad:
+                   type: boolean
+      subresources:
+         status: {}

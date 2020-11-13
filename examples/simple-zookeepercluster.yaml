@@ -1,0 +1,6 @@
+apiVersion: zookeeper.stackable.de/v1
+kind: ZooKeeperCluster
+metadata:
+  name: simple
+spec:
+  version: v3.6.2
