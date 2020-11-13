@@ -15,6 +15,7 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use std::sync::Arc;
 use tokio::{sync::RwLock, time::Duration};
 use tracing::{debug, error, info, instrument, trace, warn};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 
 #[derive(CustomResource, Deserialize, Serialize, Clone, Debug)]
 #[kube(group = "zookeeper.stackable.de", version = "v1", kind = "ZooKeeperCluster", shortname = "zk", namespaced)]
@@ -49,6 +50,47 @@ async fn reconcile(zk_cluster: ZooKeeperCluster, ctx: Context<Data>) -> Result<R
     debug!("Reconcile ZooKeeperCluster [{}]: {:?}", name, zk_cluster);
     let zookeeper_clusters: Api<ZooKeeperCluster> = Api::namespaced(client, &ns);
 
+
+    let ps = PatchParams::default(); //TODO: fix default_apply().force()
+    if let Some(deletion_timestamp) = zk_cluster.metadata.deletion_timestamp {
+        println!("Object being deleted {:?}", deletion_timestamp);
+        if let Some(finalizers) = zk_cluster.metadata.finalizers {
+            let mut finalizers: Vec<String> = finalizers;
+            let index = finalizers.iter().position(|finalizer| finalizer == "zookeeper.stackable.de/check-stuff");
+            if let Some(index) = index {
+
+                // TODO: Do deletion stuff
+
+                finalizers.swap_remove(index);
+                let new_metadata = serde_json::to_vec(&json!({
+                    "metadata": {
+                        "finalizers": finalizers
+                    }
+                })).context(SerializationFailed)?;
+                let _o = zookeeper_clusters
+                    .patch(&name, &ps, new_metadata)
+                    .await
+                    .context(ZooKeeperClusterPatchFailed)?;
+            }
+        }
+    } else {
+        let mut finalizers: Vec<String> = zk_cluster.metadata.finalizers.unwrap_or_default();
+
+        if !finalizers.contains(&"zookeeper.stackable.de/check-stuff".to_string()) {
+            finalizers.push("zookeeper.stackable.de/check-stuff".to_string());
+
+            let new_metadata = serde_json::to_vec(&json!({
+                "metadata": {
+                    "finalizers": finalizers
+                }
+            })).context(SerializationFailed)?;
+            let _o = zookeeper_clusters
+                .patch(&name, &ps, new_metadata)
+                .await
+                .context(ZooKeeperClusterPatchFailed)?;
+        }
+    }
+
     let new_status = serde_json::to_vec(&json!({
         "status": ZooKeeperClusterStatus {
             is_bad: false,
@@ -56,7 +98,7 @@ async fn reconcile(zk_cluster: ZooKeeperCluster, ctx: Context<Data>) -> Result<R
     }))
         .context(SerializationFailed)?;
 
-    let ps = PatchParams::default(); //TODO: fix default_apply().force()
+
     let _o = zookeeper_clusters
         .patch_status(&name, &ps, new_status)
         .await
