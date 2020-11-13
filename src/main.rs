@@ -1,41 +1,21 @@
-#![allow(unused_imports, unused_variables)]
-
 pub use controller::*;
-use prometheus::{Encoder, TextEncoder};
-use tracing::{debug, error, info, trace, warn};
 
 use actix_web::{
     get, middleware,
     web::{self, Data},
     App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
+use prometheus::{Encoder, TextEncoder};
+use tracing::{debug, error, info, trace, warn};
 
-#[get("/metrics")]
-async fn metrics(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
-    let metrics = c.metrics();
-    let encoder = TextEncoder::new();
-    let mut buffer = vec![];
-    encoder.encode(&metrics, &mut buffer).unwrap();
-    HttpResponse::Ok().body(buffer)
-}
 
-#[get("/health")]
-async fn health(_: HttpRequest) -> impl Responder {
-    HttpResponse::Ok().json("healthy")
-}
-
-#[get("/")]
-async fn index(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
-    let state = c.state().await;
-    HttpResponse::Ok().json(state)
-}
-
-#[actix_rt::main]
+#[actix_web::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .init();
-    let client = kube::Client::try_default().await.expect("create client");
+
+    let client = kube::Client::try_default().await.expect("Creation of Kubernetes client shouldn't fail");
     let (manager, drainer) = Manager::new(client).await;
 
     let server = HttpServer::new(move || {
@@ -55,4 +35,24 @@ async fn main() -> Result<()> {
         _ = server.run() => info!("actix exited"),
     }
     Ok(())
+}
+
+#[get("/metrics")]
+async fn metrics(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
+    let metrics = c.metrics();
+    let encoder = TextEncoder::new();
+    let mut buffer = vec![];
+    encoder.encode(&metrics, &mut buffer).unwrap();
+    HttpResponse::Ok().body(buffer)
+}
+
+#[get("/health")]
+async fn health(_: HttpRequest) -> impl Responder {
+    HttpResponse::Ok().json("healthy")
+}
+
+#[get("/")]
+async fn index(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
+    let state = c.state().await;
+    HttpResponse::Ok().json(state)
 }

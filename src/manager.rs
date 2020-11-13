@@ -1,7 +1,9 @@
 use crate::{Error, ZooKeeperClusterPatchFailed, Result, SerializationFailed};
+
 use chrono::prelude::*;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1beta1::CustomResourceDefinition;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::{
     api::{Api, ListParams, Meta, PatchParams},
     client::Client,
@@ -15,9 +17,8 @@ use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
 use std::sync::Arc;
 use tokio::{sync::RwLock, time::Duration};
 use tracing::{debug, error, info, instrument, trace, warn};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 
-#[derive(CustomResource, Deserialize, Serialize, Clone, Debug)]
+#[derive(Clone, CustomResource, Debug, Deserialize, Serialize)]
 #[kube(group = "zookeeper.stackable.de", version = "v1", kind = "ZooKeeperCluster", shortname = "zk", namespaced)]
 #[kube(status = "ZooKeeperClusterStatus")]
 pub struct ZooKeeperClusterSpec {
@@ -40,6 +41,12 @@ struct Data {
     metrics: Metrics,
 }
 
+const FINALIZER: &str = "zookeeper.stackable.de/check-stuff";
+
+// This method is called for every modification of our object (this includes creation).
+// It will _not_ be called for deletions as deletions might be missed when the Operator is offline.
+// Therefore to handle deletions a concept called `Finalizers` are used.
+// For more information see here: https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definitions/#finalizers
 #[instrument(skip(ctx))]
 async fn reconcile(zk_cluster: ZooKeeperCluster, ctx: Context<Data>) -> Result<ReconcilerAction, Error> {
     let client = ctx.get_ref().client.clone();
@@ -48,48 +55,19 @@ async fn reconcile(zk_cluster: ZooKeeperCluster, ctx: Context<Data>) -> Result<R
     let name = Meta::name(&zk_cluster);
     let ns = Meta::namespace(&zk_cluster).expect("ZooKeeperCluster is namespaced");
     debug!("Reconcile ZooKeeperCluster [{}]: {:?}", name, zk_cluster);
+
     let zookeeper_clusters: Api<ZooKeeperCluster> = Api::namespaced(client, &ns);
 
-
+    // Handel object deletion
     let ps = PatchParams::default(); //TODO: fix default_apply().force()
-    if let Some(deletion_timestamp) = zk_cluster.metadata.deletion_timestamp {
-        println!("Object being deleted {:?}", deletion_timestamp);
-        if let Some(finalizers) = zk_cluster.metadata.finalizers {
-            let mut finalizers: Vec<String> = finalizers;
-            let index = finalizers.iter().position(|finalizer| finalizer == "zookeeper.stackable.de/check-stuff");
-            if let Some(index) = index {
 
-                // TODO: Do deletion stuff
-
-                finalizers.swap_remove(index);
-                let new_metadata = serde_json::to_vec(&json!({
-                    "metadata": {
-                        "finalizers": finalizers
-                    }
-                })).context(SerializationFailed)?;
-                let _o = zookeeper_clusters
-                    .patch(&name, &ps, new_metadata)
-                    .await
-                    .context(ZooKeeperClusterPatchFailed)?;
-            }
-        }
-    } else {
-        let mut finalizers: Vec<String> = zk_cluster.metadata.finalizers.unwrap_or_default();
-
-        if !finalizers.contains(&"zookeeper.stackable.de/check-stuff".to_string()) {
-            finalizers.push("zookeeper.stackable.de/check-stuff".to_string());
-
-            let new_metadata = serde_json::to_vec(&json!({
-                "metadata": {
-                    "finalizers": finalizers
-                }
-            })).context(SerializationFailed)?;
-            let _o = zookeeper_clusters
-                .patch(&name, &ps, new_metadata)
-                .await
-                .context(ZooKeeperClusterPatchFailed)?;
-        }
+    if handle_deletion(zk_cluster, &name, &zookeeper_clusters, &ps).await? {
+        return Ok(ReconcilerAction {
+            requeue_after: None
+        });
     }
+
+    // Here we've already handled deletions so now we're sure that this change is some other change
 
     let new_status = serde_json::to_vec(&json!({
         "status": ZooKeeperClusterStatus {
@@ -110,6 +88,56 @@ async fn reconcile(zk_cluster: ZooKeeperCluster, ctx: Context<Data>) -> Result<R
     Ok(ReconcilerAction {
         requeue_after: Some(Duration::from_secs(3600 / 2)),
     })
+}
+
+// If our object has a deletion timestamp it is scheduled to be deleted and it can't be changed
+// with the exception of the finalizer list.
+async fn handle_deletion(zk_cluster: ZooKeeperCluster, name: &String, zookeeper_clusters: &Api<ZooKeeperCluster>, ps: &PatchParams) -> Result<bool> {
+    if let Some(deletion_timestamp) = zk_cluster.metadata.deletion_timestamp {
+        debug!("The object is in the process of being deleted. Deletion timestamp: [{:?}]", deletion_timestamp);
+
+        // Now we need to check whether the list of finalizers includes our own finalizer.
+        if let Some(finalizers) = zk_cluster.metadata.finalizers {
+            let mut finalizers: Vec<String> = finalizers;
+            let index = finalizers.iter().position(|finalizer| finalizer == FINALIZER);
+            if let Some(index) = index {
+                // We found our finalizer which means that we now need to handle our deletion logic
+                // And then remove the finalizer from the list.
+
+                finalizers.swap_remove(index);
+                let new_metadata = serde_json::to_vec(&json!({
+                    "metadata": {
+                        "finalizers": finalizers
+                    }
+                })).context(SerializationFailed)?;
+                let _o = zookeeper_clusters
+                    .patch(&name, &ps, new_metadata)
+                    .await
+                    .context(ZooKeeperClusterPatchFailed)?;
+
+                return Ok(true);
+            }
+        }
+    } else {
+        // The object is not deleted but we need to check whether our finalizer is already in the finalizer list
+        // If not we'll add it.
+        let mut finalizers: Vec<String> = zk_cluster.metadata.finalizers.unwrap_or_default();
+
+        if !finalizers.contains(&FINALIZER.to_string()) {
+            finalizers.push(FINALIZER.to_string());
+
+            let new_metadata = serde_json::to_vec(&json!({
+                "metadata": {
+                    "finalizers": finalizers
+                }
+            })).context(SerializationFailed)?;
+            let _o = zookeeper_clusters
+                .patch(&name, &ps, new_metadata)
+                .await
+                .context(ZooKeeperClusterPatchFailed)?;
+        }
+    }
+    Ok(false)
 }
 
 fn error_policy(error: &Error, _ctx: Context<Data>) -> ReconcilerAction {
@@ -177,8 +205,8 @@ impl Manager {
 
         let zookeeper_clusters = Api::<ZooKeeperCluster>::all(client);
 
-        // It does not matter what we do with the stream returned from `run` what we do need
-        // to consume it, that's why we return a future.
+        // It does not matter what we do with the stream returned from `run`
+        // but we do need to consume it, that's why we return a future.
         let drainer = Controller::new(zookeeper_clusters, ListParams::default())
             .run(reconcile, error_policy, context)
             .filter_map(|x| async move { std::result::Result::ok(x) })
