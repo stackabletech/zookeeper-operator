@@ -17,6 +17,17 @@ pub enum Error {
         source: serde_json::Error,
         backtrace: Backtrace,
     },
+
+    #[snafu(display("Failed to patch Pod: {}", source))]
+    PodPatchFailed {
+        source: kube::Error,
+        backtrace: Backtrace,
+    },
+
+    MissingObjectKey {
+        name: &'static str,
+        backtrace: Backtrace,
+    },
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
