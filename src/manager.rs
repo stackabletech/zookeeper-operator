@@ -5,9 +5,11 @@ use crate::{
 
 use chrono::prelude::*;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
-use k8s_openapi::api::core::v1::{Container, Pod, PodSpec, Toleration};
+use k8s_openapi::api::core::v1::{
+    Affinity, Container, Pod, PodAffinityTerm, PodAntiAffinity, PodSpec, Toleration,
+};
 use k8s_openapi::apiextensions_apiserver::pkg::apis::apiextensions::v1beta1::CustomResourceDefinition;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{OwnerReference, Time};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, OwnerReference, Time};
 use kube::api::{ObjectMeta, PatchStrategy, PostParams};
 use kube::{
     api::{Api, ListParams, Meta, PatchParams},
@@ -19,6 +21,7 @@ use prometheus::{default_registry, proto::MetricFamily, register_int_counter, In
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snafu::{Backtrace, OptionExt, ResultExt, Snafu};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::{sync::RwLock, time::Duration};
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -33,7 +36,18 @@ use tracing::{debug, error, info, instrument, trace, warn};
 )]
 #[kube(status = "ZooKeeperClusterStatus")]
 pub struct ZooKeeperClusterSpec {
-    version: String,
+    version: ZooKeeperVersion,
+    replicas: i32,
+}
+
+#[allow(non_camel_case_types)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub enum ZooKeeperVersion {
+    #[serde(rename = "3.6.2")]
+    v3_6_2,
+
+    #[serde(rename = "3.5.8")]
+    v3_5_8,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
@@ -139,41 +153,63 @@ async fn reconcile(
         .await
         .context(ZooKeeperClusterPatchFailed)?;
 
-    let pod_name = format!("{}-{}", name, 1);
-    let pod = Pod {
-        metadata: ObjectMeta {
-            name: Some(pod_name.clone()),
-            owner_references: Some(vec![OwnerReference {
-                controller: Some(true),
-                ..object_to_owner_reference::<ZooKeeperCluster>(zk_cluster.metadata.clone())?
-            }]),
-            ..ObjectMeta::default()
-        },
-        spec: Some(PodSpec {
-            tolerations: Some(create_tolerations()),
-            containers: vec![Container {
-                image: Some(format!("stackable/zookeeper:{}", zk_cluster.spec.version)),
-                name: "zookeeper".to_string(),
-                ..Container::default()
-            }],
-            ..PodSpec::default()
-        }),
-        ..Pod::default()
-    };
+    let mut labels = BTreeMap::new();
+    labels.insert("zookeeper-name".to_string(), name.clone());
 
-    let pods_api: Api<Pod> = Api::namespaced(client.clone(), &ns);
-    pods_api
-        .patch(
-            &pod_name,
-            &PatchParams {
-                patch_strategy: PatchStrategy::Apply,
-                field_manager: Some(FIELD_MANAGER.to_string()),
-                ..PatchParams::default()
+    for i in 0..zk_cluster.spec.replicas {
+        let pod_name = format!("{}-{}", name, i);
+        let pod = Pod {
+            metadata: ObjectMeta {
+                name: Some(pod_name.clone()),
+                owner_references: Some(vec![OwnerReference {
+                    controller: Some(true),
+                    ..object_to_owner_reference::<ZooKeeperCluster>(zk_cluster.metadata.clone())?
+                }]),
+                labels: Some(labels.clone()),
+                ..ObjectMeta::default()
             },
-            serde_json::to_vec(&pod).context(SerializationFailed)?,
-        )
-        .await
-        .context(PodPatchFailed)?;
+            spec: Some(PodSpec {
+                tolerations: Some(create_tolerations()),
+                containers: vec![Container {
+                    image: Some(format!("stackable/zookeeper:{:?}", zk_cluster.spec.version)),
+                    name: "zookeeper".to_string(),
+                    ..Container::default()
+                }],
+                affinity: Some(Affinity {
+                    pod_anti_affinity: Some(PodAntiAffinity {
+                        required_during_scheduling_ignored_during_execution: Some(vec![
+                            PodAffinityTerm {
+                                label_selector: Some(LabelSelector {
+                                    match_labels: Some(labels.clone()),
+                                    ..LabelSelector::default()
+                                }),
+                                topology_key: "kubernetes.io/hostname".to_string(),
+                                ..PodAffinityTerm::default()
+                            },
+                        ]),
+                        ..PodAntiAffinity::default()
+                    }),
+                    ..Affinity::default()
+                }),
+                ..PodSpec::default()
+            }),
+            ..Pod::default()
+        };
+
+        let pods_api: Api<Pod> = Api::namespaced(client.clone(), &ns);
+        pods_api
+            .patch(
+                &pod_name,
+                &PatchParams {
+                    patch_strategy: PatchStrategy::Apply,
+                    field_manager: Some(FIELD_MANAGER.to_string()),
+                    ..PatchParams::default()
+                },
+                serde_json::to_vec(&pod).context(SerializationFailed)?,
+            )
+            .await
+            .context(PodPatchFailed)?;
+    }
 
     debug!("Done applying!");
 
@@ -193,6 +229,7 @@ async fn handle_deletion(
     zookeeper_clusters: &Api<ZooKeeperCluster>,
     ps: &PatchParams,
 ) -> Result<bool> {
+    return Ok(false);
     if let Some(deletion_timestamp) = zk_cluster.metadata.deletion_timestamp {
         debug!(
             "The object is in the process of being deleted. Deletion timestamp: [{:?}]",

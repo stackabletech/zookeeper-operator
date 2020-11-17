@@ -3,4 +3,5 @@ kind: ZooKeeperCluster
 metadata:
   name: simple
 spec:
-  version: v3.6.2
+  version: 3.5.8
+  replicas: 3

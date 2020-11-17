@@ -1,13 +1,10 @@
 pub use controller::*;
 
 use actix_web::{
-    get, middleware,
-    web::{self, Data},
-    App, HttpRequest, HttpResponse, HttpServer, Responder,
+    get, middleware, web::Data, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
 use prometheus::{Encoder, TextEncoder};
-use tracing::{debug, error, info, trace, warn};
-
+use tracing::{info, warn};
 
 #[actix_web::main]
 async fn main() -> Result<()> {
@@ -15,7 +12,9 @@ async fn main() -> Result<()> {
         .with_max_level(tracing::Level::DEBUG)
         .init();
 
-    let client = kube::Client::try_default().await.expect("Creation of Kubernetes client shouldn't fail");
+    let client = kube::Client::try_default()
+        .await
+        .expect("Creation of Kubernetes client shouldn't fail");
     let (manager, drainer) = Manager::new(client).await;
 
     let server = HttpServer::new(move || {
@@ -26,9 +25,9 @@ async fn main() -> Result<()> {
             .service(health)
             .service(metrics)
     })
-        .bind("0.0.0.0:8181")
-        .expect("Can not bind to 0.0.0.0:8181")
-        .shutdown_timeout(0);
+    .bind("0.0.0.0:8181")
+    .expect("Can not bind to 0.0.0.0:8181")
+    .shutdown_timeout(0);
 
     tokio::select! {
         _ = drainer => warn!("controller drained"),

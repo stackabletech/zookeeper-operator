@@ -22,8 +22,10 @@ spec:
               properties:
                 version:
                   type: string
-                  enum: [ v3.6.2, v3.5.8 ]
-              required: [ "version" ]
+                  enum: [ 3.6.2, 3.5.8 ]
+                replicas:
+                  type: number
+              required: [ "version", "replicas" ]
             status:
                type: object
                properties:
