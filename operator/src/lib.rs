@@ -16,6 +16,8 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, OwnerReferen
 use kube::api::{ListParams, Meta, ObjectMeta, PatchParams, PatchStrategy};
 use kube_runtime::controller::{Context, ReconcilerAction};
 use kube_runtime::Controller;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_json::json;
 use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec};
 use std::collections::{BTreeMap, HashMap};
@@ -49,6 +51,8 @@ enum ControllerAction {
     /// The resource is about to be deleted
     Delete,
 }
+
+const FIELD_MANAGER: &str = "zookeeper.stackable.de";
 
 /// This creates an instance of a [`Controller`] which waits for incoming events and reconciles them.
 ///
@@ -173,84 +177,20 @@ async fn update_deployment(
     // First we gather all Pods that belong to us
     let pods_api: Api<Pod> = Api::namespaced(client.clone(), &ns);
 
-    for server in zk_spec.servers {
+    for (i, server) in zk_spec.servers.iter().enumerate() {
         let pod_name = format!("{}-{}", name, server.node_name);
         let cm_name = format!("zk-{}", pod_name);
 
-        let pod = Pod {
-            metadata: ObjectMeta {
-                name: Some(pod_name.clone()),
-                owner_references: Some(vec![OwnerReference {
-                    controller: Some(true),
-                    ..object_to_owner_reference::<ZooKeeperCluster>(zk_cluster.metadata.clone())?
-                }]),
-                labels: Some(labels.clone()),
-                ..ObjectMeta::default()
-            },
-            spec: Some(PodSpec {
-                tolerations: Some(create_tolerations()),
-                containers: vec![Container {
-                    image: Some(format!("stackable/zookeeper:{:?}", zk_cluster.spec.version)),
-                    name: "zookeeper".to_string(),
-                    command: Some(vec![
-                        "bin/zkServer.sh".to_string(),
-                        "--config".to_string(),
-                        "{{ configroot }}/conf".to_string(),
-                        "start-foreground".to_string(),
-                    ]),
-                    volume_mounts: Some(vec![VolumeMount {
-                        mount_path: "conf".to_string(),
-                        name: "config-volume".to_string(),
-                        ..VolumeMount::default()
-                    }]),
-                    ..Container::default()
-                }],
-                volumes: Some(vec![Volume {
-                    name: "config-volume".to_string(),
-                    config_map: Some(ConfigMapVolumeSource {
-                        name: Some(cm_name.clone()),
-                        ..ConfigMapVolumeSource::default()
-                    }),
-                    ..Volume::default()
-                }]),
-                affinity: Some(Affinity {
-                    pod_anti_affinity: Some(PodAntiAffinity {
-                        required_during_scheduling_ignored_during_execution: Some(vec![
-                            PodAffinityTerm {
-                                label_selector: Some(LabelSelector {
-                                    match_labels: Some(labels.clone()),
-                                    ..LabelSelector::default()
-                                }),
-                                topology_key: "kubernetes.io/hostname".to_string(),
-                                ..PodAffinityTerm::default()
-                            },
-                        ]),
-                        ..PodAntiAffinity::default()
-                    }),
-                    ..Affinity::default()
-                }),
-                ..PodSpec::default()
-            }),
-            ..Pod::default()
-        };
+        let pod = build_pod(zk_cluster, &labels, &pod_name, &cm_name)?;
 
-        pods_api
-            .patch(
-                &pod_name,
-                &PatchParams {
-                    patch_strategy: PatchStrategy::Apply,
-                    field_manager: Some(FIELD_MANAGER.to_string()),
-                    ..PatchParams::default()
-                },
-                serde_json::to_vec(&pod)?,
-            )
-            .await?;
+        patch_resource(&pods_api, &pod_name, &pod).await?;
 
         let config = handlebars
             .render("conf", &json!({ "options": options }))
             .unwrap();
         let mut data = BTreeMap::new();
         data.insert("zoo.cfg".to_string(), config);
+        data.insert("myid".to_string(), i.to_string());
         let cm = ConfigMap {
             data: Some(data),
             metadata: ObjectMeta {
@@ -282,7 +222,87 @@ async fn update_deployment(
     })
 }
 
-const FIELD_MANAGER: &str = "zookeeper.stackable.de";
+async fn patch_resource<T>(api: &Api<T>, resource_name: &String, resource: &T) -> Result<T, Error>
+where
+    T: Clone + Meta + DeserializeOwned + Serialize,
+{
+    api.patch(
+        &resource_name,
+        &PatchParams {
+            patch_strategy: PatchStrategy::Apply,
+            field_manager: Some(FIELD_MANAGER.to_string()),
+            ..PatchParams::default()
+        },
+        serde_json::to_vec(&resource)?,
+    )
+    .await
+    .map_err(Error::from)
+}
+
+fn build_pod(
+    zk_cluster: &ZooKeeperCluster,
+    labels: &BTreeMap<String, String>,
+    pod_name: &String,
+    cm_name: &String,
+) -> Result<Pod, Error> {
+    let pod = Pod {
+        metadata: ObjectMeta {
+            name: Some(pod_name.clone()),
+            owner_references: Some(vec![OwnerReference {
+                controller: Some(true),
+                ..object_to_owner_reference::<ZooKeeperCluster>(zk_cluster.metadata.clone())?
+            }]),
+            labels: Some(labels.clone()),
+            ..ObjectMeta::default()
+        },
+        spec: Some(PodSpec {
+            tolerations: Some(create_tolerations()),
+            containers: vec![Container {
+                image: Some(format!("stackable/zookeeper:{:?}", zk_cluster.spec.version)),
+                name: "zookeeper".to_string(),
+                command: Some(vec![
+                    "bin/zkServer.sh".to_string(),
+                    "--config".to_string(),
+                    "{{ configroot }}/conf".to_string(),
+                    "start-foreground".to_string(),
+                ]),
+                volume_mounts: Some(vec![VolumeMount {
+                    mount_path: "conf".to_string(),
+                    name: "config-volume".to_string(),
+                    ..VolumeMount::default()
+                }]),
+                ..Container::default()
+            }],
+            volumes: Some(vec![Volume {
+                name: "config-volume".to_string(),
+                config_map: Some(ConfigMapVolumeSource {
+                    name: Some(cm_name.clone()),
+                    ..ConfigMapVolumeSource::default()
+                }),
+                ..Volume::default()
+            }]),
+            affinity: Some(Affinity {
+                pod_anti_affinity: Some(PodAntiAffinity {
+                    required_during_scheduling_ignored_during_execution: Some(vec![
+                        PodAffinityTerm {
+                            label_selector: Some(LabelSelector {
+                                match_labels: Some(labels.clone()),
+                                ..LabelSelector::default()
+                            }),
+                            topology_key: "kubernetes.io/hostname".to_string(),
+                            ..PodAffinityTerm::default()
+                        },
+                    ]),
+                    ..PodAntiAffinity::default()
+                }),
+                ..Affinity::default()
+            }),
+            ..PodSpec::default()
+        }),
+        ..Pod::default()
+    };
+    Ok(pod)
+}
 
 fn object_to_owner_reference<K: Meta>(meta: ObjectMeta) -> Result<OwnerReference, Error> {
     Ok(OwnerReference {
