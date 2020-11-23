@@ -174,8 +174,8 @@ async fn update_deployment(
         .register_template_string("conf", "{{#each options}}{{@key}}={{this}}\n{{/each}}")
         .expect("template should work");
 
-    // First we gather all Pods that belong to us
     let pods_api: Api<Pod> = Api::namespaced(client.clone(), &ns);
+    let cm_api: Api<ConfigMap> = Api::namespaced(client.clone(), &ns);
 
     for (i, server) in zk_spec.servers.iter().enumerate() {
         let pod_name = format!("{}-{}", name, server.node_name);
@@ -191,6 +191,7 @@ async fn update_deployment(
         let mut data = BTreeMap::new();
         data.insert("zoo.cfg".to_string(), config);
         data.insert("myid".to_string(), i.to_string());
+
         let cm = ConfigMap {
             data: Some(data),
             metadata: ObjectMeta {
@@ -203,18 +204,8 @@ async fn update_deployment(
             },
             ..ConfigMap::default()
         };
-        let cm_api: Api<ConfigMap> = Api::namespaced(client.clone(), &ns);
-        cm_api
-            .patch(
-                &cm_name,
-                &PatchParams {
-                    patch_strategy: PatchStrategy::Apply,
-                    field_manager: Some(FIELD_MANAGER.to_string()),
-                    ..PatchParams::default()
-                },
-                serde_json::to_vec(&cm)?,
-            )
-            .await?;
+
+        patch_resource(&cm_api, &cm_name, &cm).await?;
     }
 
     Ok(ReconcilerAction {
