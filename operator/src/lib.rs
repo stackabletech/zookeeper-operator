@@ -7,6 +7,7 @@ use kube::{Api, Client};
 use tracing::{error, info};
 
 use futures::StreamExt;
+use handlebars::Handlebars;
 use k8s_openapi::api::core::v1::{
     Affinity, ConfigMap, ConfigMapVolumeSource, Container, Pod, PodAffinityTerm, PodAntiAffinity,
     PodSpec, Toleration, Volume, VolumeMount,
@@ -15,6 +16,7 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, OwnerReferen
 use kube::api::{ListParams, Meta, ObjectMeta, PatchParams, PatchStrategy};
 use kube_runtime::controller::{Context, ReconcilerAction};
 use kube_runtime::Controller;
+use serde_json::json;
 use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
@@ -154,31 +156,19 @@ async fn update_deployment(
     options.insert("tickTime".to_string(), "2000".to_string());
     options.insert("dataDir".to_string(), "/var/lib/zookeeper".to_string()); // TODO: Agent needs to know that this must exist (?) and belong to proper user
 
+    for (i, server) in zk_spec.servers.iter().enumerate() {
+        options.insert(format!("server.{}", i + 1), server.node_name.clone());
+    }
+
+    let mut handlebars = Handlebars::new();
+    handlebars
+        .register_template_string("conf", "{{#each options}}{{@key}}={{this}}\n{{/each}}")
+        .expect("template should work");
+
     // First we gather all Pods that belong to us
     let pods_api: Api<Pod> = Api::namespaced(client.clone(), &ns);
 
-    /*
-    let lp = ListParams::default().labels(&format!("zookeeper-name={}", name));
-    let pod_list = pods_api.list(&lp).await.context(PodListFailed)?;
-    for pod in pod_list {
-        if let Some(spec) = pod.spec {
-            if let Some(node_name) = spec.node_name {
-                if let None = spec.volumes {}
-            }
-        }
-    }
-     */
-
     for server in zk_spec.servers {
-        let mut options = options.clone();
-        options.insert(format!("server.{}", "foo"), server.node_name.clone());
-
-        /*
-        let mut handlebars = Handlebars::new();
-        handlebars.register_template_string("conf", "{{#each options as |opt| ~}}{{opt}}{/each~}}");
-        println!("{}", handlebars.render("conf", &options).unwrap());
-         */
-
         let pod_name = format!("{}-{}", name, server.node_name);
         let cm_name = format!("zk-{}", pod_name);
 
@@ -197,6 +187,12 @@ async fn update_deployment(
                 containers: vec![Container {
                     image: Some(format!("stackable/zookeeper:{:?}", zk_cluster.spec.version)),
                     name: "zookeeper".to_string(),
+                    command: Some(vec![
+                        "bin/zkServer.sh".to_string(),
+                        "--config".to_string(),
+                        "{{ configroot }}".to_string(),
+                        "start-foreground".to_string(),
+                    ]),
                     volume_mounts: Some(vec![VolumeMount {
                         mount_path: "conf".to_string(),
                         name: "config-volume".to_string(),
@@ -245,9 +241,11 @@ async fn update_deployment(
             )
             .await?;
 
+        let config = handlebars
+            .render("conf", &json!({ "options": options }))
+            .unwrap();
         let mut data = BTreeMap::new();
-        data.insert("zoo.cfg".to_string(), "foobar".to_string());
-
+        data.insert("zoo.cfg".to_string(), config);
         let cm = ConfigMap {
             data: Some(data),
             metadata: ObjectMeta {
