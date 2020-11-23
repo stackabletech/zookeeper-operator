@@ -22,10 +22,15 @@ spec:
               properties:
                 version:
                   type: string
-                  enum: [ 3.6.2, 3.5.8 ]
-                replicas:
-                  type: number
-              required: [ "version", "replicas" ]
+                  enum: [ 3.6.2, 3.5.8, 3.4.14 ]
+                servers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      node_name:
+                        type: string                        
+              required: [ "version", "servers" ]
             status:
                type: object
                properties:

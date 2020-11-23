@@ -4,4 +4,6 @@ metadata:
   name: simple
 spec:
   version: 3.5.8
-  replicas: 3
+  servers:
+    - node_name: soenke-laptop
+    - node_name: lars-laptop
