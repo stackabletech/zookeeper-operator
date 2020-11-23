@@ -155,6 +155,8 @@ async fn update_deployment(
     let mut options = HashMap::new();
     options.insert("tickTime".to_string(), "2000".to_string());
     options.insert("dataDir".to_string(), "/tmp/zookeeper".to_string()); // TODO: Agent needs to know that this must exist (?) and belong to proper user
+    options.insert("initLimit".to_string(), "5".to_string());
+    options.insert("syncLimit".to_string(), "2".to_string());
 
     for (i, server) in zk_spec.servers.iter().enumerate() {
         options.insert(
