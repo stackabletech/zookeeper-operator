@@ -258,7 +258,10 @@ fn build_pod(
         spec: Some(PodSpec {
             tolerations: Some(create_tolerations()),
             containers: vec![Container {
-                image: Some(format!("stackable/zookeeper:{:?}", zk_cluster.spec.version)),
+                image: Some(format!(
+                    "stackable/zookeeper:{}",
+                    serde_json::json!(zk_cluster.spec.version).as_str().unwrap()
+                )),
                 name: "zookeeper".to_string(),
                 command: Some(vec![
                     "bin/zkServer.sh".to_string(),
