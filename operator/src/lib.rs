@@ -158,8 +158,8 @@ async fn update_deployment(
 
     for (i, server) in zk_spec.servers.iter().enumerate() {
         options.insert(
-            format!("server.{}:2888:3888", i + 1),
-            server.node_name.clone(),
+            format!("server.{}", i + 1),
+            format!("{}:2888:3888", server.node_name),
         );
     }
 
