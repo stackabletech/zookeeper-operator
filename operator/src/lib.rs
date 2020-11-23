@@ -157,7 +157,10 @@ async fn update_deployment(
     options.insert("dataDir".to_string(), "/tmp/zookeeper".to_string()); // TODO: Agent needs to know that this must exist (?) and belong to proper user
 
     for (i, server) in zk_spec.servers.iter().enumerate() {
-        options.insert(format!("server.{}", i + 1), server.node_name.clone());
+        options.insert(
+            format!("server.{}:2888:3888", i + 1),
+            server.node_name.clone(),
+        );
     }
 
     let mut handlebars = Handlebars::new();
