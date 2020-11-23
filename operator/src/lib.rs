@@ -55,11 +55,11 @@ enum ControllerAction {
 /// This is an async method and the returned future needs to be consumed to make progress.
 pub async fn create_controller(client: Client) {
     let zk_api: Api<ZooKeeperCluster> = Api::all(client.clone());
-    let lp = ListParams::default();
+    let pods_api: Api<Pod> = Api::all(client.clone());
     let context = Context::new(ContextData::new(client));
 
-    Controller::new(zk_api, lp)
-        //.owns(pods_api, lp)
+    Controller::new(zk_api, ListParams::default())
+        .owns(pods_api, ListParams::default())
         .run(reconcile, error_policy, context)
         .for_each(|res| async move {
             match res {
@@ -154,7 +154,7 @@ async fn update_deployment(
 
     let mut options = HashMap::new();
     options.insert("tickTime".to_string(), "2000".to_string());
-    options.insert("dataDir".to_string(), "/var/lib/zookeeper".to_string()); // TODO: Agent needs to know that this must exist (?) and belong to proper user
+    options.insert("dataDir".to_string(), "/tmp/zookeeper".to_string()); // TODO: Agent needs to know that this must exist (?) and belong to proper user
 
     for (i, server) in zk_spec.servers.iter().enumerate() {
         options.insert(format!("server.{}", i + 1), server.node_name.clone());
@@ -190,7 +190,7 @@ async fn update_deployment(
                     command: Some(vec![
                         "bin/zkServer.sh".to_string(),
                         "--config".to_string(),
-                        "{{ configroot }}".to_string(),
+                        "{{ configroot }}/conf".to_string(),
                         "start-foreground".to_string(),
                     ]),
                     volume_mounts: Some(vec![VolumeMount {
