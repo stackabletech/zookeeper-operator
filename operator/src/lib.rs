@@ -181,36 +181,56 @@ async fn update_deployment(
         let pod_name = format!("{}-{}", name, server.node_name);
         let cm_name = format!("zk-{}", pod_name);
 
+        // This builds the Pod object
         let pod = build_pod(zk_cluster, &labels, &pod_name, &cm_name)?;
-
         patch_resource(&pods_api, &pod_name, &pod).await?;
 
         let config = handlebars
             .render("conf", &json!({ "options": options }))
             .unwrap();
+
+        // Now we need to create two configmaps per server.
+        // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
+        // One for the configuration directory...
         let mut data = BTreeMap::new();
         data.insert("zoo.cfg".to_string(), config);
-        data.insert("myid".to_string(), i.to_string());
 
-        let cm = ConfigMap {
-            data: Some(data),
-            metadata: ObjectMeta {
-                name: Some(cm_name.clone()),
-                owner_references: Some(vec![OwnerReference {
-                    controller: Some(true),
-                    ..object_to_owner_reference::<ZooKeeperCluster>(zk_cluster.metadata.clone())?
-                }]),
-                ..ObjectMeta::default()
-            },
-            ..ConfigMap::default()
-        };
+        let tmp_name = cm_name.clone() + "-conf";
+        let cm = create_config_map(zk_cluster, &tmp_name, data)?;
+        patch_resource(&cm_api, &tmp_name, &cm).await?;
 
-        patch_resource(&cm_api, &cm_name, &cm).await?;
+        // ...and one for the data directory.
+        let mut data = BTreeMap::new();
+        data.insert("myid".to_string(), (i + 1).to_string());
+        let tmp_name = cm_name + "-data";
+        let cm = create_config_map(zk_cluster, &tmp_name, data)?;
+        patch_resource(&cm_api, &tmp_name, &cm).await?;
     }
 
     Ok(ReconcilerAction {
         requeue_after: Option::None,
     })
+}
+
+/// Creates the ConfigMap for the configuration directory of ZooKeeper
+fn create_config_map(
+    zk_cluster: &ZooKeeperCluster,
+    cm_name: &String,
+    data: BTreeMap<String, String>,
+) -> Result<ConfigMap, Error> {
+    let cm = ConfigMap {
+        data: Some(data),
+        metadata: ObjectMeta {
+            name: Some(cm_name.clone()),
+            owner_references: Some(vec![OwnerReference {
+                controller: Some(true),
+                ..object_to_owner_reference::<ZooKeeperCluster>(zk_cluster.metadata.clone())?
+            }]),
+            ..ObjectMeta::default()
+        },
+        ..ConfigMap::default()
+    };
+    Ok(cm)
 }
 
 async fn patch_resource<T>(api: &Api<T>, resource_name: &String, resource: &T) -> Result<T, Error>
@@ -260,21 +280,40 @@ fn build_pod(
                     "{{ configroot }}/conf".to_string(),
                     "start-foreground".to_string(),
                 ]),
-                volume_mounts: Some(vec![VolumeMount {
-                    mount_path: "conf".to_string(),
-                    name: "config-volume".to_string(),
-                    ..VolumeMount::default()
-                }]),
+                volume_mounts: Some(vec![
+                    VolumeMount {
+                        mount_path: "conf".to_string(),
+                        name: "config-volume".to_string(),
+                        ..VolumeMount::default()
+                    },
+                    // We need a second mount for the data directory
+                    // because we need to write the myid file into the data directory
+                    VolumeMount {
+                        mount_path: "/var/lib/zookeeper".to_string(),
+                        name: "data-volume".to_string(),
+                        ..VolumeMount::default()
+                    },
+                ]),
                 ..Container::default()
             }],
-            volumes: Some(vec![Volume {
-                name: "config-volume".to_string(),
-                config_map: Some(ConfigMapVolumeSource {
-                    name: Some(cm_name.clone()),
-                    ..ConfigMapVolumeSource::default()
-                }),
-                ..Volume::default()
-            }]),
+            volumes: Some(vec![
+                Volume {
+                    name: "config-volume".to_string(),
+                    config_map: Some(ConfigMapVolumeSource {
+                        name: Some(format!("{}-config", cm_name)),
+                        ..ConfigMapVolumeSource::default()
+                    }),
+                    ..Volume::default()
+                },
+                Volume {
+                    name: "data-volume".to_string(),
+                    config_map: Some(ConfigMapVolumeSource {
+                        name: Some(format!("{}-data", cm_name)),
+                        ..ConfigMapVolumeSource::default()
+                    }),
+                    ..Volume::default()
+                },
+            ]),
             affinity: Some(Affinity {
                 pod_anti_affinity: Some(PodAntiAffinity {
                     required_during_scheduling_ignored_during_execution: Some(vec![
