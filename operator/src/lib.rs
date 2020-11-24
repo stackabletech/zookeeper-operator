@@ -195,7 +195,7 @@ async fn update_deployment(
         let mut data = BTreeMap::new();
         data.insert("zoo.cfg".to_string(), config);
 
-        let tmp_name = cm_name.clone() + "-conf";
+        let tmp_name = cm_name.clone() + "-config"; // TODO: Create these names once and pass them around so we are consistent
         let cm = create_config_map(zk_cluster, &tmp_name, data)?;
         patch_resource(&cm_api, &tmp_name, &cm).await?;
 
@@ -289,7 +289,7 @@ fn build_pod(
                     // We need a second mount for the data directory
                     // because we need to write the myid file into the data directory
                     VolumeMount {
-                        mount_path: "/var/lib/zookeeper".to_string(),
+                        mount_path: "/tmp/zookeeper".to_string(),
                         name: "data-volume".to_string(),
                         ..VolumeMount::default()
                     },
