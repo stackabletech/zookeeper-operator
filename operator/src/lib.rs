@@ -76,9 +76,10 @@ pub async fn create_controller(client: Client) {
 
 /// This method contains the logic of reconciling an object (the desired state) we received with the actual state.
 ///
-/// We distinguish between two different types:
-/// * Creation and update (these are handled the same)
-/// * Deletion
+/// We distinguish between three different types:
+/// * Create
+/// * Update
+/// * Delete
 async fn reconcile(
     zk_cluster: ZooKeeperCluster,
     context: Context<ContextData>,
