@@ -162,6 +162,7 @@ async fn update_deployment(
     options.insert("dataDir".to_string(), "/tmp/zookeeper".to_string()); // TODO: Agent needs to know that this must exist (?) and belong to proper user
     options.insert("initLimit".to_string(), "5".to_string());
     options.insert("syncLimit".to_string(), "2".to_string());
+    options.insert("clientPort".to_string(), "2181".to_string());
 
     for (i, server) in zk_spec.servers.iter().enumerate() {
         options.insert(
@@ -279,9 +280,9 @@ fn build_pod(
                 name: "zookeeper".to_string(),
                 command: Some(vec![
                     "bin/zkServer.sh".to_string(),
-                    "--config".to_string(),
-                    "{{ configroot }}/conf".to_string(),
                     "start-foreground".to_string(),
+                    // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
+                    "{{ configroot }}/conf".to_string(),
                 ]),
                 volume_mounts: Some(vec![
                     VolumeMount {
