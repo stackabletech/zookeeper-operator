@@ -282,7 +282,7 @@ fn build_pod(
                     "bin/zkServer.sh".to_string(),
                     "start-foreground".to_string(),
                     // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
-                    "{{ configroot }}/conf".to_string(),
+                    "{{ configroot }}/conf/zoo.cfg".to_string(), // TODO: Later versions can probably point to a directory instead, investigate
                 ]),
                 volume_mounts: Some(vec![
                     VolumeMount {
