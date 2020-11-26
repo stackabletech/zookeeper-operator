@@ -19,7 +19,7 @@ use kube_runtime::Controller;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::json;
-use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec};
+use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
@@ -183,7 +183,7 @@ async fn update_deployment(
         let cm_name = format!("zk-{}", pod_name);
 
         // This builds the Pod object
-        let pod = build_pod(zk_cluster, &labels, &pod_name, &cm_name)?;
+        let pod = build_pod(zk_cluster, server, &labels, &pod_name, &cm_name)?;
         patch_resource(&pods_api, &pod_name, &pod).await?;
 
         let config = handlebars
@@ -253,6 +253,7 @@ where
 
 fn build_pod(
     zk_cluster: &ZooKeeperCluster,
+    zk_server: &ZooKeeperServer,
     labels: &BTreeMap<String, String>,
     pod_name: &String,
     cm_name: &String,
@@ -268,6 +269,7 @@ fn build_pod(
             ..ObjectMeta::default()
         },
         spec: Some(PodSpec {
+            node_name: Some(zk_server.node_name.clone()),
             tolerations: Some(create_tolerations()),
             containers: vec![Container {
                 image: Some(format!(
