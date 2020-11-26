@@ -21,6 +21,8 @@ spec:
     kind: ZooKeeperCluster
     plural: zookeeperclusters
     singular: zookeepercluster
+    shortNames:
+      - zk
   scope: Namespaced
   versions:
     - name: v1
@@ -35,7 +37,7 @@ spec:
               properties:
                 version:
                   type: string
-                  enum: [ 3.6.2, 3.5.8, 3.4.14 ]
+                  enum: [ 3.4.14 ]
                 servers:
                   type: array
                   items:
@@ -75,12 +77,6 @@ pub struct ZooKeeperServer {
 #[allow(non_camel_case_types)]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum ZooKeeperVersion {
-    #[serde(rename = "3.6.2")]
-    v3_6_2,
-
-    #[serde(rename = "3.5.8")]
-    v3_5_8,
-
     #[serde(rename = "3.4.14")]
     v3_4_14,
 }
