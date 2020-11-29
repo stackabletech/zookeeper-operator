@@ -1,5 +1,4 @@
 mod error;
-mod finalizer;
 
 use crate::error::Error;
 
@@ -10,48 +9,23 @@ use futures::StreamExt;
 use handlebars::Handlebars;
 use k8s_openapi::api::core::v1::{
     Affinity, ConfigMap, ConfigMapVolumeSource, Container, Pod, PodAffinityTerm, PodAntiAffinity,
-    PodSpec, Toleration, Volume, VolumeMount,
+    PodSpec, Volume, VolumeMount,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, OwnerReference};
-use kube::api::{ListParams, Meta, ObjectMeta, PatchParams, PatchStrategy};
+use kube::api::{ListParams, Meta, ObjectMeta};
 use kube_runtime::controller::{Context, ReconcilerAction};
 use kube_runtime::Controller;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
 use serde_json::json;
+use stackable_operator::finalizer::add_finalizer;
+use stackable_operator::{
+    create_config_map, create_tolerations, decide_controller_action, finalizer,
+    object_to_owner_reference, patch_resource, ContextData, ControllerAction,
+};
 use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
-/// Context data inserted into the reconciliation handler with each call.
-struct ContextData {
-    /// Kubernetes client to manipulate Kubernetes resources
-    client: Client,
-}
-
-impl ContextData {
-    /// Creates a new instance of `ContextData`.
-    ///
-    /// # Arguments
-    ///
-    /// - `client` - Kubernetes client to manipulate Kubernetes resources
-    pub fn new(client: Client) -> Self {
-        ContextData { client }
-    }
-}
-
-/// Action to be taken by the controller if there is a new event on one of the watched resources
-enum ControllerAction {
-    /// A resource was created
-    Create,
-
-    /// A resource was updated
-    Update,
-
-    /// The resource is about to be deleted
-    Delete,
-}
-
+const FINALIZER_NAME: &str = "zookeeper.stackable.de/cleanup";
 const FIELD_MANAGER: &str = "zookeeper.stackable.de";
 
 /// This creates an instance of a [`Controller`] which waits for incoming events and reconciles them.
@@ -84,7 +58,7 @@ async fn reconcile(
     zk_cluster: ZooKeeperCluster,
     context: Context<ContextData>,
 ) -> Result<ReconcilerAction, Error> {
-    match decide_controller_action(&zk_cluster) {
+    match decide_controller_action(&zk_cluster, FINALIZER_NAME) {
         Some(ControllerAction::Create) => {
             create_deployment(&zk_cluster, &context).await?;
         }
@@ -113,33 +87,11 @@ fn error_policy(error: &Error, _context: Context<ContextData>) -> ReconcilerActi
     }
 }
 
-/// Examines the incoming resource and determines the `ControllerAction` to be taken upon it.
-fn decide_controller_action(zk_cluster: &ZooKeeperCluster) -> Option<ControllerAction> {
-    let has_finalizer: bool = finalizer::has_finalizer(&zk_cluster);
-    let has_deletion_timestamp: bool = finalizer::has_deletion_stamp(zk_cluster);
-    return if has_finalizer && has_deletion_timestamp {
-        Some(ControllerAction::Delete)
-    } else if !has_finalizer && !has_deletion_timestamp {
-        Some(ControllerAction::Create)
-    } else if has_finalizer && !has_deletion_timestamp {
-        Some(ControllerAction::Update)
-    } else {
-        // The object is being deleted but we've already finished our finalizer
-        // So there's nothing left to do for us on this one.
-        None
-    };
-}
-
 async fn create_deployment(
     zk_cluster: &ZooKeeperCluster,
     context: &Context<ContextData>,
 ) -> Result<ReconcilerAction, Error> {
-    finalizer::add_finalizer(
-        context.get_ref().client.clone(),
-        &Meta::name(zk_cluster),
-        &Meta::namespace(zk_cluster).expect("ZooKeeperCluster is namespaced"),
-    )
-    .await?;
+    add_finalizer(context.get_ref().client.clone(), zk_cluster, FINALIZER_NAME).await?;
 
     update_deployment(zk_cluster, context).await
 }
@@ -185,7 +137,7 @@ async fn update_deployment(
 
         // This builds the Pod object
         let pod = build_pod(zk_cluster, server, &labels, &pod_name, &cm_name)?;
-        patch_resource(&pods_api, &pod_name, &pod).await?;
+        patch_resource(&pods_api, &pod_name, &pod, FIELD_MANAGER).await?;
 
         let config = handlebars
             .render("conf", &json!({ "options": options }))
@@ -199,14 +151,14 @@ async fn update_deployment(
 
         let tmp_name = cm_name.clone() + "-config"; // TODO: Create these names once and pass them around so we are consistent
         let cm = create_config_map(zk_cluster, &tmp_name, data)?;
-        patch_resource(&cm_api, &tmp_name, &cm).await?;
+        patch_resource(&cm_api, &tmp_name, &cm, FIELD_MANAGER).await?;
 
         // ...and one for the data directory.
         let mut data = BTreeMap::new();
         data.insert("myid".to_string(), (i + 1).to_string());
         let tmp_name = cm_name + "-data";
         let cm = create_config_map(zk_cluster, &tmp_name, data)?;
-        patch_resource(&cm_api, &tmp_name, &cm).await?;
+        patch_resource(&cm_api, &tmp_name, &cm, FIELD_MANAGER).await?;
     }
 
     Ok(ReconcilerAction {
@@ -214,42 +166,17 @@ async fn update_deployment(
     })
 }
 
-/// Creates the ConfigMap for the configuration directory of ZooKeeper
-fn create_config_map(
+async fn delete_deployment(
     zk_cluster: &ZooKeeperCluster,
-    cm_name: &String,
-    data: BTreeMap<String, String>,
-) -> Result<ConfigMap, Error> {
-    let cm = ConfigMap {
-        data: Some(data),
-        metadata: ObjectMeta {
-            name: Some(cm_name.clone()),
-            owner_references: Some(vec![OwnerReference {
-                controller: Some(true),
-                ..object_to_owner_reference::<ZooKeeperCluster>(zk_cluster.metadata.clone())?
-            }]),
-            ..ObjectMeta::default()
-        },
-        ..ConfigMap::default()
-    };
-    Ok(cm)
-}
+    context: &Context<ContextData>,
+) -> Result<ReconcilerAction, Error> {
+    info!("Deleting deployment");
+    finalizer::remove_finalizer(context.get_ref().client.clone(), zk_cluster, FINALIZER_NAME)
+        .await?;
 
-async fn patch_resource<T>(api: &Api<T>, resource_name: &String, resource: &T) -> Result<T, Error>
-where
-    T: Clone + Meta + DeserializeOwned + Serialize,
-{
-    api.patch(
-        &resource_name,
-        &PatchParams {
-            patch_strategy: PatchStrategy::Apply,
-            field_manager: Some(FIELD_MANAGER.to_string()),
-            ..PatchParams::default()
-        },
-        serde_json::to_vec(&resource)?,
-    )
-    .await
-    .map_err(Error::from)
+    Ok(ReconcilerAction {
+        requeue_after: Option::None,
+    })
 }
 
 fn build_pod(
@@ -339,56 +266,4 @@ fn build_pod(
         ..Pod::default()
     };
     Ok(pod)
-}
-
-fn object_to_owner_reference<K: Meta>(meta: ObjectMeta) -> Result<OwnerReference, Error> {
-    Ok(OwnerReference {
-        api_version: K::API_VERSION.to_string(),
-        kind: K::KIND.to_string(),
-        name: meta.name.ok_or_else(|| Error::MissingObjectKey {
-            key: ".metadata.name",
-        })?,
-        uid: meta.uid.ok_or_else(|| Error::MissingObjectKey {
-            key: ".metadata.backtrace",
-        })?,
-        ..OwnerReference::default()
-    })
-}
-
-fn create_tolerations() -> Vec<Toleration> {
-    vec![
-        Toleration {
-            effect: Some(String::from("NoExecute")),
-            key: Some(String::from("kubernetes.io/arch")),
-            operator: Some(String::from("Equal")),
-            toleration_seconds: None,
-            value: Some(String::from("stackable-linux")),
-        },
-        Toleration {
-            effect: Some(String::from("NoSchedule")),
-            key: Some(String::from("kubernetes.io/arch")),
-            operator: Some(String::from("Equal")),
-            toleration_seconds: None,
-            value: Some(String::from("stackable-linux")),
-        },
-        Toleration {
-            effect: Some(String::from("NoSchedule")),
-            key: Some(String::from("node.kubernetes.io/network-unavailable")),
-            operator: Some(String::from("Exists")),
-            toleration_seconds: None,
-            value: None,
-        },
-    ]
-}
-
-async fn delete_deployment(
-    zk_cluster: &ZooKeeperCluster,
-    context: &Context<ContextData>,
-) -> Result<ReconcilerAction, Error> {
-    info!("Deleting deployment");
-    finalizer::remove_finalizer(context.get_ref().client.clone(), zk_cluster).await?;
-
-    Ok(ReconcilerAction {
-        requeue_after: Option::None,
-    })
 }

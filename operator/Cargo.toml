@@ -6,6 +6,8 @@ edition = "2018"
 
 [dependencies]
 stackable-zookeeper-crd = { path = "../crd" }
+stackable-operator = { git = "https://github.com/lfrancke/operator-rs.git", branch="start" }
+
 
 futures = "0.3"
 handlebars = "3.5"
