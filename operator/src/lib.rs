@@ -301,7 +301,7 @@ async fn reconcile_cluster(
     // Step 2:
     // Now that we know the current state of the cluster and its id assignment
     // we can iterate over the requested servers and assign ids to those that are missing one.
-    used_ids.sort();
+    used_ids.sort_unstable();
     for server in &zk_spec.servers {
         match node_name_to_pod.get(&server.node_name) {
             None => {

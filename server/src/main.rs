@@ -1,4 +1,3 @@
-use stackable_operator;
 use stackable_operator::error;
 use stackable_zookeeper_crd::ZooKeeperCluster;
 use stackable_zookeeper_operator::create_controller;
