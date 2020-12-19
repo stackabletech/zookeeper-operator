@@ -1,4 +1,5 @@
 use std::backtrace::Backtrace;
+use std::num::ParseIntError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -23,12 +24,12 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[error("Object is missing key: {key}")]
-    MissingObjectKey { key: &'static str },
-
-    #[error("Pod [{}] missing", pod_name)]
-    MissingPod { pod_name: String },
-
     #[error("ControllerRevision missing")]
     MissingControllerRevision,
+
+    #[error("Pod contains invalid id: {source}")]
+    InvalidId {
+        #[from]
+        source: ParseIntError,
+    },
 }

@@ -76,6 +76,15 @@ impl CRD for ZooKeeperCluster {
     "#;
 }
 
+impl ZooKeeperClusterSpec {
+    pub fn image_name(&self) -> String {
+        format!(
+            "stackable/zookeeper:{}",
+            serde_json::json!(self.version).as_str().unwrap()
+        )
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct ZooKeeperServer {
     pub node_name: String,

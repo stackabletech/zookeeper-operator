@@ -5,7 +5,7 @@ authors = ["Lars Francke <lars.francke@stackable.de>"]
 edition = "2018"
 
 [dependencies]
-stackable-operator = { git = "https://github.com/lfrancke/operator-rs.git", branch="start" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git" }
 stackable-zookeeper-crd = { path = "../crd" }
 stackable-zookeeper-operator = { path = "../operator" }
 
