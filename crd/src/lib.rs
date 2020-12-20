@@ -1,7 +1,6 @@
 use kube::CustomResource;
 use serde::{Deserialize, Serialize};
 use stackable_operator::CRD;
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
@@ -57,7 +56,7 @@ impl CRD for ZooKeeperCluster {
                   properties:
                     version:
                       type: string
-                      enum: [ 3.4.14 ]
+                      enum: [ 3.4.13, 3.4.14 ]
                     servers:
                       type: array
                       items:
@@ -101,52 +100,6 @@ pub enum ZooKeeperVersion {
 
     #[serde(rename = "3.5.8")]
     v3_5_8,
-}
-
-#[derive(Clone, CustomResource, Debug, Deserialize, Serialize)]
-#[kube(
-    group = "zookeeper.stackable.de",
-    version = "v1",
-    kind = "ZooKeeperRestart",
-    shortname = "zkrestart",
-    namespaced
-)]
-pub struct ZooKeeperRestartSpec {
-    pub zoo_keepr_cluster_ref: String,
-}
-
-// ConfigOption a map of version number to:
-// * name
-// * type
-// ** int (min, max)
-// ** float (min, max)
-// ** string (min & max length, format: regex pattern, date, email, units....)
-// ** boolean
-// ** sub options?
-// ** array
-// * units? (e.g. "mb or "port" so the agent can check for conflicting ports before trying to start a process)
-// * validator functions
-// * optional/required/nullable
-// * enum
-// * deprecated (new name(s), no replacement)
-// * as of version...
-// * description/documentation
-// * default value -> potentially a map of version number to default value
-// * (recommended/default values (a calculator function?, which needs to be able to reference other options))
-// * dynamic option/restart required
-// * (override hierarchy?)
-// * links to relevant documentation/code
-
-pub struct VersionedConfigOption {
-    pub version_map: HashMap<String, ConfigOption>,
-}
-
-pub struct ConfigOption {
-    pub name: String,
-}
-
-pub struct ZooKeeperConfig {
-    pub auto_purge_purge_interval: Option<i32>,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
