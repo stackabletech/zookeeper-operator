@@ -11,7 +11,7 @@ use futures::StreamExt;
 use handlebars::Handlebars;
 use k8s_openapi::api::apps::v1::ControllerRevision;
 use k8s_openapi::api::core::v1::{
-    ConfigMapVolumeSource, Container, Pod, PodSpec, Volume, VolumeMount,
+    ConfigMap, ConfigMapVolumeSource, Container, Pod, PodSpec, Volume, VolumeMount,
 };
 use k8s_openapi::apimachinery::pkg::runtime::RawExtension;
 use kube::api::{ListParams, Meta, ObjectMeta};
@@ -25,7 +25,7 @@ use stackable_operator::history::{
 };
 use stackable_operator::{
     create_config_map, create_tolerations, finalizer, object_to_owner_reference, podutils,
-    ContextData,
+    requeueing_error_policy, ContextData,
 };
 use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
 use std::collections::{BTreeMap, HashMap};
@@ -43,11 +43,18 @@ const ID_LABEL: &str = "zookeeper.stackable.de/id";
 pub async fn create_controller(client: Client) {
     let zk_api: Api<ZooKeeperCluster> = client.get_all_api();
     let pods_api: Api<Pod> = client.get_all_api();
+    let config_maps_api: Api<ConfigMap> = client.get_all_api();
+    let controller_revisions_api: Api<ControllerRevision> = client.get_all_api();
+
     let context = Context::new(ContextData::new(client));
 
+    // TODO: Make duration configurable
+    let error_policy = requeueing_error_policy(Duration::from_secs(10));
+
     Controller::new(zk_api, ListParams::default())
-        .owns(pods_api, ListParams::default()) // TODO: Restrict to owner references
-        // TODO: .owns(ConfigMaps...)
+        .owns(pods_api, ListParams::default())
+        .owns(config_maps_api, ListParams::default())
+        .owns(controller_revisions_api, ListParams::default())
         .run(reconcile, error_policy, context)
         .for_each(|res| async move {
             match res {
@@ -56,16 +63,6 @@ pub async fn create_controller(client: Client) {
             };
         })
         .await
-}
-
-// TODO: Maybe move to operator-rs
-/// This method is being called by the Controller whenever there's an error during reconciliation.
-/// We just log the error and requeue the event.
-fn error_policy<T>(error: &Error, _context: Context<T>) -> ReconcilerAction {
-    error!("Reconciliation error:\n{}", error);
-    ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(10)),
-    }
 }
 
 // I'd like to restrict the <T> type further but that does not seem to work
@@ -583,24 +580,6 @@ fn build_pod_spec(
         tolerations: Some(create_tolerations()),
         containers,
         volumes: Some(volumes),
-        /*
-        affinity: Some(Affinity {
-            pod_anti_affinity: Some(PodAntiAffinity {
-                required_during_scheduling_ignored_during_execution: Some(vec![
-                    PodAffinityTerm {
-                        label_selector: Some(LabelSelector {
-                            match_labels: Some(labels.clone()),
-                            ..LabelSelector::default()
-                        }),
-                        topology_key: "kubernetes.io/hostname".to_string(),
-                        ..PodAffinityTerm::default()
-                    },
-                ]),
-                ..PodAntiAffinity::default()
-            }),
-            ..Affinity::default()
-        }),
-         */
         ..PodSpec::default()
     }
 }
