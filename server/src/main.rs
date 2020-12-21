@@ -4,7 +4,7 @@ use stackable_zookeeper_operator::create_controller;
 
 #[tokio::main]
 async fn main() -> Result<(), error::Error> {
-    stackable_operator::initialize_logging(stackable_operator::Level::INFO);
+    stackable_operator::initialize_logging("ZOOKEEPER_OPERATOR_LOG");
     let client =
         stackable_operator::create_client(Some("zookeeper.stackable.de".to_string())).await?;
 

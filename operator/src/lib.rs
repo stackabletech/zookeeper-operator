@@ -6,7 +6,6 @@ use crate::error::Error;
 use kube::Api;
 use tracing::{debug, error, info, trace};
 
-use futures::future::BoxFuture;
 use futures::StreamExt;
 use handlebars::Handlebars;
 use k8s_openapi::api::apps::v1::ControllerRevision;
@@ -23,6 +22,10 @@ use stackable_operator::finalizer::has_deletion_stamp;
 use stackable_operator::history::{
     create_controller_revision, list_controller_revisions, next_revision, sort_controller_revisions,
 };
+use stackable_operator::reconcile::{
+    run_reconcile_functions, ReconcileFunction, ReconcileFunctionAction, ReconcileResult,
+    ReconciliationContext,
+};
 use stackable_operator::{
     create_config_map, create_tolerations, finalizer, object_to_owner_reference, podutils,
     requeueing_error_policy, ContextData,
@@ -37,6 +40,14 @@ const CLUSTER_NAME_LABEL: &str = "zookeeper.stackable.de/cluster-name";
 const REVISION_LABEL: &str = "zookeeper.stackable.de/revision";
 const ID_LABEL: &str = "zookeeper.stackable.de/id";
 
+struct LocalContext {
+    pub current_revision: Option<ControllerRevision>,
+}
+
+type ZooKeeperReconcileFunction = ReconcileFunction<LocalContext, ZooKeeperCluster, error::Error>;
+type ZooKeeperReconcileContext = ReconciliationContext<LocalContext, ZooKeeperCluster>;
+type ZooKeeperReconcileResult = ReconcileResult<error::Error>;
+
 /// This creates an instance of a [`Controller`] which waits for incoming events and reconciles them.
 ///
 /// This is an async method and the returned future needs to be consumed to make progress.
@@ -46,7 +57,7 @@ pub async fn create_controller(client: Client) {
     let config_maps_api: Api<ConfigMap> = client.get_all_api();
     let controller_revisions_api: Api<ControllerRevision> = client.get_all_api();
 
-    let context = Context::new(ContextData::new(client));
+    let context = Context::new(client);
 
     // TODO: Make duration configurable
     let error_policy = requeueing_error_policy(Duration::from_secs(10));
@@ -65,118 +76,30 @@ pub async fn create_controller(client: Client) {
         .await
 }
 
-// I'd like to restrict the <T> type further but that does not seem to work
-// https://github.com/rust-lang/rust/issues/21903
-//where
-//    T: k8s_openapi::Resource + Clone + Meta + DeserializeOwned,
-type ReconcileFunction<T> = fn(&mut ReconciliationContext<T>) -> BoxFuture<'_, ReconcileResult>;
-
-type ReconcileResult = std::result::Result<ReconcileFunctionAction, error::Error>;
-
-enum ReconcileFunctionAction {
-    Continue,
-    Done,
-    Reque(Duration),
-}
-
-// TODO: Move to operator-rs?
-struct ReconciliationContext<T> {
-    client: Client,
-    pub resource: T,
-    pub current_revision: Option<ControllerRevision>,
-}
-
-impl<T> ReconciliationContext<T> {
-    pub fn new(client: Client, resource: T) -> Self {
-        ReconciliationContext {
-            client,
-            resource,
-            current_revision: None,
-        }
-    }
-}
-
-impl<T> ReconciliationContext<T>
-where
-    T: Meta,
-{
-    pub fn name(&self) -> String {
-        Meta::name(&self.resource)
-    }
-
-    pub fn namespace(&self) -> String {
-        Meta::namespace(&self.resource).expect("Resources are namespaced")
-    }
-
-    pub fn metadata(&self) -> ObjectMeta {
-        self.resource.meta().clone()
-    }
-
-    pub async fn list_pods(&self) -> Result<Vec<Pod>, error::Error> {
-        let api = self.client.get_namespaced_api(&self.namespace());
-
-        // TODO: We need to use a label selector to only get _our_ pods
-        // It'd be ideal if we could filter by ownerReferences but that's not possible in K8S today
-        // so we apply a custom label to each pod
-        let list_params = ListParams {
-            label_selector: None,
-            ..ListParams::default()
-        };
-
-        api.list(&list_params)
-            .await
-            .map_err(Error::from)
-            .map(|result| result.items)
-    }
-}
-
 /// This method contains the logic of reconciling an object (the desired state) we received with the actual state.
 async fn reconcile(
     zk_cluster: ZooKeeperCluster,
-    context: Context<ContextData>,
+    context: Context<Client>,
 ) -> Result<ReconcilerAction, Error> {
-    let mut rc = ReconciliationContext::new(context.get_ref().client.clone(), zk_cluster);
+    let local_context = LocalContext {
+        current_revision: None,
+    };
+    let mut rc = ReconciliationContext::new(context.get_ref().clone(), zk_cluster, local_context);
 
     // TODO: Validate the object
     // TODO: Update the status, in case of error send an event
 
-    let reconcilers: Vec<ReconcileFunction<ZooKeeperCluster>> = vec![
+    let reconcilers: Vec<ZooKeeperReconcileFunction> = vec![
         |rc| Box::pin(handle_deletion(rc)),
         |rc| Box::pin(add_finalizer(rc)),
         |rc| Box::pin(reconcile_cluster(rc)),
     ];
 
-    for reconciler in reconcilers {
-        match reconciler(&mut rc).await {
-            Ok(ReconcileFunctionAction::Continue) => {
-                trace!("Reconciler loop: Continue")
-            }
-            Ok(ReconcileFunctionAction::Done) => {
-                trace!("Reconciler loop: Done");
-                break;
-            }
-            Ok(ReconcileFunctionAction::Reque(duration)) => {
-                trace!(?duration, "Reconciler loop: Requeue");
-                return Ok(ReconcilerAction {
-                    requeue_after: Some(duration),
-                });
-            }
-            Err(err) => {
-                error!(?err, "Error reconciling");
-                return Ok(ReconcilerAction {
-                    requeue_after: Some(Duration::from_secs(30)),
-                });
-            }
-        }
-    }
-
-    Ok(ReconcilerAction {
-        requeue_after: None,
-    })
+    run_reconcile_functions(&reconcilers, &mut rc).await
 }
 
 // TODO: Maybe move to operator-rs
-async fn handle_deletion(context: &ReconciliationContext<ZooKeeperCluster>) -> ReconcileResult {
+async fn handle_deletion(context: &ZooKeeperReconcileContext) -> ZooKeeperReconcileResult {
     trace!(
         "Reconciler [handle_deletion] for [{}]",
         Meta::name(&context.resource)
@@ -201,7 +124,7 @@ async fn handle_deletion(context: &ReconciliationContext<ZooKeeperCluster>) -> R
 }
 
 // TODO: Maybe move to operator-rs
-async fn add_finalizer(context: &ReconciliationContext<ZooKeeperCluster>) -> ReconcileResult {
+async fn add_finalizer(context: &ZooKeeperReconcileContext) -> ZooKeeperReconcileResult {
     trace!(
         resource = ?context.resource,
         "Reconciler [add_finalizer] for [{}]",
@@ -225,9 +148,7 @@ async fn add_finalizer(context: &ReconciliationContext<ZooKeeperCluster>) -> Rec
     }
 }
 
-async fn reconcile_cluster(
-    context: &mut ReconciliationContext<ZooKeeperCluster>,
-) -> ReconcileResult {
+async fn reconcile_cluster(context: &mut ZooKeeperReconcileContext) -> ZooKeeperReconcileResult {
     let zk_spec: ZooKeeperClusterSpec = context.resource.spec.clone();
     let zk_server_count = zk_spec.servers.len();
 
@@ -235,7 +156,7 @@ async fn reconcile_cluster(
     let mut revisions = list_controller_revisions(&context.client, &context.resource).await?;
     sort_controller_revisions(&mut revisions);
     let last_revision = get_current_revision(&mut revisions, context).await?;
-    context.current_revision = Some(last_revision);
+    context.context.current_revision = Some(last_revision);
 
     let existing_pods = context.list_pods().await?;
 
@@ -366,7 +287,7 @@ async fn reconcile_cluster(
                 context.name(),
                 Meta::name(&pod)
             );
-            return Ok(ReconcileFunctionAction::Reque(Duration::from_secs(10)));
+            return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
         }
 
         // At the moment we'll wait for all pods to be available and ready before we might enact any changes to existing ones.
@@ -378,7 +299,7 @@ async fn reconcile_cluster(
                 context.name(),
                 Meta::name(&pod)
             );
-            return Ok(ReconcileFunctionAction::Reque(Duration::from_secs(10)));
+            return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
         }
 
         // Check if the pod is up-to-date
@@ -420,7 +341,7 @@ async fn reconcile_cluster(
 // TODO: Move to operator-rs?
 async fn get_current_revision<'a>(
     revisions: &mut Vec<ControllerRevision>,
-    context: &ReconciliationContext<ZooKeeperCluster>,
+    context: &ZooKeeperReconcileContext,
 ) -> Result<ControllerRevision, Error> {
     // If there are no revisions at all so far we definitely need to create a new one
     if revisions.is_empty() {
@@ -479,7 +400,7 @@ async fn get_current_revision<'a>(
 }
 
 async fn create_config_maps(
-    context: &ReconciliationContext<ZooKeeperCluster>,
+    context: &ZooKeeperReconcileContext,
     zk_server: &ZooKeeperServer,
     id: usize,
 ) -> Result<(), Error> {
@@ -533,7 +454,7 @@ async fn create_config_maps(
 }
 
 async fn create_pod(
-    context: &ReconciliationContext<ZooKeeperCluster>,
+    context: &ZooKeeperReconcileContext,
     zk_server: &ZooKeeperServer,
     id: usize,
 ) -> Result<Pod, Error> {
@@ -542,7 +463,7 @@ async fn create_pod(
 }
 
 fn build_pod(
-    context: &ReconciliationContext<ZooKeeperCluster>,
+    context: &ZooKeeperReconcileContext,
     zk_server: &ZooKeeperServer,
     id: usize,
 ) -> Result<Pod, Error> {
@@ -554,7 +475,7 @@ fn build_pod(
 }
 
 fn build_pod_metadata(
-    context: &ReconciliationContext<ZooKeeperCluster>,
+    context: &ZooKeeperReconcileContext,
     zk_server: &ZooKeeperServer,
     id: usize,
 ) -> Result<ObjectMeta, Error> {
@@ -569,10 +490,7 @@ fn build_pod_metadata(
     })
 }
 
-fn build_pod_spec(
-    context: &ReconciliationContext<ZooKeeperCluster>,
-    zk_server: &ZooKeeperServer,
-) -> PodSpec {
+fn build_pod_spec(context: &ZooKeeperReconcileContext, zk_server: &ZooKeeperServer) -> PodSpec {
     let (containers, volumes) = build_containers(context, zk_server);
 
     PodSpec {
@@ -585,7 +503,7 @@ fn build_pod_spec(
 }
 
 fn build_containers(
-    context: &ReconciliationContext<ZooKeeperCluster>,
+    context: &ZooKeeperReconcileContext,
     zk_server: &ZooKeeperServer,
 ) -> (Vec<Container>, Vec<Volume>) {
     let version = context.resource.spec.version.clone();
@@ -645,7 +563,7 @@ fn build_containers(
 }
 
 fn build_labels(
-    context: &ReconciliationContext<ZooKeeperCluster>,
+    context: &ZooKeeperReconcileContext,
     id: usize,
 ) -> Result<BTreeMap<String, String>, error::Error> {
     let mut labels = BTreeMap::new();
@@ -653,6 +571,7 @@ fn build_labels(
     labels.insert(
         REVISION_LABEL.to_string(),
         context
+            .context
             .current_revision
             .clone()
             .ok_or(error::Error::MissingControllerRevision)?
@@ -665,9 +584,6 @@ fn build_labels(
 }
 
 /// All pod names follow a simple pattern: <name of ZooKeeperCluster object>-<Node name>
-fn get_pod_name(
-    context: &ReconciliationContext<ZooKeeperCluster>,
-    zk_server: &ZooKeeperServer,
-) -> String {
+fn get_pod_name(context: &ZooKeeperReconcileContext, zk_server: &ZooKeeperServer) -> String {
     format!("{}-{}", context.name(), zk_server.node_name)
 }
