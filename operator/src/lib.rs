@@ -6,7 +6,6 @@ use crate::error::Error;
 use kube::Api;
 use tracing::{debug, error, info, trace};
 
-use futures::StreamExt;
 use handlebars::Handlebars;
 use k8s_openapi::api::apps::v1::ControllerRevision;
 use k8s_openapi::api::core::v1::{
@@ -14,8 +13,6 @@ use k8s_openapi::api::core::v1::{
 };
 use k8s_openapi::apimachinery::pkg::runtime::RawExtension;
 use kube::api::{ListParams, Meta, ObjectMeta};
-use kube_runtime::controller::{Context, ReconcilerAction};
-use kube_runtime::Controller;
 use serde_json::json;
 use stackable_operator::client::Client;
 use stackable_operator::finalizer::has_deletion_stamp;
@@ -23,12 +20,10 @@ use stackable_operator::history::{
     create_controller_revision, list_controller_revisions, next_revision, sort_controller_revisions,
 };
 use stackable_operator::reconcile::{
-    run_reconcile_functions, ReconcileFunction, ReconcileFunctionAction, ReconcileResult,
-    ReconciliationContext,
+    ReconcileFunction, ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
 use stackable_operator::{
     create_config_map, create_tolerations, finalizer, object_to_owner_reference, podutils,
-    requeueing_error_policy, ContextData,
 };
 use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
 use std::collections::{BTreeMap, HashMap};
@@ -57,45 +52,22 @@ pub async fn create_controller(client: Client) {
     let config_maps_api: Api<ConfigMap> = client.get_all_api();
     let controller_revisions_api: Api<ControllerRevision> = client.get_all_api();
 
-    let context = Context::new(client);
-
-    // TODO: Make duration configurable
-    let error_policy = requeueing_error_policy(Duration::from_secs(10));
-
-    Controller::new(zk_api, ListParams::default())
+    let controller = stackable_operator::controller::Controller::new(zk_api)
         .owns(pods_api, ListParams::default())
         .owns(config_maps_api, ListParams::default())
-        .owns(controller_revisions_api, ListParams::default())
-        .run(reconcile, error_policy, context)
-        .for_each(|res| async move {
-            match res {
-                Ok(o) => info!("Reconciled {:?}", o),
-                Err(ref e) => error!("Reconcile failed: {:?}", e),
-            };
-        })
-        .await
-}
-
-/// This method contains the logic of reconciling an object (the desired state) we received with the actual state.
-async fn reconcile(
-    zk_cluster: ZooKeeperCluster,
-    context: Context<Client>,
-) -> Result<ReconcilerAction, Error> {
-    let local_context = LocalContext {
-        current_revision: None,
-    };
-    let mut rc = ReconciliationContext::new(context.get_ref().clone(), zk_cluster, local_context);
+        .owns(controller_revisions_api, ListParams::default());
 
     // TODO: Validate the object
     // TODO: Update the status, in case of error send an event
-
     let reconcilers: Vec<ZooKeeperReconcileFunction> = vec![
         |rc| Box::pin(handle_deletion(rc)),
         |rc| Box::pin(add_finalizer(rc)),
         |rc| Box::pin(reconcile_cluster(rc)),
     ];
 
-    run_reconcile_functions(&reconcilers, &mut rc).await
+    controller
+        .run::<LocalContext, error::Error>(client, reconcilers)
+        .await;
 }
 
 // TODO: Maybe move to operator-rs
@@ -156,7 +128,9 @@ async fn reconcile_cluster(context: &mut ZooKeeperReconcileContext) -> ZooKeeper
     let mut revisions = list_controller_revisions(&context.client, &context.resource).await?;
     sort_controller_revisions(&mut revisions);
     let last_revision = get_current_revision(&mut revisions, context).await?;
-    context.context.current_revision = Some(last_revision);
+    context.context = Some(LocalContext {
+        current_revision: Some(last_revision),
+    });
 
     let existing_pods = context.list_pods().await?;
 
@@ -572,6 +546,8 @@ fn build_labels(
         REVISION_LABEL.to_string(),
         context
             .context
+            .as_ref()
+            .unwrap()
             .current_revision
             .clone()
             .ok_or(error::Error::MissingControllerRevision)?
