@@ -24,9 +24,6 @@ pub enum Error {
         backtrace: Backtrace,
     },
 
-    #[error("ControllerRevision missing")]
-    MissingControllerRevision,
-
     #[error("Pod contains invalid id: {source}")]
     InvalidId {
         #[from]

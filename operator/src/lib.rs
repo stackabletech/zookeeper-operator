@@ -14,7 +14,7 @@ use k8s_openapi::api::core::v1::{
 use kube::api::{ListParams, Meta, ObjectMeta};
 use serde_json::json;
 use stackable_operator::client::Client;
-use stackable_operator::controller::ControllerStrategy;
+use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::finalizer::has_deletion_stamp;
 use stackable_operator::reconcile::{
     create_requeuing_reconcile_function_action, ReconcileFunctionAction, ReconcileResult,
@@ -26,11 +26,9 @@ use stackable_operator::{
 use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
 use std::collections::{BTreeMap, HashMap};
 use std::pin::Pin;
-use std::sync::Mutex;
 use std::time::Duration;
 use tokio::macros::support::Future;
 
-const GROUP_NAME: &str = "zookeeper.stackable.de";
 const FINALIZER_NAME: &str = "zookeeper.stackable.de/cleanup";
 
 const CLUSTER_NAME_LABEL: &str = "zookeeper.stackable.de/cluster-name";
@@ -39,41 +37,13 @@ const ID_LABEL: &str = "zookeeper.stackable.de/id";
 type ZooKeeperReconcileResult = ReconcileResult<error::Error>;
 
 struct ZooKeeperState {
+    context: ReconciliationContext<ZooKeeperCluster>,
     zk_spec: ZooKeeperClusterSpec,
 }
 
-struct ZooKeeperStrategy {
-    context: ReconciliationContext<ZooKeeperCluster>,
-    state: Mutex<ZooKeeperState>,
-}
-
-impl ZooKeeperStrategy {
-    pub fn new() -> ZooKeeperStrategy {
-        ZooKeeperStrategy {
-            state: Mutex::new(),
-        }
-    }
-
-    /*
-    pub async fn test1(&self) -> ZooKeeperReconcileResult {
-        println!("Test1");
-        let mut data = self.state.lock().unwrap();
-        *data += 1;
-
-        println!("{}", data);
-        Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)))
-    }
-
-    pub async fn test2(&self) -> ZooKeeperReconcileResult {
-        println!("Test2");
-        Ok(ReconcileFunctionAction::Continue)
-    }
-     */
-
-    pub async fn reconcile_cluster(self) -> ZooKeeperReconcileResult {
-        let state = self.state.lock().unwrap();
-
-        let zk_server_count = state.zk_spec.servers.len();
+impl ZooKeeperState {
+    pub async fn reconcile_cluster(&self) -> ZooKeeperReconcileResult {
+        let zk_server_count = self.zk_spec.servers.len();
 
         let existing_pods = self.context.list_pods().await?;
 
@@ -138,7 +108,7 @@ impl ZooKeeperStrategy {
         // Now that we know the current state of the cluster and its id assignment
         // we can iterate over the requested servers and assign ids to those that are missing one.
         used_ids.sort_unstable();
-        for server in &state.zk_spec.servers {
+        for server in &self.zk_spec.servers {
             match node_name_to_pod.get(&server.node_name) {
                 None => {
                     // TODO: Need to check whether the topology has changed. If it has we need to restart all servers depending on the ZK version
@@ -179,7 +149,7 @@ impl ZooKeeperStrategy {
         // * create one if it doesn't exist
         // * check if a pod is in the process of termination, skip the remaining reconciliation if this is the case
         // * check if a pod is up but not running/ready yet, skip the remaining reconciliation if this is the case
-        for server in &state.zk_spec.servers {
+        for server in &self.zk_spec.servers {
             let pod = match node_name_to_pod.remove(&server.node_name) {
                 None => {
                     info!(
@@ -226,18 +196,18 @@ impl ZooKeeperStrategy {
             // Check if the pod is up-to-date
             let container = pod.spec.as_ref().unwrap().containers.get(0).unwrap();
             match &container.image {
-                Some(image) if image != &state.zk_spec.image_name() => {}
+                Some(image) if image != &self.zk_spec.image_name() => {}
                 _ => {}
             }
             // TODO: Rust Experts
-            if container.image != Some(state.zk_spec.image_name()) {
+            if container.image != Some(self.zk_spec.image_name()) {
                 info!(
                     "ZooKeeperCluster [{}/{}]: Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
                     self.context.namespace(),
                     self.context.name(),
                     Meta::name(&pod),
                     container.image,
-                    state.zk_spec.image_name()
+                    self.zk_spec.image_name()
                 );
                 self.context.client.delete(&pod).await?;
                 return Ok(create_requeuing_reconcile_function_action(10));
@@ -431,21 +401,38 @@ impl ZooKeeperStrategy {
     }
 }
 
+impl ReconciliationState for ZooKeeperState {
+    type Error = error::Error;
+
+    fn reconcile_operations(
+        &self,
+    ) -> Vec<Pin<Box<dyn Future<Output = Result<ReconcileFunctionAction, Self::Error>> + '_>>> {
+        vec![Box::pin(self.reconcile_cluster())]
+    }
+}
+
+#[derive(Debug)]
+struct ZooKeeperStrategy {}
+
+impl ZooKeeperStrategy {
+    pub fn new() -> ZooKeeperStrategy {
+        ZooKeeperStrategy {}
+    }
+}
+
 impl ControllerStrategy for ZooKeeperStrategy {
     type Item = ZooKeeperCluster;
-    type Error = crate::error::Error;
+    type State = ZooKeeperState;
 
     fn finalizer_name(&self) -> String {
         return FINALIZER_NAME.to_string();
     }
 
-    // TODO: fn init_state(...)
-
-    fn reconcile_operations(
-        &self,
-        context: ReconciliationContext<Self::Item>,
-    ) -> Vec<Pin<Box<dyn Future<Output = Result<ReconcileFunctionAction, Self::Error>> + '_>>> {
-        vec![Box::pin(self.reconcile_cluster())]
+    fn init_reconcile_state(&self, context: ReconciliationContext<Self::Item>) -> Self::State {
+        ZooKeeperState {
+            zk_spec: context.resource.spec.clone(),
+            context,
+        }
     }
 }
 
