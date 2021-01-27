@@ -29,4 +29,7 @@ pub enum Error {
         #[from]
         source: ParseIntError,
     },
+
+    #[error("Error during reconciliation: {0}")]
+    ReconcileError(String),
 }
