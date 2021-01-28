@@ -64,13 +64,41 @@ impl IdInformation {
     }
 }
 
+/// This finds the first missing number in a sorted vector.
+/// Zero is not a valid input in the vector.
+/// If you pass in zero the result will be undefined.
+fn find_first_missing(vec: &[usize]) -> usize {
+    let mut added_id = None;
+    for (index, id) in vec.iter().enumerate() {
+        if index + 1 != *id {
+            let new_id = index + 1;
+            added_id = Some(new_id);
+            break;
+        }
+    }
+
+    // Either we found an unused id above (which would be a "hole" between existing ones, e.g. 1,2,4 could find "3")
+    // or we need to create a new one which would be the number of used ids (because we "plug" holes first) plus one.
+    added_id.unwrap_or_else(|| vec.len() + 1)
+}
+
 impl ZooKeeperState {
     // This looks at all currently existing Pods for the current ZooKeeperCluster object.
-    // It checks if all the pods are valid (i.e. contain required labels) and then builds a few Maps and returns them.
-    // TODO: Describe the maps that are being returned or move them to a struct for better clarity
+    // It checks if all the pods are valid (i.e. contain required labels) and then builds an `IdInformation`
+    // object and sets it on the current state.
     async fn read_existing_pod_information(&self) -> ZooKeeperReconcileResult {
-        println!("Read existing pods");
+        trace!(
+            "Reading existing pod information for {}",
+            self.context.log_name()
+        );
+
         let existing_pods = self.context.list_pods().await?;
+        trace!(
+            "{}: Found [{}] pods",
+            self.context.log_name(),
+            existing_pods.len()
+        );
+
         let zk_server_count = self.zk_spec.servers.len();
 
         // We first create a list of all used ids (`myid`) so we know which we can reuse
@@ -86,9 +114,7 @@ impl ZooKeeperState {
         let mut node_name_to_pod = HashMap::with_capacity(zk_server_count); // This is going to own the pods
         let mut node_name_to_id = HashMap::with_capacity(zk_server_count);
 
-        // Step 1:
         // Iterate over all existing pods and read the label which contains the `myid`
-        // Also create a new HashMap that maps from node_name to pod.
         for pod in existing_pods {
             if let (
                 Some(labels),
@@ -100,33 +126,44 @@ impl ZooKeeperState {
             {
                 match labels.get(ID_LABEL) {
                     None => {
-                        error!("ZooKeeperCluster [{}/{}]: Pod [{:?}] does not have the `id` label, this is illegal, deleting it.",
-                               self.context.namespace(),
-                               self.context.name(),
+                        error!("ZooKeeperCluster {}: Pod [{:?}] does not have the `id` label, this is illegal, deleting it.",
+                               self.context.log_name(),
                                pod);
                         self.context.client.delete(&pod).await?;
                     }
-                    // TODO: Need to check for duplicates here and bail out if they exist.
                     Some(label) => {
                         let id = label.parse::<usize>()?;
+
+                        // Check if we have seen the same id before
+                        // This should never happen and would currently require manual cleanup
+                        if used_ids.contains(&id) {
+                            // TODO: Update status
+                            error!(
+                                "{}: Found a duplicate `myid` [{}] in Pod [{}], we can't recover\
+                                 from this error and you need to clean up manually",
+                                self.context.log_name(),
+                                id,
+                                Meta::name(&pod)
+                            );
+                            return Err(Error::ReconcileError("Found duplicate id".to_string()));
+                        }
+
                         used_ids.push(id);
                         node_name_to_id.insert(node_name.clone(), id);
+                        node_name_to_pod.insert(node_name.clone(), pod);
                     }
                 };
-                node_name_to_pod.insert(node_name.clone(), pod);
             } else {
-                error!("ZooKeeperCluster [{}/{}]: Pod [{:?}] does not have any spec or labels, this is illegal, deleting it.",
-                       self.context.namespace(),
-                       self.context.name(),
+                error!("ZooKeeperCluster {}: Pod [{:?}] does not have any spec or labels, this is illegal, deleting it.",
+                       self.context.log_name(),
                        pod);
                 self.context.client.delete(&pod).await?;
             }
         }
 
         debug!(
-            "ZooKeeperCluster [{}/{}]: Found these myids in use {:?}",
-            self.context.namespace(),
-            self.context.name(),
+            "ZooKeeperCluster {}: Found these myids in use [{:?}]",
+            self.context.log_name(),
             used_ids
         );
 
@@ -140,48 +177,130 @@ impl ZooKeeperState {
     /// that don't have one yet.
     /// We do this here - and not later - because we need the id mapping information for the
     /// ConfigMap generation later.
+    /// NOTE: This method will _not_ work if multiple servers should run on a single node
     async fn assign_ids(&self) -> ZooKeeperReconcileResult {
-        println!("Assign ids");
-        let mut tmp = self.id_information.borrow_mut(); // TODO: Rust experts
-        let id_information = tmp
-            .as_mut()
-            .ok_or(error::Error::ReconcileError("foobar".to_string()))?;
+        trace!(
+            "{}: Assigning ids to new servers from the spec",
+            self.context.log_name()
+        );
 
+        // TODO: Rust experts, why do I need the temporary?
+        let mut tmp = self.id_information.borrow_mut();
+        let id_information = tmp.as_mut().ok_or(error::Error::ReconcileError(
+            "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+        ))?;
+
+        // We iterate over all servers from the spec and check if we have a pod assigned to this server.
+        // If not we find the next unused one and assign that.
         id_information.used_ids.sort_unstable();
         for server in &self.zk_spec.servers {
             match id_information.node_name_to_pod.get(&server.node_name) {
                 None => {
                     // TODO: Need to check whether the topology has changed. If it has we need to restart all servers depending on the ZK version
 
-                    // We end up here for servers that don't have an id yet, this must (usually) mean
-                    // those servers have been recently added
+                    let new_id = find_first_missing(&id_information.used_ids);
 
-                    // This loop is used to find the first unused id
-                    let mut added_id = None;
-                    for (index, id) in id_information.used_ids.iter().enumerate() {
-                        if index + 1 != *id {
-                            let new_id = index + 1;
-                            added_id = Some(new_id);
-                            break;
-                        }
-                    }
-
-                    // Either we found an unused id above (which would be a "hole" between existing ones, e.g. 1,2,4 could find "3")
-                    // or we need to create a new one which would be the number of used ids (because we "plug" holes first) plus one.
-                    let added_id = added_id.unwrap_or_else(|| id_information.used_ids.len() + 1);
-                    id_information.used_ids.push(added_id);
+                    id_information.used_ids.push(new_id);
                     id_information.used_ids.sort_unstable();
                     id_information
                         .node_name_to_id
-                        .insert(server.node_name.clone(), added_id);
+                        .insert(server.node_name.clone(), new_id);
+
+                    info!(
+                        "{}: Assigning new id [{}] to server/node [{}]",
+                        self.context.log_name(),
+                        new_id,
+                        server.node_name
+                    )
                 }
                 Some(_) => {
-                    trace!("ZooKeeperCluster [{}/{}]: Pod for node [{}] already exists and is assigned id [{:?}]",
-                           self.context.namespace(),
-                           self.context.name(),
+                    trace!("ZooKeeperCluster {}: Pod for node [{}] already exists and is assigned id [{:?}]",
+                           self.context.log_name(),
                            &server.node_name,
                            id_information.node_name_to_id.get(&server.node_name));
                 }
+            }
+        }
+
+        Ok(ReconcileFunctionAction::Continue)
+    }
+
+    pub async fn reconcile_cluster(&self) -> ZooKeeperReconcileResult {
+        trace!("{}: Starting reconciliation", self.context.log_name());
+
+        let mut id_information = self
+            .id_information
+            .take()
+            .ok_or(error::Error::ReconcileError(
+                "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+            ))?;
+
+        // Iterate over all servers from the spec and
+        // * check if a pod exists for this server
+        // * create one if it doesn't exist
+        // * check if a pod is in the process of termination, skip the remaining reconciliation if this is the case
+        // * check if a pod is up but not running/ready yet, skip the remaining reconciliation if this is the case
+        for server in &self.zk_spec.servers {
+            let pod = match id_information.node_name_to_pod.remove(&server.node_name) {
+                None => {
+                    info!(
+                        "{}: Pod for server [{}] missing, creating now...",
+                        self.context.log_name(),
+                        &server.node_name
+                    );
+
+                    let id = id_information
+                        .node_name_to_id
+                        .remove(&server.node_name)
+                        .ok_or(Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", server.node_name)))?;
+                    let pod = self.create_pod(&server, id).await?;
+
+                    self.create_config_maps(server, id).await?;
+
+                    pod
+                }
+                Some(pod) => pod,
+            };
+
+            // If the pod for this server is currently terminating (this could be for restarts or
+            // upgrades) wait until it's done terminating.
+            if has_deletion_stamp(&pod) {
+                info!(
+                    "ZooKeeperCluster {} is waiting for Pod [{}] to terminate",
+                    self.context.log_name(),
+                    Meta::name(&pod)
+                );
+                return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
+            }
+
+            // At the moment we'll wait for all pods to be available and ready before we might enact any changes to existing ones.
+            // TODO: This should probably be configurable later
+            if !podutils::is_pod_running_and_ready(&pod) {
+                info!(
+                    "ZooKeeperCluster {} is waiting for Pod [{}] to be running and ready",
+                    self.context.log_name(),
+                    Meta::name(&pod)
+                );
+                return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
+            }
+
+            // Check if the pod is up-to-date
+            let container = pod.spec.as_ref().unwrap().containers.get(0).unwrap();
+            match &container.image {
+                Some(image) if image != &self.zk_spec.image_name() => {}
+                _ => {}
+            }
+            // TODO: Rust Experts
+            if container.image != Some(self.zk_spec.image_name()) {
+                info!(
+                    "ZooKeeperCluster {}: Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
+                    self.context.log_name(),
+                    Meta::name(&pod),
+                    container.image,
+                    self.zk_spec.image_name()
+                );
+                self.context.client.delete(&pod).await?;
+                return Ok(create_requeuing_reconcile_function_action(10));
             }
         }
 
@@ -201,9 +320,8 @@ impl ZooKeeperState {
         for (node_name, pod) in &id_information.node_name_to_pod {
             // TODO: This might already be in the terminating state because earlier we only iterate over the spec servers and not the pods
             info!(
-                "ZooKeeperCluster [{}/{}] has extra Pod [{}] for node [{}]: Terminating",
-                self.context.namespace(),
-                self.context.name(),
+                "ZooKeeperCluster {} has extra Pod [{}] for node [{}]: Terminating",
+                self.context.log_name(),
                 Meta::name(pod),
                 node_name
             );
@@ -211,92 +329,6 @@ impl ZooKeeperState {
             // We don't trigger a reconcile requeue here because there should be nothing for us to do
             // in the next loop
             self.context.client.delete(pod).await?;
-        }
-
-        Ok(ReconcileFunctionAction::Continue)
-    }
-
-    pub async fn reconcile_cluster(&self) -> ZooKeeperReconcileResult {
-        println!("Reconcile");
-        let mut id_information = self
-            .id_information
-            .take()
-            .ok_or(error::Error::ReconcileError(
-                "id_information missing".to_string(),
-            ))?;
-
-        // Step 3:
-        // Iterate over all servers from the spec and
-        // * check if a pod exists for this server
-        // * create one if it doesn't exist
-        // * check if a pod is in the process of termination, skip the remaining reconciliation if this is the case
-        // * check if a pod is up but not running/ready yet, skip the remaining reconciliation if this is the case
-        for server in &self.zk_spec.servers {
-            let pod = match id_information.node_name_to_pod.remove(&server.node_name) {
-                None => {
-                    info!(
-                        "ZooKeeperCluster [{}/{}]: Pod for server [{}] missing, creating now...",
-                        self.context.namespace(),
-                        self.context.name(),
-                        &server.node_name
-                    );
-
-                    let id = id_information
-                        .node_name_to_id
-                        .remove(&server.node_name)
-                        .unwrap();
-                    let pod = self.create_pod(&server, id).await?;
-
-                    self.create_config_maps(server, id).await?;
-
-                    pod
-                }
-                Some(pod) => pod,
-            };
-
-            // If the pod for this server is currently terminating (this could be for restarts or
-            // upgrades) wait until it's done terminating.
-            if has_deletion_stamp(&pod) {
-                info!(
-                    "ZooKeeperCluster [{}/{}] is waiting for Pod [{}] to terminate",
-                    self.context.namespace(),
-                    self.context.name(),
-                    Meta::name(&pod)
-                );
-                return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
-            }
-
-            // At the moment we'll wait for all pods to be available and ready before we might enact any changes to existing ones.
-            // TODO: This should probably be configurable later
-            if !podutils::is_pod_running_and_ready(&pod) {
-                info!(
-                    "ZooKeeperCluster [{}/{}] is waiting for Pod [{}] to be running and ready",
-                    self.context.namespace(),
-                    self.context.name(),
-                    Meta::name(&pod)
-                );
-                return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
-            }
-
-            // Check if the pod is up-to-date
-            let container = pod.spec.as_ref().unwrap().containers.get(0).unwrap();
-            match &container.image {
-                Some(image) if image != &self.zk_spec.image_name() => {}
-                _ => {}
-            }
-            // TODO: Rust Experts
-            if container.image != Some(self.zk_spec.image_name()) {
-                info!(
-                    "ZooKeeperCluster [{}/{}]: Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
-                    self.context.namespace(),
-                    self.context.name(),
-                    Meta::name(&pod),
-                    container.image,
-                    self.zk_spec.image_name()
-                );
-                self.context.client.delete(&pod).await?;
-                return Ok(create_requeuing_reconcile_function_action(10));
-            }
         }
 
         Ok(ReconcileFunctionAction::Continue)
@@ -526,4 +558,24 @@ pub async fn create_controller(client: Client) {
     let strategy = ZooKeeperStrategy::new();
 
     controller.run(client, strategy).await;
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest(input, expected,
+        case(vec![1, 2, 3], 4),
+        case(vec![1, 3, 5], 2),
+        case(vec![], 1),
+        case(vec![3, 4, 6], 1),
+        case(vec![1], 2),
+        case(vec![2], 1),
+    )]
+    fn test_first_missing(input: Vec<usize>, expected: usize) {
+        let first = find_first_missing(&input);
+        assert_eq!(first, expected);
+    }
 }
