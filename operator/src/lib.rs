@@ -10,20 +10,16 @@ use handlebars::Handlebars;
 use k8s_openapi::api::core::v1::{
     ConfigMap, ConfigMapVolumeSource, Container, Pod, PodSpec, Volume, VolumeMount,
 };
-use kube::api::{ListParams, Meta, ObjectMeta};
+use kube::api::{ListParams, Meta};
 use serde_json::json;
 
 use stackable_operator::client::Client;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
-use stackable_operator::finalizer::has_deletion_stamp;
 use stackable_operator::reconcile::{
-    create_requeuing_reconcile_function_action, ReconcileFunctionAction, ReconcileResult,
-    ReconciliationContext,
+    ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
-use stackable_operator::{
-    create_config_map, create_tolerations, object_to_owner_reference, podutils,
-};
+use stackable_operator::{create_config_map, finalizer, metadata, podutils, reconcile};
 use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -240,6 +236,7 @@ impl ZooKeeperState {
         // * create one if it doesn't exist
         // * check if a pod is in the process of termination, skip the remaining reconciliation if this is the case
         // * check if a pod is up but not running/ready yet, skip the remaining reconciliation if this is the case
+        // TODO: Need to deal with crashed workers/pods. They shouldn't block all other actions.
         for server in &self.zk_spec.servers {
             let pod = match id_information.node_name_to_pod.remove(&server.node_name) {
                 None => {
@@ -253,18 +250,18 @@ impl ZooKeeperState {
                         .node_name_to_id
                         .remove(&server.node_name)
                         .ok_or(Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", server.node_name)))?;
-                    let pod = self.create_pod(&server, id).await?;
 
+                    self.create_pod(&server, id).await?;
                     self.create_config_maps(server, id).await?;
 
-                    pod
+                    return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
                 }
                 Some(pod) => pod,
             };
 
             // If the pod for this server is currently terminating (this could be for restarts or
             // upgrades) wait until it's done terminating.
-            if has_deletion_stamp(&pod) {
+            if finalizer::has_deletion_stamp(&pod) {
                 info!(
                     "ZooKeeperCluster {} is waiting for Pod [{}] to terminate",
                     self.context.log_name(),
@@ -274,7 +271,7 @@ impl ZooKeeperState {
             }
 
             // At the moment we'll wait for all pods to be available and ready before we might enact any changes to existing ones.
-            // TODO: This should probably be configurable later
+            // TODO: Only do this next check if we want "rolling" functionality
             if !podutils::is_pod_running_and_ready(&pod) {
                 info!(
                     "ZooKeeperCluster {} is waiting for Pod [{}] to be running and ready",
@@ -286,21 +283,16 @@ impl ZooKeeperState {
 
             // Check if the pod is up-to-date
             let container = pod.spec.as_ref().unwrap().containers.get(0).unwrap();
-            match &container.image {
-                Some(image) if image != &self.zk_spec.image_name() => {}
-                _ => {}
-            }
-            // TODO: Rust Experts
             if container.image != Some(self.zk_spec.image_name()) {
                 info!(
-                    "ZooKeeperCluster {}: Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
+                    "{}: Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
                     self.context.log_name(),
                     Meta::name(&pod),
                     container.image,
                     self.zk_spec.image_name()
                 );
                 self.context.client.delete(&pod).await?;
-                return Ok(create_requeuing_reconcile_function_action(10));
+                return Ok(reconcile::create_requeuing_reconcile_function_action(10));
             }
         }
 
@@ -346,6 +338,8 @@ impl ZooKeeperState {
         options.insert("syncLimit".to_string(), "2".to_string());
         options.insert("clientPort".to_string(), "2181".to_string());
 
+        // This builds the server string
+        // TODO: Does this need to use myid?
         for (i, server) in self.context.resource.spec.servers.iter().enumerate() {
             options.insert(
                 format!("server.{}", i + 1),
@@ -356,11 +350,11 @@ impl ZooKeeperState {
         let mut handlebars = Handlebars::new();
         handlebars
             .register_template_string("conf", "{{#each options}}{{@key}}={{this}}\n{{/each}}")
-            .expect("template should work");
+            .expect("Failure rendering the ZooKeeper config template, this should not happen, please report this issue");
 
         let config = handlebars
             .render("conf", &json!({ "options": options }))
-            .unwrap();
+            .expect("Failure rendering the ZooKeeper config template, this should not happen, please report this issue");
 
         // Now we need to create two configmaps per server.
         // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
@@ -394,39 +388,23 @@ impl ZooKeeperState {
     }
 
     fn build_pod(&self, zk_server: &ZooKeeperServer, id: usize) -> Result<Pod, Error> {
-        Ok(Pod {
-            metadata: self.build_pod_metadata(zk_server, id)?,
-            spec: Some(self.build_pod_spec(zk_server)),
-            ..Pod::default()
-        })
-    }
-
-    fn build_pod_metadata(
-        &self,
-        zk_server: &ZooKeeperServer,
-        id: usize,
-    ) -> Result<ObjectMeta, Error> {
-        Ok(ObjectMeta {
-            labels: Some(self.build_labels(id)?),
-            name: Some(self.get_pod_name(zk_server)),
-            namespace: Some(self.context.namespace()),
-            owner_references: Some(vec![object_to_owner_reference::<ZooKeeperCluster>(
-                self.context.metadata(),
-            )?]),
-            ..ObjectMeta::default()
-        })
-    }
-
-    fn build_pod_spec(&self, zk_server: &ZooKeeperServer) -> PodSpec {
         let (containers, volumes) = self.build_containers(zk_server);
 
-        PodSpec {
-            node_name: Some(zk_server.node_name.clone()),
-            tolerations: Some(create_tolerations()),
-            containers,
-            volumes: Some(volumes),
-            ..PodSpec::default()
-        }
+        Ok(Pod {
+            metadata: metadata::build_metadata(
+                Some(self.build_labels(id)?),
+                &self.context.resource,
+            )?,
+            spec: Some(PodSpec {
+                node_name: Some(zk_server.node_name.clone()),
+                tolerations: Some(stackable_operator::create_tolerations()),
+                containers,
+                volumes: Some(volumes),
+                ..PodSpec::default()
+            }),
+
+            ..Pod::default()
+        })
     }
 
     fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
