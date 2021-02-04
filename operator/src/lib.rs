@@ -21,7 +21,6 @@ use stackable_operator::reconcile::{
 };
 use stackable_operator::{create_config_map, finalizer, metadata, podutils, reconcile};
 use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
-use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::pin::Pin;
 use std::time::Duration;
@@ -37,7 +36,7 @@ type ZooKeeperReconcileResult = ReconcileResult<error::Error>;
 struct ZooKeeperState {
     context: ReconciliationContext<ZooKeeperCluster>,
     zk_spec: ZooKeeperClusterSpec,
-    id_information: RefCell<Option<IdInformation>>,
+    id_information: Option<IdInformation>,
 }
 
 struct IdInformation {
@@ -82,7 +81,7 @@ impl ZooKeeperState {
     // This looks at all currently existing Pods for the current ZooKeeperCluster object.
     // It checks if all the pods are valid (i.e. contain required labels) and then builds an `IdInformation`
     // object and sets it on the current state.
-    async fn read_existing_pod_information(&self) -> ZooKeeperReconcileResult {
+    async fn read_existing_pod_information(&mut self) -> ZooKeeperReconcileResult {
         trace!(
             "Reading existing pod information for {}",
             self.context.log_name()
@@ -172,7 +171,7 @@ impl ZooKeeperState {
         );
 
         let id_information = IdInformation::new(used_ids, node_name_to_pod, node_name_to_id);
-        self.id_information.replace(Some(id_information));
+        self.id_information = Some(id_information);
 
         Ok(ReconcileFunctionAction::Continue)
     }
@@ -182,17 +181,15 @@ impl ZooKeeperState {
     /// We do this here - and not later - because we need the id mapping information for the
     /// ConfigMap generation later.
     /// NOTE: This method will _not_ work if multiple servers should run on a single node
-    async fn assign_ids(&self) -> ZooKeeperReconcileResult {
+    async fn assign_ids(&mut self) -> ZooKeeperReconcileResult {
         trace!(
             "{}: Assigning ids to new servers from the spec",
             self.context.log_name()
         );
 
-        // TODO: Rust experts, why do I need the temporary?
-        let mut tmp = self.id_information.borrow_mut();
-        let id_information = tmp.as_mut().ok_or(error::Error::ReconcileError(
-            "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-        ))?;
+        let id_information = self.id_information.as_mut().ok_or(error::Error::ReconcileError(
+                        "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+                    ))?;
 
         // We iterate over all servers from the spec and check if we have a pod assigned to this server.
         // If not we find the next unused one and assign that.
@@ -229,15 +226,12 @@ impl ZooKeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
-    pub async fn reconcile_cluster(&self) -> ZooKeeperReconcileResult {
+    pub async fn reconcile_cluster(&mut self) -> ZooKeeperReconcileResult {
         trace!("{}: Starting reconciliation", self.context.log_name());
 
-        let mut id_information = self
-            .id_information
-            .take()
-            .ok_or(error::Error::ReconcileError(
-                "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-            ))?;
+        let id_information = self.id_information.as_mut().ok_or(error::Error::ReconcileError(
+                        "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+                    ))?;
 
         // Iterate over all servers from the spec and
         // * check if a pod exists for this server
@@ -312,10 +306,9 @@ impl ZooKeeperState {
             "{}: Starting to delete excess pods",
             self.context.log_name()
         );
-        let tmp = self.id_information.borrow();
-        let id_information = tmp
-            .as_ref()
-            .ok_or(error::Error::ReconcileError("foobar".to_string()))?;
+        let id_information = self.id_information.as_ref().ok_or(error::Error::ReconcileError(
+                        "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+                    ))?.clone();
 
         // This goes through all remaining pods in the Map.
         // Because we delete all pods we "need" in the previous loop this will only have pods that are
@@ -493,17 +486,20 @@ impl ZooKeeperState {
 impl ReconciliationState for ZooKeeperState {
     type Error = error::Error;
 
-    fn reconcile_operations(
-        &self,
-    ) -> Vec<Pin<Box<dyn Future<Output = Result<ReconcileFunctionAction, Self::Error>> + '_>>> {
-        let vec: Vec<Pin<Box<dyn Future<Output = ZooKeeperReconcileResult> + '_>>> = vec![
-            Box::pin(self.read_existing_pod_information()),
-            Box::pin(self.assign_ids()),
-            Box::pin(self.reconcile_cluster()),
-            Box::pin(self.delete_excess_pods()),
-        ];
-
-        vec
+    fn reconcile(
+        &mut self,
+    ) -> Pin<Box<dyn Future<Output = Result<ReconcileFunctionAction, Self::Error>> + Send + '_>>
+    {
+        Box::pin(async move {
+            self.read_existing_pod_information()
+                .await?
+                .then(self.assign_ids())
+                .await?
+                .then(self.reconcile_cluster())
+                .await?
+                .then(self.delete_excess_pods())
+                .await
+        })
     }
 }
 
@@ -528,7 +524,7 @@ impl ControllerStrategy for ZooKeeperStrategy {
         ZooKeeperState {
             zk_spec: context.resource.spec.clone(),
             context,
-            id_information: RefCell::new(None),
+            id_information: None,
         }
     }
 }

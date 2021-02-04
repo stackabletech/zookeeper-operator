@@ -1,11 +1,12 @@
 use kube::CustomResource;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use stackable_operator::CRD;
 
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
 
-#[derive(Clone, CustomResource, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, CustomResource, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[kube(
     group = "zookeeper.stackable.de",
     version = "v1",
@@ -33,13 +34,13 @@ impl ZooKeeperClusterSpec {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 pub struct ZooKeeperServer {
     pub node_name: String,
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 pub enum ZooKeeperVersion {
     #[serde(rename = "3.4.14")]
     v3_4_14,
@@ -51,5 +52,5 @@ pub enum ZooKeeperVersion {
     v3_5_8,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 pub struct ZooKeeperClusterStatus {}
