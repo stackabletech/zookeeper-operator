@@ -394,7 +394,7 @@ impl ZooKeeperState {
         Ok(Pod {
             metadata: metadata::build_metadata(
                 self.get_pod_name(zk_server),
-                Some(self.build_labels(id)?),
+                Some(self.build_labels(id)),
                 &self.context.resource,
             )?,
             spec: Some(PodSpec {
@@ -466,12 +466,12 @@ impl ZooKeeperState {
         (containers, volumes)
     }
 
-    fn build_labels(&self, id: usize) -> Result<BTreeMap<String, String>, error::Error> {
+    fn build_labels(&self, id: usize) -> BTreeMap<String, String> {
         let mut labels = BTreeMap::new();
         labels.insert(CLUSTER_NAME_LABEL.to_string(), self.context.name());
         labels.insert(ID_LABEL.to_string(), id.to_string());
 
-        Ok(labels)
+        labels
     }
 
     /// All pod names follow a simple pattern: <name of ZooKeeperCluster object>-<Node name>
@@ -514,7 +514,7 @@ impl ControllerStrategy for ZooKeeperStrategy {
     type State = ZooKeeperState;
 
     fn finalizer_name(&self) -> String {
-        return FINALIZER_NAME.to_string();
+        FINALIZER_NAME.to_string()
     }
 
     fn init_reconcile_state(&self, context: ReconciliationContext<Self::Item>) -> Self::State {
