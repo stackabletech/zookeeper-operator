@@ -187,7 +187,7 @@ impl ZooKeeperState {
             self.context.log_name()
         );
 
-        let id_information = self.id_information.as_mut().ok_or(error::Error::ReconcileError(
+        let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
@@ -229,7 +229,7 @@ impl ZooKeeperState {
     pub async fn reconcile_cluster(&mut self) -> ZooKeeperReconcileResult {
         trace!("{}: Starting reconciliation", self.context.log_name());
 
-        let id_information = self.id_information.as_mut().ok_or(error::Error::ReconcileError(
+        let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
@@ -251,7 +251,7 @@ impl ZooKeeperState {
                     let id = id_information
                         .node_name_to_id
                         .remove(&server.node_name)
-                        .ok_or(Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", server.node_name)))?;
+                        .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", server.node_name)))?;
 
                     self.create_pod(&server, id).await?;
                     self.create_config_maps(server, id).await?;
@@ -306,7 +306,7 @@ impl ZooKeeperState {
             "{}: Starting to delete excess pods",
             self.context.log_name()
         );
-        let id_information = self.id_information.as_ref().ok_or(error::Error::ReconcileError(
+        let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?.clone();
 
@@ -345,7 +345,7 @@ impl ZooKeeperState {
         // This builds the server string
         // TODO: Does this need to use myid?
 
-        let id_information = self.id_information.as_ref().ok_or(error::Error::ReconcileError(
+        let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
