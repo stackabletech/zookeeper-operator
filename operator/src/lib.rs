@@ -308,7 +308,7 @@ impl ZooKeeperState {
         );
         let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-                    ))?.clone();
+                    ))?;
 
         // This goes through all remaining pods in the Map.
         // Because we delete all pods we "need" in the previous loop this will only have pods that are
