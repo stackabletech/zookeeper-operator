@@ -22,9 +22,9 @@ use stackable_operator::reconcile::{
 use stackable_operator::{create_config_map, finalizer, metadata, podutils, reconcile};
 use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
 use std::collections::{BTreeMap, HashMap};
+use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
-use tokio::macros::support::Future;
 
 const FINALIZER_NAME: &str = "zookeeper.stackable.de/cleanup";
 
