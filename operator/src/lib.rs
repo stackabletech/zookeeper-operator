@@ -370,20 +370,14 @@ impl ZooKeeperState {
         let cm_name_prefix = format!("zk-{}", self.get_pod_name(zk_server));
         let cm_name = format!("{}-config", cm_name_prefix);
         let cm = create_config_map(&self.context.resource, &cm_name, data)?;
-        self.context
-            .client
-            .apply_patch(&cm, serde_json::to_vec(&cm)?)
-            .await?;
+        self.context.client.apply_patch(&cm, &cm).await?;
 
         // ...and one for the data directory (which only contains the myid file)
         let mut data = BTreeMap::new();
         data.insert("myid".to_string(), id.to_string());
         let cm_name = format!("{}-data", cm_name_prefix);
         let cm = create_config_map(&self.context.resource, &cm_name, data)?;
-        self.context
-            .client
-            .apply_patch(&cm, serde_json::to_vec(&cm)?)
-            .await?;
+        self.context.client.apply_patch(&cm, &cm).await?;
         Ok(())
     }
 
@@ -397,6 +391,7 @@ impl ZooKeeperState {
 
         Ok(Pod {
             metadata: metadata::build_metadata(
+                self.get_pod_name(zk_server),
                 Some(self.build_labels(id)?),
                 &self.context.resource,
             )?,
