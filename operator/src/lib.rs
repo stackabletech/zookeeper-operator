@@ -349,7 +349,7 @@ impl ZooKeeperState {
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
-        for (node_name, id) in id_information.node_name_to_id {
+        for (node_name, id) in &id_information.node_name_to_id {
             options.insert(format!("server.{}", id), format!("{}:2888:3888", node_name));
         }
 
