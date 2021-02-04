@@ -344,11 +344,13 @@ impl ZooKeeperState {
 
         // This builds the server string
         // TODO: Does this need to use myid?
-        for (i, server) in self.context.resource.spec.servers.iter().enumerate() {
-            options.insert(
-                format!("server.{}", i + 1),
-                format!("{}:2888:3888", server.node_name),
-            );
+
+        let id_information = self.id_information.as_ref().ok_or(error::Error::ReconcileError(
+                        "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+                    ))?;
+
+        for (node_name, id) in id_information.node_name_to_id {
+            options.insert(format!("server.{}", id), format!("{}:2888:3888", node_name));
         }
 
         let mut handlebars = Handlebars::new();
