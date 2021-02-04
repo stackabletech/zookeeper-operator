@@ -128,7 +128,15 @@ impl ZooKeeperState {
                         self.context.client.delete(&pod).await?;
                     }
                     Some(label) => {
-                        let id = label.parse::<usize>()?;
+                        let id = match label.parse::<usize>() {
+                            Ok(id) => id,
+                            Err(_) => {
+                                error!("ZooKeeperCluster {}: Pod [{:?}] does have the `id` label but the label ([{}]) cannot be parsed, this is illegal, deleting the pod.",
+                                       self.context.log_name(), pod, label);
+                                self.context.client.delete(&pod).await?;
+                                continue;
+                            }
+                        };
 
                         // Check if we have seen the same id before
                         // This should never happen and would currently require manual cleanup
@@ -300,7 +308,10 @@ impl ZooKeeperState {
     }
 
     pub async fn delete_excess_pods(&self) -> ZooKeeperReconcileResult {
-        println!("Delete excess pods");
+        trace!(
+            "{}: Starting to delete excess pods",
+            self.context.log_name()
+        );
         let tmp = self.id_information.borrow();
         let id_information = tmp
             .as_ref()
@@ -348,6 +359,7 @@ impl ZooKeeperState {
         }
 
         let mut handlebars = Handlebars::new();
+        handlebars.set_strict_mode(true);
         handlebars
             .register_template_string("conf", "{{#each options}}{{@key}}={{this}}\n{{/each}}")
             .expect("Failure rendering the ZooKeeper config template, this should not happen, please report this issue");
@@ -411,7 +423,7 @@ impl ZooKeeperState {
         let version = self.context.resource.spec.version.clone();
         let image_name = format!(
             "stackable/zookeeper:{}",
-            serde_json::json!(version).as_str().unwrap()
+            serde_json::json!(version).as_str().expect("This should not fail as it comes from an enum, if this fails please file a bug report")
         );
 
         let containers = vec![Container {
