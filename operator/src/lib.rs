@@ -314,17 +314,22 @@ impl ZooKeeperState {
         // Because we delete all pods we "need" in the previous loop this will only have pods that are
         // left over (maybe because of a scale down) and can be deleted.
         for (node_name, pod) in &id_information.node_name_to_pod {
-            // TODO: This might already be in the terminating state because earlier we only iterate over the spec servers and not the pods
-            info!(
-                "ZooKeeperCluster {} has extra Pod [{}] for node [{}]: Terminating",
-                self.context.log_name(),
-                Meta::name(pod),
-                node_name
-            );
-
-            // We don't trigger a reconcile requeue here because there should be nothing for us to do
-            // in the next loop
-            self.context.client.delete(pod).await?;
+            if finalizer::has_deletion_stamp(pod) {
+                trace!(
+                    "Extra Pod found [{}] for node [{}] that is not in the current spec: Already in the process of being deleted",
+                    Meta::name(pod),
+                    node_name
+                );
+            } else {
+                info!(
+                    "Extra Pod found [{}] for node [{}] that is not in the current spec: Terminating the Pod",
+                    Meta::name(pod),
+                    node_name
+                );
+                // We don't trigger a requeue here because there should be nothing for us to do
+                // in the next loop for this pod.
+                self.context.client.delete(pod).await?;
+            }
         }
 
         Ok(ReconcileFunctionAction::Continue)
