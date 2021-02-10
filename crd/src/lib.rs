@@ -18,6 +18,7 @@ use stackable_operator::Crd;
 pub struct ZooKeeperClusterSpec {
     pub version: ZooKeeperVersion,
     pub servers: Vec<ZooKeeperServer>,
+    pub config: ZooKeeperConfiguration,
 }
 
 impl Crd for ZooKeeperCluster {
@@ -50,6 +51,15 @@ pub enum ZooKeeperVersion {
 
     #[serde(rename = "3.5.8")]
     v3_5_8,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub struct ZooKeeperConfiguration {
+    pub client_port: Option<u32>, // int in Java
+    pub data_dir: Option<String>, // String in Java
+    pub init_limit: Option<u32>,  // int in Java
+    pub sync_limit: Option<u32>,  // int in Java
+    pub tick_time: Option<u32>,   // int in Java
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
