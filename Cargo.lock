@@ -594,6 +594,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hyper-timeout"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
+dependencies = [
+ "hyper",
+ "pin-project-lite",
+ "tokio",
+ "tokio-io-timeout",
+]
+
+[[package]]
 name = "hyper-tls"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -692,7 +704,7 @@ dependencies = [
  "http",
  "jsonpath_lib",
  "k8s-openapi",
- "kube-derive",
+ "kube-derive 0.48.0",
  "log",
  "openssl",
  "pem",
@@ -709,10 +721,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "kube"
+version = "0.49.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "362fa64584999b25670b73f4874d716c14b039351b2da6740c7610a3d2e970cf"
+dependencies = [
+ "Inflector",
+ "base64",
+ "bytes",
+ "chrono",
+ "dirs-next",
+ "either",
+ "futures",
+ "http",
+ "hyper",
+ "hyper-timeout",
+ "hyper-tls",
+ "jsonpath_lib",
+ "k8s-openapi",
+ "kube-derive 0.49.0",
+ "log",
+ "openssl",
+ "pem",
+ "pin-project 1.0.5",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "static_assertions",
+ "thiserror",
+ "tokio",
+ "tokio-native-tls",
+ "tokio-util",
+ "tower",
+ "url",
+]
+
+[[package]]
 name = "kube-derive"
 version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "318bae2e5cae369e00852398961f8cc7967679c6fa06a7ee7ff10d05091bd6f2"
+dependencies = [
+ "Inflector",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn",
+]
+
+[[package]]
+name = "kube-derive"
+version = "0.49.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b58ffd8a1bd162d64ac423d7c1ea1de70a4c743a9d18bc1bf364f293fcd184a"
 dependencies = [
  "Inflector",
  "proc-macro2",
@@ -731,7 +792,26 @@ dependencies = [
  "derivative",
  "futures",
  "k8s-openapi",
- "kube",
+ "kube 0.48.0",
+ "pin-project 1.0.5",
+ "serde",
+ "smallvec",
+ "snafu",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "kube-runtime"
+version = "0.49.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b82772bce36d85f6825d7db915e117c5bbf1cc13e8c95cd91281a55ec7cfd9bb"
+dependencies = [
+ "dashmap",
+ "derivative",
+ "futures",
+ "k8s-openapi",
+ "kube 0.49.0",
  "pin-project 1.0.5",
  "serde",
  "smallvec",
@@ -1552,13 +1632,13 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#33e13897ca56544628683ee9e358434ebe1d9310"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#99890dc2c8f0bf8fd31fd45bb38f7d03838da399"
 dependencies = [
  "either",
  "futures",
  "k8s-openapi",
- "kube",
- "kube-runtime",
+ "kube 0.49.0",
+ "kube-runtime 0.49.0",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1573,7 +1653,7 @@ name = "stackable-zookeeper-crd"
 version = "0.1.0"
 dependencies = [
  "k8s-openapi",
- "kube",
+ "kube 0.48.0",
  "schemars",
  "serde",
  "serde_json",
@@ -1587,8 +1667,8 @@ dependencies = [
  "futures",
  "handlebars",
  "k8s-openapi",
- "kube",
- "kube-runtime",
+ "kube 0.48.0",
+ "kube-runtime 0.48.0",
  "rstest",
  "serde",
  "serde_json",
@@ -1819,6 +1899,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-io-timeout"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90c49f106be240de154571dd31fbe48acb10ba6c6dd6f6517ad603abffa42de9"
+dependencies = [
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "tokio-macros"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1866,6 +1956,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "tower"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "713c629c07a3a97f741c140e474e7304294fabec66a43a33f0832e98315ab07f"
+dependencies = [
+ "futures-core",
+ "futures-util",
+ "pin-project 1.0.5",
+ "tokio",
+ "tokio-util",
+ "tower-layer",
+ "tower-service",
+ "tracing",
+]
+
+[[package]]
+name = "tower-layer"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "343bc9466d3fe6b0f960ef45960509f84480bf4fd96f92901afe7ff3df9d3a62"
+
+[[package]]
 name = "tower-service"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1878,6 +1990,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d40a22fd029e33300d8d89a5cc8ffce18bb7c587662f54629e94c9de5487f3"
 dependencies = [
  "cfg-if 1.0.0",
+ "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
