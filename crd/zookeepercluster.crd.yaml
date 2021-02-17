@@ -24,7 +24,7 @@ spec:
               properties:
                 version:
                   type: string
-                  enum: [ 3.4.14 ]
+                  enum: [ 3.4.14, 3.5.8 ]
                 servers:
                   type: array
                   items:

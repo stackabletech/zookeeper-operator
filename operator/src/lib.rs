@@ -3,15 +3,15 @@ mod error;
 
 use crate::error::Error;
 
-use kube::Api;
-use tracing::{debug, error, info, trace};
-
+use async_trait::async_trait;
 use handlebars::Handlebars;
 use k8s_openapi::api::core::v1::{
     ConfigMap, ConfigMapVolumeSource, Container, Pod, PodSpec, Volume, VolumeMount,
 };
 use kube::api::{ListParams, Meta};
+use kube::Api;
 use serde_json::json;
+use tracing::{debug, error, info, trace};
 
 use stackable_operator::client::Client;
 use stackable_operator::controller::Controller;
@@ -142,9 +142,8 @@ impl ZooKeeperState {
                         if used_ids.contains(&id) {
                             // TODO: Update status
                             error!(
-                                "{}: Found a duplicate `myid` [{}] in Pod [{}], we can't recover\
+                                "Found a duplicate `myid` [{}] in Pod [{}], we can't recover\
                                  from this error and you need to clean up manually",
-                                self.context.log_name(),
                                 id,
                                 Meta::name(&pod)
                             );
@@ -182,10 +181,7 @@ impl ZooKeeperState {
     /// ConfigMap generation later.
     /// NOTE: This method will _not_ work if multiple servers should run on a single node
     async fn assign_ids(&mut self) -> ZooKeeperReconcileResult {
-        trace!(
-            "{}: Assigning ids to new servers from the spec",
-            self.context.log_name()
-        );
+        trace!("Assigning ids to new servers from the spec",);
 
         let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
@@ -208,17 +204,16 @@ impl ZooKeeperState {
                         .insert(server.node_name.clone(), new_id);
 
                     info!(
-                        "{}: Assigning new id [{}] to server/node [{}]",
-                        self.context.log_name(),
-                        new_id,
-                        server.node_name
+                        "Assigning new id [{}] to server/node [{}]",
+                        new_id, server.node_name
                     )
                 }
                 Some(_) => {
-                    trace!("ZooKeeperCluster {}: Pod for node [{}] already exists and is assigned id [{:?}]",
-                           self.context.log_name(),
-                           &server.node_name,
-                           id_information.node_name_to_id.get(&server.node_name));
+                    trace!(
+                        "Pod for node [{}] already exists and is assigned id [{:?}]",
+                        &server.node_name,
+                        id_information.node_name_to_id.get(&server.node_name)
+                    );
                 }
             }
         }
@@ -226,8 +221,9 @@ impl ZooKeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
-    pub async fn reconcile_cluster(&mut self) -> ZooKeeperReconcileResult {
-        trace!("{}: Starting reconciliation", self.context.log_name());
+    /// Checks if all pods that currently belong to this resource are up and running
+    async fn check_pods_up_and_running(&mut self) -> ZooKeeperReconcileResult {
+        trace!("Reconciliation: Checking if all pods are up and running");
 
         let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
@@ -240,55 +236,85 @@ impl ZooKeeperState {
         // * check if a pod is up but not running/ready yet, skip the remaining reconciliation if this is the case
         // TODO: Need to deal with crashed workers/pods. They shouldn't block all other actions.
         for server in &self.zk_spec.servers {
-            let pod = match id_information.node_name_to_pod.remove(&server.node_name) {
+            let pod = match id_information.node_name_to_pod.get(&server.node_name) {
                 None => {
-                    info!(
-                        "{}: Pod for server [{}] missing, creating now...",
-                        self.context.log_name(),
-                        &server.node_name
-                    );
-
-                    let id = id_information
-                        .node_name_to_id
-                        .remove(&server.node_name)
-                        .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", server.node_name)))?;
-
-                    self.create_pod(&server, id).await?;
-                    self.create_config_maps(server, id).await?;
-
-                    return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
+                    continue;
                 }
                 Some(pod) => pod,
             };
 
             // If the pod for this server is currently terminating (this could be for restarts or
             // upgrades) wait until it's done terminating.
-            if finalizer::has_deletion_stamp(&pod) {
-                info!(
-                    "ZooKeeperCluster {} is waiting for Pod [{}] to terminate",
-                    self.context.log_name(),
-                    Meta::name(&pod)
-                );
+            if finalizer::has_deletion_stamp(pod) {
+                info!("Waiting for Pod [{}] to terminate", Meta::name(pod));
                 return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
             }
 
             // At the moment we'll wait for all pods to be available and ready before we might enact any changes to existing ones.
             // TODO: Only do this next check if we want "rolling" functionality
-            if !podutils::is_pod_running_and_ready(&pod) {
+            if !podutils::is_pod_running_and_ready(pod) {
                 info!(
-                    "ZooKeeperCluster {} is waiting for Pod [{}] to be running and ready",
-                    self.context.log_name(),
-                    Meta::name(&pod)
+                    "Waiting for Pod [{}] to be running and ready",
+                    Meta::name(pod)
                 );
                 return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
             }
+        }
 
-            // Check if the pod is up-to-date
+        Ok(ReconcileFunctionAction::Continue)
+    }
+
+    pub async fn create_missing_pods(&mut self) -> ZooKeeperReconcileResult {
+        trace!("Starting `create_missing_pods`");
+
+        let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
+                        "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+                    ))?;
+
+        // Iterate over all servers from the spec and
+        // * check if a pod exists for this server
+        // * create one if it doesn't exist
+        for server in &self.zk_spec.servers {
+            if let None = id_information.node_name_to_pod.get(&server.node_name) {
+                info!(
+                    "Pod for server [{}] missing, creating now...",
+                    &server.node_name
+                );
+
+                let id = id_information
+                    .node_name_to_id
+                    .get(&server.node_name)
+                    .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", server.node_name)))?.clone();
+
+                self.create_pod(&server, id).await?;
+                self.create_config_maps(server, id).await?;
+
+                return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
+            }
+        }
+
+        Ok(ReconcileFunctionAction::Continue)
+    }
+
+    pub async fn reconcile_pods(&mut self) -> ZooKeeperReconcileResult {
+        trace!("Starting reconciliation");
+
+        let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
+                        "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+                    ))?;
+
+        // Iterate over all servers from the spec, then fetch the matching pod and check whether
+        // the pod still matches the spec.
+        for server in &self.zk_spec.servers {
+            let pod = id_information.node_name_to_pod.remove(&server.node_name).ok_or_else(|| error::Error::ReconcileError("Pod missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string()))?;
+
+            // Check if the pod image is up-to-date
+            // If it's not we'll delete the pod, in the next reconcile run (or over the next few runs)
+            // it'll be automatically created again.
             let container = pod.spec.as_ref().unwrap().containers.get(0).unwrap();
             if container.image != Some(self.zk_spec.image_name()) {
                 info!(
-                    "{}: Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
-                    self.context.log_name(),
+                    "Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
                     Meta::name(&pod),
                     container.image,
                     self.zk_spec.image_name()
@@ -302,10 +328,7 @@ impl ZooKeeperState {
     }
 
     pub async fn delete_excess_pods(&self) -> ZooKeeperReconcileResult {
-        trace!(
-            "{}: Starting to delete excess pods",
-            self.context.log_name()
-        );
+        trace!("Starting to delete excess pods",);
         let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
@@ -374,7 +397,7 @@ impl ZooKeeperState {
         let mut data = BTreeMap::new();
         data.insert("zoo.cfg".to_string(), config);
 
-        let cm_name_prefix = format!("zk-{}", self.get_pod_name(zk_server));
+        let cm_name_prefix = self.get_pod_name(zk_server);
         let cm_name = format!("{}-config", cm_name_prefix);
         let cm = create_config_map(&self.context.resource, &cm_name, data)?;
         self.context.client.apply_patch(&cm, &cm).await?;
@@ -401,6 +424,7 @@ impl ZooKeeperState {
                 self.get_pod_name(zk_server),
                 Some(self.build_labels(id)),
                 &self.context.resource,
+                true,
             )?,
             spec: Some(PodSpec {
                 node_name: Some(zk_server.node_name.clone()),
@@ -448,7 +472,7 @@ impl ZooKeeperState {
             ..Container::default()
         }];
 
-        let cm_name_prefix = format!("zk-{}", self.get_pod_name(zk_server));
+        let cm_name_prefix = self.get_pod_name(zk_server);
         let volumes = vec![
             Volume {
                 name: "config-volume".to_string(),
@@ -481,7 +505,7 @@ impl ZooKeeperState {
 
     /// All pod names follow a simple pattern: <name of ZooKeeperCluster object>-<Node name>
     fn get_pod_name(&self, zk_server: &ZooKeeperServer) -> String {
-        format!("{}-{}", self.context.name(), zk_server.node_name)
+        format!("zk-{}-{}", self.context.name(), zk_server.node_name)
     }
 }
 
@@ -497,7 +521,11 @@ impl ReconciliationState for ZooKeeperState {
                 .await?
                 .then(self.assign_ids())
                 .await?
-                .then(self.reconcile_cluster())
+                .then(self.check_pods_up_and_running())
+                .await?
+                .then(self.create_missing_pods())
+                .await?
+                .then(self.reconcile_pods())
                 .await?
                 .then(self.delete_excess_pods())
                 .await
@@ -514,20 +542,25 @@ impl ZooKeeperStrategy {
     }
 }
 
+#[async_trait]
 impl ControllerStrategy for ZooKeeperStrategy {
     type Item = ZooKeeperCluster;
     type State = ZooKeeperState;
+    type Error = Error;
 
     fn finalizer_name(&self) -> String {
         FINALIZER_NAME.to_string()
     }
 
-    fn init_reconcile_state(&self, context: ReconciliationContext<Self::Item>) -> Self::State {
-        ZooKeeperState {
+    async fn init_reconcile_state(
+        &self,
+        context: ReconciliationContext<Self::Item>,
+    ) -> Result<Self::State, Self::Error> {
+        Ok(ZooKeeperState {
             zk_spec: context.resource.spec.clone(),
             context,
             id_information: None,
-        }
+        })
     }
 }
 
