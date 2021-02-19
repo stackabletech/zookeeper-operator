@@ -424,7 +424,6 @@ impl ZooKeeperState {
                 self.get_pod_name(zk_server),
                 Some(self.build_labels(id)),
                 &self.context.resource,
-                true,
             )?,
             spec: Some(PodSpec {
                 node_name: Some(zk_server.node_name.clone()),
