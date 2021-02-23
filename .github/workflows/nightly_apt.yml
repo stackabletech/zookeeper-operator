@@ -1,4 +1,4 @@
-name: Centos8-Nightly
+name: Nightly
 
 on:
   push:
@@ -18,4 +18,4 @@ jobs:
       - name: Build
         run: ~/.cargo/bin/cargo +nightly build --verbose --release
       - name: Build apt package
-        run: cargo deb --manifest-path server/Cargo.toml --no-build
+        run: ~/.cargo/bin/cargo deb --manifest-path server/Cargo.toml --no-build
