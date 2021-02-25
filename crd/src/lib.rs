@@ -1,4 +1,5 @@
-use kube::CustomResource;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
+use kube_derive::CustomResource;
 use schemars::JsonSchema;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
@@ -7,7 +8,6 @@ use strum_macros;
 
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
-
 #[derive(Clone, CustomResource, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[kube(
     group = "zookeeper.stackable.de",
@@ -25,15 +25,6 @@ pub struct ZooKeeperClusterSpec {
 impl Crd for ZooKeeperCluster {
     const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.de";
     const CRD_DEFINITION: &'static str = include_str!("../zookeepercluster.crd.yaml");
-}
-
-impl ZooKeeperClusterSpec {
-    pub fn image_name(&self) -> String {
-        format!(
-            "stackable/zookeeper:{}",
-            serde_json::json!(self.version).as_str().unwrap()
-        )
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -64,8 +55,8 @@ pub enum ZooKeeperVersion {
 }
 
 impl ZooKeeperVersion {
-    pub fn is_valid_upgrade(from: Self, to: Self) -> Result<bool, SemVerError> {
-        let from_version = Version::parse(&from.to_string())?;
+    pub fn is_valid_upgrade(&self, to: &Self) -> Result<bool, SemVerError> {
+        let from_version = Version::parse(&self.to_string())?;
         let to_version = Version::parse(&to.to_string())?;
 
         Ok(to_version > from_version)
@@ -73,7 +64,28 @@ impl ZooKeeperVersion {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
-pub struct ZooKeeperClusterStatus {}
+#[serde(rename_all = "camelCase")]
+pub struct ZooKeeperClusterStatus {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_version: Option<ZooKeeperVersion>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_version: Option<ZooKeeperVersion>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[schemars(schema_with = "stackable_operator::conditions::schema")]
+    pub conditions: Vec<Condition>,
+}
+
+impl ZooKeeperClusterStatus {
+    pub fn target_image_name(&self) -> Option<String> {
+        match &self.target_version {
+            None => None,
+            Some(version) => Some(format!(
+                "stackable/zookeeper:{}",
+                serde_json::json!(version).as_str().unwrap()
+            )),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -82,17 +94,13 @@ mod tests {
 
     #[test]
     fn test_version_upgrade() {
-        assert!(ZooKeeperVersion::is_valid_upgrade(
-            ZooKeeperVersion::v3_4_14,
-            ZooKeeperVersion::v3_5_8
-        )
-        .unwrap());
+        assert!(ZooKeeperVersion::v3_4_14
+            .is_valid_upgrade(ZooKeeperVersion::v3_5_8)
+            .unwrap());
 
-        assert!(!ZooKeeperVersion::is_valid_upgrade(
-            ZooKeeperVersion::v3_5_8,
-            ZooKeeperVersion::v3_4_14,
-        )
-        .unwrap());
+        assert!(ZooKeeperVersion::v3_5_8
+            .is_valid_upgrade(ZooKeeperVersion::v3_4_14)
+            .unwrap());
     }
 
     #[test]

@@ -11,16 +11,21 @@ use k8s_openapi::api::core::v1::{
 use kube::api::{ListParams, Meta};
 use kube::Api;
 use serde_json::json;
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, trace, warn};
 
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use stackable_operator::client::Client;
+use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
+use stackable_operator::error::OperatorResult;
 use stackable_operator::reconcile::{
     ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
 use stackable_operator::{create_config_map, finalizer, metadata, podutils, reconcile};
-use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
+use stackable_zookeeper_crd::{
+    ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperClusterStatus, ZooKeeperServer,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::pin::Pin;
@@ -36,6 +41,7 @@ type ZooKeeperReconcileResult = ReconcileResult<error::Error>;
 struct ZooKeeperState {
     context: ReconciliationContext<ZooKeeperCluster>,
     zk_spec: ZooKeeperClusterSpec,
+    zk_status: Option<ZooKeeperClusterStatus>,
     id_information: Option<IdInformation>,
 }
 
@@ -78,6 +84,88 @@ fn find_first_missing(vec: &[usize]) -> usize {
 }
 
 impl ZooKeeperState {
+    fn get_conditions(&self) -> Option<&[Condition]> {
+        self.zk_status
+            .as_ref()
+            .and_then(|status| Some(status.conditions.as_slice()))
+    }
+
+    async fn set_upgrading_condition(&self, reason: &str) -> OperatorResult<ZooKeeperCluster> {
+        self.context
+            .build_and_set_condition(
+                self.get_conditions(),
+                format!("Upgrading from [{}] to [{}]", "1", "2"),
+                reason.to_string(),
+                ConditionStatus::True,
+                "Upgrading".to_string(),
+            )
+            .await
+    }
+
+    /// Will initialize the status object if it's never been set.
+    async fn init_status(&mut self) -> ZooKeeperReconcileResult {
+        let mut status = self.zk_status.take().unwrap_or_default();
+        let spec_version = self.zk_spec.version.clone();
+
+        match (&status.current_version, &status.target_version) {
+            (None, None) => {
+                info!(
+                    "Initial installation, now moving towards version [{}]",
+                    self.zk_spec.version
+                );
+                status.target_version = Some(spec_version);
+            }
+            (None, Some(target_version)) => {
+                debug!(
+                    "Initial installation, still moving towards version [{}]",
+                    target_version
+                );
+                if &spec_version != target_version {
+                    info!("A new target version ([{}]) was requested while we still do the initial installation to [{}], finishing running upgrade first", spec_version, target_version)
+                }
+            }
+            (Some(current_version), None) => {
+                if current_version != &spec_version {
+                    if current_version.is_valid_upgrade(&spec_version).unwrap() {
+                        let new_version = spec_version;
+                        info!(
+                            "Starting upgrade from [{}] to [{}]",
+                            current_version, &new_version
+                        );
+                        status.target_version = Some(new_version);
+                    } else {
+                        warn!("Upgrade from [{}] to [{}] not possible but requested in spec, ignoring", current_version, spec_version);
+                    }
+                }
+            }
+            (Some(current_version), Some(target_version)) => {
+                debug!(
+                    "Still upgrading from [{}] to [{}]",
+                    current_version, target_version
+                );
+                if &self.zk_spec.version != target_version {
+                    info!("A new target version was requested while we still upgrade from [{}] to [{}], finishing running upgrade first", current_version, target_version)
+                }
+            }
+        }
+
+        // We will always begin without any version set and we'll work towards a target version.
+        let status = ZooKeeperClusterStatus {
+            current_version: None,
+            target_version: Some(self.zk_spec.version.clone()),
+            conditions: vec![],
+        };
+
+        self.context
+            .client
+            .apply_patch_status(&self.context.resource, &status)
+            .await?;
+
+        self.set_upgrading_condition("Initial installation").await?;
+
+        Ok(ReconcileFunctionAction::Continue)
+    }
+
     // This looks at all currently existing Pods for the current ZooKeeperCluster object.
     // It checks if all the pods are valid (i.e. contain required labels) and then builds an `IdInformation`
     // object and sets it on the current state.
@@ -303,6 +391,10 @@ impl ZooKeeperState {
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
+        let status = self.zk_status.as_ref().ok_or_else(|| error::Error::ReconcileError(
+                        "`zk_status missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+                    ))?;
+
         // Iterate over all servers from the spec, then fetch the matching pod and check whether
         // the pod still matches the spec.
         for server in &self.zk_spec.servers {
@@ -312,12 +404,12 @@ impl ZooKeeperState {
             // If it's not we'll delete the pod, in the next reconcile run (or over the next few runs)
             // it'll be automatically created again.
             let container = pod.spec.as_ref().unwrap().containers.get(0).unwrap();
-            if container.image != Some(self.zk_spec.image_name()) {
+            if container.image != status.target_image_name() {
                 info!(
                     "Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
                     Meta::name(&pod),
                     container.image,
-                    self.zk_spec.image_name()
+                    status.target_image_name()
                 );
                 self.context.client.delete(&pod).await?;
                 return Ok(reconcile::create_requeuing_reconcile_function_action(10));
@@ -424,6 +516,7 @@ impl ZooKeeperState {
                 self.get_pod_name(zk_server),
                 Some(self.build_labels(id)),
                 &self.context.resource,
+                true,
             )?,
             spec: Some(PodSpec {
                 node_name: Some(zk_server.node_name.clone()),
@@ -516,7 +609,9 @@ impl ReconciliationState for ZooKeeperState {
     ) -> Pin<Box<dyn Future<Output = Result<ReconcileFunctionAction, Self::Error>> + Send + '_>>
     {
         Box::pin(async move {
-            self.read_existing_pod_information()
+            self.init_status()
+                .await?
+                .then(self.read_existing_pod_information())
                 .await?
                 .then(self.assign_ids())
                 .await?
@@ -557,6 +652,7 @@ impl ControllerStrategy for ZooKeeperStrategy {
     ) -> Result<Self::State, Self::Error> {
         Ok(ZooKeeperState {
             zk_spec: context.resource.spec.clone(),
+            zk_status: context.resource.status.clone(),
             context,
             id_information: None,
         })
