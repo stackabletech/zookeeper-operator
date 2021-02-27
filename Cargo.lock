@@ -1600,7 +1600,7 @@ dependencies = [
 
 [[package]]
 name = "stackable-zookeeper-operator-server"
-version = "0.1.0"
+version = "0.1.0-nightly"
 dependencies = [
  "stackable-operator",
  "stackable-zookeeper-crd",
