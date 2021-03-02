@@ -6,16 +6,3 @@ spec:
   version: 3.4.14
   servers:
     - node_name: debian
-
-
-
-cat <<EOF | kubectl apply -f -
-apiVersion: zookeeper.stackable.de/v1
-kind: ZooKeeperCluster
-metadata:
-  name: simple
-spec:
-  version: 3.4.14
-  servers:
-    - node_name: debian
-EOF
