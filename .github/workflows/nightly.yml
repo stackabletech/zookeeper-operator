@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - main
-      - deb
-    pull_request:
-  schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -22,8 +17,6 @@ jobs:
         run: ~/.cargo/bin/cargo +nightly build --verbose --release
       - name: Build apt package
         run: ~/.cargo/bin/cargo deb --manifest-path server/Cargo.toml --no-build
-      - name: Debug find usage
-        run:  find target/debian/ -name *.deb
       - name: Publish apt package
         run: >-
           /usr/bin/curl
