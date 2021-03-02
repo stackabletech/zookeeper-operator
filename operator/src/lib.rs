@@ -86,7 +86,7 @@ fn find_first_missing(vec: &[usize]) -> usize {
 
 impl ZooKeeperState {
     async fn set_upgrading_condition(
-        &mut self,
+        &self,
         conditions: &[Condition],
         message: &str,
         reason: &str,
@@ -103,12 +103,11 @@ impl ZooKeeperState {
             )
             .await?;
 
-        self.zk_status = resource.status.clone();
         Ok(resource)
     }
 
     async fn set_current_version(
-        &mut self,
+        &self,
         version: Option<&ZooKeeperVersion>,
     ) -> OperatorResult<ZooKeeperCluster> {
         let resource = self
@@ -120,12 +119,11 @@ impl ZooKeeperState {
             )
             .await?;
 
-        self.zk_status = resource.status.clone();
         Ok(resource)
     }
 
     async fn set_target_version(
-        &mut self,
+        &self,
         version: Option<&ZooKeeperVersion>,
     ) -> OperatorResult<ZooKeeperCluster> {
         let resource = self
@@ -134,7 +132,6 @@ impl ZooKeeperState {
             .merge_patch_status(&self.context.resource, &json!({ "targetVersion": version }))
             .await?;
 
-        self.zk_status = resource.status.clone();
         Ok(resource)
     }
 
@@ -155,8 +152,6 @@ impl ZooKeeperState {
         let status = self.zk_status.take().unwrap_or_default();
         let spec_version = self.zk_spec.version.clone();
 
-        // TODO: This is not ideal: We pass in status.conditions to `set_upgrading_conditions` which
-        // potentially adds a new condition but we don't update `status.conditions`....
         match (&status.current_version, &status.target_version) {
             (None, None) => {
                 // No current_version and no target_version must be initial installation.
@@ -165,14 +160,16 @@ impl ZooKeeperState {
                     "Initial installation, now moving towards version [{}]",
                     self.zk_spec.version
                 );
-                self.set_upgrading_condition(
-                    &status.conditions,
-                    &format!("Initial installation to version [{:?}]", spec_version),
-                    "InitialInstallation",
-                    ConditionStatus::True,
-                )
-                .await?;
-                self.set_target_version(Some(&spec_version)).await?;
+                self.zk_status = self
+                    .set_upgrading_condition(
+                        &status.conditions,
+                        &format!("Initial installation to version [{:?}]", spec_version),
+                        "InitialInstallation",
+                        ConditionStatus::True,
+                    )
+                    .await?
+                    .status;
+                self.zk_status = self.set_target_version(Some(&spec_version)).await?.status;
             }
             (None, Some(target_version)) => {
                 // No current_version but a target_version means we're still doing the initial
@@ -186,13 +183,15 @@ impl ZooKeeperState {
                     info!("A new target version ([{}]) was requested while we still do the initial installation to [{}], finishing running upgrade first", spec_version, target_version)
                 }
                 // We do this here to update the observedGeneration if needed
-                self.set_upgrading_condition(
-                    &status.conditions,
-                    &format!("Initial installation to version [{:?}]", spec_version),
-                    "InitialInstallation",
-                    ConditionStatus::True,
-                )
-                .await?;
+                self.zk_status = self
+                    .set_upgrading_condition(
+                        &status.conditions,
+                        &format!("Initial installation to version [{:?}]", spec_version),
+                        "InitialInstallation",
+                        ConditionStatus::True,
+                    )
+                    .await?
+                    .status;
             }
             (Some(current_version), None) => {
                 // We are at a stable version but have no target_version set.
@@ -207,14 +206,16 @@ impl ZooKeeperState {
                             current_version, &new_version
                         );
                         info!("{}", message);
-                        self.set_target_version(Some(&new_version)).await?;
-                        self.set_upgrading_condition(
-                            &status.conditions,
-                            &message,
-                            "Upgrading",
-                            ConditionStatus::True,
-                        )
-                        .await?;
+                        self.zk_status = self.set_target_version(Some(&new_version)).await?.status;
+                        self.zk_status = self
+                            .set_upgrading_condition(
+                                &status.conditions,
+                                &message,
+                                "Upgrading",
+                                ConditionStatus::True,
+                            )
+                            .await?
+                            .status;
                     } else {
                         // TODO: This should be caught by an validating admission webhook
                         warn!("Upgrade from [{}] to [{}] not possible but requested in spec: Ignoring, will continue reconcile as if the invalid version weren't set", current_version, spec_version);
@@ -225,13 +226,15 @@ impl ZooKeeperState {
                         current_version
                     );
                     trace!("{}", message);
-                    self.set_upgrading_condition(
-                        &status.conditions,
-                        &message,
-                        "",
-                        ConditionStatus::False,
-                    )
-                    .await?;
+                    self.zk_status = self
+                        .set_upgrading_condition(
+                            &status.conditions,
+                            &message,
+                            "",
+                            ConditionStatus::False,
+                        )
+                        .await?
+                        .status;
                 }
             }
             (Some(current_version), Some(target_version)) => {
@@ -250,13 +253,15 @@ impl ZooKeeperState {
                     current_version, target_version
                 );
 
-                self.set_upgrading_condition(
-                    &status.conditions,
-                    &message,
-                    "",
-                    ConditionStatus::False,
-                )
-                .await?;
+                self.zk_status = self
+                    .set_upgrading_condition(
+                        &status.conditions,
+                        &message,
+                        "",
+                        ConditionStatus::False,
+                    )
+                    .await?
+                    .status;
             }
         }
 
@@ -460,16 +465,20 @@ impl ZooKeeperState {
         // * check if a pod exists for this server
         // * create one if it doesn't exist
         for server in &self.zk_spec.servers {
-            if let None = id_information.node_name_to_pod.get(&server.node_name) {
+            if id_information
+                .node_name_to_pod
+                .get(&server.node_name)
+                .is_none()
+            {
                 info!(
                     "Pod for server [{}] missing, creating now...",
                     &server.node_name
                 );
 
-                let id = id_information
+                let id = *id_information
                     .node_name_to_id
                     .get(&server.node_name)
-                    .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", server.node_name)))?.clone();
+                    .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", server.node_name)))?;
 
                 self.create_pod(&server, id).await?;
                 self.create_config_maps(server, id).await?;
@@ -488,7 +497,7 @@ impl ZooKeeperState {
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
-        let status = self.zk_status.as_ref().ok_or_else(|| error::Error::ReconcileError(
+        let status = self.zk_status.clone().ok_or_else(|| error::Error::ReconcileError(
                         "`zk_status missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
@@ -517,17 +526,23 @@ impl ZooKeeperState {
         // We can now set current_version to target_version (if target_version was set) and
         // target_version to None
         if let Some(target_version) = &status.target_version {
-            self.set_target_version(None).await?;
-            self.set_current_version(Some(&target_version));
-            self.set_upgrading_condition(
-                &status.conditions,
-                &format!(
-                    "No upgrade required [{:?}] is still the current_version",
-                    target_version
-                ),
-                "",
-                ConditionStatus::False,
-            );
+            self.zk_status = self.set_target_version(None).await?.status;
+            self.zk_status = self
+                .set_current_version(Some(&target_version))
+                .await?
+                .status;
+            self.zk_status = self
+                .set_upgrading_condition(
+                    &status.conditions,
+                    &format!(
+                        "No upgrade required [{:?}] is still the current_version",
+                        target_version
+                    ),
+                    "",
+                    ConditionStatus::False,
+                )
+                .await?
+                .status;
         }
 
         Ok(ReconcileFunctionAction::Continue)
