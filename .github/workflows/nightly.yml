@@ -31,5 +31,5 @@ jobs:
           --fail
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           -H "Content-Type: multipart/form-data"
-          --data-binary "$(find target/debian/ -name *.deb)"
+          --data-binary "@./$(find target/debian/ -name *.deb)"
           "https://repo.stackable.tech/repository/deb-nightly/"
