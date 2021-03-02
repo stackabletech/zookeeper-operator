@@ -22,6 +22,8 @@ jobs:
         run: ~/.cargo/bin/cargo +nightly build --verbose --release
       - name: Build apt package
         run: ~/.cargo/bin/cargo deb --manifest-path server/Cargo.toml --no-build
+      - name: Debug find usage
+        run:  find target/debian/ -name *.deb
       - name: Publish apt package
         run: >-
           /usr/bin/curl
