@@ -1,7 +1,7 @@
 use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use stackable_operator::CRD;
+use stackable_operator::Crd;
 
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
@@ -20,7 +20,7 @@ pub struct ZooKeeperClusterSpec {
     pub servers: Vec<ZooKeeperServer>,
 }
 
-impl CRD for ZooKeeperCluster {
+impl Crd for ZooKeeperCluster {
     const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.de";
     const CRD_DEFINITION: &'static str = include_str!("../zookeepercluster.crd.yaml");
 }
