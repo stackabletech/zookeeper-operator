@@ -5,5 +5,4 @@ metadata:
 spec:
   version: 3.4.14
   servers:
-    - node_name: soenke-laptop
-    - node_name: lars-laptop
+    - node_name: debian
