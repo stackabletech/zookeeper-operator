@@ -26,3 +26,37 @@ jobs:
           -H "Content-Type: multipart/form-data"
           --data-binary "@./$(find target/debian/ -name *.deb)"
           "https://repo.stackable.tech/repository/deb-nightly/"
+
+  centos7:
+    runs-on: centos7
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        run: ~/.cargo/bin/cargo +nightly build --verbose --release
+      - name: Build rpm package
+        run: server/packaging/buildrpm.sh
+      - name: Publish rpm package
+        run: >-
+          /usr/bin/curl
+          -vvvv
+          --fail
+          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+          --upload-file "./$(find  target/release/rpmbuild/RPMS/x86_64/ -name *.rpm)"
+          "https://repo.stackable.tech/repository/rpm-nightly/el7/"
+
+  centos8:
+    runs-on: centos8
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        run: ~/.cargo/bin/cargo +nightly build --verbose --release
+      - name: Build rpm package
+        run: server/packaging/buildrpm.sh
+      - name: Publish rpm package
+        run: >-
+          /usr/bin/curl
+          -vvvv
+          --fail
+          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+          --upload-file "./$(find  target/release/rpmbuild/RPMS/x86_64/ -name *.rpm)"
+          "https://repo.stackable.tech/repository/rpm-nightly/el8/"
