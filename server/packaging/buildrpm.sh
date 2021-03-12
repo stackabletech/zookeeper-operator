@@ -34,7 +34,7 @@ rm -rf target/rpm
 # Parse the version and release strings from the PKGID reported by Cargo
 # This is in the form Path#Projectname:version, which we parse by repeated calls to awk with different separators
 # This could most definitely be improved, but works for now
-export VERSION_STRING=$(cargo pkgid --manifest-path server/Cargo.toml  | awk -F'#' '{print $2}' |  awk -F':' '{print $2}')
+export VERSION_STRING=$(~/.cargo/bin/cargo pkgid --manifest-path server/Cargo.toml  | awk -F'#' '{print $2}' |  awk -F':' '{print $2}')
 echo version: ${VERSION_STRING}
 
 export PACKAGE_VERSION=$(echo ${VERSION_STRING} | awk -F '-' '{print $1}')
