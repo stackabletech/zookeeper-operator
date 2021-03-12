@@ -35,7 +35,7 @@ jobs:
       - name: Build
         run: ~/.cargo/bin/cargo +nightly build --verbose --release
       - name: Build rpm package
-        run: server/packaging/buildrpm.sh
+        run: server/packaging/buildrpm.sh stackable-zookeeper-operator-server
       - name: Publish rpm package
         run: >-
           /usr/bin/curl
@@ -52,7 +52,7 @@ jobs:
       - name: Build
         run: ~/.cargo/bin/cargo +nightly build --verbose --release
       - name: Build rpm package
-        run: server/packaging/buildrpm.sh
+        run: server/packaging/buildrpm.sh stackable-zookeeper-operator-server
       - name: Publish rpm package
         run: >-
           /usr/bin/curl
