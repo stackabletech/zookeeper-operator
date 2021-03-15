@@ -19,14 +19,3 @@ systemd-units = { enable = false }
 assets = [
     ["../target/release/stackable-zookeeper-operator-server", "opt/stackable/zookeeper-operator/", "755"],
 ]
-[package.metadata.rpm]
-package = "stackable-zookeeper-operator-server"
-
-[package.metadata.rpm.cargo]
-buildflags = ["--release"]
-
-[package.metadata.rpm.targets]
-stackable-zookeeper-operator-server = { path = "/opt/stackable/zookeeper-operator/stackable-zookeeper-operator-server" }
-
-[package.metadata.rpm.files]
-"systemd/stackable-zookeeper-operator-server.service" = { path = "/lib/systemd/system/"}

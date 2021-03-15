@@ -46,7 +46,7 @@ export PACKAGE_RELEASE="0$(echo ${VERSION_STRING} | awk -F '-' '{ if ($2 != "") 
 echo Defined package version: [${PACKAGE_VERSION}]
 echo Defined package release: [${PACKAGE_RELEASE}]
 
-echo Creating directory scaffolding for rpm
+echo Creating directory scaffolding for RPM
 cp -r server/packaging/rpm target/
 # Create empty directory for the binary to be placed into
 mkdir -p target/rpm/SOURCES/${PACKAGE_NAME}-VERSION/opt/${PACKAGE_NAME}
