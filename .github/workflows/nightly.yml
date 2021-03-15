@@ -28,7 +28,7 @@ jobs:
           --data-binary "@./$(find target/debian/ -name *.deb)"
           "https://repo.stackable.tech/repository/deb-nightly/"
 
-  centos7:
+  centos:
     runs-on: centos${{ matrix.node }}
     strategy:
       matrix:
