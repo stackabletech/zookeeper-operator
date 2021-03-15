@@ -21,8 +21,8 @@ BINARY_FILE=target/release/$PACKAGE_NAME
 # We need to look up the package with a select statement to match the name from an array of packages
 # The name is passed into jq as a jq variable, as no substitution would take place within the single
 # quotes of the jq expression.
-export PACKAGE_DESCRIPTION=$(~/.cargo/bin/cargo metadata --format-version 1| jq --arg NAME "$NAME" '.packages[] | select(.name == $NAME) | .description')
-if [ -z $1 ]; then
+export PACKAGE_DESCRIPTION=$(~/.cargo/bin/cargo metadata --format-version 1| jq --arg NAME "$PACKAGE_NAME" '.packages[] | select(.name == $NAME) | .description')
+if [ -z $PACKAGE_DESCRIPTION ]; then
   echo "Unable to parse package description from output of `cargo metadata`, cannot build RPM without this field!"
   exit 2
 fi
