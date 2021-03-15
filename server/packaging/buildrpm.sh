@@ -17,10 +17,11 @@ fi
 export PACKAGE_NAME=$1
 BINARY_FILE=target/release/$PACKAGE_NAME
 
-# To minimize the changes that are needed to add packaging to a new operator
-# we read the package description from a textfile instead of hardcoding it in
-# the spec file.
-export PACKAGE_DESCRIPTION=$(cat server/packaging/description)
+# The package description is parsed from the output of `cargo metadata` by using jq.
+# We need to look up the package with a select statement to match the name from an array of packages
+# The name is passed into jq as a jq variable, as no substitution would take place within the single
+# quotes of the jq expression.
+export PACKAGE_DESCRIPTION=$(cargo metadata --format-version 1| jq --arg NAME "$NAME" '.packages[] | select(.name == $NAME) | .description')
 
 # Check that we are being called from the main directory and the release build process has been run
 if [ ! -f $BINARY_FILE ]; then
