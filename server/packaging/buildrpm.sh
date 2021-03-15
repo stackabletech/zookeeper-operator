@@ -26,6 +26,7 @@ if [ -z $1 ]; then
   echo "Unable to parse package description from output of `cargo metadata`, cannot build RPM without this field!"
   exit 2
 fi
+echo
 
 # Check that we are being called from the main directory and the release build process has been run
 if [ ! -f $BINARY_FILE ]; then
@@ -50,6 +51,8 @@ export PACKAGE_RELEASE="0$(echo ${VERSION_STRING} | awk -F '-' '{ if ($2 != "") 
 
 echo Defined package version: [${PACKAGE_VERSION}]
 echo Defined package release: [${PACKAGE_RELEASE}]
+echo Defined package description: [${PACKAGE_DESCRIPTION}]
+
 
 echo Creating directory scaffolding for RPM
 cp -r server/packaging/rpm target/
