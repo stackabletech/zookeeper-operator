@@ -1,7 +1,7 @@
 %define __spec_install_post %{nil}
 %define __os_install_post %{_dbpath}/brp-compress
 %define debug_package %{nil}
-%define _servicedir /lib/systemd/system
+%define _servicedir /usr/lib/systemd/system
 %define _version %{getenv:PACKAGE_VERSION}
 %define _release %{getenv:PACKAGE_RELEASE}
 %define _name %{getenv:PACKAGE_NAME}

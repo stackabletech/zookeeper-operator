@@ -57,13 +57,13 @@ echo Defined package description: [${PACKAGE_DESCRIPTION}]
 echo Creating directory scaffolding for RPM
 cp -r server/packaging/rpm target/
 # Create empty directory for the binary to be placed into
-mkdir -p target/rpm/SOURCES/${PACKAGE_NAME}-VERSION/opt/${PACKAGE_NAME}
+mkdir -p target/rpm/SOURCES/${PACKAGE_NAME}-VERSION/opt/stackable/${PACKAGE_NAME}
 
 # The packaging source directory does not contain the version yet, as this will need to be replaced for every
 # execution. Instead the directory name contains the marker "VERSION" which we now replace with the actual version.
 rename VERSION ${PACKAGE_VERSION} target/rpm/SOURCES/${PACKAGE_NAME}-VERSION
 
-cp target/release/${PACKAGE_NAME} target/rpm/SOURCES/${PACKAGE_NAME}-${PACKAGE_VERSION}/opt/${PACKAGE_NAME}/
+cp target/release/${PACKAGE_NAME} target/rpm/SOURCES/${PACKAGE_NAME}-${PACKAGE_VERSION}/opt/stackable/${PACKAGE_NAME}/
 
 pushd target/rpm/SOURCES
 tar czvf ${PACKAGE_NAME}-${PACKAGE_VERSION}.tar.gz ${PACKAGE_NAME}-${PACKAGE_VERSION}
