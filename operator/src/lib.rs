@@ -186,7 +186,7 @@ impl ZooKeeperState {
                 self.zk_status = self
                     .set_upgrading_condition(
                         &status.conditions,
-                        &format!("Initial installation to version [{:?}]", spec_version),
+                        &format!("Initial installation to version [{:?}]", target_version),
                         "InitialInstallation",
                         ConditionStatus::True,
                     )
