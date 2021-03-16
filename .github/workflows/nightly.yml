@@ -26,3 +26,23 @@ jobs:
           -H "Content-Type: multipart/form-data"
           --data-binary "@./$(find target/debian/ -name *.deb)"
           "https://repo.stackable.tech/repository/deb-nightly/"
+
+  centos:
+    runs-on: centos${{ matrix.node }}
+    strategy:
+      matrix:
+        node: [ 7, 8 ]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        run: ~/.cargo/bin/cargo +nightly build --verbose --release
+      - name: Build RPM package
+        run: server/packaging/buildrpm.sh stackable-zookeeper-operator-server
+      - name: Publish RPM package
+        run: >-
+          /usr/bin/curl
+          -vvvv
+          --fail
+          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+          --upload-file "./$(find  target/rpm/RPMS/x86_64/ -name *.rpm)"
+          "https://repo.stackable.tech/repository/rpm-nightly/el${{ matrix.node }}/"
