@@ -490,6 +490,16 @@ impl ZooKeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
+    /// This will check if Pods differ from their expected states.
+    ///
+    /// # Notes
+    ///
+    /// ## Upgrades from 3.4 to later versions might fail
+    ///
+    /// - https://issues.apache.org/jira/browse/ZOOKEEPER-3781
+    /// - https://issues.apache.org/jira/browse/ZOOKEEPER-3513
+    /// - https://zookeeper.apache.org/doc/r3.5.9/zookeeperAdmin.html (see `snapshot.trust.empty`)
+    /// - https://cwiki.apache.org/confluence/display/ZOOKEEPER/Upgrade+FAQ
     pub async fn reconcile_pods(&mut self) -> ZooKeeperReconcileResult {
         trace!("Starting reconciliation");
 
