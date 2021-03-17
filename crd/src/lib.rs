@@ -76,13 +76,12 @@ pub struct ZooKeeperClusterStatus {
 
 impl ZooKeeperClusterStatus {
     pub fn target_image_name(&self) -> Option<String> {
-        match &self.target_version {
-            None => None,
-            Some(version) => Some(format!(
+        self.target_version.as_ref().map(|version| {
+            format!(
                 "stackable/zookeeper:{}",
                 serde_json::json!(version).as_str().unwrap()
-            )),
-        }
+            )
+        })
     }
 }
 
@@ -97,7 +96,7 @@ mod tests {
             .is_valid_upgrade(&ZooKeeperVersion::v3_5_8)
             .unwrap());
 
-        assert!(ZooKeeperVersion::v3_5_8
+        assert!(!ZooKeeperVersion::v3_5_8
             .is_valid_upgrade(&ZooKeeperVersion::v3_4_14)
             .unwrap());
     }
