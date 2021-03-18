@@ -26,10 +26,10 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
-const FINALIZER_NAME: &str = "zookeeper.stackable.de/cleanup";
+const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 
-const CLUSTER_NAME_LABEL: &str = "zookeeper.stackable.de/cluster-name";
-const ID_LABEL: &str = "zookeeper.stackable.de/id";
+const CLUSTER_NAME_LABEL: &str = "zookeeper.stackable.tech/cluster-name";
+const ID_LABEL: &str = "zookeeper.stackable.tech/id";
 
 type ZooKeeperReconcileResult = ReconcileResult<error::Error>;
 

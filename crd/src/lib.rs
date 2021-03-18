@@ -8,7 +8,7 @@ use stackable_operator::Crd;
 
 #[derive(Clone, CustomResource, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[kube(
-    group = "zookeeper.stackable.de",
+    group = "zookeeper.stackable.tech",
     version = "v1",
     kind = "ZooKeeperCluster",
     shortname = "zk",
@@ -22,7 +22,7 @@ pub struct ZooKeeperClusterSpec {
 }
 
 impl Crd for ZooKeeperCluster {
-    const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.de";
+    const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.tech";
     const CRD_DEFINITION: &'static str = include_str!("../zookeepercluster.crd.yaml");
 }
 
