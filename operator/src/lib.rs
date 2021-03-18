@@ -340,30 +340,32 @@ impl ZooKeeperState {
         zk_server: &ZooKeeperServer,
         id: usize,
     ) -> Result<(), Error> {
-        let config = &self.zk_spec.config;
         let mut options = HashMap::new();
-        options.insert(
-            "tickTime".to_string(),
-            config.tick_time.unwrap_or(2000).to_string(),
-        );
-        options.insert(
-            "dataDir".to_string(),
-            config
-                .data_dir
-                .unwrap_or_else(|| "/var/lib/zookeeper".to_string()),
-        );
-        options.insert(
-            "initLimit".to_string(),
-            config.init_limit.unwrap_or(5).to_string(),
-        );
-        options.insert(
-            "syncLimit".to_string(),
-            config.sync_limit.unwrap_or(2).to_string(),
-        );
-        options.insert(
-            "clientPort".to_string(),
-            config.client_port.unwrap_or(2181).to_string(),
-        );
+        if let Some(config) = &self.zk_spec.config {
+            options.insert(
+                "tickTime".to_string(),
+                config.tick_time.unwrap_or(2000).to_string(),
+            );
+            options.insert(
+                "dataDir".to_string(),
+                config
+                    .data_dir
+                    .clone()
+                    .unwrap_or_else(|| "/var/lib/zookeeper".to_string()),
+            );
+            options.insert(
+                "initLimit".to_string(),
+                config.init_limit.unwrap_or(5).to_string(),
+            );
+            options.insert(
+                "syncLimit".to_string(),
+                config.sync_limit.unwrap_or(2).to_string(),
+            );
+            options.insert(
+                "clientPort".to_string(),
+                config.client_port.unwrap_or(2181).to_string(),
+            );
+        }
 
         // This builds the server string
         // TODO: Does this need to use myid?

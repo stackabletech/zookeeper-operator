@@ -7,36 +7,73 @@ spec:
   names:
     kind: ZooKeeperCluster
     plural: zookeeperclusters
-    singular: zookeepercluster
     shortNames:
       - zk
+    singular: zookeepercluster
   scope: Namespaced
   versions:
-    - name: v1
-      served: true
-      storage: true
+    - additionalPrinterColumns: []
+      name: v1
       schema:
         openAPIV3Schema:
-          type: object
+          description: "Auto-generated derived type for ZooKeeperClusterSpec via `CustomResource`"
           properties:
             spec:
-              type: object
               properties:
-                version:
-                  type: string
-                  enum: [ 3.4.14 ]
+                config:
+                  nullable: true
+                  properties:
+                    client_port:
+                      format: uint32
+                      minimum: 0.0
+                      nullable: true
+                      type: integer
+                    data_dir:
+                      nullable: true
+                      type: string
+                    init_limit:
+                      format: uint32
+                      minimum: 0.0
+                      nullable: true
+                      type: integer
+                    sync_limit:
+                      format: uint32
+                      minimum: 0.0
+                      nullable: true
+                      type: integer
+                    tick_time:
+                      format: uint32
+                      minimum: 0.0
+                      nullable: true
+                      type: integer
+                  type: object
                 servers:
-                  type: array
                   items:
-                    type: object
                     properties:
                       node_name:
-                        type: string                        
-              required: [ "version", "servers" ]
+                        type: string
+                    required:
+                      - node_name
+                    type: object
+                  type: array
+                version:
+                  enum:
+                    - 3.4.14
+                    - 3.4.13
+                    - 3.5.8
+                  type: string
+              required:
+                - servers
+                - version
+              type: object
             status:
-               type: object
-               properties:
-                 is_bad:
-                   type: boolean
+              nullable: true
+              type: object
+          required:
+            - spec
+          title: ZooKeeperCluster
+          type: object
+      served: true
+      storage: true
       subresources:
-         status: {}
+        status: {}

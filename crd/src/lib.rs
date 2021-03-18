@@ -18,7 +18,7 @@ use stackable_operator::Crd;
 pub struct ZooKeeperClusterSpec {
     pub version: ZooKeeperVersion,
     pub servers: Vec<ZooKeeperServer>,
-    pub config: ZooKeeperConfiguration,
+    pub config: Option<ZooKeeperConfiguration>,
 }
 
 impl Crd for ZooKeeperCluster {

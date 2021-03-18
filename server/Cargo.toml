@@ -11,6 +11,7 @@ stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git",
 stackable-zookeeper-crd = { path = "../crd" }
 stackable-zookeeper-operator = { path = "../operator" }
 
+serde_yaml = "0.8"
 tokio = { version = "1.3", features = ["macros", "rt-multi-thread"] }
 
 [package.metadata.deb]
