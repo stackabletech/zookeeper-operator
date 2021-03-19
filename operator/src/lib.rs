@@ -22,7 +22,7 @@ use stackable_operator::error::OperatorResult;
 use stackable_operator::reconcile::{
     ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
-use stackable_operator::{create_config_map, finalizer, metadata, podutils, reconcile};
+use stackable_operator::{config_map::create_config_map, finalizer, metadata, podutils, reconcile};
 use stackable_zookeeper_crd::{
     ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperClusterStatus, ZooKeeperServer,
     ZooKeeperVersion,
@@ -679,7 +679,7 @@ impl ZooKeeperState {
             )?,
             spec: Some(PodSpec {
                 node_name: Some(zk_server.node_name.clone()),
-                tolerations: Some(stackable_operator::create_tolerations()),
+                tolerations: Some(stackable_operator::krustlet::create_tolerations()),
                 containers,
                 volumes: Some(volumes),
                 ..PodSpec::default()
@@ -832,7 +832,9 @@ pub async fn create_controller(client: Client) {
 
     let strategy = ZooKeeperStrategy::new();
 
-    controller.run(client, strategy).await;
+    controller
+        .run(client, strategy, Duration::from_secs(10))
+        .await;
 }
 
 #[cfg(test)]

@@ -20,42 +20,51 @@ spec:
           properties:
             spec:
               properties:
-                version:
-                  type: string
-                  enum: [ 3.4.14, 3.5.8 ]
-                servers:
-                  items:
-                    properties:
-                      node_name:
-                        type: string
                 config:
                   nullable: true
                   properties:
-                    client_port:
+                    clientPort:
                       format: uint32
                       minimum: 0.0
                       nullable: true
                       type: integer
-                    data_dir:
+                    dataDir:
                       nullable: true
                       type: string
-                    init_limit:
+                    initLimit:
                       format: uint32
                       minimum: 0.0
                       nullable: true
                       type: integer
-                    sync_limit:
+                    syncLimit:
                       format: uint32
                       minimum: 0.0
                       nullable: true
                       type: integer
-                    tick_time:
+                    tickTime:
                       format: uint32
                       minimum: 0.0
                       nullable: true
                       type: integer
                   type: object
-              required: [ "version", "servers" ]
+                servers:
+                  items:
+                    properties:
+                      node_name:
+                        type: string
+                    required:
+                      - node_name
+                    type: object
+                  type: array
+                version:
+                  enum:
+                    - 3.4.14
+                    - 3.5.8
+                  type: string
+              required:
+                - servers
+                - version
+              type: object
             status:
               nullable: true
               properties:
@@ -112,5 +121,11 @@ spec:
                   nullable: true
                   type: string
               type: object
+          required:
+            - spec
+          title: ZooKeeperCluster
+          type: object
+      served: true
+      storage: true
       subresources:
-        status: { }
+        status: {}

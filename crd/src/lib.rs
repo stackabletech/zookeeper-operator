@@ -64,6 +64,7 @@ impl ZooKeeperVersion {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ZooKeeperConfiguration {
     pub client_port: Option<u32>, // int in Java
     pub data_dir: Option<String>, // String in Java
