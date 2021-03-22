@@ -594,31 +594,22 @@ impl ZooKeeperState {
         zk_server: &ZooKeeperServer,
         id: usize,
     ) -> Result<(), Error> {
+        let config_reader = product_config::reader::ConfigJsonReader::new("config.json");
+        let product_config = product_config::Config::new(config_reader).unwrap();
+        let option_kind = product_config::OptionKind::Conf;
+
         let mut options = HashMap::new();
         if let Some(config) = &self.zk_spec.config {
-            options.insert(
-                "tickTime".to_string(),
-                config.tick_time.unwrap_or(2000).to_string(),
-            );
-            options.insert(
-                "dataDir".to_string(),
-                config
-                    .data_dir
-                    .clone()
-                    .unwrap_or_else(|| "/var/lib/zookeeper".to_string()),
-            );
-            options.insert(
-                "initLimit".to_string(),
-                config.init_limit.unwrap_or(5).to_string(),
-            );
-            options.insert(
-                "syncLimit".to_string(),
-                config.sync_limit.unwrap_or(2).to_string(),
-            );
-            options.insert(
-                "clientPort".to_string(),
-                config.client_port.unwrap_or(2181).to_string(),
-            );
+            use stackable_zookeeper_crd::ser;
+            let config = ser::to_hash_map(config).unwrap();
+
+            for (key, value) in config.iter() {
+                let result = product_config
+                    .validate("1.2.3", &option_kind, key, Some(value))
+                    .unwrap();
+
+                options.insert(key.to_string(), value.to_string());
+            }
         }
 
         // This builds the server string

@@ -1534,6 +1534,7 @@ dependencies = [
  "kube",
  "kube-derive",
  "kube-runtime",
+ "product-config",
  "schemars",
  "semver 0.11.0",
  "serde",

@@ -1,3 +1,5 @@
+pub mod ser;
+
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube_derive::CustomResource;
 use schemars::JsonSchema;
@@ -98,7 +100,7 @@ impl ZooKeeperClusterStatus {
 
 #[cfg(test)]
 mod tests {
-    use crate::ZooKeeperVersion;
+    use crate::{ZooKeeperConfiguration, ZooKeeperVersion};
     use std::str::FromStr;
 
     #[test]
@@ -117,5 +119,33 @@ mod tests {
         ZooKeeperVersion::from_str("3.4.14").unwrap();
         ZooKeeperVersion::from_str("3.5.8").unwrap();
         ZooKeeperVersion::from_str("1.2.3").unwrap_err();
+    }
+
+    #[test]
+    fn test_serde() {
+        let conf = ZooKeeperConfiguration {
+            client_port: None,
+            data_dir: None,
+            init_limit: None,
+            sync_limit: None,
+            tick_time: Some(123),
+        };
+
+        use crate::ser;
+
+        let map = ser::to_hash_map(&conf).unwrap();
+
+        println!("{:?}", map);
+
+        let config_reader = product_config::reader::ConfigJsonReader::new("config.json");
+        let product_config = product_config::Config::new(config_reader).unwrap();
+        let option_kind = product_config::OptionKind::Conf;
+        for (key, value) in map.iter() {
+            let result = product_config
+                .validate("1.2.3", &option_kind, key, Some(value))
+                .unwrap();
+
+            println!("{}", result);
+        }
     }
 }
