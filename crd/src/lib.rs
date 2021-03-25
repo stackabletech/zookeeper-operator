@@ -76,12 +76,9 @@ pub struct ZooKeeperClusterStatus {
 
 impl ZooKeeperClusterStatus {
     pub fn target_image_name(&self) -> Option<String> {
-        self.target_version.as_ref().map(|version| {
-            format!(
-                "stackable/zookeeper:{}",
-                serde_json::json!(version).as_str().unwrap()
-            )
-        })
+        self.target_version
+            .as_ref()
+            .map(|version| format!("stackable/zookeeper:{}", version.to_string()))
     }
 }
 

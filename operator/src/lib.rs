@@ -671,6 +671,7 @@ impl ZooKeeperState {
 
     fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
         let version = self.context.resource.spec.version.clone();
+        // TODO: Replace with a function call into the crd crate
         let image_name = format!(
             "stackable/zookeeper:{}",
             serde_json::json!(version).as_str().expect("This should not fail as it comes from an enum, if this fails please file a bug report")
