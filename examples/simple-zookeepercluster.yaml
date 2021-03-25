@@ -1,4 +1,4 @@
-apiVersion: zookeeper.stackable.de/v1
+apiVersion: zookeeper.stackable.tech/v1
 kind: ZooKeeperCluster
 metadata:
   name: simple
