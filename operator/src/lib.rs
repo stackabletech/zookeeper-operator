@@ -14,6 +14,9 @@ use serde_json::json;
 use tracing::{debug, error, info, trace, warn};
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
+use product_config;
+use product_config::types::OptionKind;
+use product_config::ProductConfig;
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::controller::Controller;
@@ -22,8 +25,11 @@ use stackable_operator::error::OperatorResult;
 use stackable_operator::reconcile::{
     ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
-use stackable_operator::{create_config_map, finalizer, metadata, podutils, reconcile};
-use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
+use stackable_operator::{config_map::create_config_map, finalizer, metadata, podutils, reconcile};
+use stackable_zookeeper_crd::{
+    ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperClusterStatus, ZooKeeperServer,
+    ZooKeeperVersion,
+};
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::pin::Pin;
@@ -592,21 +598,24 @@ impl ZooKeeperState {
         id: usize,
     ) -> Result<(), Error> {
         let config_reader = product_config::reader::ConfigJsonReader::new("config.json");
-        let product_config = product_config::Config::new(config_reader).unwrap();
-        let option_kind = product_config::OptionKind::Conf;
+        let product_config = ProductConfig::new(config_reader).unwrap();
+        let option_kind = OptionKind::Conf;
 
         let mut options = HashMap::new();
         if let Some(config) = &self.zk_spec.config {
             use stackable_zookeeper_crd::ser;
             let config = ser::to_hash_map(config).unwrap();
+            let config = config.into_iter().map(|(k, v)| (k, Some(v))).collect();
 
-            for (key, value) in config.iter() {
-                let result = product_config
-                    .validate("1.2.3", &option_kind, key, Some(value))
-                    .unwrap();
+            let config = product_config.get(
+                "1.2.3",
+                &option_kind,
+                "zoo.cfg",
+                Some("zookeeper-server"),
+                config,
+            );
 
-                options.insert(key.to_string(), value.to_string());
-            }
+            println!("{:?}", config);
         }
 
         // This builds the server string

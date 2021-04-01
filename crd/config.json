@@ -84,9 +84,14 @@
         "default_unit_type": "ms",
         "unit_in_value": "false"
       },
-      "required": "false",
-      "role": "zookeeper_server",
-      "restart_required": "true",
+      "roles": [
+        {
+          "name": "spark-master",
+          "required": true
+        }
+      ],
+      "as_of_version": "0.0.0",
+      "restart_required": true,
       "comment": "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java",
       "description": "The basic time unit in milliseconds used by ZooKeeper. It is used to do heartbeats and the minimum session timeout will be twice the tickTime."
     },
@@ -108,9 +113,14 @@
           "value": "2181"
         }
       ],
-      "required": "true",
-      "role": "zookeeper_server",
-      "restart_required": "true",
+      "roles": [
+        {
+          "name": "zookeeper-server",
+          "required": true
+        }
+      ],
+      "as_of_version": "0.0.0",
+      "restart_required": true,
       "comment": "See QuorumPeerConfig.java, I'm unsure what happens when this is set to 0, it might work, it might not",
       "description": "The port to listen for client connections; that is, the port that clients attempt to connect to."
     },
@@ -131,9 +141,14 @@
           "value": "/var/lib/zookeeper"
         }
       ],
-      "required": "true",
-      "role": "zookeeper_server",
-      "restart_required": "true",
+      "roles": [
+        {
+          "name": "zookeeper-server",
+          "required": true
+        }
+      ],
+      "as_of_version": "0.0.0",
+      "restart_required": true,
       "comment": "See QuorumPeerConfig.java",
       "description": "The location where ZooKeeper will store the in-memory database snapshots and, unless specified otherwise, the transaction log of updates to the database. Note: Be careful where you put the transaction log. A    dedicated transaction log device is key to consistent good performance. Putting the log on a busy device will adversely affect performance."
     },
@@ -154,9 +169,14 @@
         "type": "integer",
         "min": "1"
       },
-      "required": "true",
-      "role": "zookeeper_server",
-      "restart_required": "true",
+      "roles": [
+        {
+          "name": "zookeeper-server",
+          "required": true
+        }
+      ],
+      "as_of_version": "0.0.0",
+      "restart_required": true,
       "comment": "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java",
       "description": "Amount of time, in ticks (see `tickTime`), to allow followers to connect and sync to a leader. Increased this value as needed, if the amount of data managed by ZooKeeper is large."
     },
@@ -177,9 +197,14 @@
         "type": "integer",
         "min": "1"
       },
-      "required": "true",
-      "role": "zookeeper_server",
-      "restart_required": "true",
+      "roles": [
+        {
+          "name": "zookeeper-server",
+          "required": true
+        }
+      ],
+      "as_of_version": "0.0.0",
+      "restart_required": true,
       "comment": "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java",
       "description": "Amount of time, in ticks (see `tickTime`), to allow followers to sync with ZooKeeper. If followers fall too far behind a leader, they will be dropped. In other words: The number of ticks that can pass between sending a request and getting an acknowledgment before a followr is dropped."
     }

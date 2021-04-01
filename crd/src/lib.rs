@@ -65,15 +65,6 @@ impl ZooKeeperVersion {
     }
 }
 
-impl ZooKeeperVersion {
-    pub fn is_valid_upgrade(&self, to: &Self) -> Result<bool, SemVerError> {
-        let from_version = Version::parse(&self.to_string())?;
-        let to_version = Version::parse(&to.to_string())?;
-
-        Ok(to_version > from_version)
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZooKeeperConfiguration {
@@ -106,7 +97,9 @@ impl ZooKeeperClusterStatus {
 
 #[cfg(test)]
 mod tests {
-    use crate::ZooKeeperVersion;
+    use crate::{ZooKeeperConfiguration, ZooKeeperVersion};
+    use product_config::types::OptionKind;
+    use product_config::ProductConfig;
     use std::str::FromStr;
 
     #[test]
@@ -131,10 +124,10 @@ mod tests {
     fn test_serde() {
         let conf = ZooKeeperConfiguration {
             client_port: None,
-            data_dir: None,
-            init_limit: None,
+            data_dir: Some("/var/lib/foobar".to_string()),
+            init_limit: Some(4),
             sync_limit: None,
-            tick_time: Some(123),
+            tick_time: None,
         };
 
         use crate::ser;
@@ -144,14 +137,22 @@ mod tests {
         println!("{:?}", map);
 
         let config_reader = product_config::reader::ConfigJsonReader::new("config.json");
-        let product_config = product_config::Config::new(config_reader).unwrap();
-        let option_kind = product_config::OptionKind::Conf;
-        for (key, value) in map.iter() {
-            let result = product_config
-                .validate("1.2.3", &option_kind, key, Some(value))
-                .unwrap();
+        let product_config = ProductConfig::new(config_reader).unwrap();
+        let option_kind = OptionKind::Conf;
+        let config = map.into_iter().map(|(k, v)| (k, Some(v))).collect();
 
-            println!("{}", result);
+        let config = product_config.get(
+            "1.2.3",
+            &option_kind,
+            "zoo.cfg",
+            Some("zookeeper-server"),
+            &config,
+        );
+
+        println!("{:?}", config);
+
+        for (key, value) in config {
+            println!("Config Key: {}", key);
         }
     }
 }
