@@ -1240,9 +1240,9 @@ dependencies = [
 
 [[package]]
 name = "schemars"
-version = "0.8.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a24475737c47c5a97cd0858d09db5b0c01ade85d671ee569cd1a5a2c0c80a44"
+checksum = "f81b69175bfb19653b59983e78701ebda5ee6a6f1e4875f65f9b92e2efde48f3"
 dependencies = [
  "dyn-clone",
  "schemars_derive",
@@ -1252,9 +1252,9 @@ dependencies = [
 
 [[package]]
 name = "schemars_derive"
-version = "0.8.1"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5f0ccbfe5a97322d90f8b19604fa5b99dd8223540eb6e36c99a9125303e4c00"
+checksum = "f3a9f7bf22f96bc98cebd33a9286118c4e588b6a2fc26ab83469c18e12ae7678"
 dependencies = [
  "proc-macro2",
  "quote",
