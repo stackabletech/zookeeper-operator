@@ -65,6 +65,15 @@ impl ZooKeeperVersion {
     }
 }
 
+impl ZooKeeperVersion {
+    pub fn is_valid_upgrade(&self, to: &Self) -> Result<bool, SemVerError> {
+        let from_version = Version::parse(&self.to_string())?;
+        let to_version = Version::parse(&to.to_string())?;
+
+        Ok(to_version > from_version)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZooKeeperConfiguration {
@@ -89,18 +98,15 @@ pub struct ZooKeeperClusterStatus {
 
 impl ZooKeeperClusterStatus {
     pub fn target_image_name(&self) -> Option<String> {
-        self.target_version.as_ref().map(|version| {
-            format!(
-                "stackable/zookeeper:{}",
-                serde_json::json!(version).as_str().unwrap()
-            )
-        })
+        self.target_version
+            .as_ref()
+            .map(|version| format!("stackable/zookeeper:{}", version.to_string()))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{ZooKeeperConfiguration, ZooKeeperVersion};
+    use crate::ZooKeeperVersion;
     use std::str::FromStr;
 
     #[test]

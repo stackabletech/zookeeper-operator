@@ -22,11 +22,8 @@ use stackable_operator::error::OperatorResult;
 use stackable_operator::reconcile::{
     ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
-use stackable_operator::{config_map::create_config_map, finalizer, metadata, podutils, reconcile};
-use stackable_zookeeper_crd::{
-    ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperClusterStatus, ZooKeeperServer,
-    ZooKeeperVersion,
-};
+use stackable_operator::{create_config_map, finalizer, metadata, podutils, reconcile};
+use stackable_zookeeper_crd::{ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperServer};
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::pin::Pin;
@@ -682,6 +679,7 @@ impl ZooKeeperState {
 
     fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
         let version = self.context.resource.spec.version.clone();
+        // TODO: Replace with a function call into the crd crate
         let image_name = format!(
             "stackable/zookeeper:{}",
             serde_json::json!(version).as_str().expect("This should not fail as it comes from an enum, if this fails please file a bug report")

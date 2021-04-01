@@ -1,4 +1,4 @@
-= Stackable ZooKeeper Operator
+= Stackable Operator for Apache ZooKeeper
 
 This is an operator for Kubernetes that can manage https://zookeeper.apache.org/[Apache ZooKeeper] ensembles.
 
