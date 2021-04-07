@@ -822,15 +822,14 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    #[rstest(input, expected,
-        case(vec![1, 2, 3], 4),
-        case(vec![1, 3, 5], 2),
-        case(vec![], 1),
-        case(vec![3, 4, 6], 1),
-        case(vec![1], 2),
-        case(vec![2], 1),
-    )]
-    fn test_first_missing(input: Vec<usize>, expected: usize) {
+    #[rstest]
+    #[case(vec![1, 2, 3], 4)]
+    #[case(vec![1, 3, 5], 2)]
+    #[case(vec![], 1)]
+    #[case(vec![3, 4, 6], 1)]
+    #[case(vec![1], 2)]
+    #[case(vec![2], 1)]
+    fn test_first_missing(#[case] input: Vec<usize>, #[case] expected: usize) {
         let first = find_first_missing(&input);
         assert_eq!(first, expected);
     }
