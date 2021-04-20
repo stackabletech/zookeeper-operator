@@ -16,17 +16,17 @@ use tracing::{debug, error, info, trace, warn};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
+use stackable_operator::config_map;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
+use stackable_operator::krustlet;
+use stackable_operator::labels;
+use stackable_operator::pod_utils;
 use stackable_operator::reconcile::{
     ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
-use stackable_operator::krustlet;
 use stackable_operator::{finalizer, metadata};
-use stackable_operator::pod_utils;
-use stackable_operator::config_map;
-use stackable_operator::labels;
 use stackable_zookeeper_crd::{
     ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperClusterStatus, ZooKeeperServer,
     ZooKeeperVersion,
@@ -35,7 +35,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
-
 
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 
@@ -564,8 +563,6 @@ impl ZooKeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
-
-
     pub async fn delete_excess_pods(&self) -> ZooKeeperReconcileResult {
         trace!("Starting to delete excess pods",);
         let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
@@ -692,10 +689,7 @@ impl ZooKeeperState {
     }
 
     fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
-        let image_name = format!(
-            "stackable/zookeeper:{}",
-            self.get_version()
-        );
+        let image_name = format!("stackable/zookeeper:{}", self.get_version());
 
         let containers = vec![Container {
             image: Some(image_name),
@@ -750,7 +744,10 @@ impl ZooKeeperState {
     fn build_labels(&self, id: usize) -> BTreeMap<String, String> {
         let mut labels = BTreeMap::new();
         labels.insert(labels::APP_NAME_LABEL.to_string(), APP_NAME.to_string());
-        labels.insert(labels::APP_MANAGED_BY_LABEL.to_string(), MANAGED_BY.to_string());
+        labels.insert(
+            labels::APP_MANAGED_BY_LABEL.to_string(),
+            MANAGED_BY.to_string(),
+        );
         labels.insert(labels::APP_INSTANCE_LABEL.to_string(), self.context.name());
         labels.insert(labels::APP_VERSION_LABEL.to_string(), self.get_version());
         labels.insert(ID_LABEL.to_string(), id.to_string());
@@ -776,7 +773,11 @@ impl ReconciliationState for ZooKeeperState {
                 .await?
                 .then(self.read_existing_pod_information())
                 .await?
-                .then(self.context.handle_deletion(Box::pin(self.delete_all_pods()), FINALIZER_NAME, true))
+                .then(self.context.handle_deletion(
+                    Box::pin(self.delete_all_pods()),
+                    FINALIZER_NAME,
+                    true,
+                ))
                 .await?
                 .then(self.assign_ids())
                 .await?
@@ -834,7 +835,9 @@ pub async fn create_controller(client: Client) {
 
     let strategy = ZooKeeperStrategy::new();
 
-    controller.run(client, strategy, Duration::from_secs(10)).await;
+    controller
+        .run(client, strategy, Duration::from_secs(10))
+        .await;
 }
 
 #[cfg(test)]

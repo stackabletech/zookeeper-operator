@@ -1,5 +1,5 @@
-use stackable_operator::{client, error};
 use stackable_operator::logging;
+use stackable_operator::{client, error};
 use stackable_zookeeper_crd::ZooKeeperCluster;
 
 #[tokio::main]
