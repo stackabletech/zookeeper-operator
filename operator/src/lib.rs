@@ -682,14 +682,8 @@ impl ZooKeeperState {
         })
     }
 
-    fn get_version(&self) -> String {
-        // TODO: Replace with a function call into the crd crate
-        let version = self.context.resource.spec.version.clone();
-        serde_json::json!(version).to_string() //.expect("This should not fail as it comes from an enum, if this fails please file a bug report")
-    }
-
     fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
-        let image_name = format!("stackable/zookeeper:{}", self.get_version());
+        let image_name = format!("stackable/zookeeper:{}", self.context.resource.spec.version.to_string());
 
         let containers = vec![Container {
             image: Some(image_name),
@@ -749,7 +743,7 @@ impl ZooKeeperState {
             MANAGED_BY.to_string(),
         );
         labels.insert(labels::APP_INSTANCE_LABEL.to_string(), self.context.name());
-        labels.insert(labels::APP_VERSION_LABEL.to_string(), self.get_version());
+        labels.insert(labels::APP_VERSION_LABEL.to_string(), self.context.resource.spec.version.to_string());
         labels.insert(ID_LABEL.to_string(), id.to_string());
 
         labels
