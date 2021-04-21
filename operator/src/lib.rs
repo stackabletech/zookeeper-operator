@@ -683,7 +683,10 @@ impl ZooKeeperState {
     }
 
     fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
-        let image_name = format!("stackable/zookeeper:{}", self.context.resource.spec.version.to_string());
+        let image_name = format!(
+            "stackable/zookeeper:{}",
+            self.context.resource.spec.version.to_string()
+        );
 
         let containers = vec![Container {
             image: Some(image_name),
@@ -743,7 +746,10 @@ impl ZooKeeperState {
             MANAGED_BY.to_string(),
         );
         labels.insert(labels::APP_INSTANCE_LABEL.to_string(), self.context.name());
-        labels.insert(labels::APP_VERSION_LABEL.to_string(), self.context.resource.spec.version.to_string());
+        labels.insert(
+            labels::APP_VERSION_LABEL.to_string(),
+            self.context.resource.spec.version.to_string(),
+        );
         labels.insert(ID_LABEL.to_string(), id.to_string());
 
         labels
