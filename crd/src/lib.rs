@@ -1,5 +1,5 @@
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
-use kube_derive::CustomResource;
+use kube::CustomResource;
 use schemars::JsonSchema;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
