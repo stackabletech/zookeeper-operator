@@ -68,7 +68,10 @@
       "option_names": [
         {
           "name": "tickTime",
-          "kind": "conf",
+          "kind": {
+            "type": "conf",
+            "file": "zoo.cfg"
+          },
           "config_file": "zoo.cfg"
         }
       ],
@@ -86,7 +89,7 @@
       },
       "roles": [
         {
-          "name": "spark-master",
+          "name": "zookeeper-server",
           "required": true
         }
       ],
@@ -99,7 +102,10 @@
       "option_names": [
         {
           "name": "clientPort",
-          "kind": "conf",
+          "kind": {
+            "type": "conf",
+            "file": "zoo.cfg"
+          },
           "config_file": "zoo.cfg"
         }
       ],
@@ -108,7 +114,7 @@
         "min": "1",
         "unit": "port"
       },
-      "recommended_value": [
+      "recommended_values": [
         {
           "value": "2181"
         }
@@ -128,7 +134,10 @@
       "option_names": [
         {
           "name": "dataDir",
-          "kind": "conf",
+          "kind": {
+            "type": "conf",
+            "file": "zoo.cfg"
+          },
           "config_file": "zoo.cfg"
         }
       ],
@@ -136,7 +145,7 @@
         "type": "string",
         "unit": "directory"
       },
-      "recommended_value": [
+      "recommended_values": [
         {
           "value": "/var/lib/zookeeper"
         }
@@ -156,7 +165,10 @@
       "option_names": [
         {
           "name": "initLimit",
-          "kind": "conf",
+          "kind": {
+            "type": "conf",
+            "file": "zoo.cfg"
+          },
           "config_file": "zoo.cfg"
         }
       ],
@@ -184,7 +196,10 @@
       "option_names": [
         {
           "name": "syncLimit",
-          "kind": "conf",
+          "kind": {
+            "type": "conf",
+            "file": "zoo.cfg"
+          },
           "config_file": "zoo.cfg"
         }
       ],

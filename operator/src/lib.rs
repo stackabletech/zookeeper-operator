@@ -25,7 +25,7 @@ use stackable_operator::error::OperatorResult;
 use stackable_operator::reconcile::{
     ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
-use stackable_operator::{config_map::create_config_map, finalizer, metadata, podutils, reconcile};
+use stackable_operator::{config_map::create_config_map, finalizer, metadata, pod_utils};
 use stackable_zookeeper_crd::{
     ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperClusterStatus, ZooKeeperServer,
     ZooKeeperVersion,
@@ -34,8 +34,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
-
-const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 
 const CLUSTER_NAME_LABEL: &str = "zookeeper.stackable.tech/cluster-name";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
@@ -445,7 +443,7 @@ impl ZooKeeperState {
 
             // At the moment we'll wait for all pods to be available and ready before we might enact any changes to existing ones.
             // TODO: Only do this next check if we want "rolling" functionality
-            if !podutils::is_pod_running_and_ready(pod) {
+            if !pod_utils::is_pod_running_and_ready(pod) {
                 info!(
                     "Waiting for Pod [{}] to be running and ready",
                     Meta::name(pod)
@@ -531,7 +529,9 @@ impl ZooKeeperState {
                     status.target_image_name()
                 );
                 self.context.client.delete(&pod).await?;
-                return Ok(reconcile::create_requeuing_reconcile_function_action(10));
+                return Ok(ReconcileFunctionAction::Requeue(
+                    self.context.requeue_timeout,
+                ));
             }
         }
 
@@ -599,21 +599,15 @@ impl ZooKeeperState {
     ) -> Result<(), Error> {
         let config_reader = product_config::reader::ConfigJsonReader::new("config.json");
         let product_config = ProductConfig::new(config_reader).unwrap();
-        let option_kind = OptionKind::Conf;
+        let option_kind = OptionKind::Conf("zoo.cfg".to_string());
 
         let mut options = HashMap::new();
         if let Some(config) = &self.zk_spec.config {
             use stackable_zookeeper_crd::ser;
             let config = ser::to_hash_map(config).unwrap();
-            let config = config.into_iter().map(|(k, v)| (k, Some(v))).collect();
 
-            let config = product_config.get(
-                "1.2.3",
-                &option_kind,
-                "zoo.cfg",
-                Some("zookeeper-server"),
-                config,
-            );
+            let config =
+                product_config.get("1.2.3", &option_kind, Some("zookeeper-server"), &config);
 
             println!("{:?}", config);
         }
@@ -798,10 +792,6 @@ impl ControllerStrategy for ZooKeeperStrategy {
     type Item = ZooKeeperCluster;
     type State = ZooKeeperState;
     type Error = Error;
-
-    fn finalizer_name(&self) -> String {
-        FINALIZER_NAME.to_string()
-    }
 
     async fn init_reconcile_state(
         &self,

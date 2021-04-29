@@ -65,6 +65,15 @@ impl ZooKeeperVersion {
     }
 }
 
+enum ConfigOption<T> {
+    Simple(T),
+    Complex {
+        value: T,
+        ignore_warn: bool,
+        ignore_err: bool,
+    },
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZooKeeperConfiguration {
@@ -123,8 +132,8 @@ mod tests {
     #[test]
     fn test_serde() {
         let conf = ZooKeeperConfiguration {
-            client_port: None,
-            data_dir: Some("/var/lib/foobar".to_string()),
+            client_port: Some(0),
+            data_dir: None,
             init_limit: Some(4),
             sync_limit: None,
             tick_time: None,
@@ -132,22 +141,15 @@ mod tests {
 
         use crate::ser;
 
-        let map = ser::to_hash_map(&conf).unwrap();
+        let config = ser::to_hash_map(&conf).unwrap();
 
-        println!("{:?}", map);
+        println!("{:?}", config);
 
         let config_reader = product_config::reader::ConfigJsonReader::new("config.json");
         let product_config = ProductConfig::new(config_reader).unwrap();
-        let option_kind = OptionKind::Conf;
-        let config = map.into_iter().map(|(k, v)| (k, Some(v))).collect();
+        let option_kind = OptionKind::Conf("zoo.cfg".to_string());
 
-        let config = product_config.get(
-            "1.2.3",
-            &option_kind,
-            "zoo.cfg",
-            Some("zookeeper-server"),
-            &config,
-        );
+        let config = product_config.get("1.2.3", &option_kind, Some("zookeeper-server"), &config);
 
         println!("{:?}", config);
 
