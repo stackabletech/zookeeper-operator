@@ -12,36 +12,48 @@ use stackable_operator::pod_utils::is_pod_running_and_ready;
 use std::collections::BTreeMap;
 use tracing::{debug, warn};
 
+/// Contains all necessary information to configure a connection with this
+/// Zookeeper instance
+#[allow(dead_code)]
 pub struct ZookeeperConnectionInformation {
     pub connection_string: String,
 }
 
+/// Returns connection information for a ZookeeperCluster custom resource
+///
+/// # Arguments
+///
+/// * `client` - A [`stackable_operator::client::Client`] used to access the Kubernetes cluster
+/// * `zk_name` - The name of the ZookeeperCluster cr
+/// * `zk_namespace` - The namespace this ZookeeperCluster cr is in, if not provided will
+///                     default to all namespaces
+/// * `chroot` - If provided, this will be appended as chroot to the connection string
+///
+#[allow(dead_code)]
 pub async fn get_zk_connection_info(
     client: &Client,
-    zookeeper_reference: ZooKeeperCluster,
+    zk_name: &str,
+    zk_namespace: Option<&str>,
+    chroot: Option<&str>,
 ) -> OperatorResult<ZookeeperConnectionInformation> {
-    let zk_name = zookeeper_reference.metadata.name.unwrap();
-    let zk_namespace = zookeeper_reference.metadata.namespace.unwrap();
-
-    let zk_cluster = check_zookeeper_reference(client, &zk_name, &zk_namespace).await?;
+    let zk_cluster = check_zookeeper_reference(client, zk_name, zk_namespace).await?;
 
     let zk_pods = client
         .list_with_label_selector(None, &get_match_labels(&zk_name))
         .await?;
 
-    let connection_string = get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, None)?;
+    let connection_string = get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, chroot)?;
 
     Ok(ZookeeperConnectionInformation { connection_string })
 }
 
+// Build a Labelselector that applies only to pods belonging to the cluster instance referenced
+// by `name`
 fn get_match_labels(name: &str) -> LabelSelector {
     let mut zk_pod_matchlabels = BTreeMap::new();
-    // TODO: retrieve these from the zookeeper crd crate - which means moving them there first :)
     zk_pod_matchlabels.insert(String::from(APP_NAME_LABEL), String::from(APP_NAME));
     zk_pod_matchlabels.insert(String::from(APP_MANAGED_BY_LABEL), String::from(MANAGED_BY));
-
     zk_pod_matchlabels.insert(String::from(APP_INSTANCE_LABEL), name.to_string());
-    zk_pod_matchlabels.insert(String::from(APP_NAME_LABEL), String::from("zookeeper"));
 
     LabelSelector {
         match_labels: Some(zk_pod_matchlabels),
@@ -49,30 +61,38 @@ fn get_match_labels(name: &str) -> LabelSelector {
     }
 }
 
-//
+// Check in kubernetes, whether the zookeeper object referenced by `zk_name` and `zk_namespace`
+// exists.
+// If it exists the object will be returned
 async fn check_zookeeper_reference(
     client: &Client,
     zk_name: &str,
-    zk_namespace: &str,
+    zk_namespace: Option<&str>,
 ) -> OperatorResult<ZooKeeperCluster> {
     debug!(
         "Checking ZookeeperReference if [{}] exists in namespace [{}].",
-        zk_name, zk_namespace
+        zk_name,
+        zk_namespace.unwrap_or("<>")
     );
-    let api: Api<ZooKeeperCluster> = client.get_namespaced_api(zk_namespace);
+    let api: Api<ZooKeeperCluster> = client.get_api(zk_namespace);
 
     let zk_cluster = api.get(zk_name).await;
+
     // TODO: We need to watch the ZooKeeper resource and do _something_ when it goes down or when its nodes are changed
 
     zk_cluster.map_err(|err| {
         warn!(?err,
                         "Referencing a ZooKeeper cluster that does not exist (or some other error while fetching it): [{}/{}], we will requeue and check again",
-                        zk_namespace,
+                        zk_namespace.unwrap_or("<>"),
                         zk_name
                     );
                     KubeError {source: err}})
 }
 
+// Builds the actual connection string after all necessary information has been retrieved.
+// Takes a list of pods belonging to this cluster from which the hostnames are retrieved and
+// the cluster spec itself, from which the port per host will be retrieved (unimplemented at
+// this time)
 fn get_zk_connection_string_from_pods(
     zookeeper_spec: ZooKeeperClusterSpec,
     zk_pods: Vec<Pod>,
@@ -82,15 +102,34 @@ fn get_zk_connection_string_from_pods(
 
     for pod in zk_pods {
         if !is_pod_running_and_ready(&pod) {
-            debug!(
+            // TODO: Do we really want to fail in this case?
+            //  The current handling would require other operators using this
+            //  To requeue on error and wait until the cluster is fully functioning before
+            //  retrieving the connect string.
+            let err_message = format!(
                 "Pod [{:?}] is assigned to this cluster but not ready, aborting.. ",
                 pod.metadata.name
             );
+            debug!("{}", &err_message);
+            // TODO: This is not the correct error type, need to add one in operator-rs
             return Err(InvalidName {
-                errors: vec![String::from("pod not ready")],
+                errors: vec![err_message],
             });
         }
-        let node_name = pod.spec.unwrap().node_name.unwrap();
+
+        let node_name = match pod.spec.and_then(|spec| spec.node_name) {
+            None => {
+                let err_message = format!( "Pod [{:?}] is does not have node_name set, might not be scheduled yet, aborting.. ",
+                                           pod.metadata.name);
+                debug!("{}", &err_message);
+                // TODO: This is not the correct error type, need to add one in operator-rs
+                return Err(InvalidName {
+                    errors: vec![err_message],
+                });
+            }
+            Some(node_name) => node_name,
+        };
+
         let role_group = match pod
             .metadata
             .labels
@@ -108,6 +147,11 @@ fn get_zk_connection_string_from_pods(
         server_and_port_list.push((node_name, get_zk_port(&zookeeper_spec, &role_group)?));
     }
 
+    // Sort list by hostname to make resulting connection strings predictable
+    // Shouldn't matter for connectivity but makes testing easier and avoids unnecessary
+    // changes to the infrastructure
+    server_and_port_list.sort_by(|(host1, _), (host2, _)| host1.cmp(host2));
+
     let conn_string = server_and_port_list
         .iter()
         .map(|(host, port)| format!("{}:{}", host, port))
@@ -121,6 +165,10 @@ fn get_zk_connection_string_from_pods(
     }
 }
 
+// Retrieve the port for the specified rolegroup from the cluster spec
+// TODO: Currently hard coded to 2181 as we do not support this setting yet.
+//  Depends on https://github.com/stackabletech/zookeeper-operator/pull/71
+//  Depends on https://github.com/stackabletech/zookeeper-operator/issues/85
 fn get_zk_port(_zk_cluster: &ZooKeeperClusterSpec, _role_group: &str) -> OperatorResult<u16> {
     Ok(2181)
 }
@@ -161,12 +209,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case(indoc! {"
-      version: 3.4.14
-      servers:
-        - node_name: debian
-    "},
-        indoc! {"
+    #[case::single_pod_no_chroot(
+      indoc! {"
+        version: 3.4.14
+        servers:
+          - node_name: debian
+      "},
+      indoc! {"
         - apiVersion: v1
           kind: Pod
           metadata:
@@ -183,16 +232,17 @@ mod tests {
             conditions:
               - type: Ready
                 status: True
-        "},
-        None,
-        "debian:2181"
+      "},
+      None,
+      "debian:2181"
 )]
-    #[case(indoc! {"
-      version: 3.4.14
-      servers:
-        - node_name: worker-1.stackable.tech
-    "},
-    indoc! {"
+    #[case::single_pod_with_chroot(
+      indoc! {"
+        version: 3.4.14
+        servers:
+          - node_name: worker-1.stackable.tech
+      "},
+      indoc! {"
         - apiVersion: v1
           kind: Pod
           metadata:
@@ -209,32 +259,17 @@ mod tests {
             conditions:
               - type: Ready
                 status: True
-        "},
-    Some("dev"),
-    "worker-1.stackable.tech:2181/dev"
+      "},
+      Some("dev"),
+      "worker-1.stackable.tech:2181/dev"
     )]
-    #[case(indoc! {"
-      version: 3.4.14
-      servers:
-        - node_name: debian
-    "},
-    indoc! {"
-        - apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test
-            labels:
-              app.kubernetes.io/name: zookeeper
-              app.kubernetes.io/role-group: default
-              app.kubernetes.io/instance: test
-          spec:
-            nodeName: worker-1.stackable.demo
-            containers: []
-          status:
-            phase: Running
-            conditions:
-              - type: Ready
-                status: True
+    #[case::multiple_pods_wrong_order(
+      indoc! {"
+        version: 3.4.14
+        servers:
+          - node_name: debian
+      "},
+      indoc! {"
         - apiVersion: v1
           kind: Pod
           metadata:
@@ -251,9 +286,25 @@ mod tests {
             conditions:
               - type: Ready
                 status: True
-        "},
-    Some("prod"),
-    "worker-1.stackable.demo:2181,worker-2.stackable.demo:2181/prod"
+        - apiVersion: v1
+          kind: Pod
+          metadata:
+            name: test
+            labels:
+              app.kubernetes.io/name: zookeeper
+              app.kubernetes.io/role-group: default
+              app.kubernetes.io/instance: test
+          spec:
+            nodeName: worker-1.stackable.demo
+            containers: []
+          status:
+            phase: Running
+            conditions:
+              - type: Ready
+                status: True
+      "},
+      Some("prod"),
+      "worker-1.stackable.demo:2181,worker-2.stackable.demo:2181/prod"
     )]
     fn get_connection_string(
         #[case] zookeeper_spec: &str,
@@ -271,12 +322,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case(indoc! {"
-      version: 3.4.14
-      servers:
+    #[case::pending_pod(
+      indoc! {"
+        version: 3.4.14
+        servers:
         - node_name: debian
-    "},
-    indoc! {"
+      "},
+      indoc! {"
         - apiVersion: v1
           kind: Pod
           metadata:
@@ -309,15 +361,16 @@ mod tests {
             conditions:
               - type: Ready
                 status: True
-        "},
-    Some("prod"),
+      "},
+      Some("prod"),
     )]
-    #[case(indoc! {"
-      version: 3.4.14
-      servers:
-        - node_name: debian
-    "},
-    indoc! {"
+    #[case::missing_ready_condition(
+      indoc! {"
+        version: 3.4.14
+        servers:
+          - node_name: debian
+      "},
+      indoc! {"
         - apiVersion: v1
           kind: Pod
           metadata:
@@ -332,30 +385,58 @@ mod tests {
           status:
             phase: Running
         "},
-    Some("prod"),
+      Some("prod"),
     )]
-    #[case(indoc! {"
-      version: 3.4.14
-      servers:
-        - node_name: debian
-    "},
-    indoc! {"
+    #[case::missing_mandatory_label(
+      indoc! {"
+        version: 3.4.14
+        servers:
+          - node_name: debian
+      "},
+      indoc! {"
         - apiVersion: v1
           kind: Pod
           metadata:
             name: test
             labels:
-              app.kubernetes.io/role-group: default
+              app.kubernetes.io/name: zookeeper
               app.kubernetes.io/instance: test
           spec:
             nodeName: worker-1.stackable.demo
             containers: []
           status:
             phase: Running
-        "},
-    Some("prod"),
+            conditions:
+              - type: Ready
+                status: True
+      "},
+      Some("prod"),
     )]
-
+    #[case::missing_hostname(
+      indoc! {"
+        version: 3.4.14
+        servers:
+          - node_name: debian
+      "},
+      indoc! {"
+        - apiVersion: v1
+          kind: Pod
+          metadata:
+            name: test
+            labels:
+              app.kubernetes.io/name: zookeeper
+              app.kubernetes.io/role-group: default
+              app.kubernetes.io/instance: test
+          spec:
+            containers: []
+          status:
+            phase: Running
+            conditions:
+              - type: Ready
+                status: True
+      "},
+      Some("prod"),
+    )]
     fn get_connection_string_should_fail(
         #[case] zookeeper_spec: &str,
         #[case] zk_pods: &str,
