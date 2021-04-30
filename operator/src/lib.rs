@@ -29,17 +29,13 @@ use stackable_operator::reconcile::{
 use stackable_operator::{finalizer, metadata};
 use stackable_zookeeper_crd::{
     ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperClusterStatus, ZooKeeperServer,
-    ZooKeeperVersion,
+    ZooKeeperVersion, APP_NAME, FINALIZER_NAME, MANAGED_BY,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
-const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
-
-const APP_NAME: &str = "zookeeper";
-const MANAGED_BY: &str = "stackable-zookeeper";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
 
 type ZooKeeperReconcileResult = ReconcileResult<error::Error>;
