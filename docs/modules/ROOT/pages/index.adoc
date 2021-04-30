@@ -2,5 +2,4 @@
 
 This is an operator for Kubernetes that can manage https://zookeeper.apache.org/[Apache ZooKeeper] ensembles.
 
-WARNING: This operator does _not_ work with containers/container images. It relies on the https://github.com/stackabletech/agent/[Stackable Agent] to run on "bare metal" via systemd
-
+WARNING: This operator does _not_ work with containers/container images. It relies on the https://github.com/stackabletech/agent/[Stackable Agent] to run on "bare metal" via systemd.
