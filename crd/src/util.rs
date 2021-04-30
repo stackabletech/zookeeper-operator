@@ -1,14 +1,15 @@
+use crate::error::Error::{
+    IllegalChroot, KubeError, ObjectWithoutName, PodMissingLabels, PodWithoutHostname,
+};
+use crate::error::ZookeeperOperatorResult;
 use crate::{ZooKeeperCluster, ZooKeeperClusterSpec, APP_NAME, MANAGED_BY};
 use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use kube::Api;
 use stackable_operator::client::Client;
-use stackable_operator::error::Error::{InvalidName, KubeError, MissingObjectKey};
-use stackable_operator::error::OperatorResult;
 use stackable_operator::labels::{
     APP_INSTANCE_LABEL, APP_MANAGED_BY_LABEL, APP_NAME_LABEL, APP_ROLE_GROUP_LABEL,
 };
-use stackable_operator::pod_utils::is_pod_running_and_ready;
 use std::collections::BTreeMap;
 use tracing::{debug, warn};
 
@@ -35,16 +36,68 @@ pub async fn get_zk_connection_info(
     zk_name: &str,
     zk_namespace: Option<&str>,
     chroot: Option<&str>,
-) -> OperatorResult<ZookeeperConnectionInformation> {
+) -> ZookeeperOperatorResult<ZookeeperConnectionInformation> {
+    let clean_chroot = check_chroot(chroot)?;
+
     let zk_cluster = check_zookeeper_reference(client, zk_name, zk_namespace).await?;
 
     let zk_pods = client
         .list_with_label_selector(None, &get_match_labels(&zk_name))
         .await?;
 
-    let connection_string = get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, chroot)?;
+    let connection_string =
+        get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, clean_chroot)?;
 
     Ok(ZookeeperConnectionInformation { connection_string })
+}
+
+// Checks if the provided chroot is legal to be used as a znode according to:
+// https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkDataModel
+//
+// Additionally, if the chroot starts or ends with a '/' these are stripped
+fn check_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<&str>> {
+    let chroot = match chroot {
+        None => return Ok(None),
+        Some(chroot) => chroot,
+    };
+
+    let chroot = chroot.trim_start_matches('/');
+    let chroot = chroot.trim_end_matches('/');
+
+    if chroot.is_empty() {
+        return Err(IllegalChroot {
+            chroot: chroot.to_string(),
+            message: "chroot was provided but empty".to_string(),
+        });
+    }
+
+    let reserved_words = vec![".", "..", "zookeeper"];
+
+    if reserved_words.contains(&chroot) {
+        return Err(IllegalChroot {
+            chroot: chroot.to_string(),
+            message: format!("{} is a reserved word and cannot be used", chroot),
+        });
+    }
+
+    // The value E000 in the list below does not exactly match what is written in the Zookeeper
+    // docs, this is because rust `char`s cannot represent surrogates, so for D800 we moved this
+    // to the next _legal_ value of E000
+    if chroot.chars().any(|character| {
+        matches!(character,'\u{0000}'
+        | '\u{0001}'..='\u{001F}'
+        | '\u{007F}'
+        | '\u{009F}'
+        | '\u{E000}'..='\u{F8FF}'
+        | '\u{FFF0}'..='\u{FFFF}' )
+    }) {
+        return Err(IllegalChroot {
+            chroot: chroot.to_string(),
+            message: "string contained prohibited unicode characters".to_string(),
+        });
+    }
+
+    Ok(Some(chroot))
 }
 
 // Build a Labelselector that applies only to pods belonging to the cluster instance referenced
@@ -68,7 +121,7 @@ async fn check_zookeeper_reference(
     client: &Client,
     zk_name: &str,
     zk_namespace: Option<&str>,
-) -> OperatorResult<ZooKeeperCluster> {
+) -> ZookeeperOperatorResult<ZooKeeperCluster> {
     debug!(
         "Checking ZookeeperReference if [{}] exists in namespace [{}].",
         zk_name,
@@ -97,35 +150,24 @@ fn get_zk_connection_string_from_pods(
     zookeeper_spec: ZooKeeperClusterSpec,
     zk_pods: Vec<Pod>,
     chroot: Option<&str>,
-) -> OperatorResult<String> {
+) -> ZookeeperOperatorResult<String> {
     let mut server_and_port_list = Vec::new();
 
     for pod in zk_pods {
-        if !is_pod_running_and_ready(&pod) {
-            // TODO: Do we really want to fail in this case?
-            //  The current handling would require other operators using this
-            //  To requeue on error and wait until the cluster is fully functioning before
-            //  retrieving the connect string.
-            let err_message = format!(
-                "Pod [{:?}] is assigned to this cluster but not ready, aborting.. ",
-                pod.metadata.name
-            );
-            debug!("{}", &err_message);
-            // TODO: This is not the correct error type, need to add one in operator-rs
-            return Err(InvalidName {
-                errors: vec![err_message],
-            });
-        }
+        let pod_name = match pod.metadata.name {
+            None => {
+                return Err(ObjectWithoutName {
+                    reference: "ERR_ZK_POD_WITHOUT_NAME".to_string(),
+                })
+            }
+            Some(pod_name) => pod_name,
+        };
 
         let node_name = match pod.spec.and_then(|spec| spec.node_name) {
             None => {
-                let err_message = format!( "Pod [{:?}] is does not have node_name set, might not be scheduled yet, aborting.. ",
-                                           pod.metadata.name);
-                debug!("{}", &err_message);
-                // TODO: This is not the correct error type, need to add one in operator-rs
-                return Err(InvalidName {
-                    errors: vec![err_message],
-                });
+                debug!("Pod [{:?}] is does not have node_name set, might not be scheduled yet, aborting.. ",
+                       pod_name);
+                return Err(PodWithoutHostname { pod: pod_name });
             }
             Some(node_name) => node_name,
         };
@@ -137,8 +179,9 @@ fn get_zk_connection_string_from_pods(
             .get(APP_ROLE_GROUP_LABEL)
         {
             None => {
-                return Err(MissingObjectKey {
-                    key: APP_ROLE_GROUP_LABEL,
+                return Err(PodMissingLabels {
+                    labels: vec![String::from(APP_ROLE_GROUP_LABEL)],
+                    pod: pod_name,
                 })
             }
             Some(role_group) => role_group.to_owned(),
@@ -169,7 +212,10 @@ fn get_zk_connection_string_from_pods(
 // TODO: Currently hard coded to 2181 as we do not support this setting yet.
 //  Depends on https://github.com/stackabletech/zookeeper-operator/pull/71
 //  Depends on https://github.com/stackabletech/zookeeper-operator/issues/85
-fn get_zk_port(_zk_cluster: &ZooKeeperClusterSpec, _role_group: &str) -> OperatorResult<u16> {
+fn get_zk_port(
+    _zk_cluster: &ZooKeeperClusterSpec,
+    _role_group: &str,
+) -> ZookeeperOperatorResult<u16> {
     Ok(2181)
 }
 
@@ -209,6 +255,34 @@ mod tests {
     }
 
     #[rstest]
+    #[case::trim_leading_slash("/test", "test")]
+    #[case::trim_trailing_slash("test/", "test")]
+    #[case::trim_leading_and_trailing_slash("/test/", "test")]
+    #[case::no_trim("test", "test")]
+    #[case::unicode_characters("Spade: ♠", "Spade: ♠")]
+    #[case::unicode_characters("/Heart: ♥", "Heart: ♥")]
+    #[case::unicode_characters("Diamond: ♦/", "Diamond: ♦")]
+    #[case::unicode_characters("/Club: ♣/", "Club: ♣")]
+    fn valid_chroot(#[case] input: &str, #[case] expected_output: &str) {
+        let output = check_chroot(Some(input))
+            .expect("Valid chroots shouldn't return an error.")
+            .expect("Chroot should not be none");
+        assert_eq!(output, expected_output);
+    }
+
+    #[rstest]
+    #[case::reserved_word("zookeeper")]
+    #[case::reserved_word_with_leading_slash("/..")]
+    #[case::reserved_word_with_trailing_slash("./")]
+    #[case::empty("")]
+    #[case::forbidden_nullcharacter("\u{0000}")]
+    #[case::forbidden_character_from_range("hello\u{E000}test")]
+    #[case::forbidden_character_leading_slash("/_\u{FFFF}_h_el.lo_")]
+    fn invalid_chroot(#[case] input: &str) {
+        let output = check_chroot(Some(input));
+        assert!(output.is_err());
+    }
+    #[rstest]
     #[case::single_pod_no_chroot(
       indoc! {"
         version: 3.4.14
@@ -227,11 +301,6 @@ mod tests {
           spec:
             nodeName: debian
             containers: []
-          status:
-            phase: Running
-            conditions:
-              - type: Ready
-                status: True
       "},
       None,
       "debian:2181"
@@ -254,11 +323,6 @@ mod tests {
           spec:
             nodeName: worker-1.stackable.tech
             containers: []
-          status:
-            phase: Running
-            conditions:
-              - type: Ready
-                status: True
       "},
       Some("dev"),
       "worker-1.stackable.tech:2181/dev"
@@ -281,11 +345,6 @@ mod tests {
           spec:
             nodeName: worker-2.stackable.demo
             containers: []
-          status:
-            phase: Running
-            conditions:
-              - type: Ready
-                status: True
         - apiVersion: v1
           kind: Pod
           metadata:
@@ -297,11 +356,6 @@ mod tests {
           spec:
             nodeName: worker-1.stackable.demo
             containers: []
-          status:
-            phase: Running
-            conditions:
-              - type: Ready
-                status: True
       "},
       Some("prod"),
       "worker-1.stackable.demo:2181,worker-2.stackable.demo:2181/prod"
@@ -322,71 +376,6 @@ mod tests {
     }
 
     #[rstest]
-    #[case::pending_pod(
-      indoc! {"
-        version: 3.4.14
-        servers:
-        - node_name: debian
-      "},
-      indoc! {"
-        - apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test
-            labels:
-              app.kubernetes.io/name: zookeeper
-              app.kubernetes.io/role-group: default
-              app.kubernetes.io/instance: test
-          spec:
-            nodeName: worker-1.stackable.demo
-            containers: []
-          status:
-            phase: Running
-            conditions:
-              - type: Ready
-                status: True
-        - apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test
-            labels:
-              app.kubernetes.io/name: zookeeper
-              app.kubernetes.io/role-group: default
-              app.kubernetes.io/instance: test
-          spec:
-            nodeName: worker-2.stackable.demo
-            containers: []
-          status:
-            phase: Pending
-            conditions:
-              - type: Ready
-                status: True
-      "},
-      Some("prod"),
-    )]
-    #[case::missing_ready_condition(
-      indoc! {"
-        version: 3.4.14
-        servers:
-          - node_name: debian
-      "},
-      indoc! {"
-        - apiVersion: v1
-          kind: Pod
-          metadata:
-            name: test
-            labels:
-              app.kubernetes.io/name: zookeeper
-              app.kubernetes.io/role-group: default
-              app.kubernetes.io/instance: test
-          spec:
-            nodeName: worker-1.stackable.demo
-            containers: []
-          status:
-            phase: Running
-        "},
-      Some("prod"),
-    )]
     #[case::missing_mandatory_label(
       indoc! {"
         version: 3.4.14

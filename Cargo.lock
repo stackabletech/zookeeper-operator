@@ -1553,6 +1553,7 @@ dependencies = [
  "stackable-operator",
  "strum",
  "strum_macros",
+ "thiserror",
  "tracing",
 ]
 
