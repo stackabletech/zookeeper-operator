@@ -260,9 +260,9 @@ mod tests {
     #[case::trim_leading_and_trailing_slash("/test/", "test")]
     #[case::no_trim("test", "test")]
     #[case::unicode_characters("Spade: ♠", "Spade: ♠")]
-    #[case::unicode_characters("/Heart: ♥", "Heart: ♥")]
-    #[case::unicode_characters("Diamond: ♦/", "Diamond: ♦")]
-    #[case::unicode_characters("/Club: ♣/", "Club: ♣")]
+    #[case::unicode_characters_leading_slash("/Heart: ♥", "Heart: ♥")]
+    #[case::unicode_characters_trailing_slash("Diamond: ♦/", "Diamond: ♦")]
+    #[case::unicode_characters_both_slashes("/Club: ♣/", "Club: ♣")]
     fn valid_chroot(#[case] input: &str, #[case] expected_output: &str) {
         let output = check_chroot(Some(input))
             .expect("Valid chroots shouldn't return an error.")
