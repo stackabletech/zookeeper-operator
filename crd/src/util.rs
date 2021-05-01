@@ -95,15 +95,15 @@ pub fn is_valid_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<&
         });
     }
 
-    let _ = is_valid_node(chroot)?;
+    is_valid_node(chroot)?;
 
     Ok(Some(chroot))
 }
 
-/// Check if the name is a valid nome for a znode in Zookeeper
-/// This does not currently fail on presence of '/' which would in my opinion
-/// be a valid znode, but signify a nested structure
-// We may want to revisit this later depending on how exactly this code is used
+/// Check if the name is a valid nome for a znode in ZooHeeper
+/// This does not currently fail on presence of '/' as this would simply be a nested
+/// path (like a subdirectory in a folder structure)
+/// We may want to revisit this later depending on how exactly this code is used
 ///
 /// # Arguments
 ///
