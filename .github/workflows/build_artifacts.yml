@@ -8,51 +8,63 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  REPO_APT_DEV_URL: https://repo.stackable.tech/repository/deb-dev
+  REPO_APT_NIGHTLY_URL: https://repo.stackable.tech/repository/deb-nightly
+  REPO_RPM_DEV_URL: https://repo.stackable.tech/repository/rpm-dev
+  REPO_RPM_NIGHTLY_URL: https://repo.stackable.tech/repository/rpm-nightly
 
 jobs:
   debian10:
     runs-on: ubuntu-latest
     steps:
-      - name: event
-        run: echo "<${{ github.event}}>"
-      - name: event_name
-        run: echo "<${{ github.event_name}}>"
-      - name: base_ref
-        run: echo "<${{ github.base_ref}}>"
-      - name: head_ref
-        run: echo "<${{ github.head_ref}}>"
-      - name: ref
-        run: echo "<${{ github.ref}}>"
-#      - uses: actions/checkout@v2
-#      - name: Build
-#        run: ~/.cargo/bin/cargo +nightly build --verbose --release
-#      - name: Build apt package
-#        run: ~/.cargo/bin/cargo deb --manifest-path server/Cargo.toml --no-build
-#      - name: Publish apt package
-#        run: >-
-#          /usr/bin/curl
-#          --fail
-#          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
-#          -H "Content-Type: multipart/form-data"
-#          --data-binary "@./$(find target/debian/ -name *.deb)"
-#          "https://repo.stackable.tech/repository/deb-nightly/"
-#
-#  centos:
-#    runs-on: centos${{ matrix.node }}
-#    strategy:
-#      matrix:
-#        node: [ 7, 8 ]
-#    steps:
-#      - uses: actions/checkout@v2
-#      - name: Build
-#        run: ~/.cargo/bin/cargo +nightly build --verbose --release
-#      - name: Build RPM package
-#        run: server/packaging/buildrpm.sh stackable-zookeeper-operator-server
-#      - name: Publish RPM package
-#        run: >-
-#          /usr/bin/curl
-#          --fail
-#          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
-#          --upload-file "./$(find  target/rpm/RPMS/x86_64/ -name *.rpm)"
-#          "https://repo.stackable.tech/repository/rpm-nightly/el${{ matrix.node }}/"
-#
+      - uses: actions/checkout@v2
+      - name: Build
+        run: ~/.cargo/bin/cargo +nightly build --verbose --release
+      - name: Build apt package
+        run: ~/.cargo/bin/cargo deb --manifest-path server/Cargo.toml --no-build
+      - name: Publish nightly apt package
+        if:  ${{ github.event_name == 'push' && github.ref == 'refs/heads/main'  }}
+        run: >-
+          /usr/bin/curl
+          --fail
+          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+          -H "Content-Type: multipart/form-data"
+          --data-binary "@./$(find target/debian/ -name *.deb)"
+          "${{REPO_APT_NIGHTLY_URL}}"
+      - name: Publish dev apt package
+        if: ${{ github.event_name == 'pull_request' }}
+        run: >-
+          /usr/bin/curl
+          --fail
+          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+          -H "Content-Type: multipart/form-data"
+          --data-binary "@./$(find target/debian/ -name *.deb)"
+          "${{REPO_APT_NIGHTLY_URL}}/${{ github.head_ref}}/"
+
+  centos:
+    runs-on: centos${{ matrix.node }}
+    strategy:
+      matrix:
+        node: [ 7, 8 ]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build
+        run: ~/.cargo/bin/cargo +nightly build --verbose --release
+      - name: Build RPM package
+        run: server/packaging/buildrpm.sh stackable-zookeeper-operator-server
+      - name: Publish nightly RPM package
+        if:  ${{ github.event_name == 'push' && github.ref == 'refs/heads/main'  }}
+        run: >-
+          /usr/bin/curl
+          --fail
+          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+          --upload-file "./$(find  target/rpm/RPMS/x86_64/ -name *.rpm)"
+          "${{REPO_RPM_NIGHTLY_URL}}/el${{ matrix.node }}/"
+      - name: Publish dev RPM package
+        if: ${{ github.event_name == 'pull_request' }}
+        run: >-
+          /usr/bin/curl
+          --fail
+          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+          --upload-file "./$(find  target/rpm/RPMS/x86_64/ -name *.rpm)"
+          "${{REPO_RPM_DEV_URL}}/el${{ matrix.node }}/${{ github.head_ref}}"
