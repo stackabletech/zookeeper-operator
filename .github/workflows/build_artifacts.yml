@@ -30,7 +30,7 @@ jobs:
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           -H "Content-Type: multipart/form-data"
           --data-binary "@./$(find target/debian/ -name *.deb)"
-          "${{REPO_APT_NIGHTLY_URL}}"
+          "${{ env.REPO_APT_NIGHTLY_URL }}"
       - name: Publish dev apt package
         if: ${{ github.event_name == 'pull_request' }}
         run: >-
@@ -39,7 +39,7 @@ jobs:
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           -H "Content-Type: multipart/form-data"
           --data-binary "@./$(find target/debian/ -name *.deb)"
-          "${{REPO_APT_NIGHTLY_URL}}/${{ github.head_ref}}/"
+          "${{ env.REPO_APT_NIGHTLY_URL }}/${{ github.head_ref}}/"
 
   centos:
     runs-on: centos${{ matrix.node }}
@@ -59,7 +59,7 @@ jobs:
           --fail
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           --upload-file "./$(find  target/rpm/RPMS/x86_64/ -name *.rpm)"
-          "${{REPO_RPM_NIGHTLY_URL}}/el${{ matrix.node }}/"
+          "${{ env.REPO_RPM_NIGHTLY_URL }}/el${{ matrix.node }}/"
       - name: Publish dev RPM package
         if: ${{ github.event_name == 'pull_request' }}
         run: >-
@@ -67,4 +67,4 @@ jobs:
           --fail
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           --upload-file "./$(find  target/rpm/RPMS/x86_64/ -name *.rpm)"
-          "${{REPO_RPM_DEV_URL}}/el${{ matrix.node }}/${{ github.head_ref}}"
+          "${{ env.REPO_RPM_DEV_URL }}/el${{ matrix.node }}/${{ github.head_ref}}"
