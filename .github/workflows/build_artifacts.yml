@@ -13,8 +13,19 @@ jobs:
   debian10:
     runs-on: ubuntu-latest
     steps:
-      - name: Echotest
-        run: echo "event ${{ github.event}}\nbase_ref ${{ github.base_ref }}\nhead_ref ${{ github.base_ref }}\n"
+      - name: event
+        run: echo "<${{ github.event}}>"
+      - name: event_name
+        run: echo "<${{ github.event_name}}>"
+      - name: base_ref
+        run: echo "<${{ github.base_ref}}>"
+      - name: head_ref
+        run: echo "<${{ github.head_ref}}>"
+      - name: ref
+        run: echo "<${{ github.ref}}>"
+
+
+          - base_ref ${{ github.base_ref }} - head_ref ${{ github.base_ref }}"
 #      - uses: actions/checkout@v2
 #      - name: Build
 #        run: ~/.cargo/bin/cargo +nightly build --verbose --release
