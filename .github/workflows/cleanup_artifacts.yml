@@ -1,0 +1,16 @@
+name: Cleanup-Dev-Dependencies
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  debian10:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove Centos7 artifacts
+        run: echo "base_ref ${{ github.base_ref }} - head_ref ${{ github.base_ref }}"
+      - name: Remove Centos8 artifacts
+        run: ~/.cargo/bin/cargo +nightly build --verbose --release
+      - name: Remove Debian10 artifacts
+        run: ~/.cargo/bin/cargo +nightly build --verbose --release
