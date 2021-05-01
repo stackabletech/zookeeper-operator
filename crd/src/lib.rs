@@ -8,7 +8,6 @@ use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
 use stackable_operator::Crd;
 
-pub const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 pub const APP_NAME: &str = "zookeeper";
 pub const MANAGED_BY: &str = "stackable-zookeeper";
 

@@ -1,22 +1,38 @@
 use crate::error::Error::{
-    IllegalChroot, KubeError, ObjectWithoutName, PodMissingLabels, PodWithoutHostname,
+    IllegalChroot, ObjectWithoutName, OperatorFrameworkError, PodMissingLabels, PodWithoutHostname,
 };
 use crate::error::ZookeeperOperatorResult;
+use crate::util::TicketReferences::ErrZkPodWithoutName;
 use crate::{ZooKeeperCluster, ZooKeeperClusterSpec, APP_NAME, MANAGED_BY};
 use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
-use kube::Api;
 use stackable_operator::client::Client;
+use stackable_operator::error::OperatorResult;
 use stackable_operator::labels::{
     APP_INSTANCE_LABEL, APP_MANAGED_BY_LABEL, APP_NAME_LABEL, APP_ROLE_GROUP_LABEL,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
+use std::string::ToString;
+use strum_macros::Display;
 use tracing::{debug, warn};
 
-/// Contains all necessary information to configure a connection with this
-/// Zookeeper instance
+const RESERVED_WORDS: [&str; 3] = [".", "..", "zookeeper"];
+
+#[derive(Display)]
+pub enum TicketReferences {
+    ErrZkPodWithoutName,
+}
+
+/// Contains all necessary information to configure a connection with a
+/// ZooKeeper ensemble
 #[allow(dead_code)]
 pub struct ZookeeperConnectionInformation {
+    // A connection string as defined by ZooKeeper
+    // https://zookeeper.apache.org/doc/r3.5.1-alpha/zookeeperProgrammers.html#ch_zkSessions
+    // This has the form `host:port[,host:port,...][/chroot]`
+    // For example:
+    //  - server1:2181,server2:2181
+    //  - server1:2181,server2:2181/application
     pub connection_string: String,
 }
 
@@ -25,19 +41,17 @@ pub struct ZookeeperConnectionInformation {
 /// # Arguments
 ///
 /// * `client` - A [`stackable_operator::client::Client`] used to access the Kubernetes cluster
-/// * `zk_name` - The name of the ZookeeperCluster cr
-/// * `zk_namespace` - The namespace this ZookeeperCluster cr is in, if not provided will
-///                     default to all namespaces
+/// * `zk_name` - The name of the ZookeeperCluster custom resource
+/// * `zk_namespace` - The namespace this ZookeeperCluster custom resource is in
 /// * `chroot` - If provided, this will be appended as chroot to the connection string
-///
 #[allow(dead_code)]
 pub async fn get_zk_connection_info(
     client: &Client,
     zk_name: &str,
-    zk_namespace: Option<&str>,
+    zk_namespace: &str,
     chroot: Option<&str>,
 ) -> ZookeeperOperatorResult<ZookeeperConnectionInformation> {
-    let clean_chroot = check_chroot(chroot)?;
+    let clean_chroot = is_valid_chroot(chroot)?;
 
     let zk_cluster = check_zookeeper_reference(client, zk_name, zk_namespace).await?;
 
@@ -51,18 +65,28 @@ pub async fn get_zk_connection_info(
     Ok(ZookeeperConnectionInformation { connection_string })
 }
 
-// Checks if the provided chroot is legal to be used as a znode according to:
-// https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkDataModel
-//
-// Additionally, if the chroot starts or ends with a '/' these are stripped
-fn check_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<&str>> {
+/// Check if a string is a valid chroot string to use in a ZooKeeper connection
+/// string
+///
+/// Leading and trailing slashes are ignored, as we strip these before using the
+/// string in a ZooKeeper chroot string.
+///
+/// Slashes elsewhere in the String are allowed as this signifies a valid path.
+///
+/// # Arguments
+///
+/// * `chroot` - The chroot string which should be checked against ZooKeepers naming rules
+///
+/// # Errors
+///
+/// * [`IllegalChroot`] if the name violates any of ZooKeepers naming rules
+pub fn is_valid_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<&str>> {
     let chroot = match chroot {
         None => return Ok(None),
         Some(chroot) => chroot,
     };
 
-    let chroot = chroot.trim_start_matches('/');
-    let chroot = chroot.trim_end_matches('/');
+    let chroot = chroot.trim_start_matches('/').trim_end_matches('/');
 
     if chroot.is_empty() {
         return Err(IllegalChroot {
@@ -71,33 +95,63 @@ fn check_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<&str>> {
         });
     }
 
-    let reserved_words = vec![".", "..", "zookeeper"];
+    let _ = is_valid_node(chroot)?;
 
-    if reserved_words.contains(&chroot) {
+    Ok(Some(chroot))
+}
+
+/// Check if the name is a valid nome for a znode in Zookeeper
+/// This does not currently fail on presence of '/' which would in my opinion
+/// be a valid znode, but signify a nested structure
+// We may want to revisit this later depending on how exactly this code is used
+///
+/// # Arguments
+///
+/// * `node_name` - The name which should be checked against ZooKeepers naming rules
+///
+/// # Errors
+///
+/// * [`IllegalChroot`] if the name violates any of ZooKeepers naming rules
+pub fn is_valid_node(node_name: &str) -> ZookeeperOperatorResult<()> {
+    if RESERVED_WORDS.contains(&node_name) {
         return Err(IllegalChroot {
-            chroot: chroot.to_string(),
-            message: format!("{} is a reserved word and cannot be used", chroot),
+            chroot: node_name.to_string(),
+            message: format!("{} is a reserved word and cannot be used", node_name),
         });
     }
 
+    let illegal_chars = contains_illegal_character(node_name);
+
+    if illegal_chars.is_empty() {
+        Ok(())
+    } else {
+        Err(IllegalChroot {
+            chroot: node_name.to_string(),
+            message: format!(
+                "string contained prohibited unicode characters: [{:?}]",
+                illegal_chars
+            ),
+        })
+    }
+}
+
+// Checks the string for any illegal characters according to ZooKeepers rules and returns
+// a HashSet containing all illegal characters
+fn contains_illegal_character(node_name: &str) -> HashSet<char> {
     // The value E000 in the list below does not exactly match what is written in the Zookeeper
     // docs, this is because rust `char`s cannot represent surrogates, so for D800 we moved this
     // to the next _legal_ value of E000
-    if chroot.chars().any(|character| {
-        matches!(character,'\u{0000}'
+    node_name
+        .chars()
+        .filter(|character| {
+            matches!(character, '\u{0000}'
         | '\u{0001}'..='\u{001F}'
         | '\u{007F}'
         | '\u{009F}'
         | '\u{E000}'..='\u{F8FF}'
         | '\u{FFF0}'..='\u{FFFF}' )
-    }) {
-        return Err(IllegalChroot {
-            chroot: chroot.to_string(),
-            message: "string contained prohibited unicode characters".to_string(),
-        });
-    }
-
-    Ok(Some(chroot))
+        })
+        .collect()
 }
 
 // Build a Labelselector that applies only to pods belonging to the cluster instance referenced
@@ -120,26 +174,22 @@ fn get_match_labels(name: &str) -> LabelSelector {
 async fn check_zookeeper_reference(
     client: &Client,
     zk_name: &str,
-    zk_namespace: Option<&str>,
+    zk_namespace: &str,
 ) -> ZookeeperOperatorResult<ZooKeeperCluster> {
     debug!(
         "Checking ZookeeperReference if [{}] exists in namespace [{}].",
-        zk_name,
-        zk_namespace.unwrap_or("<>")
+        zk_name, zk_namespace
     );
-    let api: Api<ZooKeeperCluster> = client.get_api(zk_namespace);
-
-    let zk_cluster = api.get(zk_name).await;
-
-    // TODO: We need to watch the ZooKeeper resource and do _something_ when it goes down or when its nodes are changed
+    let zk_cluster: OperatorResult<ZooKeeperCluster> =
+        client.get(zk_name, Some(zk_namespace)).await;
 
     zk_cluster.map_err(|err| {
         warn!(?err,
                         "Referencing a ZooKeeper cluster that does not exist (or some other error while fetching it): [{}/{}], we will requeue and check again",
-                        zk_namespace.unwrap_or("<>"),
+                        zk_namespace,
                         zk_name
                     );
-                    KubeError {source: err}})
+                    OperatorFrameworkError {source: err}})
 }
 
 // Builds the actual connection string after all necessary information has been retrieved.
@@ -157,7 +207,7 @@ fn get_zk_connection_string_from_pods(
         let pod_name = match pod.metadata.name {
             None => {
                 return Err(ObjectWithoutName {
-                    reference: "ERR_ZK_POD_WITHOUT_NAME".to_string(),
+                    reference: ErrZkPodWithoutName.to_string(),
                 })
             }
             Some(pod_name) => pod_name,
@@ -224,6 +274,7 @@ mod tests {
     use super::*;
     use indoc::indoc;
     use rstest::rstest;
+    use std::iter::FromIterator;
 
     #[test]
     fn get_labels_from_name() {
@@ -264,10 +315,43 @@ mod tests {
     #[case::unicode_characters_trailing_slash("Diamond: ♦/", "Diamond: ♦")]
     #[case::unicode_characters_both_slashes("/Club: ♣/", "Club: ♣")]
     fn valid_chroot(#[case] input: &str, #[case] expected_output: &str) {
-        let output = check_chroot(Some(input))
+        let output = is_valid_chroot(Some(input))
             .expect("Valid chroots shouldn't return an error.")
             .expect("Chroot should not be none");
         assert_eq!(output, expected_output);
+    }
+
+    #[rstest]
+    // Legal strings
+    #[case("test ",vec![])]
+    #[case("testtest",vec![])]
+    #[case("QFGNEtrd(}ſ‘‚gf(rdtn",vec![])]
+    #[case("blbaG—\"tirane\u{0020}",vec![])]
+    #[case("\u{009E}",vec![])]
+    #[case("\u{00A0}",vec![])]
+    #[case("uiaeuaie\u{00A0}uiaeuaie\u{009E}udtairneaiu",vec![])]
+    #[case("/zook\u{FFEF}eeper/",vec![])]
+    // Strictly speaking illegal, but contain only valid characters
+    #[case("zookeeper",vec![])]
+    #[case(".",vec![])]
+    #[case("..",vec![])]
+    // Illegal Strings
+    #[case("/te\u{0000}st",vec!['\u{0000}'])]
+    #[case("/te\u{0001}st",vec!['\u{0001}'])]
+    #[case("/te\u{007F}s♥t",vec!['\u{007F}'])]
+    #[case("/te\u{009F}st",vec!['\u{009F}'])]
+    #[case("/te\u{009F}st\u{0001}",vec!['\u{009F}','\u{0001}'])]
+    #[case("eiuatreunaieä&‚‘’<)(te\u{E000}st",vec!['\u{E000}'])]
+    #[case("\u{0001}\u{001F}\u{007F}\u{009F}\u{E000}\u{F8FF}\u{FFF0}\u{FFFF}",vec!['\u{F8FF}','\u{0001}','\u{001F}','\u{FFFF}','\u{007F}','\u{009F}','\u{E000}','\u{FFF0}'])]
+    #[case("/te\u{E000}st",vec!['\u{E000}'])]
+    #[case("/te\u{FFF0}st",vec!['\u{FFF0}'])]
+    fn identify_illegal_characters(#[case] input: &str, #[case] expected_illegal_chars: Vec<char>) {
+        // Convert vec to set because we do not care about the order of illegal characters
+        // that are identified
+        let expected_illegal_chars: HashSet<char> =
+            HashSet::from_iter(expected_illegal_chars.into_iter());
+        let illegal_chars = contains_illegal_character(input);
+        assert_eq!(expected_illegal_chars, illegal_chars);
     }
 
     #[rstest]
@@ -279,7 +363,7 @@ mod tests {
     #[case::forbidden_character_from_range("hello\u{E000}test")]
     #[case::forbidden_character_leading_slash("/_\u{FFFF}_h_el.lo_")]
     fn invalid_chroot(#[case] input: &str) {
-        let output = check_chroot(Some(input));
+        let output = is_valid_chroot(Some(input));
         assert!(output.is_err());
     }
     #[rstest]
