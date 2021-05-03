@@ -28,7 +28,7 @@ pub enum TicketReferences {
 #[allow(dead_code)]
 pub struct ZookeeperConnectionInformation {
     // A connection string as defined by ZooKeeper
-    // https://zookeeper.apache.org/doc/r3.5.1-alpha/zookeeperProgrammers.html#ch_zkSessions
+    // https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkSessions
     // This has the form `host:port[,host:port,...][/chroot]`
     // For example:
     //  - server1:2181,server2:2181
@@ -75,11 +75,11 @@ pub async fn get_zk_connection_info(
 ///
 /// # Arguments
 ///
-/// * `chroot` - The chroot string which should be checked against ZooKeepers naming rules
+/// * `chroot` - The chroot string which should be checked against ZooKeeper's naming rules
 ///
 /// # Errors
 ///
-/// * [`IllegalChroot`] if the name violates any of ZooKeepers naming rules
+/// * [`IllegalChroot`] if the name violates any of ZooKeeper's naming rules
 pub fn is_valid_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<&str>> {
     let chroot = match chroot {
         None => return Ok(None),
@@ -100,7 +100,7 @@ pub fn is_valid_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<&
     Ok(Some(chroot))
 }
 
-/// Check if the name is a valid nome for a znode in ZooHeeper
+/// Check if the name is a valid name for a znode in ZooKeeper
 /// This does not currently fail on presence of '/' as this would simply be a nested
 /// path (like a subdirectory in a folder structure)
 /// We may want to revisit this later depending on how exactly this code is used
@@ -135,7 +135,7 @@ pub fn is_valid_node(node_name: &str) -> ZookeeperOperatorResult<()> {
     }
 }
 
-// Checks the string for any illegal characters according to ZooKeepers rules and returns
+// Checks the string for any illegal characters according to ZooKeeper's rules and returns
 // a HashSet containing all illegal characters
 fn contains_illegal_character(node_name: &str) -> HashSet<char> {
     // The value E000 in the list below does not exactly match what is written in the Zookeeper

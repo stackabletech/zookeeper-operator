@@ -22,6 +22,7 @@ use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
 use stackable_operator::krustlet;
 use stackable_operator::labels;
+use stackable_operator::labels::APP_ROLE_GROUP_LABEL;
 use stackable_operator::pod_utils;
 use stackable_operator::reconcile::{
     ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
@@ -749,6 +750,17 @@ impl ZooKeeperState {
             self.context.resource.spec.version.to_string(),
         );
         labels.insert(ID_LABEL.to_string(), id.to_string());
+
+        // This code is left here in preparation for the implementation of
+        // https://github.com/stackabletech/zookeeper-operator/issues/85
+        // until then we simply set a dummy value of "" to _simulate_ the presence
+        // of a role-group label, which is expected to be present by the implementation
+        // of [`stackable-zookeeper-crd::util::get_zk_connection_info`]
+        // TODO: Replace with actual role_group name once this operator supports them
+        labels.insert(
+            APP_ROLE_GROUP_LABEL.to_string(),
+            "unimplemented".to_ascii_lowercase(),
+        );
 
         labels
     }
