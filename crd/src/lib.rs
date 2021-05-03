@@ -1,5 +1,5 @@
 mod error;
-mod util;
+pub mod util;
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::CustomResource;
