@@ -8,7 +8,7 @@ use handlebars::Handlebars;
 use k8s_openapi::api::core::v1::{
     ConfigMap, ConfigMapVolumeSource, Container, Pod, PodSpec, Volume, VolumeMount,
 };
-use kube::api::{ListParams, Meta};
+use kube::api::{ListParams, Resource};
 use kube::Api;
 use serde_json::json;
 use tracing::{debug, error, info, trace, warn};
@@ -19,13 +19,17 @@ use product_config::types::OptionKind;
 use product_config::ProductConfig;
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
+use stackable_operator::config_map;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
+use stackable_operator::krustlet;
+use stackable_operator::labels;
+use stackable_operator::pod_utils;
 use stackable_operator::reconcile::{
     ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
-use stackable_operator::{config_map::create_config_map, finalizer, metadata, pod_utils};
+use stackable_operator::{finalizer, metadata};
 use stackable_zookeeper_crd::{
     ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperClusterStatus, ZooKeeperServer,
     ZooKeeperVersion,
@@ -35,7 +39,10 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
 
-const CLUSTER_NAME_LABEL: &str = "zookeeper.stackable.tech/cluster-name";
+const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
+
+const APP_NAME: &str = "zookeeper";
+const MANAGED_BY: &str = "stackable-zookeeper";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
 
 type ZooKeeperReconcileResult = ReconcileResult<error::Error>;
@@ -336,7 +343,7 @@ impl ZooKeeperState {
                                 "Found a duplicate `myid` [{}] in Pod [{}], we can't recover\
                                  from this error and you need to clean up manually",
                                 id,
-                                Meta::name(&pod)
+                                Resource::name(&pod)
                             );
                             return Err(Error::ReconcileError("Found duplicate id".to_string()));
                         }
@@ -437,7 +444,7 @@ impl ZooKeeperState {
             // If the pod for this server is currently terminating (this could be for restarts or
             // upgrades) wait until it's done terminating.
             if finalizer::has_deletion_stamp(pod) {
-                info!("Waiting for Pod [{}] to terminate", Meta::name(pod));
+                info!("Waiting for Pod [{}] to terminate", Resource::name(pod));
                 return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
             }
 
@@ -446,7 +453,7 @@ impl ZooKeeperState {
             if !pod_utils::is_pod_running_and_ready(pod) {
                 info!(
                     "Waiting for Pod [{}] to be running and ready",
-                    Meta::name(pod)
+                    Resource::name(pod)
                 );
                 return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
             }
@@ -524,7 +531,7 @@ impl ZooKeeperState {
             if container.image != status.target_image_name() {
                 info!(
                     "Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
-                    Meta::name(&pod),
+                    Resource::name(&pod),
                     container.image,
                     status.target_image_name()
                 );
@@ -574,13 +581,13 @@ impl ZooKeeperState {
             if finalizer::has_deletion_stamp(pod) {
                 trace!(
                     "Extra Pod found [{}] for node [{}] that is not in the current spec: Already in the process of being deleted",
-                    Meta::name(pod),
+                    Resource::name(pod),
                     node_name
                 );
             } else {
                 info!(
                     "Extra Pod found [{}] for node [{}] that is not in the current spec: Terminating the Pod",
-                    Meta::name(pod),
+                    Resource::name(pod),
                     node_name
                 );
                 // We don't trigger a requeue here because there should be nothing for us to do
@@ -590,6 +597,14 @@ impl ZooKeeperState {
         }
 
         Ok(ReconcileFunctionAction::Continue)
+    }
+
+    async fn delete_all_pods(&self) -> OperatorResult<ReconcileFunctionAction> {
+        let existing_pods = self.context.list_pods().await?;
+        for pod in existing_pods {
+            self.context.client.delete(&pod).await?;
+        }
+        Ok(ReconcileFunctionAction::Done)
     }
 
     async fn create_config_maps(
@@ -641,14 +656,14 @@ impl ZooKeeperState {
 
         let cm_name_prefix = self.get_pod_name(zk_server);
         let cm_name = format!("{}-config", cm_name_prefix);
-        let cm = create_config_map(&self.context.resource, &cm_name, data)?;
+        let cm = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
         self.context.client.apply_patch(&cm, &cm).await?;
 
         // ...and one for the data directory (which only contains the myid file)
         let mut data = BTreeMap::new();
         data.insert("myid".to_string(), id.to_string());
         let cm_name = format!("{}-data", cm_name_prefix);
-        let cm = create_config_map(&self.context.resource, &cm_name, data)?;
+        let cm = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
         self.context.client.apply_patch(&cm, &cm).await?;
         Ok(())
     }
@@ -670,7 +685,7 @@ impl ZooKeeperState {
             )?,
             spec: Some(PodSpec {
                 node_name: Some(zk_server.node_name.clone()),
-                tolerations: Some(stackable_operator::krustlet::create_tolerations()),
+                tolerations: Some(krustlet::create_tolerations()),
                 containers,
                 volumes: Some(volumes),
                 ..PodSpec::default()
@@ -681,11 +696,9 @@ impl ZooKeeperState {
     }
 
     fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
-        let version = self.context.resource.spec.version.clone();
-        // TODO: Replace with a function call into the crd crate
         let image_name = format!(
             "stackable/zookeeper:{}",
-            serde_json::json!(version).as_str().expect("This should not fail as it comes from an enum, if this fails please file a bug report")
+            self.context.resource.spec.version.to_string()
         );
 
         let containers = vec![Container {
@@ -740,7 +753,16 @@ impl ZooKeeperState {
 
     fn build_labels(&self, id: usize) -> BTreeMap<String, String> {
         let mut labels = BTreeMap::new();
-        labels.insert(CLUSTER_NAME_LABEL.to_string(), self.context.name());
+        labels.insert(labels::APP_NAME_LABEL.to_string(), APP_NAME.to_string());
+        labels.insert(
+            labels::APP_MANAGED_BY_LABEL.to_string(),
+            MANAGED_BY.to_string(),
+        );
+        labels.insert(labels::APP_INSTANCE_LABEL.to_string(), self.context.name());
+        labels.insert(
+            labels::APP_VERSION_LABEL.to_string(),
+            self.context.resource.spec.version.to_string(),
+        );
         labels.insert(ID_LABEL.to_string(), id.to_string());
 
         labels
@@ -763,6 +785,12 @@ impl ReconciliationState for ZooKeeperState {
             self.init_status()
                 .await?
                 .then(self.read_existing_pod_information())
+                .await?
+                .then(self.context.handle_deletion(
+                    Box::pin(self.delete_all_pods()),
+                    FINALIZER_NAME,
+                    true,
+                ))
                 .await?
                 .then(self.assign_ids())
                 .await?
@@ -831,15 +859,14 @@ mod tests {
     use super::*;
     use rstest::rstest;
 
-    #[rstest(input, expected,
-        case(vec![1, 2, 3], 4),
-        case(vec![1, 3, 5], 2),
-        case(vec![], 1),
-        case(vec![3, 4, 6], 1),
-        case(vec![1], 2),
-        case(vec![2], 1),
-    )]
-    fn test_first_missing(input: Vec<usize>, expected: usize) {
+    #[rstest]
+    #[case(vec![1, 2, 3], 4)]
+    #[case(vec![1, 3, 5], 2)]
+    #[case(vec![], 1)]
+    #[case(vec![3, 4, 6], 1)]
+    #[case(vec![1], 2)]
+    #[case(vec![2], 1)]
+    fn test_first_missing(#[case] input: Vec<usize>, #[case] expected: usize) {
         let first = find_first_missing(&input);
         assert_eq!(first, expected);
     }
