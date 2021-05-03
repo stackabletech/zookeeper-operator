@@ -65,15 +65,7 @@ impl ZooKeeperVersion {
     }
 }
 
-enum ConfigOption<T> {
-    Simple(T),
-    Complex {
-        value: T,
-        ignore_warn: bool,
-        ignore_err: bool,
-    },
-}
-
+// TODO: These all should be "Property" Enums that can be either simple or complex where complex allows forcing/ignoring errors and/or warnings
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZooKeeperConfiguration {
