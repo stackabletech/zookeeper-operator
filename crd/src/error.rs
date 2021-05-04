@@ -1,7 +1,10 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Illegal value [{chroot}] provided for ZooKeeper chroot: {message}")]
-    IllegalChroot { chroot: String, message: String },
+    #[error("Illegal ZooKeeper path [{path}]: {errors:?}")]
+    IllegalZookeeperPath { path: String, errors: Vec<String> },
+
+    #[error("Illegal znode [{znode}]: {reason}")]
+    IllegalZnode { znode: String, reason: String },
 
     #[error("Pod has no hostname assignment, this is most probably a transitive failure and should be retried: [{pod}]")]
     PodWithoutHostname { pod: String },

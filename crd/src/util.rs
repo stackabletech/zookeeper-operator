@@ -1,5 +1,6 @@
 use crate::error::Error::{
-    IllegalChroot, ObjectWithoutName, OperatorFrameworkError, PodMissingLabels, PodWithoutHostname,
+    IllegalZnode, IllegalZookeeperPath, ObjectWithoutName, OperatorFrameworkError,
+    PodMissingLabels, PodWithoutHostname,
 };
 use crate::error::ZookeeperOperatorResult;
 use crate::util::TicketReferences::ErrZkPodWithoutName;
@@ -51,72 +52,118 @@ pub async fn get_zk_connection_info(
     zk_namespace: &str,
     chroot: Option<&str>,
 ) -> ZookeeperOperatorResult<ZookeeperConnectionInformation> {
-    let clean_chroot = is_valid_chroot(chroot)?;
-
     let zk_cluster = check_zookeeper_reference(client, zk_name, zk_namespace).await?;
 
     let zk_pods = client
         .list_with_label_selector(None, &get_match_labels(&zk_name))
         .await?;
 
+    // Left pad the chroot with a / if needed
+    // Sadly this requires copying the reference once,
+    // but I know of no way to avoid that
+    let chroot = match chroot {
+        None => None,
+        Some(chroot) => {
+            if chroot.starts_with('/') {
+                Some(chroot.to_string())
+            } else {
+                Some(format!("/{}", chroot))
+            }
+        }
+    };
+
     let connection_string =
-        get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, clean_chroot)?;
+        get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, chroot.as_deref())?;
 
     Ok(ZookeeperConnectionInformation { connection_string })
 }
 
-/// Check if a string is a valid chroot string to use in a ZooKeeper connection
-/// string
+/// Check if a string is a valid ZooKeeper path.
+/// The path is split at every '/' and the resulting elements are checked if they are a valid
+/// znode.
 ///
-/// Leading and trailing slashes are ignored, as we strip these before using the
-/// string in a ZooKeeper chroot string.
-///
-/// Slashes elsewhere in the String are allowed as this signifies a valid path.
+/// Additional checks:
+/// - path must start with /
+/// - path must not end with /
 ///
 /// # Arguments
 ///
-/// * `chroot` - The chroot string which should be checked against ZooKeeper's naming rules
+/// * `path` - The path which should be checked against ZooKeeper's naming rules
 ///
 /// # Errors
 ///
-/// * [`IllegalChroot`] if the name violates any of ZooKeeper's naming rules
-pub fn is_valid_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<&str>> {
-    let chroot = match chroot {
-        None => return Ok(None),
-        Some(chroot) => chroot,
-    };
-
-    let chroot = chroot.trim_start_matches('/').trim_end_matches('/');
-
-    if chroot.is_empty() {
-        return Err(IllegalChroot {
-            chroot: chroot.to_string(),
-            message: "chroot was provided but empty".to_string(),
+/// * [`IllegalZookeeperPath`] if the name violates any of ZooKeeper's naming rules
+pub fn is_valid_zookeeper_path(path: &str) -> ZookeeperOperatorResult<()> {
+    // The following code has been translated to Rust from the ZooKeeper Java code at
+    // https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/common/PathUtils.java#L43
+    // Changes to the code were mostly where Java syntax differs from Rust and how
+    // errors are reported back to the caller
+    if path.is_empty() {
+        return Err(IllegalZookeeperPath {
+            path: path.to_string(),
+            errors: vec!["Path must not be empty!".to_string()],
         });
     }
+    if !path.starts_with('/') {
+        return Err(IllegalZookeeperPath {
+            path: path.to_string(),
+            errors: vec!["Path must begin with /".to_string()],
+        });
+    }
+    if path.len() == 1 {
+        // done checking - it's the root
+        return Ok(());
+    }
+    if path.ends_with('/') {
+        return Err(IllegalZookeeperPath {
+            path: path.to_string(),
+            errors: vec!["Path must not end with /".to_string()],
+        });
+    }
+    // ZooKeeper code ends here
 
-    is_valid_node(chroot)?;
+    let errors = path
+        .split('/')
+        .skip(1) // the first element will be empty due to the beginning /
+        .filter_map(|znode| is_valid_znode(znode).err())
+        .map(|error| format!("{:?}", error))
+        .collect::<Vec<String>>();
 
-    Ok(Some(chroot))
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(IllegalZookeeperPath {
+            path: path.to_string(),
+            errors,
+        })
+    }
 }
 
-/// Check if the name is a valid name for a znode in ZooKeeper
-/// This does not currently fail on presence of '/' as this would simply be a nested
-/// path (like a subdirectory in a folder structure)
-/// We may want to revisit this later depending on how exactly this code is used
-///
-/// # Arguments
-///
-/// * `node_name` - The name which should be checked against ZooKeepers naming rules
-///
-/// # Errors
-///
-/// * [`IllegalChroot`] if the name violates any of ZooKeepers naming rules
-pub fn is_valid_node(node_name: &str) -> ZookeeperOperatorResult<()> {
+// Check if the name is a valid name for a znode in ZooKeeper according to the ZooKeeper
+// documentation at:
+// https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkDataModel
+//
+// This code does not check for presence of / in the string, as it relies on the ZooKeeper
+// path having been split into its segments before.
+//
+// # Arguments
+//
+// * `node_name` - The name which should be checked against ZooKeepers naming rules
+//
+// # Errors
+//
+// * [`IllegalZnode`] if the name violates any of ZooKeepers naming rules
+fn is_valid_znode(node_name: &str) -> ZookeeperOperatorResult<()> {
+    if node_name.is_empty() {
+        return Err(IllegalZnode {
+            znode: node_name.to_string(),
+            reason: "path contains an empty element, this is not allowed".to_string(),
+        });
+    }
     if RESERVED_WORDS.contains(&node_name) {
-        return Err(IllegalChroot {
-            chroot: node_name.to_string(),
-            message: format!("{} is a reserved word and cannot be used", node_name),
+        return Err(IllegalZnode {
+            znode: node_name.to_string(),
+            reason: format!("{} is a reserved word and cannot be used", node_name),
         });
     }
 
@@ -125,9 +172,9 @@ pub fn is_valid_node(node_name: &str) -> ZookeeperOperatorResult<()> {
     if illegal_chars.is_empty() {
         Ok(())
     } else {
-        Err(IllegalChroot {
-            chroot: node_name.to_string(),
-            message: format!(
+        Err(IllegalZnode {
+            znode: node_name.to_string(),
+            reason: format!(
                 "string contained prohibited unicode characters: [{:?}]",
                 illegal_chars
             ),
@@ -201,6 +248,9 @@ fn get_zk_connection_string_from_pods(
     zk_pods: Vec<Pod>,
     chroot: Option<&str>,
 ) -> ZookeeperOperatorResult<String> {
+    if let Some(chroot) = chroot {
+        is_valid_zookeeper_path(chroot)?;
+    }
     let mut server_and_port_list = Vec::new();
 
     for pod in zk_pods {
@@ -252,7 +302,7 @@ fn get_zk_connection_string_from_pods(
         .join(",");
 
     if let Some(chroot_content) = chroot {
-        Ok(format!("{}/{}", conn_string, chroot_content))
+        Ok(format!("{}{}", conn_string, chroot_content))
     } else {
         Ok(conn_string)
     }
@@ -306,19 +356,44 @@ mod tests {
     }
 
     #[rstest]
-    #[case::trim_leading_slash("/test", "test")]
-    #[case::trim_trailing_slash("test/", "test")]
-    #[case::trim_leading_and_trailing_slash("/test/", "test")]
-    #[case::no_trim("test", "test")]
-    #[case::unicode_characters("Spade: ♠", "Spade: ♠")]
-    #[case::unicode_characters_leading_slash("/Heart: ♥", "Heart: ♥")]
-    #[case::unicode_characters_trailing_slash("Diamond: ♦/", "Diamond: ♦")]
-    #[case::unicode_characters_both_slashes("/Club: ♣/", "Club: ♣")]
-    fn valid_chroot(#[case] input: &str, #[case] expected_output: &str) {
-        let output = is_valid_chroot(Some(input))
-            .expect("Valid chroots shouldn't return an error.")
-            .expect("Chroot should not be none");
-        assert_eq!(output, expected_output);
+    #[case::simple("/test")]
+    #[case::spade_multiple_periods("/Spade: ♠/aite.../test12")]
+    #[case::heart_more_than_two_periods("/Heart: ♥/.../hallo")]
+    #[case::long("/Diamond: ♦/star/club/test/hi")]
+    #[case::periods_in_multiple_elements("/Club: ♣/testzookeeper/iae.iae/.hi")]
+    // The following test strings have been taken from the ZooKeeper code
+    #[case::blanks("/this is / a valid/path")]
+    #[case::period("/name/with.period.")]
+    #[case::first_allowable_char("/test \u{0020}")]
+    #[case::last_valid_ascii("/test \u{007e}")]
+    #[case::highest_allowable_char("/test \u{ffef}")]
+    fn valid_path(#[case] input: &str) {
+        assert!(is_valid_zookeeper_path(input).is_ok());
+    }
+
+    #[rstest]
+    #[case::reserved_word("zookeeper")]
+    #[case::reserved_word_with_leading_slash("/..")]
+    #[case::reserved_word_with_trailing_slash("./")]
+    #[case::empty("")]
+    #[case::forbidden_nullcharacter("\u{0000}")]
+    #[case::forbidden_character_from_range("hello\u{E000}test")]
+    #[case::forbidden_character_leading_slash("/_\u{FFFF}_h_el.lo_")]
+    // The following test strings have been taken from the ZooKeeper code
+    #[case::empty("")]
+    #[case::no_leading_slash("not/valid")]
+    #[case::ends_with_slash("/ends/with/slash/")]
+    #[case::null_char("/test\u{0000}")]
+    #[case::double_slash("/double//slash")]
+    #[case::single_period("/single/./period")]
+    #[case::double_period("/double/../period")]
+    #[case::illegal_char_u0001("/test\u{0001}")]
+    #[case::illegal_char_u001f("/test\u{001F}")]
+    #[case::illegal_char_u007f("/test\u{007F}")]
+    #[case::illegal_char_uf8ff("/test\u{F8FF}")]
+    #[case::illegal_char_ufff0("/test\u{FFF0}")]
+    fn invalid_paths(#[case] input: &str) {
+        assert!(is_valid_zookeeper_path(input).is_err());
     }
 
     #[rstest]
@@ -354,18 +429,6 @@ mod tests {
         assert_eq!(expected_illegal_chars, illegal_chars);
     }
 
-    #[rstest]
-    #[case::reserved_word("zookeeper")]
-    #[case::reserved_word_with_leading_slash("/..")]
-    #[case::reserved_word_with_trailing_slash("./")]
-    #[case::empty("")]
-    #[case::forbidden_nullcharacter("\u{0000}")]
-    #[case::forbidden_character_from_range("hello\u{E000}test")]
-    #[case::forbidden_character_leading_slash("/_\u{FFFF}_h_el.lo_")]
-    fn invalid_chroot(#[case] input: &str) {
-        let output = is_valid_chroot(Some(input));
-        assert!(output.is_err());
-    }
     #[rstest]
     #[case::single_pod_no_chroot(
       indoc! {"
@@ -408,7 +471,7 @@ mod tests {
             nodeName: worker-1.stackable.tech
             containers: []
       "},
-      Some("dev"),
+      Some("/dev"),
       "worker-1.stackable.tech:2181/dev"
     )]
     #[case::multiple_pods_wrong_order(
@@ -441,7 +504,7 @@ mod tests {
             nodeName: worker-1.stackable.demo
             containers: []
       "},
-      Some("prod"),
+      Some("/prod"),
       "worker-1.stackable.demo:2181,worker-2.stackable.demo:2181/prod"
     )]
     fn get_connection_string(
@@ -483,7 +546,7 @@ mod tests {
               - type: Ready
                 status: True
       "},
-      Some("prod"),
+      Some("/prod"),
     )]
     #[case::missing_hostname(
       indoc! {"
@@ -508,7 +571,7 @@ mod tests {
               - type: Ready
                 status: True
       "},
-      Some("prod"),
+      Some("/prod"),
     )]
     fn get_connection_string_should_fail(
         #[case] zookeeper_spec: &str,
