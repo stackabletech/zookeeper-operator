@@ -44,7 +44,14 @@ pub struct ZookeeperConnectionInformation {
 /// * `client` - A [`stackable_operator::client::Client`] used to access the Kubernetes cluster
 /// * `zk_name` - The name of the ZookeeperCluster custom resource
 /// * `zk_namespace` - The namespace this ZookeeperCluster custom resource is in
-/// * `chroot` - If provided, this will be appended as chroot to the connection string
+/// * `chroot` - If provided, this will be appended as chroot to the connection string, the content
+///     of this parameter will be checked for validity according to ZooKeepers [naming rules for
+///     znodes](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkDataModel)
+///     This function is more lenient than ZooKeeper in that it allows paths that do not start with
+///     a / character. If this is the case the  slash at the beginning will be added.
+///     **Note:** This means that passing an empty string instead of None will result in the empty
+///     string being padded to the ZooKeeper root. Functionaly this does not make a difference when
+///     using the string as chroot for a connection string though.
 #[allow(dead_code)]
 pub async fn get_zk_connection_info(
     client: &Client,
@@ -58,24 +65,33 @@ pub async fn get_zk_connection_info(
         .list_with_label_selector(None, &get_match_labels(&zk_name))
         .await?;
 
+    let clean_chroot = pad_and_check_chroot(chroot)?;
+
+    let connection_string =
+        get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, clean_chroot.as_deref())?;
+
+    Ok(ZookeeperConnectionInformation { connection_string })
+}
+
+// Left pads the chroot string with a / if necessary - mostly for convenience, so users do not
+// need to specify the / when entering the chroot string in their config.
+// Checks if the result is a valid ZooKeeper path.
+fn pad_and_check_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<String>> {
     // Left pad the chroot with a / if needed
     // Sadly this requires copying the reference once,
     // but I know of no way to avoid that
     let chroot = match chroot {
-        None => None,
+        None => return Ok(None),
         Some(chroot) => {
             if chroot.starts_with('/') {
-                Some(chroot.to_string())
+                chroot.to_string()
             } else {
-                Some(format!("/{}", chroot))
+                format!("/{}", chroot)
             }
         }
     };
-
-    let connection_string =
-        get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, chroot.as_deref())?;
-
-    Ok(ZookeeperConnectionInformation { connection_string })
+    is_valid_zookeeper_path(&chroot)?;
+    Ok(Some(chroot))
 }
 
 /// Check if a string is a valid ZooKeeper path.
@@ -520,6 +536,22 @@ mod tests {
             get_zk_connection_string_from_pods(zk.clone(), pods.clone(), chroot.clone())
                 .expect("should not fail");
         assert_eq!(expected_result, conn_string);
+    }
+
+    #[rstest]
+    #[case(Some("test"), Some("/test"))]
+    #[case(Some("/test"), Some("/test"))]
+    #[case(Some("t.est"), Some("/t.est"))]
+    #[case(Some("/t.est"), Some("/t.est"))]
+    #[case(Some("/t  ,.st"), Some("/t  ,.st"))]
+    #[case(Some("t  ,.st"), Some("/t  ,.st"))]
+    fn pad_chroot(#[case] input: Option<&str>, #[case] expected_output: Option<&str>) {
+        assert_eq!(
+            expected_output,
+            pad_and_check_chroot(input)
+                .expect("should not fail")
+                .as_deref()
+        );
     }
 
     #[rstest]
