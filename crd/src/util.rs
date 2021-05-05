@@ -24,7 +24,19 @@ pub enum TicketReferences {
     ErrZkPodWithoutName,
 }
 
-/// Contains all necessary information to configure a connection with a
+/// Contains all necessary information identify a Stackable managed ZooKeeper
+/// ensemble and build a connection string for it.
+/// The main purpose for this struct is for other operators that need to reference a
+/// ZooKeeper ensemble to use in their CRDs.
+/// This has the benefit of keeping references to ZooKeeper ensembles consistent
+/// throughout the entire stack.
+pub struct ZookeeperReference {
+    pub namespace: String,
+    pub name: String,
+    pub chroot: Option<String>,
+}
+
+/// Contains all necessary information to establish a connection with a
 /// ZooKeeper ensemble
 #[allow(dead_code)]
 pub struct ZookeeperConnectionInformation {
@@ -45,27 +57,27 @@ pub struct ZookeeperConnectionInformation {
 /// * `zk_name` - The name of the ZookeeperCluster custom resource
 /// * `zk_namespace` - The namespace this ZookeeperCluster custom resource is in
 /// * `chroot` - If provided, this will be appended as chroot to the connection string, the content
-///     of this parameter will be checked for validity according to ZooKeepers [naming rules for
+///     of this parameter will be checked for validity according to ZooKeeper's [naming rules for
 ///     znodes](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkDataModel)
 ///     This function is more lenient than ZooKeeper in that it allows paths that do not start with
-///     a / character. If this is the case the  slash at the beginning will be added.
-///     **Note:** This means that passing an empty string instead of None will result in the empty
-///     string being padded to the ZooKeeper root. Functionaly this does not make a difference when
-///     using the string as chroot for a connection string though.
+///     a / character. If this is the case the slash at the beginning will be added.
+///     **Note:** This means that passing an empty string instead of None will result in that empty
+///     string being padded with a / at the beginning, which would turn it into / which is  the
+///     ZooKeeper root. Functionaly this does not make a difference when using the string as chroot
+///     for a connection string though.
 #[allow(dead_code)]
 pub async fn get_zk_connection_info(
     client: &Client,
-    zk_name: &str,
-    zk_namespace: &str,
-    chroot: Option<&str>,
+    zk_reference: &ZookeeperReference,
 ) -> ZookeeperOperatorResult<ZookeeperConnectionInformation> {
-    let zk_cluster = check_zookeeper_reference(client, zk_name, zk_namespace).await?;
+    let clean_chroot = pad_and_check_chroot(zk_reference.chroot.as_deref())?;
+
+    let zk_cluster =
+        check_zookeeper_reference(client, &zk_reference.name, &zk_reference.namespace).await?;
 
     let zk_pods = client
-        .list_with_label_selector(None, &get_match_labels(&zk_name))
+        .list_with_label_selector(None, &get_match_labels(&zk_reference.name))
         .await?;
-
-    let clean_chroot = pad_and_check_chroot(chroot)?;
 
     let connection_string =
         get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, clean_chroot.as_deref())?;
