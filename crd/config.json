@@ -71,8 +71,7 @@
           "kind": {
             "type": "conf",
             "file": "zoo.cfg"
-          },
-          "config_file": "zoo.cfg"
+          }
         }
       ],
       "default_value": [
@@ -159,7 +158,7 @@
       "as_of_version": "0.0.0",
       "restart_required": true,
       "comment": "See QuorumPeerConfig.java",
-      "description": "The location where ZooKeeper will store the in-memory database snapshots and, unless specified otherwise, the transaction log of updates to the database. Note: Be careful where you put the transaction log. A    dedicated transaction log device is key to consistent good performance. Putting the log on a busy device will adversely affect performance."
+      "description": "The location where ZooKeeper will store the in-memory database snapshots and, unless specified otherwise, the transaction log of updates to the database. Note: Be careful where you put the transaction log. A dedicated transaction log device is key to consistent good performance. Putting the log on a busy device will adversely affect performance."
     },
     {
       "option_names": [

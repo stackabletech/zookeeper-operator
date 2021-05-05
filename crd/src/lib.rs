@@ -74,6 +74,7 @@ pub struct ZooKeeperConfiguration {
     pub init_limit: Option<u32>,  // int in Java
     pub sync_limit: Option<u32>,  // int in Java
     pub tick_time: Option<u32>,   // int in Java
+    pub additional_options: Option<Hashmap<String, String>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]

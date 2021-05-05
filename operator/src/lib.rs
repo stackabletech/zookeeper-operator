@@ -15,8 +15,8 @@ use tracing::{debug, error, info, trace, warn};
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use product_config;
-use product_config::types::OptionKind;
-use product_config::ProductConfig;
+use product_config::types::PropertyNameKind;
+use product_config::ProductConfigSpec;
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::config_map;
@@ -37,6 +37,7 @@ use stackable_zookeeper_crd::{
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
@@ -52,6 +53,7 @@ struct ZooKeeperState {
     zk_spec: ZooKeeperClusterSpec,
     zk_status: Option<ZooKeeperClusterStatus>,
     id_information: Option<IdInformation>,
+    config: Arc<ProductConfigSpec>, // TODO: Ideally this would not be a copy every time but I couldn't figure out the lifetimes
 }
 
 struct IdInformation {
@@ -612,17 +614,17 @@ impl ZooKeeperState {
         zk_server: &ZooKeeperServer,
         id: usize,
     ) -> Result<(), Error> {
-        let config_reader = product_config::reader::ConfigJsonReader::new("config.json");
-        let product_config = ProductConfig::new(config_reader).unwrap();
-        let option_kind = OptionKind::Conf("zoo.cfg".to_string());
-
         let mut options = HashMap::new();
         if let Some(config) = &self.zk_spec.config {
             use stackable_zookeeper_crd::ser;
             let config = ser::to_hash_map(config).unwrap();
 
-            let config =
-                product_config.get("1.2.3", &option_kind, Some("zookeeper-server"), &config);
+            let config = self.config.get(
+                "1.2.3",
+                &PropertyNameKind::Conf("zoo.cfg".to_string()),
+                Some("zookeeper-server"),
+                &config,
+            );
 
             println!("{:?}", config);
         }
@@ -807,11 +809,15 @@ impl ReconciliationState for ZooKeeperState {
 }
 
 #[derive(Debug)]
-struct ZooKeeperStrategy {}
+struct ZooKeeperStrategy {
+    config: Arc<ProductConfigSpec>,
+}
 
 impl ZooKeeperStrategy {
-    pub fn new() -> ZooKeeperStrategy {
-        ZooKeeperStrategy {}
+    pub fn new(config: ProductConfigSpec) -> ZooKeeperStrategy {
+        ZooKeeperStrategy {
+            config: Arc::new(config),
+        }
     }
 }
 
@@ -830,6 +836,7 @@ impl ControllerStrategy for ZooKeeperStrategy {
             zk_status: context.resource.status.clone(),
             context,
             id_information: None,
+            config: self.config.clone(),
         })
     }
 }
@@ -846,7 +853,10 @@ pub async fn create_controller(client: Client) {
         .owns(pods_api, ListParams::default())
         .owns(config_maps_api, ListParams::default());
 
-    let strategy = ZooKeeperStrategy::new();
+    let config_reader =
+        product_config::reader::ConfigJsonReader::new("config.json", "config_config.json");
+    let product_config = ProductConfigSpec::new(config_reader).unwrap();
+    let strategy = ZooKeeperStrategy::new(product_config);
 
     controller
         .run(client, strategy, Duration::from_secs(10))
