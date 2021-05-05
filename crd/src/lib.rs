@@ -1,9 +1,15 @@
+pub mod error;
+pub mod util;
+
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::CustomResource;
 use schemars::JsonSchema;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
 use stackable_operator::Crd;
+
+pub const APP_NAME: &str = "zookeeper";
+pub const MANAGED_BY: &str = "stackable-zookeeper";
 
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
