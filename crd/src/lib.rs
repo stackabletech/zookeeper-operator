@@ -1,12 +1,14 @@
 pub mod error;
 pub mod util;
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, LabelSelector};
 use kube::CustomResource;
 use schemars::JsonSchema;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
+use stackable_operator::label_selector::schema;
 use stackable_operator::Crd;
+use std::collections::HashMap;
 
 pub const APP_NAME: &str = "zookeeper";
 pub const MANAGED_BY: &str = "stackable-zookeeper";
@@ -24,17 +26,31 @@ pub const MANAGED_BY: &str = "stackable-zookeeper";
 #[kube(status = "ZooKeeperClusterStatus")]
 pub struct ZooKeeperClusterSpec {
     pub version: ZooKeeperVersion,
-    pub servers: Vec<ZooKeeperServer>,
+    pub servers: RoleGroup<ZookeeperConfig>,
 }
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleGroup<T> {
+    pub selectors: HashMap<String, SelectorAndConfig<T>>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectorAndConfig<T> {
+    pub instances: u16,
+    pub instances_per_node: u8,
+    pub config: Option<T>,
+    #[schemars(schema_with = "schema")]
+    pub selector: Option<LabelSelector>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub struct ZookeeperConfig {}
 
 impl Crd for ZooKeeperCluster {
     const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.tech";
     const CRD_DEFINITION: &'static str = include_str!("../zookeepercluster.crd.yaml");
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-pub struct ZooKeeperServer {
-    pub node_name: String,
 }
 
 #[allow(non_camel_case_types)]

@@ -12,6 +12,7 @@ stackable-zookeeper-crd = { path = "../crd" }
 stackable-zookeeper-operator = { path = "../operator" }
 
 tokio = { version = "1.5", features = ["macros", "rt-multi-thread"] }
+serde_yaml = "0.8"
 
 [package.metadata.deb]
 maintainer-scripts = "packaging/debian/"

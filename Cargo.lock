@@ -1585,6 +1585,8 @@ dependencies = [
  "serde_json",
  "stackable-operator",
  "stackable-zookeeper-crd",
+ "strum",
+ "strum_macros",
  "thiserror",
  "tracing",
 ]
@@ -1593,6 +1595,7 @@ dependencies = [
 name = "stackable-zookeeper-operator-server"
 version = "0.1.0-nightly"
 dependencies = [
+ "serde_yaml",
  "stackable-operator",
  "stackable-zookeeper-crd",
  "stackable-zookeeper-operator",

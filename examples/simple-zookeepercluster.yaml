@@ -3,6 +3,18 @@ kind: ZooKeeperCluster
 metadata:
   name: simple
 spec:
-  version: 3.4.14
+  version: 3.5.8
   servers:
-    - node_name: debian
+    selectors:
+      default:
+        selector:
+          matchLabels:
+            kubernetes.io/hostname: mdesktop
+        instances: 1
+        instancesPerNode: 1
+      default2:
+        selector:
+          matchLabels:
+            kubernetes.io/hostname: bawa-virtualbox
+        instances: 1
+        instancesPerNode: 1
