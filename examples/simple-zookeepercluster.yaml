@@ -1,5 +1,5 @@
 apiVersion: zookeeper.stackable.tech/v1
-kind: ZooKeeperCluster
+kind: ZookeeperCluster
 metadata:
   name: simple
 spec:
@@ -9,12 +9,12 @@ spec:
       default:
         selector:
           matchLabels:
-            kubernetes.io/hostname: mdesktop
+            kubernetes.io/hostname: zookeeper-1
         instances: 1
         instancesPerNode: 1
       default2:
         selector:
           matchLabels:
-            kubernetes.io/hostname: bawa-virtualbox
+            kubernetes.io/hostname: zookeeper-2
         instances: 1
         instancesPerNode: 1

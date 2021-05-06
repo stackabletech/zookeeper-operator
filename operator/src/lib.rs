@@ -29,7 +29,7 @@ use stackable_operator::role_utils::RoleGroup;
 use stackable_operator::{config_map, role_utils};
 use stackable_operator::{k8s_utils, krustlet};
 use stackable_zookeeper_crd::{
-    ZooKeeperCluster, ZooKeeperClusterSpec, ZooKeeperClusterStatus, ZooKeeperVersion, APP_NAME,
+    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, APP_NAME,
     MANAGED_BY,
 };
 use std::collections::{BTreeMap, HashMap};
@@ -44,17 +44,17 @@ const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
 
-type ZooKeeperReconcileResult = ReconcileResult<error::Error>;
+type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
 #[derive(EnumIter, Debug, Display, PartialEq, Eq, Hash)]
 pub enum ZookeeperRole {
     Server,
 }
 
-struct ZooKeeperState {
-    context: ReconciliationContext<ZooKeeperCluster>,
-    zk_spec: ZooKeeperClusterSpec,
-    zk_status: Option<ZooKeeperClusterStatus>,
+struct ZookeeperState {
+    context: ReconciliationContext<ZookeeperCluster>,
+    zk_spec: ZookeeperClusterSpec,
+    zk_status: Option<ZookeeperClusterStatus>,
     id_information: Option<IdInformation>,
     existing_pods: Vec<Pod>,
     eligible_nodes: HashMap<ZookeeperRole, HashMap<String, Vec<Node>>>,
@@ -98,14 +98,14 @@ fn find_first_missing(vec: &[usize]) -> usize {
     added_id.unwrap_or_else(|| vec.len() + 1)
 }
 
-impl ZooKeeperState {
+impl ZookeeperState {
     async fn set_upgrading_condition(
         &self,
         conditions: &[Condition],
         message: &str,
         reason: &str,
         status: ConditionStatus,
-    ) -> OperatorResult<ZooKeeperCluster> {
+    ) -> OperatorResult<ZookeeperCluster> {
         let resource = self
             .context
             .build_and_set_condition(
@@ -122,8 +122,8 @@ impl ZooKeeperState {
 
     async fn set_current_version(
         &self,
-        version: Option<&ZooKeeperVersion>,
-    ) -> OperatorResult<ZooKeeperCluster> {
+        version: Option<&ZookeeperVersion>,
+    ) -> OperatorResult<ZookeeperCluster> {
         let resource = self
             .context
             .client
@@ -138,8 +138,8 @@ impl ZooKeeperState {
 
     async fn set_target_version(
         &self,
-        version: Option<&ZooKeeperVersion>,
-    ) -> OperatorResult<ZooKeeperCluster> {
+        version: Option<&ZookeeperVersion>,
+    ) -> OperatorResult<ZookeeperCluster> {
         let resource = self
             .context
             .client
@@ -194,11 +194,11 @@ impl ZooKeeperState {
     }
 
     /// Will initialize the status object if it's never been set.
-    async fn init_status(&mut self) -> ZooKeeperReconcileResult {
+    async fn init_status(&mut self) -> ZookeeperReconcileResult {
         // We'll begin by setting an empty status here because later in this method we might
         // update its conditions. To avoid any issues we'll just create it once here.
         if self.zk_status.is_none() {
-            let status = ZooKeeperClusterStatus::default();
+            let status = ZookeeperClusterStatus::default();
             self.context
                 .client
                 .merge_patch_status(&self.context.resource, &status)
@@ -326,10 +326,10 @@ impl ZooKeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
-    // This looks at all currently existing Pods for the current ZooKeeperCluster object.
+    // This looks at all currently existing Pods for the current ZookeeperCluster object.
     // It checks if all the pods are valid (i.e. contain required labels) and then builds an `IdInformation`
     // object and sets it on the current state.
-    async fn read_existing_pod_information(&mut self) -> ZooKeeperReconcileResult {
+    async fn read_existing_pod_information(&mut self) -> ZookeeperReconcileResult {
         trace!(
             "Reading existing pod information for {}",
             self.context.log_name()
@@ -338,7 +338,7 @@ impl ZooKeeperState {
         // We first create a list of all used ids (`myid`) so we know which we can reuse
         // At the same time we create a map of id to pod for all pods which already exist
         // Later we fill those up.
-        // It depends on the ZooKeeper version on whether this requires a full restart of the cluster
+        // It depends on the Zookeeper version on whether this requires a full restart of the cluster
         // or whether this can be done dynamically.
         // This list also includes all ids currently in use by terminating or otherwise not-ready pods.
         // We never want to use those as long as there's a chance that some process might be actively
@@ -360,7 +360,7 @@ impl ZooKeeperState {
             {
                 match labels.get(ID_LABEL) {
                     None => {
-                        error!("ZooKeeperCluster {}: Pod [{:?}] does not have the `id` label, this is illegal, deleting it.",
+                        error!("ZookeeperCluster {}: Pod [{:?}] does not have the `id` label, this is illegal, deleting it.",
                                self.context.log_name(),
                                pod);
                         self.context.client.delete(pod).await?;
@@ -369,7 +369,7 @@ impl ZooKeeperState {
                         let id = match label.parse::<usize>() {
                             Ok(id) => id,
                             Err(_) => {
-                                error!("ZooKeeperCluster {}: Pod [{:?}] does have the `id` label but the label ([{}]) cannot be parsed, this is illegal, deleting the pod.",
+                                error!("ZookeeperCluster {}: Pod [{:?}] does have the `id` label but the label ([{}]) cannot be parsed, this is illegal, deleting the pod.",
                                        self.context.log_name(), pod, label);
                                 self.context.client.delete(pod).await?;
                                 continue;
@@ -395,7 +395,7 @@ impl ZooKeeperState {
                     }
                 };
             } else {
-                error!("ZooKeeperCluster {}: Pod [{:?}] does not have any spec or labels, this is illegal, deleting it.",
+                error!("ZookeeperCluster {}: Pod [{:?}] does not have any spec or labels, this is illegal, deleting it.",
                        self.context.log_name(),
                        pod);
                 self.context.client.delete(pod).await?;
@@ -403,7 +403,7 @@ impl ZooKeeperState {
         }
 
         debug!(
-            "ZooKeeperCluster {}: Found these myids in use [{:?}]",
+            "ZookeeperCluster {}: Found these myids in use [{:?}]",
             self.context.log_name(),
             used_ids
         );
@@ -419,7 +419,7 @@ impl ZooKeeperState {
     /// We do this here - and not later - because we need the id mapping information for the
     /// ConfigMap generation later.
     /// NOTE: This method will _not_ work if multiple servers should run on a single node
-    async fn assign_ids(&mut self) -> ZooKeeperReconcileResult {
+    async fn assign_ids(&mut self) -> ZookeeperReconcileResult {
         trace!("Assigning ids to new servers from the spec",);
 
         let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
@@ -471,7 +471,7 @@ impl ZooKeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
-    pub async fn create_missing_pods(&mut self) -> ZooKeeperReconcileResult {
+    pub async fn create_missing_pods(&mut self) -> ZookeeperReconcileResult {
         trace!("Starting `create_missing_pods`");
 
         let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
@@ -649,11 +649,11 @@ impl ZooKeeperState {
         handlebars.set_strict_mode(true);
         handlebars
             .register_template_string("conf", "{{#each options}}{{@key}}={{this}}\n{{/each}}")
-            .expect("Failure rendering the ZooKeeper config template, this should not happen, please report this issue");
+            .expect("Failure rendering the Zookeeper config template, this should not happen, please report this issue");
 
         let config = handlebars
             .render("conf", &json!({ "options": options }))
-            .expect("Failure rendering the ZooKeeper config template, this should not happen, please report this issue");
+            .expect("Failure rendering the Zookeeper config template, this should not happen, please report this issue");
 
         // Now we need to create two configmaps per server.
         // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
@@ -767,7 +767,7 @@ impl ZooKeeperState {
     }
 }
 
-impl ReconciliationState for ZooKeeperState {
+impl ReconciliationState for ZookeeperState {
     type Error = error::Error;
 
     fn reconcile(
@@ -819,18 +819,18 @@ impl ReconciliationState for ZooKeeperState {
 }
 
 #[derive(Debug)]
-struct ZooKeeperStrategy {}
+struct ZookeeperStrategy {}
 
-impl ZooKeeperStrategy {
-    pub fn new() -> ZooKeeperStrategy {
-        ZooKeeperStrategy {}
+impl ZookeeperStrategy {
+    pub fn new() -> ZookeeperStrategy {
+        ZookeeperStrategy {}
     }
 }
 
 #[async_trait]
-impl ControllerStrategy for ZooKeeperStrategy {
-    type Item = ZooKeeperCluster;
-    type State = ZooKeeperState;
+impl ControllerStrategy for ZookeeperStrategy {
+    type Item = ZookeeperCluster;
+    type State = ZookeeperState;
     type Error = Error;
 
     async fn init_reconcile_state(
@@ -844,7 +844,7 @@ impl ControllerStrategy for ZooKeeperStrategy {
             existing_pods.len()
         );
 
-        let zk_spec: ZooKeeperClusterSpec = context.resource.spec.clone();
+        let zk_spec: ZookeeperClusterSpec = context.resource.spec.clone();
 
         let mut eligible_nodes = HashMap::new();
 
@@ -868,7 +868,7 @@ impl ControllerStrategy for ZooKeeperStrategy {
             .await?,
         );
 
-        Ok(ZooKeeperState {
+        Ok(ZookeeperState {
             zk_spec: context.resource.spec.clone(),
             zk_status: context.resource.status.clone(),
             context,
@@ -883,7 +883,7 @@ impl ControllerStrategy for ZooKeeperStrategy {
 ///
 /// This is an async method and the returned future needs to be consumed to make progress.
 pub async fn create_controller(client: Client) {
-    let zk_api: Api<ZooKeeperCluster> = client.get_all_api();
+    let zk_api: Api<ZookeeperCluster> = client.get_all_api();
     let pods_api: Api<Pod> = client.get_all_api();
     let config_maps_api: Api<ConfigMap> = client.get_all_api();
 
@@ -891,7 +891,7 @@ pub async fn create_controller(client: Client) {
         .owns(pods_api, ListParams::default())
         .owns(config_maps_api, ListParams::default());
 
-    let strategy = ZooKeeperStrategy::new();
+    let strategy = ZookeeperStrategy::new();
 
     controller
         .run(client, strategy, Duration::from_secs(10))

@@ -5,7 +5,7 @@ metadata:
 spec:
   group: zookeeper.stackable.tech
   names:
-    kind: ZooKeeperCluster
+    kind: ZookeeperCluster
     plural: zookeeperclusters
     shortNames:
       - zk
@@ -16,7 +16,7 @@ spec:
       name: v1
       schema:
         openAPIV3Schema:
-          description: "Auto-generated derived type for ZooKeeperClusterSpec via `CustomResource`"
+          description: "Auto-generated derived type for ZookeeperClusterSpec via `CustomResource`"
           properties:
             spec:
               properties:
@@ -142,7 +142,7 @@ spec:
               type: object
           required:
             - spec
-          title: ZooKeeperCluster
+          title: ZookeeperCluster
           type: object
       served: true
       storage: true
