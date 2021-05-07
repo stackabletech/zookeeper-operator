@@ -481,7 +481,7 @@ impl ZookeeperState {
         // The iteration happens in two stages here, to accommodate the way our operators think
         // about nodes and roles.
         // The hierarchy is:
-        // - Roles (for example Datanode, Namenode, Nifi Node)
+        // - Roles (for example Datanode, Namenode, Server)
         //   - Role groups for this role (user defined)
         for zookeeper_role in ZookeeperRole::iter() {
             if let Some(nodes_for_role) = self.eligible_nodes.get(&zookeeper_role) {
@@ -634,9 +634,6 @@ impl ZookeeperState {
         options.insert("syncLimit".to_string(), "2".to_string());
         options.insert("clientPort".to_string(), "2181".to_string());
 
-        // This builds the server string
-        // TODO: Does this need to use myid?
-
         let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
@@ -649,11 +646,11 @@ impl ZookeeperState {
         handlebars.set_strict_mode(true);
         handlebars
             .register_template_string("conf", "{{#each options}}{{@key}}={{this}}\n{{/each}}")
-            .expect("Failure rendering the Zookeeper config template, this should not happen, please report this issue");
+            .expect("Failure rendering the ZooKeeper config template, this should not happen, please report this issue");
 
         let config = handlebars
             .render("conf", &json!({ "options": options }))
-            .expect("Failure rendering the Zookeeper config template, this should not happen, please report this issue");
+            .expect("Failure rendering the ZooKeeper config template, this should not happen, please report this issue");
 
         // Now we need to create two configmaps per server.
         // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
