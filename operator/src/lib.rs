@@ -682,15 +682,15 @@ impl ZooKeeperState {
     }
 
     fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
-        let image_name = format!(
-            "stackable/zookeeper:{}",
-            self.context.resource.spec.version.to_string()
-        );
+        let version = self.context.resource.spec.version.to_string();
+
+        let image_name = format!("stackable/zookeeper:{}", version);
 
         let containers = vec![Container {
             image: Some(image_name),
             name: "zookeeper".to_string(),
             command: Some(vec![
+                format!("zookeeper-{}/", version),
                 "bin/zkServer.sh".to_string(),
                 "start-foreground".to_string(),
                 // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
