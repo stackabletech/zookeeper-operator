@@ -21,13 +21,10 @@ jobs:
           profile: minimal
           toolchain: nightly
           override: true
+      - uses: Swatinem/rust-cache@v1
       - uses: actions-rs/cargo@v1
         with:
           command: test
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
 
   fmt:
     name: Run Rustfmt
