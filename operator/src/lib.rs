@@ -690,7 +690,7 @@ impl ZooKeeperState {
             image: Some(image_name),
             name: "zookeeper".to_string(),
             command: Some(vec![
-                format!("zookeeper-{}/" version),
+                format!("zookeeper-{}/", version),
                 "bin/zkServer.sh".to_string(),
                 "start-foreground".to_string(),
                 // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
