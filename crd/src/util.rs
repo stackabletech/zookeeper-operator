@@ -26,10 +26,10 @@ pub enum TicketReferences {
     ErrZkPodWithoutName,
 }
 
-/// Contains all necessary information identify a Stackable managed Zookeeper
+/// Contains all necessary information identify a Stackable managed ZooKeeper
 /// ensemble and build a connection string for it.
 /// The main purpose for this struct is for other operators that need to reference a
-/// Zookeeper ensemble to use in their CRDs.
+/// ZooKeeper ensemble to use in their CRDs.
 /// This has the benefit of keeping references to Zookeeper ensembles consistent
 /// throughout the entire stack.
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
@@ -40,10 +40,10 @@ pub struct ZookeeperReference {
 }
 
 /// Contains all necessary information to establish a connection with a
-/// Zookeeper ensemble
+/// ZooKeeper ensemble
 #[allow(dead_code)]
 pub struct ZookeeperConnectionInformation {
-    // A connection string as defined by Zookeeper
+    // A connection string as defined by ZooKeeper
     // https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkSessions
     // This has the form `host:port[,host:port,...][/chroot]`
     // For example:
@@ -60,13 +60,13 @@ pub struct ZookeeperConnectionInformation {
 /// * `zk_name` - The name of the ZookeeperCluster custom resource
 /// * `zk_namespace` - The namespace this ZookeeperCluster custom resource is in
 /// * `chroot` - If provided, this will be appended as chroot to the connection string, the content
-///     of this parameter will be checked for validity according to Zookeeper's [naming rules for
+///     of this parameter will be checked for validity according to ZooKeeper's [naming rules for
 ///     znodes](https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkDataModel)
-///     This function is more lenient than Zookeeper in that it allows paths that do not start with
+///     This function is more lenient than ZooKeeper in that it allows paths that do not start with
 ///     a / character. If this is the case the slash at the beginning will be added.
 ///     **Note:** This means that passing an empty string instead of None will result in that empty
-///     string being padded with a / at the beginning, which would turn it into / which is  the
-///     Zookeeper root. Functionaly this does not make a difference when using the string as chroot
+///     string being padded with a / at the beginning, which would turn it into / which is the
+///     ZooKeeper root. Functional this does not make a difference when using the string as chroot
 ///     for a connection string though.
 #[allow(dead_code)]
 pub async fn get_zk_connection_info(
@@ -90,7 +90,7 @@ pub async fn get_zk_connection_info(
 
 // Left pads the chroot string with a / if necessary - mostly for convenience, so users do not
 // need to specify the / when entering the chroot string in their config.
-// Checks if the result is a valid Zookeeper path.
+// Checks if the result is a valid ZooKeeper path.
 fn pad_and_check_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<String>> {
     // Left pad the chroot with a / if needed
     // Sadly this requires copying the reference once,
@@ -109,7 +109,7 @@ fn pad_and_check_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<
     Ok(Some(chroot))
 }
 
-/// Check if a string is a valid Zookeeper path.
+/// Check if a string is a valid ZooKeeper path.
 /// The path is split at every '/' and the resulting elements are checked if they are a valid
 /// znode.
 ///
@@ -119,13 +119,13 @@ fn pad_and_check_chroot(chroot: Option<&str>) -> ZookeeperOperatorResult<Option<
 ///
 /// # Arguments
 ///
-/// * `path` - The path which should be checked against Zookeeper's naming rules
+/// * `path` - The path which should be checked against ZooKeeper's naming rules
 ///
 /// # Errors
 ///
-/// * [`IllegalZookeeperPath`] if the name violates any of Zookeeper's naming rules
+/// * [`IllegalZookeeperPath`] if the name violates any of ZooKeeper's naming rules
 pub fn is_valid_zookeeper_path(path: &str) -> ZookeeperOperatorResult<()> {
-    // The following code has been translated to Rust from the Zookeeper Java code at
+    // The following code has been translated to Rust from the ZooKeeper Java code at
     // https://github.com/apache/zookeeper/blob/master/zookeeper-server/src/main/java/org/apache/zookeeper/common/PathUtils.java#L43
     // Changes to the code were mostly where Java syntax differs from Rust and how
     // errors are reported back to the caller
@@ -151,7 +151,7 @@ pub fn is_valid_zookeeper_path(path: &str) -> ZookeeperOperatorResult<()> {
             errors: vec!["Path must not end with /".to_string()],
         });
     }
-    // Zookeeper code ends here
+    // ZooKeeper code ends here
 
     let errors = path
         .split('/')
@@ -170,20 +170,20 @@ pub fn is_valid_zookeeper_path(path: &str) -> ZookeeperOperatorResult<()> {
     }
 }
 
-// Check if the name is a valid name for a znode in Zookeeper according to the Zookeeper
+// Check if the name is a valid name for a znode in ZooKeeper according to the ZooKeeper
 // documentation at:
 // https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkDataModel
 //
-// This code does not check for presence of / in the string, as it relies on the Zookeeper
+// This code does not check for presence of / in the string, as it relies on the ZooKeeper
 // path having been split into its segments before.
 //
 // # Arguments
 //
-// * `node_name` - The name which should be checked against Zookeepers naming rules
+// * `node_name` - The name which should be checked against ZooKeepers naming rules
 //
 // # Errors
 //
-// * [`IllegalZnode`] if the name violates any of Zookeepers naming rules
+// * [`IllegalZnode`] if the name violates any of ZooKeepers naming rules
 fn is_valid_znode(node_name: &str) -> ZookeeperOperatorResult<()> {
     if node_name.is_empty() {
         return Err(IllegalZnode {
@@ -213,10 +213,10 @@ fn is_valid_znode(node_name: &str) -> ZookeeperOperatorResult<()> {
     }
 }
 
-// Checks the string for any illegal characters according to Zookeeper's rules and returns
+// Checks the string for any illegal characters according to ZooKeeper's rules and returns
 // a HashSet containing all illegal characters
 fn contains_illegal_character(node_name: &str) -> HashSet<char> {
-    // The value E000 in the list below does not exactly match what is written in the Zookeeper
+    // The value E000 in the list below does not exactly match what is written in the ZooKeeper
     // docs, this is because rust `char`s cannot represent surrogates, so for D800 we moved this
     // to the next _legal_ value of E000
     node_name
@@ -263,7 +263,7 @@ async fn check_zookeeper_reference(
 
     zk_cluster.map_err(|err| {
         warn!(?err,
-                        "Referencing a Zookeeper cluster that does not exist (or some other error while fetching it): [{}/{}], we will requeue and check again",
+                        "Referencing a ZooKeeper cluster that does not exist (or some other error while fetching it): [{}/{}], we will requeue and check again",
                         zk_namespace,
                         zk_name
                     );
@@ -392,7 +392,7 @@ mod tests {
     #[case::heart_more_than_two_periods("/Heart: ♥/.../hallo")]
     #[case::long("/Diamond: ♦/star/club/test/hi")]
     #[case::periods_in_multiple_elements("/Club: ♣/testzookeeper/iae.iae/.hi")]
-    // The following test strings have been taken from the Zookeeper code
+    // The following test strings have been taken from the ZooKeeper code
     #[case::blanks("/this is / a valid/path")]
     #[case::period("/name/with.period.")]
     #[case::first_allowable_char("/test \u{0020}")]
@@ -410,7 +410,7 @@ mod tests {
     #[case::forbidden_nullcharacter("\u{0000}")]
     #[case::forbidden_character_from_range("hello\u{E000}test")]
     #[case::forbidden_character_leading_slash("/_\u{FFFF}_h_el.lo_")]
-    // The following test strings have been taken from the Zookeeper code
+    // The following test strings have been taken from the ZooKeeper code
     #[case::empty("")]
     #[case::no_leading_slash("not/valid")]
     #[case::ends_with_slash("/ends/with/slash/")]

@@ -6,7 +6,7 @@ use kube::CustomResource;
 use schemars::JsonSchema;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
-use stackable_operator::label_selector::schema;
+use stackable_operator::label_selector;
 use stackable_operator::Crd;
 use std::collections::HashMap;
 
@@ -26,12 +26,12 @@ pub const MANAGED_BY: &str = "stackable-zookeeper";
 #[kube(status = "ZookeeperClusterStatus")]
 pub struct ZookeeperClusterSpec {
     pub version: ZookeeperVersion,
-    pub servers: RoleGroup<ZookeeperConfig>,
+    pub servers: RoleGroups<ZookeeperConfig>,
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RoleGroup<T> {
+pub struct RoleGroups<T> {
     pub selectors: HashMap<String, SelectorAndConfig<T>>,
 }
 
@@ -41,7 +41,7 @@ pub struct SelectorAndConfig<T> {
     pub instances: u16,
     pub instances_per_node: u8,
     pub config: Option<T>,
-    #[schemars(schema_with = "schema")]
+    #[schemars(schema_with = "label_selector::schema")]
     pub selector: Option<LabelSelector>,
 }
 

@@ -149,6 +149,9 @@ impl ZookeeperState {
         Ok(resource)
     }
 
+    /// For each existing role (server), return a tuple consisting of eligible nodes for a given
+    /// selector. Required to delete excess pods that do not match any node or selector description.
+    /// TODO: move to operator-rs
     pub fn get_full_pod_node_map(&self) -> Vec<(Vec<Node>, LabelOptionalValueMap)> {
         let mut eligible_nodes_map = vec![];
 
@@ -164,7 +167,7 @@ impl ZookeeperState {
                     );
                     eligible_nodes_map.push((
                         eligible_nodes.clone(),
-                        get_node_and_group_labels(group_name, &zookeeper_role),
+                        get_role_and_group_labels(&zookeeper_role, group_name),
                     ))
                 }
             }
@@ -173,22 +176,23 @@ impl ZookeeperState {
     }
 
     /// Required labels for pods. Pods without any of these will deleted and/or replaced.
+    /// TODO: Now we create this every reconcile run, should be created once and reused.
     pub fn get_deletion_labels(&self) -> BTreeMap<String, Option<Vec<String>>> {
         let roles = ZookeeperRole::iter()
             .map(|role| role.to_string())
             .collect::<Vec<_>>();
         let mut mandatory_labels = BTreeMap::new();
 
-        mandatory_labels.insert(String::from(labels::APP_COMPONENT_LABEL), Some(roles));
+        mandatory_labels.insert(labels::APP_COMPONENT_LABEL.to_string(), Some(roles));
         mandatory_labels.insert(
-            String::from(labels::APP_INSTANCE_LABEL),
+            labels::APP_INSTANCE_LABEL.to_string(),
             Some(vec![self.context.name()]),
         );
         mandatory_labels.insert(
-            String::from(labels::APP_VERSION_LABEL),
+            labels::APP_VERSION_LABEL.to_string(),
             Some(vec![self.context.resource.spec.version.to_string()]),
         );
-        mandatory_labels.insert(String::from(ID_LABEL), None);
+        mandatory_labels.insert(ID_LABEL.to_string(), None);
 
         mandatory_labels
     }
@@ -426,8 +430,6 @@ impl ZookeeperState {
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
-        // We iterate over all servers from the spec and check if we have a pod assigned to this server.
-        // If not we find the next unused one and assign that.
         id_information.used_ids.sort_unstable();
 
         for role in ZookeeperRole::iter() {
@@ -509,12 +511,12 @@ impl ZookeeperState {
                     );
                     trace!(
                         "labels: [{:?}]",
-                        get_node_and_group_labels(role_group, &zookeeper_role)
+                        get_role_and_group_labels(&zookeeper_role, role_group)
                     );
                     let nodes_that_need_pods = k8s_utils::find_nodes_that_need_pods(
                         nodes,
                         &self.existing_pods,
-                        &get_node_and_group_labels(role_group, &zookeeper_role),
+                        &get_role_and_group_labels(&zookeeper_role, role_group),
                     );
 
                     for node in nodes_that_need_pods {
@@ -551,34 +553,15 @@ impl ZookeeperState {
                             )
                             .to_lowercase();
 
-                            let mut node_labels = BTreeMap::new();
-                            node_labels.insert(
-                                String::from(labels::APP_NAME_LABEL),
-                                String::from(APP_NAME),
+                            let pod_labels = build_pod_labels(
+                                &zookeeper_role.to_string(),
+                                role_group,
+                                &self.context.name(),
+                                &self.context.resource.spec.version.to_string(),
+                                &id.to_string(),
                             );
-                            node_labels.insert(
-                                String::from(labels::APP_MANAGED_BY_LABEL),
-                                String::from(MANAGED_BY),
-                            );
-                            node_labels.insert(
-                                String::from(labels::APP_COMPONENT_LABEL),
-                                zookeeper_role.to_string(),
-                            );
-                            node_labels.insert(
-                                String::from(labels::APP_ROLE_GROUP_LABEL),
-                                String::from(role_group),
-                            );
-                            node_labels.insert(
-                                String::from(labels::APP_INSTANCE_LABEL),
-                                self.context.name(),
-                            );
-                            node_labels.insert(
-                                String::from(labels::APP_VERSION_LABEL),
-                                self.context.resource.spec.version.to_string(),
-                            );
-                            node_labels.insert(ID_LABEL.to_string(), id.to_string());
 
-                            self.create_pod(&node_name, &pod_name, node_labels).await?;
+                            self.create_pod(&node_name, &pod_name, pod_labels).await?;
                             self.create_config_maps(&pod_name, id).await?;
 
                             return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
@@ -830,6 +813,9 @@ impl ControllerStrategy for ZookeeperStrategy {
     type State = ZookeeperState;
     type Error = Error;
 
+    /// Init the ZooKeeper state. Store all available pods owned by this cluster for later processing.
+    /// Retrieve nodes that fit selectors and store them for later processing:
+    /// ZookeeperRole (we only have 'server') -> role group -> list of nodes.
     async fn init_reconcile_state(
         &self,
         context: ReconciliationContext<Self::Item>,
@@ -895,17 +881,45 @@ pub async fn create_controller(client: Client) {
         .await;
 }
 
-fn get_node_and_group_labels(group_name: &str, role: &ZookeeperRole) -> LabelOptionalValueMap {
-    let mut node_labels = BTreeMap::new();
-    node_labels.insert(
-        String::from(labels::APP_COMPONENT_LABEL),
+/// Return a map with labels and values for role (component) and group (role_group).
+/// Required to find nodes that are a possible match for pods.
+/// TODO: move to operator-rs
+fn get_role_and_group_labels(role: &ZookeeperRole, group_name: &str) -> LabelOptionalValueMap {
+    let mut labels = BTreeMap::new();
+    labels.insert(
+        labels::APP_COMPONENT_LABEL.to_string(),
         Some(role.to_string()),
     );
-    node_labels.insert(
-        String::from(labels::APP_ROLE_GROUP_LABEL),
-        Some(String::from(group_name)),
+    labels.insert(
+        labels::APP_ROLE_GROUP_LABEL.to_string(),
+        Some(group_name.to_string()),
     );
-    node_labels
+    labels
+}
+
+fn build_pod_labels(
+    role: &str,
+    role_group: &str,
+    name: &str,
+    version: &str,
+    id: &str,
+) -> BTreeMap<String, String> {
+    let mut labels = BTreeMap::new();
+    labels.insert(labels::APP_NAME_LABEL.to_string(), APP_NAME.to_string());
+    labels.insert(
+        labels::APP_MANAGED_BY_LABEL.to_string(),
+        MANAGED_BY.to_string(),
+    );
+    labels.insert(labels::APP_COMPONENT_LABEL.to_string(), role.to_string());
+    labels.insert(
+        labels::APP_ROLE_GROUP_LABEL.to_string(),
+        role_group.to_string(),
+    );
+    labels.insert(labels::APP_INSTANCE_LABEL.to_string(), name.to_string());
+    labels.insert(labels::APP_VERSION_LABEL.to_string(), version.to_string());
+    labels.insert(ID_LABEL.to_string(), id.to_string());
+
+    labels
 }
 
 #[cfg(test)]
