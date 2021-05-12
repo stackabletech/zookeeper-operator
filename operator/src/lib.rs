@@ -342,7 +342,7 @@ impl ZookeeperState {
         // We first create a list of all used ids (`myid`) so we know which we can reuse
         // At the same time we create a map of id to pod for all pods which already exist
         // Later we fill those up.
-        // It depends on the Zookeeper version on whether this requires a full restart of the cluster
+        // It depends on the ZooKeeper version on whether this requires a full restart of the cluster
         // or whether this can be done dynamically.
         // This list also includes all ids currently in use by terminating or otherwise not-ready pods.
         // We never want to use those as long as there's a chance that some process might be actively
@@ -691,17 +691,16 @@ impl ZookeeperState {
         })
     }
 
-    fn build_containers(&self, pod_name: &str) -> (Vec<Container>, Vec<Volume>) {
-        let image_name = format!(
-            "stackable/zookeeper:{}",
-            self.context.resource.spec.version.to_string()
-        );
+    fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
+        let version = self.context.resource.spec.version.to_string();
+
+        let image_name = format!("stackable/zookeeper:{}", version);
 
         let containers = vec![Container {
             image: Some(image_name),
             name: "zookeeper".to_string(),
             command: Some(vec![
-                "bin/zkServer.sh".to_string(),
+                format!("zookeeper-{}/bin/zkServer.sh", version),
                 "start-foreground".to_string(),
                 // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
                 "{{ configroot }}/conf/zoo.cfg".to_string(), // TODO: Later versions can probably point to a directory instead, investigate

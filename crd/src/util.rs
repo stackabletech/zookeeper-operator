@@ -42,6 +42,7 @@ pub struct ZookeeperReference {
 /// Contains all necessary information to establish a connection with a
 /// ZooKeeper ensemble
 #[allow(dead_code)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ZookeeperConnectionInformation {
     // A connection string as defined by ZooKeeper
     // https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkSessions
