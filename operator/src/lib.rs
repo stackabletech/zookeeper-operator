@@ -524,7 +524,8 @@ impl ZooKeeperState {
             // If it's not we'll delete the pod, in the next reconcile run (or over the next few runs)
             // it'll be automatically created again.
             let container = pod.spec.as_ref().unwrap().containers.get(0).unwrap();
-            if container.image != status.target_image_name() {
+            if container.image != status.target_image_name() && status.target_image_name().is_some()
+            {
                 info!(
                     "Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
                     Resource::name(&pod),
@@ -682,15 +683,15 @@ impl ZooKeeperState {
     }
 
     fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
-        let version = self.context.resource.spec.version.to_string();
+        let version = &self.context.resource.spec.version;
 
-        let image_name = format!("stackable/zookeeper:{}", version);
+        let image_name = format!("stackable/zookeeper:{}", version.to_string());
 
         let containers = vec![Container {
             image: Some(image_name),
             name: "zookeeper".to_string(),
             command: Some(vec![
-                format!("zookeeper-{}/bin/zkServer.sh", version),
+                format!("{}/bin/zkServer.sh", version.package_name()),
                 "start-foreground".to_string(),
                 // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
                 "{{ configroot }}/conf/zoo.cfg".to_string(), // TODO: Later versions can probably point to a directory instead, investigate
