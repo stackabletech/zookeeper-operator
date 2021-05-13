@@ -565,6 +565,11 @@ impl ZookeeperState {
                             self.create_config_maps(&pod_name, id).await?;
 
                             return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
+                        } else {
+                            debug!(
+                                "Pod for server [{}] already created, skipping ...",
+                                node_name
+                            );
                         }
                     }
                 }
@@ -691,7 +696,7 @@ impl ZookeeperState {
         })
     }
 
-    fn build_containers(&self, zk_server: &ZooKeeperServer) -> (Vec<Container>, Vec<Volume>) {
+    fn build_containers(&self, pod_name: &str) -> (Vec<Container>, Vec<Volume>) {
         let version = self.context.resource.spec.version.to_string();
 
         let image_name = format!("stackable/zookeeper:{}", version);
