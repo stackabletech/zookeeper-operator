@@ -9,12 +9,6 @@ spec:
       default:
         selector:
           matchLabels:
-            kubernetes.io/hostname: zookeeper-1
-        instances: 1
-        instancesPerNode: 1
-      default2:
-        selector:
-          matchLabels:
-            kubernetes.io/hostname: zookeeper-2
+            kubernetes.io/hostname: debian
         instances: 1
         instancesPerNode: 1
