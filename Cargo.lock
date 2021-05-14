@@ -1587,6 +1587,8 @@ dependencies = [
  "serde_json",
  "stackable-operator",
  "stackable-zookeeper-crd",
+ "strum",
+ "strum_macros",
  "thiserror",
  "tracing",
 ]

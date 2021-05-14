@@ -4,7 +4,7 @@ use crate::error::Error::{
 };
 use crate::error::ZookeeperOperatorResult;
 use crate::util::TicketReferences::ErrZkPodWithoutName;
-use crate::{ZooKeeperCluster, ZooKeeperClusterSpec, APP_NAME, MANAGED_BY};
+use crate::{ZookeeperCluster, ZookeeperClusterSpec, APP_NAME, MANAGED_BY};
 use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use schemars::JsonSchema;
@@ -30,7 +30,7 @@ pub enum TicketReferences {
 /// ensemble and build a connection string for it.
 /// The main purpose for this struct is for other operators that need to reference a
 /// ZooKeeper ensemble to use in their CRDs.
-/// This has the benefit of keeping references to ZooKeeper ensembles consistent
+/// This has the benefit of keeping references to Zookeeper ensembles consistent
 /// throughout the entire stack.
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 pub struct ZookeeperReference {
@@ -66,8 +66,8 @@ pub struct ZookeeperConnectionInformation {
 ///     This function is more lenient than ZooKeeper in that it allows paths that do not start with
 ///     a / character. If this is the case the slash at the beginning will be added.
 ///     **Note:** This means that passing an empty string instead of None will result in that empty
-///     string being padded with a / at the beginning, which would turn it into / which is  the
-///     ZooKeeper root. Functionaly this does not make a difference when using the string as chroot
+///     string being padded with a / at the beginning, which would turn it into / which is the
+///     ZooKeeper root. Functional this does not make a difference when using the string as chroot
 ///     for a connection string though.
 #[allow(dead_code)]
 pub async fn get_zk_connection_info(
@@ -217,7 +217,7 @@ fn is_valid_znode(node_name: &str) -> ZookeeperOperatorResult<()> {
 // Checks the string for any illegal characters according to ZooKeeper's rules and returns
 // a HashSet containing all illegal characters
 fn contains_illegal_character(node_name: &str) -> HashSet<char> {
-    // The value E000 in the list below does not exactly match what is written in the Zookeeper
+    // The value E000 in the list below does not exactly match what is written in the ZooKeeper
     // docs, this is because rust `char`s cannot represent surrogates, so for D800 we moved this
     // to the next _legal_ value of E000
     node_name
@@ -254,12 +254,12 @@ async fn check_zookeeper_reference(
     client: &Client,
     zk_name: &str,
     zk_namespace: &str,
-) -> ZookeeperOperatorResult<ZooKeeperCluster> {
+) -> ZookeeperOperatorResult<ZookeeperCluster> {
     debug!(
         "Checking ZookeeperReference if [{}] exists in namespace [{}].",
         zk_name, zk_namespace
     );
-    let zk_cluster: OperatorResult<ZooKeeperCluster> =
+    let zk_cluster: OperatorResult<ZookeeperCluster> =
         client.get(zk_name, Some(zk_namespace)).await;
 
     zk_cluster.map_err(|err| {
@@ -276,7 +276,7 @@ async fn check_zookeeper_reference(
 // the cluster spec itself, from which the port per host will be retrieved (unimplemented at
 // this time)
 fn get_zk_connection_string_from_pods(
-    zookeeper_spec: ZooKeeperClusterSpec,
+    zookeeper_spec: ZookeeperClusterSpec,
     zk_pods: Vec<Pod>,
     chroot: Option<&str>,
 ) -> ZookeeperOperatorResult<String> {
@@ -345,7 +345,7 @@ fn get_zk_connection_string_from_pods(
 //  Depends on https://github.com/stackabletech/zookeeper-operator/pull/71
 //  Depends on https://github.com/stackabletech/zookeeper-operator/issues/85
 fn get_zk_port(
-    _zk_cluster: &ZooKeeperClusterSpec,
+    _zk_cluster: &ZookeeperClusterSpec,
     _role_group: &str,
 ) -> ZookeeperOperatorResult<u16> {
     Ok(2181)
@@ -466,7 +466,13 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          - node_name: debian
+          selectors:
+            default:
+              selector:
+                matchLabels:
+                  kubernetes.io/hostname: debian
+              instances: 1
+              instancesPerNode: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -483,12 +489,18 @@ mod tests {
       "},
       None,
       "debian:2181"
-)]
+    )]
     #[case::single_pod_with_chroot(
       indoc! {"
         version: 3.4.14
         servers:
-          - node_name: worker-1.stackable.tech
+          selectors:
+            default:
+              selector:
+                matchLabels:
+                  kubernetes.io/hostname: worker-1.stackable.tech
+              instances: 1
+              instancesPerNode: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -510,7 +522,13 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          - node_name: debian
+          selectors:
+            default:
+              selector:
+                matchLabels:
+                  kubernetes.io/hostname: debian
+              instances: 1
+              instancesPerNode: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -575,7 +593,13 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          - node_name: debian
+            selectors:
+              default:
+                selector:
+                  matchLabels:
+                    kubernetes.io/hostname: debian
+                instances: 1
+                instancesPerNode: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -600,7 +624,13 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          - node_name: debian
+          selectors:
+            default:
+              selector:
+                matchLabels:
+                  kubernetes.io/hostname: debian
+              instances: 1
+              instancesPerNode: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -644,7 +674,7 @@ mod tests {
             .collect()
     }
 
-    fn parse_zk_from_yaml(zk_config: &str) -> ZooKeeperClusterSpec {
+    fn parse_zk_from_yaml(zk_config: &str) -> ZookeeperClusterSpec {
         serde_yaml::from_str(zk_config).unwrap()
     }
 }

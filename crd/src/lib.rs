@@ -1,12 +1,14 @@
 pub mod error;
 pub mod util;
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, LabelSelector};
 use kube::CustomResource;
 use schemars::JsonSchema;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
+use stackable_operator::label_selector;
 use stackable_operator::Crd;
+use std::collections::HashMap;
 
 pub const APP_NAME: &str = "zookeeper";
 pub const MANAGED_BY: &str = "stackable-zookeeper";
@@ -17,24 +19,38 @@ pub const MANAGED_BY: &str = "stackable-zookeeper";
 #[kube(
     group = "zookeeper.stackable.tech",
     version = "v1",
-    kind = "ZooKeeperCluster",
+    kind = "ZookeeperCluster",
     shortname = "zk",
     namespaced
 )]
-#[kube(status = "ZooKeeperClusterStatus")]
-pub struct ZooKeeperClusterSpec {
-    pub version: ZooKeeperVersion,
-    pub servers: Vec<ZooKeeperServer>,
+#[kube(status = "ZookeeperClusterStatus")]
+pub struct ZookeeperClusterSpec {
+    pub version: ZookeeperVersion,
+    pub servers: RoleGroups<ZookeeperConfig>,
 }
 
-impl Crd for ZooKeeperCluster {
-    const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.tech";
-    const CRD_DEFINITION: &'static str = include_str!("../zookeepercluster.crd.yaml");
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoleGroups<T> {
+    pub selectors: HashMap<String, SelectorAndConfig<T>>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectorAndConfig<T> {
+    pub instances: u16,
+    pub instances_per_node: u8,
+    pub config: Option<T>,
+    #[schemars(schema_with = "label_selector::schema")]
+    pub selector: Option<LabelSelector>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-pub struct ZooKeeperServer {
-    pub node_name: String,
+pub struct ZookeeperConfig {}
+
+impl Crd for ZookeeperCluster {
+    const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.tech";
+    const CRD_DEFINITION: &'static str = include_str!("../zookeepercluster.crd.yaml");
 }
 
 #[allow(non_camel_case_types)]
@@ -49,7 +65,7 @@ pub struct ZooKeeperServer {
     strum_macros::Display,
     strum_macros::EnumString,
 )]
-pub enum ZooKeeperVersion {
+pub enum ZookeeperVersion {
     #[serde(rename = "3.4.14")]
     #[strum(serialize = "3.4.14")]
     v3_4_14,
@@ -59,7 +75,7 @@ pub enum ZooKeeperVersion {
     v3_5_8,
 }
 
-impl ZooKeeperVersion {
+impl ZookeeperVersion {
     pub fn is_valid_upgrade(&self, to: &Self) -> Result<bool, SemVerError> {
         let from_version = Version::parse(&self.to_string())?;
         let to_version = Version::parse(&to.to_string())?;
@@ -69,10 +85,10 @@ impl ZooKeeperVersion {
 
     pub fn package_name(&self) -> String {
         match self {
-            ZooKeeperVersion::v3_4_14 => {
+            ZookeeperVersion::v3_4_14 => {
                 format!("zookeeper-{}", self.to_string())
             }
-            ZooKeeperVersion::v3_5_8 => {
+            ZookeeperVersion::v3_5_8 => {
                 format!("apache-zookeeper-{}-bin", self.to_string())
             }
         }
@@ -81,17 +97,17 @@ impl ZooKeeperVersion {
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ZooKeeperClusterStatus {
+pub struct ZookeeperClusterStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_version: Option<ZooKeeperVersion>,
+    pub current_version: Option<ZookeeperVersion>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_version: Option<ZooKeeperVersion>,
+    pub target_version: Option<ZookeeperVersion>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(schema_with = "stackable_operator::conditions::schema")]
     pub conditions: Vec<Condition>,
 }
 
-impl ZooKeeperClusterStatus {
+impl ZookeeperClusterStatus {
     pub fn target_image_name(&self) -> Option<String> {
         self.target_version
             .as_ref()
@@ -101,38 +117,38 @@ impl ZooKeeperClusterStatus {
 
 #[cfg(test)]
 mod tests {
-    use crate::ZooKeeperVersion;
+    use crate::ZookeeperVersion;
     use std::str::FromStr;
 
     #[test]
     fn test_version_upgrade() {
-        assert!(ZooKeeperVersion::v3_4_14
-            .is_valid_upgrade(&ZooKeeperVersion::v3_5_8)
+        assert!(ZookeeperVersion::v3_4_14
+            .is_valid_upgrade(&ZookeeperVersion::v3_5_8)
             .unwrap());
 
-        assert!(!ZooKeeperVersion::v3_5_8
-            .is_valid_upgrade(&ZooKeeperVersion::v3_4_14)
+        assert!(!ZookeeperVersion::v3_5_8
+            .is_valid_upgrade(&ZookeeperVersion::v3_4_14)
             .unwrap());
     }
 
     #[test]
     fn test_version_conversion() {
-        ZooKeeperVersion::from_str("3.4.14").unwrap();
-        ZooKeeperVersion::from_str("3.5.8").unwrap();
-        ZooKeeperVersion::from_str("1.2.3").unwrap_err();
+        ZookeeperVersion::from_str("3.4.14").unwrap();
+        ZookeeperVersion::from_str("3.5.8").unwrap();
+        ZookeeperVersion::from_str("1.2.3").unwrap_err();
     }
 
     #[test]
     fn test_package_name() {
         assert_eq!(
-            ZooKeeperVersion::v3_4_14.package_name(),
-            format!("zookeeper-{}", ZooKeeperVersion::v3_4_14.to_string())
+            ZookeeperVersion::v3_4_14.package_name(),
+            format!("zookeeper-{}", ZookeeperVersion::v3_4_14.to_string())
         );
         assert_eq!(
-            ZooKeeperVersion::v3_5_8.package_name(),
+            ZookeeperVersion::v3_5_8.package_name(),
             format!(
                 "apache-zookeeper-{}-bin",
-                ZooKeeperVersion::v3_5_8.to_string()
+                ZookeeperVersion::v3_5_8.to_string()
             )
         );
     }
