@@ -580,6 +580,28 @@ impl ZookeeperState {
             "`zk_status missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
         ))?;
 
+        // Iterate over all servers from the spec, then fetch the matching pod and check whether
+        // the pod still matches the spec.
+        for server in &self.zk_spec.servers {
+            let pod = id_information.node_name_to_pod.remove(&server.node_name).ok_or_else(|| error::Error::ReconcileError("Pod missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string()))?;
+
+            // Check if the pod image is up-to-date
+            // If it's not we'll delete the pod, in the next reconcile run (or over the next few runs)
+            // it'll be automatically created again.
+            let container = pod.spec.as_ref().unwrap().containers.get(0).unwrap();
+            if container.image != status.target_image_name() && status.target_image_name().is_some()
+            {
+                info!(
+                    "Image for pod [{}] differs [{:?}] (from container) != [{:?}] (from current spec), deleting old pod",
+                    Resource::name(&pod),
+                    container.image,
+                    status.target_image_name()
+                );
+                self.context.client.delete(&pod).await?;
+                return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
+            }
+        }
+
         // If we reach here it means all pods must be running on target_version.
         // We can now set current_version to target_version (if target_version was set) and
         // target_version to None
@@ -697,15 +719,15 @@ impl ZookeeperState {
     }
 
     fn build_containers(&self, pod_name: &str) -> (Vec<Container>, Vec<Volume>) {
-        let version = self.context.resource.spec.version.to_string();
+        let version = &self.context.resource.spec.version;
 
-        let image_name = format!("stackable/zookeeper:{}", version);
+        let image_name = format!("stackable/zookeeper:{}", version.to_string());
 
         let containers = vec![Container {
             image: Some(image_name),
             name: "zookeeper".to_string(),
             command: Some(vec![
-                format!("zookeeper-{}/bin/zkServer.sh", version),
+                format!("{}/bin/zkServer.sh", version.package_name()),
                 "start-foreground".to_string(),
                 // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
                 "{{ configroot }}/conf/zoo.cfg".to_string(), // TODO: Later versions can probably point to a directory instead, investigate

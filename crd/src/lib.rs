@@ -82,6 +82,17 @@ impl ZookeeperVersion {
 
         Ok(to_version > from_version)
     }
+
+    pub fn package_name(&self) -> String {
+        match self {
+            ZooKeeperVersion::v3_4_14 => {
+                format!("zookeeper-{}", self.to_string())
+            }
+            ZooKeeperVersion::v3_5_8 => {
+                format!("apache-zookeeper-{}-bin", self.to_string())
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
@@ -125,5 +136,20 @@ mod tests {
         ZookeeperVersion::from_str("3.4.14").unwrap();
         ZookeeperVersion::from_str("3.5.8").unwrap();
         ZookeeperVersion::from_str("1.2.3").unwrap_err();
+    }
+
+    #[test]
+    fn test_package_name() {
+        assert_eq!(
+            ZooKeeperVersion::v3_4_14.package_name(),
+            format!("zookeeper-{}", ZooKeeperVersion::v3_4_14.to_string())
+        );
+        assert_eq!(
+            ZooKeeperVersion::v3_5_8.package_name(),
+            format!(
+                "apache-zookeeper-{}-bin",
+                ZooKeeperVersion::v3_5_8.to_string()
+            )
+        );
     }
 }
