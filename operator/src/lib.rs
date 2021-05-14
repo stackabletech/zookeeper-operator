@@ -151,9 +151,9 @@ impl ZookeeperState {
 
     /// For each existing role (server), return a tuple consisting of eligible nodes for a given
     /// selector. Required to delete excess pods that do not match any node or selector description.
-    /// TODO: move to operator-rs
+    // TODO: move to operator-rs
     pub fn get_full_pod_node_map(&self) -> Vec<(Vec<Node>, LabelOptionalValueMap)> {
-        let mut eligible_nodes_map = vec![];
+        let mut eligible_nodes_for_role_and_group = vec![];
 
         for zookeeper_role in ZookeeperRole::iter() {
             if let Some(eligible_nodes_for_role) = self.eligible_nodes.get(&zookeeper_role) {
@@ -165,19 +165,19 @@ impl ZookeeperState {
                         zookeeper_role,
                         group_name
                     );
-                    eligible_nodes_map.push((
+                    eligible_nodes_for_role_and_group.push((
                         eligible_nodes.clone(),
                         get_role_and_group_labels(&zookeeper_role, group_name),
                     ))
                 }
             }
         }
-        eligible_nodes_map
+        eligible_nodes_for_role_and_group
     }
 
     /// Required labels for pods. Pods without any of these will deleted and/or replaced.
-    /// TODO: Now we create this every reconcile run, should be created once and reused.
-    pub fn get_deletion_labels(&self) -> BTreeMap<String, Option<Vec<String>>> {
+    // TODO: Now we create this every reconcile run, should be created once and reused.
+    pub fn get_required_labels(&self) -> BTreeMap<String, Option<Vec<String>>> {
         let roles = ZookeeperRole::iter()
             .map(|role| role.to_string())
             .collect::<Vec<_>>();
@@ -759,7 +759,7 @@ impl ReconciliationState for ZookeeperState {
     ) -> Pin<Box<dyn Future<Output = Result<ReconcileFunctionAction, Self::Error>> + Send + '_>>
     {
         info!("========================= Starting reconciliation =========================");
-        debug!("Deletion Labels: [{:?}]", &self.get_deletion_labels());
+        debug!("Deletion Labels: [{:?}]", &self.get_required_labels());
 
         Box::pin(async move {
             self.init_status()
@@ -772,7 +772,7 @@ impl ReconciliationState for ZookeeperState {
                 .await?
                 .then(self.context.delete_illegal_pods(
                     self.existing_pods.as_slice(),
-                    &self.get_deletion_labels(),
+                    &self.get_required_labels(),
                     ContinuationStrategy::OneRequeue,
                 ))
                 .await?
