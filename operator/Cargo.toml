@@ -23,4 +23,4 @@ tracing = "0.1"
 
 
 [dev-dependencies]
-rstest = "0.7"
+rstest = "0.9"
