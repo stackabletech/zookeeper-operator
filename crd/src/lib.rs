@@ -74,7 +74,6 @@ pub struct ZooKeeperConfiguration {
     pub init_limit: Option<u32>,  // int in Java
     pub sync_limit: Option<u32>,  // int in Java
     pub tick_time: Option<u32>,   // int in Java
-    pub additional_options: Option<Hashmap<String, String>>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
@@ -100,8 +99,6 @@ impl ZooKeeperClusterStatus {
 #[cfg(test)]
 mod tests {
     use crate::{ZooKeeperConfiguration, ZooKeeperVersion};
-    use product_config::types::OptionKind;
-    use product_config::ProductConfig;
     use std::str::FromStr;
 
     #[test]
@@ -120,34 +117,5 @@ mod tests {
         ZooKeeperVersion::from_str("3.4.14").unwrap();
         ZooKeeperVersion::from_str("3.5.8").unwrap();
         ZooKeeperVersion::from_str("1.2.3").unwrap_err();
-    }
-
-    #[test]
-    fn test_serde() {
-        let conf = ZooKeeperConfiguration {
-            client_port: Some(0),
-            data_dir: None,
-            init_limit: Some(4),
-            sync_limit: None,
-            tick_time: None,
-        };
-
-        use crate::ser;
-
-        let config = ser::to_hash_map(&conf).unwrap();
-
-        println!("{:?}", config);
-
-        let config_reader = product_config::reader::ConfigJsonReader::new("config.json");
-        let product_config = ProductConfig::new(config_reader).unwrap();
-        let option_kind = OptionKind::Conf("zoo.cfg".to_string());
-
-        let config = product_config.get("1.2.3", &option_kind, Some("zookeeper-server"), &config);
-
-        println!("{:?}", config);
-
-        for (key, value) in config {
-            println!("Config Key: {}", key);
-        }
     }
 }
