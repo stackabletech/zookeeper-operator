@@ -1106,6 +1106,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "product-config"
+version = "0.1.0"
+source = "git+https://github.com/stackabletech/product-config.git?branch=serde#c8e6f158dbe4cd80c168a1314091246cc30902cd"
+dependencies = [
+ "regex",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1571,7 +1583,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "product-config",
+ "product-config 0.1.0 (git+https://github.com/stackabletech/product-config.git?branch=main)",
  "rstest 0.8.0",
  "schemars",
  "semver",
@@ -1595,7 +1607,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "product-config",
+ "product-config 0.1.0 (git+https://github.com/stackabletech/product-config.git?branch=serde)",
  "rstest 0.7.0",
  "serde",
  "serde_json",

@@ -622,8 +622,7 @@ impl ZookeeperState {
     async fn create_config_maps(&self, pod_name: &str, id: usize) -> Result<(), Error> {
         let mut options = HashMap::new();
         if let Some(config) = &self.zk_spec.config {
-            use stackable_zookeeper_crd::ser;
-            let config = ser::to_hash_map(config).unwrap();
+            let config = product_config::ser::to_hash_map(config).unwrap();
 
             let config = self.config.get(
                 "1.2.3",
@@ -816,7 +815,9 @@ impl ReconciliationState for ZookeeperState {
 }
 
 #[derive(Debug)]
-struct ZookeeperStrategy {}
+struct ZookeeperStrategy {
+    config: Arc<ProductConfigSpec>,
+}
 
 impl ZookeeperStrategy {
     pub fn new(config: ProductConfigSpec) -> ZookeeperStrategy {
