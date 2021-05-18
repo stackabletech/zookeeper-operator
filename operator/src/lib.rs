@@ -486,9 +486,9 @@ impl ZookeeperState {
                     ))?;
 
         // The iteration happens in two stages here, to accommodate the way our operators think
-        // about nodes and roles.
+        // about roles and role groups.
         // The hierarchy is:
-        // - Roles (for example Datanode, Namenode, Server)
+        // - Roles (for ZooKeeper there - currently - is only a single role)
         //   - Role groups for this role (user defined)
         for zookeeper_role in ZookeeperRole::iter() {
             if let Some(nodes_for_role) = self.eligible_nodes.get(&zookeeper_role) {
@@ -566,8 +566,8 @@ impl ZookeeperState {
                                 &id.to_string(),
                             );
 
-                            self.create_pod(&node_name, &pod_name, pod_labels).await?;
                             self.create_config_maps(&pod_name, id).await?;
+                            self.create_pod(&node_name, &pod_name, pod_labels).await?;
 
                             return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
                         } else {
