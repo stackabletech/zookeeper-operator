@@ -42,7 +42,7 @@ jobs:
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           -H "Content-Type: multipart/form-data"
           --data-binary "@./$(find target/debian/ -name *.deb)"
-          "${{ env.REPO_APT_NIGHTLY_URL }}/${{ github.head_ref}}/"
+          "${{ env.REPO_APT_DEV_URL }}/"
 
   centos:
     runs-on: centos${{ matrix.node }}
@@ -73,4 +73,4 @@ jobs:
           --fail
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           --upload-file "./$(find  target/rpm/RPMS/x86_64/ -name *.rpm)"
-          "${{ env.REPO_RPM_DEV_URL }}/el${{ matrix.node }}/${{ github.head_ref}}"
+          "${{ env.REPO_RPM_DEV_URL }}/el${{ matrix.node }}"
