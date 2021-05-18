@@ -1,8 +1,14 @@
 apiVersion: zookeeper.stackable.tech/v1
-kind: ZooKeeperCluster
+kind: ZookeeperCluster
 metadata:
   name: simple
 spec:
   version: 3.4.14
   servers:
-    - node_name: debian
+    selectors:
+      default:
+        selector:
+          matchLabels:
+            kubernetes.io/hostname: debian
+        instances: 1
+        instancesPerNode: 1

@@ -1,0 +1,10 @@
+This product includes software developed at
+The Apache Software Foundation (http://www.apache.org/).
+
+The Initial Developer of parts of the code in util::is_valid_zookeeper_path
+was the Apache Software Foundation (http://www.apache.org/).
+The code has been copied from:
+https://github.com/apache/zookeeper/blob/release-3.7.0/zookeeper-server/src/main/java/org/apache/zookeeper/common/PathUtils.java#L41
+and adapted to this project by Stackable GmbH.
+The code was originally licensed under the Apache License Version 2.0,
+a copy of which can be obtained at http://www.apache.org/licenses/LICENSE-2.0

@@ -1,6 +1,6 @@
 [package]
 name = "stackable-zookeeper-operator-server"
-description = "Stackable ZooKeeper Operator"
+description = "Stackable Operator for Apache ZooKeeper"
 version = "0.1.0-nightly"
 authors = ["Lars Francke <lars.francke@stackable.de>"]
 edition = "2018"
