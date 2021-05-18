@@ -1,4 +1,4 @@
-name: Publish-Nightly-Packages
+name: Publish-Artifacts
 
 on:
   push:
