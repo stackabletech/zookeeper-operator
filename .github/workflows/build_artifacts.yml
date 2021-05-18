@@ -18,6 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Change version if is PR
+        if: ${{ github.event_name == 'pull_request' }}
+        run: sed -i -e 's/^version = "\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/version = "\1-${{ github.head_ref }}"/' server/Cargo.toml
       - name: Build
         run: ~/.cargo/bin/cargo +nightly build --verbose --release
       - name: Build apt package
@@ -48,6 +51,9 @@ jobs:
         node: [ 7, 8 ]
     steps:
       - uses: actions/checkout@v2
+      - name: Change version if is PR
+        if: ${{ github.event_name == 'pull_request' }}
+        run: sed -i -e 's/^version = "\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/version = "\1-${{ github.head_ref }}"/' server/Cargo.toml
       - name: Build
         run: ~/.cargo/bin/cargo +nightly build --verbose --release
       - name: Build RPM package
