@@ -43,6 +43,8 @@ jobs:
           -H "Content-Type: multipart/form-data"
           --data-binary "@./$(find target/debian/ -name *.deb)"
           "${{ env.REPO_APT_DEV_URL }}/"
+      - name: Clean
+        run: ~/.cargo/bin/cargo clean
 
   centos:
     runs-on: centos${{ matrix.node }}
@@ -74,3 +76,5 @@ jobs:
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           --upload-file "./$(find  target/rpm/RPMS/x86_64/ -name *.rpm)"
           "${{ env.REPO_RPM_DEV_URL }}/el${{ matrix.node }}/"
+      - name: Clean
+        run: ~/.cargo/bin/cargo clean
