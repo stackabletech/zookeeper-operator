@@ -1,21 +1,6 @@
 {
   "units": [
     {
-      "name": "url",
-      "regex": "^((spark|https?|ftp|file):\/\/)?[-a-zA-Z0-9+&@#}\/%?=~_|!:,.;]*[-a-zA-Z0-9+&@#\/%=~_|]",
-      "examples": [
-        "https://www.stackable.de/blog/"
-      ]
-    },
-    {
-      "name": "uri",
-      "regex": "^(([^:/?#]+):)?(\/\/([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?",
-      "examples": [
-        "ldap://[2001:db8::7]/c=GB?objectClass?one"
-      ],
-      "comment": "Specified in https://tools.ietf.org/html/rfc3986#appendix-B"
-    },
-    {
       "name": "directory",
       "regex": "^/|(/[\\w-]+)+$",
       "examples": [
@@ -23,45 +8,12 @@
       ]
     },
     {
-      "name": "binary",
-      "regex": "^/|(/[\\w-]+)+$",
-      "examples": [
-        "/tmp/xyz"
-      ]
-    },
-    {
-      "name": "file",
-      "regex": "^/|(/[\\w-]+)+$",
-      "examples": [
-        "/tmp/xyz"
-      ]
-    },
-    {
-      "name": "email",
-      "regex": "(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x21\\x23-\\x5b\\x5d-\\x7f]|\\\\[\\x01-\\x09\\x0b\\x0c\\x0e-\\x7f])*\")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\\.){3}(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9])|[a-z0-9-]*[a-z0-9]:(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x21-\\x5a\\x53-\\x7f]|\\\\[\\x01-\\x09\\x0b\\x0c\\x0e-\\x7f])+)\\])",
-      "examples": [
-        "you@stackable.tech"
-      ]
-    },
-    {
       "name": "password",
       "regex": "^[a-zA-Z]\\w{5,20}$"
     },
     {
-      "name": "ip",
-      "regex": "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
-    },
-    {
       "name": "port",
       "regex": "^([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$"
-    },
-    {
-      "name": "config",
-      "regex": "(\\w[\\w\\d._-]+)=([\\w\\d.:!\\?\/_-]+),?"
-    },
-    {
-      "name": "class",
-      "regex": "^(\\w[\\w\\d_-]*\\.)*(\\w[\\w\\d_-]+)$"
     },
     {
       "name": "memory",
@@ -72,16 +24,12 @@
         "500m",
         "500mb",
         "1g"
-      ]
+      ],
+      "comment": "Check memory spark properties at https://spark.apache.org/docs/latest/configuration.html"
     },
     {
       "name": "time",
-      "regex": "(^\\p{N}+)(?:\\s*)((?:ns|mus|ms|s|m|h|d)\\b$)",
-      "examples": [
-        "100ms",
-        "60m",
-        "12h"
-      ]
+      "regex": "(^\\p{N}+)(?:\\s*)((?:ns|mus|ms|s|m|min|h|d)\\b$)"
     },
     {
       "name": "number",
