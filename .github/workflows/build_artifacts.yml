@@ -33,7 +33,7 @@ jobs:
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           -H "Content-Type: multipart/form-data"
           --data-binary "@./$(find target/debian/ -name *.deb)"
-          "${{ env.REPO_APT_NIGHTLY_URL }}"
+          "${{ env.REPO_APT_NIGHTLY_URL }}/"
       - name: Publish dev apt package
         if: ${{ github.event_name == 'pull_request' }}
         run: >-
