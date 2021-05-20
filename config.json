@@ -44,8 +44,7 @@
       }
     ],
     "datatype": {
-      "type": "integer",
-      "min": "1",
+      "type": "string",
       "unit": "port"
     },
     "recommended_values": [

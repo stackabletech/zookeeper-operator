@@ -16,7 +16,7 @@ use tracing::{debug, error, info, trace, warn};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use product_config;
 use product_config::types::PropertyNameKind;
-use product_config::ProductConfigSpec;
+use product_config::{ProductConfigSpec, PropertyValidationResult};
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::controller::Controller;
@@ -644,6 +644,39 @@ impl ZookeeperState {
             println!("{:?}", config);
         }
 
+        let validation_result = self
+            .config
+            .get(
+                &self.zk_spec.version.to_string(),
+                &PropertyNameKind::Conf("zoo.cfg".to_string()),
+                Some("zookeeper-server"),
+                &options,
+            )
+            .unwrap();
+
+        let mut options = HashMap::new();
+        for (key, result) in validation_result.iter() {
+            match result {
+                PropertyValidationResult::Default(value) => {
+                    debug!("Def: {} -> {}", key, value);
+                }
+                PropertyValidationResult::RecommendedDefault(value) => {
+                    debug!("RecDef: {} -> {}", key, value);
+                    options.insert(key.clone(), value.clone());
+                }
+                PropertyValidationResult::Valid(value) => {
+                    debug!("Valid: {} -> {}", key, value);
+                    options.insert(key.clone(), value.clone());
+                }
+                PropertyValidationResult::Warn(value, err) => {
+                    warn!("Warn: {} -> ({}, {:?})", key, value, err);
+                }
+                PropertyValidationResult::Error(err) => {
+                    error!("Error: {} -> {:?}", key, err)
+                }
+            }
+        }
+
         let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
@@ -972,5 +1005,51 @@ mod tests {
     fn test_first_missing(#[case] input: Vec<usize>, #[case] expected: usize) {
         let first = find_first_missing(&input);
         assert_eq!(first, expected);
+    }
+
+    #[test]
+    fn foo() {
+        let config_reader = product_config::reader::ConfigJsonReader::new(
+            "../config_config.json",
+            "../config.json",
+        );
+        let product_config = ProductConfigSpec::new(config_reader).unwrap();
+
+        let mut options = HashMap::new();
+        options.insert("clientPort".to_string(), "888888888".to_string());
+        options.insert(
+            "dataDir".to_string(),
+            "!!/////foobar wer das liest ist doof!!!".to_string(),
+        );
+        options.insert("tickTime".to_string(), "-1".to_string());
+
+        let validation_result = product_config
+            .get(
+                "1.2.3",
+                &PropertyNameKind::Conf("zoo.cfg".to_string()),
+                Some("zookeeper-server"),
+                &options,
+            )
+            .unwrap();
+
+        for (key, result) in validation_result.iter() {
+            match result {
+                PropertyValidationResult::Default(value) => {
+                    println!("Def: {} -> {}", key, value);
+                }
+                PropertyValidationResult::RecommendedDefault(value) => {
+                    println!("RecDef: {} -> {}", key, value);
+                }
+                PropertyValidationResult::Valid(value) => {
+                    println!("Valid: {} -> {}", key, value);
+                }
+                PropertyValidationResult::Warn(a, b) => {
+                    println!("Warn: {} -> ({}, {:?})", key, a, b);
+                }
+                PropertyValidationResult::Error(err) => {
+                    println!("Error: {} -> {:?}", key, err)
+                }
+            }
+        }
     }
 }
