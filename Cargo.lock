@@ -1096,18 +1096,6 @@ dependencies = [
 [[package]]
 name = "product-config"
 version = "0.1.0"
-source = "git+https://github.com/stackabletech/product-config.git?branch=main#60991c46f010e04fedab4fca0a8aab9c62342084"
-dependencies = [
- "regex",
- "semver",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "product-config"
-version = "0.1.0"
 source = "git+https://github.com/stackabletech/product-config.git#0d65ac99d033f01e00309c3e433a7e1b0956c780"
 dependencies = [
  "regex",
@@ -1583,7 +1571,6 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "product-config 0.1.0 (git+https://github.com/stackabletech/product-config.git?branch=main)",
  "rstest 0.8.0",
  "schemars",
  "semver",
@@ -1607,7 +1594,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "product-config 0.1.0 (git+https://github.com/stackabletech/product-config.git)",
+ "product-config",
  "rstest 0.7.0",
  "serde",
  "serde_json",
