@@ -32,8 +32,8 @@ use stackable_operator::role_utils::RoleGroup;
 use stackable_operator::{config_map, role_utils};
 use stackable_operator::{k8s_utils, krustlet};
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, APP_NAME,
-    MANAGED_BY,
+    SelectorAndConfig, ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus,
+    ZookeeperVersion, APP_NAME, MANAGED_BY,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -567,7 +567,7 @@ impl ZookeeperState {
                                 &id.to_string(),
                             );
 
-                            self.create_config_maps(&pod_name, id).await?;
+                            self.create_config_maps(&pod_name, id, role_group).await?;
                             self.create_pod(&node_name, &pod_name, pod_labels).await?;
 
                             return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
@@ -620,13 +620,22 @@ impl ZookeeperState {
         Ok(ReconcileFunctionAction::Done)
     }
 
-    async fn create_config_maps(&self, pod_name: &str, id: usize) -> Result<(), Error> {
+    async fn create_config_maps(
+        &self,
+        pod_name: &str,
+        id: usize,
+        role_group: &str,
+    ) -> Result<(), Error> {
         let mut options = HashMap::new();
-        if let Some(config) = &self.zk_spec.config {
+        if let Some(SelectorAndConfig {
+            config: Some(config),
+            ..
+        }) = self.zk_spec.servers.selectors.get(role_group)
+        {
             let config = product_config::ser::to_hash_map(config).unwrap();
 
             let config = self.config.get(
-                "1.2.3",
+                &self.zk_spec.version.to_string(),
                 &PropertyNameKind::Conf("zoo.cfg".to_string()),
                 Some("zookeeper-server"),
                 &config,
