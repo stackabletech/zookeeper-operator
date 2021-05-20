@@ -9,6 +9,6 @@ spec:
       default:
         selector:
           matchLabels:
-            kubernetes.io/hostname: debian
+            kubernetes.io/hostname: main-1.stackable.demo
         instances: 1
         instancesPerNode: 1
