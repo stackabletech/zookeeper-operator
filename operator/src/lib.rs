@@ -906,7 +906,7 @@ pub async fn create_controller(client: Client) {
         .owns(config_maps_api, ListParams::default());
 
     let config_reader =
-        product_config::reader::ConfigJsonReader::new("config.json", "config_config.json");
+        product_config::reader::ConfigJsonReader::new("config_config.json", "config.json");
     let product_config = ProductConfigSpec::new(config_reader).unwrap();
     let strategy = ZookeeperStrategy::new(product_config);
 
