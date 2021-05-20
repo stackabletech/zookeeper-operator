@@ -550,11 +550,12 @@ impl ZookeeperState {
                                 .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", node_name)))?;
 
                             let pod_name = format!(
-                                "{}-{}-{}-{}",
+                                "{}-{}-{}-{}-{}",
                                 APP_NAME,
                                 self.context.name(),
                                 role_group,
-                                zookeeper_role
+                                zookeeper_role,
+                                node_name
                             )
                             .to_lowercase();
 
