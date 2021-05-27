@@ -1,8 +1,6 @@
 = Building the Operator
 
 This operator is written in Rust.
-It is developed against the latest Rust release (1.50.0-nightly at the time of writing).
-
-NOTE: This requires Rust nightly due to the use of the `backtrace` feature.
+It is developed against the latest stable Rust release (1.50.0-nightly at the time of writing).
 
     cargo build
