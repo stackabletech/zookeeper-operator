@@ -50,7 +50,7 @@ pub struct ZookeeperConfig {}
 
 impl Crd for ZookeeperCluster {
     const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.tech";
-    const CRD_DEFINITION: &'static str = include_str!("../zookeepercluster.crd.yaml");
+    const CRD_DEFINITION: &'static str = include_str!("../../deploy/crd/zookeepercluster.crd.yaml");
 }
 
 #[allow(non_camel_case_types)]
