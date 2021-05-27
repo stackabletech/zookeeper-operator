@@ -1227,19 +1227,6 @@ dependencies = [
 
 [[package]]
 name = "rstest"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b961ca336c5632e93880ee91b3ca879f1499b835daa74dd726809f6196320b7f"
-dependencies = [
- "cfg-if",
- "proc-macro2",
- "quote",
- "rustc_version",
- "syn",
-]
-
-[[package]]
-name = "rstest"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "041bb0202c14f6a158bbbf086afb03d0c6e975c2dec7d4912f8061ed44f290af"
@@ -1558,7 +1545,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "rstest 0.8.0",
+ "rstest",
  "schemars",
  "semver",
  "serde",
@@ -1581,7 +1568,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "rstest 0.10.0",
+ "rstest",
  "serde",
  "serde_json",
  "stackable-operator",
