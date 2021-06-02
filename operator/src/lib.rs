@@ -1,10 +1,8 @@
-#![feature(backtrace)]
 mod error;
 
 use crate::error::Error;
 
 use async_trait::async_trait;
-use handlebars::Handlebars;
 use k8s_openapi::api::core::v1::{
     ConfigMap, ConfigMapVolumeSource, Container, Node, Pod, PodSpec, Volume, VolumeMount,
 };
@@ -16,7 +14,7 @@ use tracing::{debug, error, info, trace, warn};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use product_config;
 use product_config::types::PropertyNameKind;
-use product_config::{ProductConfigSpec, PropertyValidationResult};
+use product_config::ProductConfigSpec;
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::controller::Controller;
@@ -28,12 +26,11 @@ use stackable_operator::metadata;
 use stackable_operator::reconcile::{
     ContinuationStrategy, ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
-use stackable_operator::role_utils::RoleGroup;
 use stackable_operator::{config_map, role_utils};
 use stackable_operator::{k8s_utils, krustlet};
 use stackable_zookeeper_crd::{
-    SelectorAndConfig, ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus,
-    ZookeeperVersion, APP_NAME, MANAGED_BY,
+    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, APP_NAME,
+    MANAGED_BY,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -613,7 +610,7 @@ impl ZookeeperState {
     }
 
     async fn delete_all_pods(&self) -> OperatorResult<ReconcileFunctionAction> {
-        let existing_pods = self.context.list_pods().await?;
+        let existing_pods: Vec<Pod> = self.context.list_owned().await?;
         for pod in existing_pods {
             self.context.client.delete(&pod).await?;
         }
@@ -626,23 +623,12 @@ impl ZookeeperState {
         id: usize,
         role_group: &str,
     ) -> Result<(), Error> {
-        let mut options = HashMap::new();
-        if let Some(SelectorAndConfig {
-            config: Some(config),
-            ..
-        }) = self.zk_spec.servers.selectors.get(role_group)
-        {
-            let config = product_config::ser::to_hash_map(config).unwrap();
-
-            let config = self.config.get(
-                &self.zk_spec.version.to_string(),
-                &PropertyNameKind::Conf("zoo.cfg".to_string()),
-                Some("zookeeper-server"),
-                &config,
-            );
-
-            println!("{:?}", config);
-        }
+        let options = stackable_operator::config::get_config(
+            &self.context.resource,
+            &self.zk_spec.servers,
+            role_group,
+        )
+        .unwrap();
 
         let validation_result = self
             .config
@@ -654,28 +640,8 @@ impl ZookeeperState {
             )
             .unwrap();
 
-        let mut options = HashMap::new();
-        for (key, result) in validation_result.iter() {
-            match result {
-                PropertyValidationResult::Default(value) => {
-                    debug!("Def: {} -> {}", key, value);
-                }
-                PropertyValidationResult::RecommendedDefault(value) => {
-                    debug!("RecDef: {} -> {}", key, value);
-                    options.insert(key.clone(), value.clone());
-                }
-                PropertyValidationResult::Valid(value) => {
-                    debug!("Valid: {} -> {}", key, value);
-                    options.insert(key.clone(), value.clone());
-                }
-                PropertyValidationResult::Warn(value, err) => {
-                    warn!("Warn: {} -> ({}, {:?})", key, value, err);
-                }
-                PropertyValidationResult::Error(err) => {
-                    error!("Error: {} -> {:?}", key, err)
-                }
-            }
-        }
+        let mut options =
+            stackable_operator::config::process_validation_result(&validation_result, true);
 
         let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
@@ -685,21 +651,13 @@ impl ZookeeperState {
             options.insert(format!("server.{}", id), format!("{}:2888:3888", node_name));
         }
 
-        let mut handlebars = Handlebars::new();
-        handlebars.set_strict_mode(true);
-        handlebars
-            .register_template_string("conf", "{{#each options}}{{@key}}={{this}}\n{{/each}}")
-            .expect("Failure rendering the ZooKeeper config template, this should not happen, please report this issue");
-
-        let config = handlebars
-            .render("conf", &json!({ "options": options }))
-            .expect("Failure rendering the ZooKeeper config template, this should not happen, please report this issue");
+        let zoo_cfg = product_config::writer::create_properties_file(&options).unwrap();
 
         // Now we need to create two configmaps per server.
         // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
         // One for the configuration directory...
         let mut data = BTreeMap::new();
-        data.insert("zoo.cfg".to_string(), config);
+        data.insert("zoo.cfg".to_string(), zoo_cfg);
 
         let cm_name = format!("{}-config", pod_name);
         let cm = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
@@ -883,7 +841,7 @@ impl ControllerStrategy for ZookeeperStrategy {
         &self,
         context: ReconciliationContext<Self::Item>,
     ) -> Result<Self::State, Self::Error> {
-        let existing_pods = context.list_pods().await?;
+        let existing_pods = context.list_owned().await?;
         trace!(
             "{}: Found [{}] pods",
             context.log_name(),
@@ -894,24 +852,10 @@ impl ControllerStrategy for ZookeeperStrategy {
 
         let mut eligible_nodes = HashMap::new();
 
-        let role_groups: Vec<RoleGroup> = zk_spec
-            .servers
-            .selectors
-            .iter()
-            .map(|(group_name, selector_config)| RoleGroup {
-                name: group_name.to_string(),
-                selector: selector_config.clone().selector.unwrap(),
-            })
-            .collect();
-
         eligible_nodes.insert(
             ZookeeperRole::Server,
-            role_utils::find_nodes_that_fit_selectors(
-                &context.client,
-                None,
-                role_groups.as_slice(),
-            )
-            .await?,
+            role_utils::find_nodes_that_fit_selectors(&context.client, None, &zk_spec.servers)
+                .await?,
         );
 
         Ok(ZookeeperState {

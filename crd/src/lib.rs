@@ -1,12 +1,13 @@
 pub mod error;
 pub mod util;
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, LabelSelector};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::CustomResource;
 use schemars::JsonSchema;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
-use stackable_operator::label_selector;
+use stackable_operator::config::{ConfigError, Configuration};
+use stackable_operator::role_utils::Role;
 use stackable_operator::Crd;
 use std::collections::HashMap;
 
@@ -26,23 +27,7 @@ pub const MANAGED_BY: &str = "stackable-zookeeper";
 #[kube(status = "ZookeeperClusterStatus")]
 pub struct ZookeeperClusterSpec {
     pub version: ZookeeperVersion,
-    pub servers: RoleGroups<ZookeeperConfig>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RoleGroups<T> {
-    pub selectors: HashMap<String, SelectorAndConfig<T>>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SelectorAndConfig<T> {
-    pub instances: u16,
-    pub instances_per_node: u8,
-    pub config: Option<T>,
-    #[schemars(schema_with = "label_selector::schema")]
-    pub selector: Option<LabelSelector>,
+    pub servers: Role<ZookeeperConfig>,
 }
 
 // TODO: These all should be "Property" Enums that can be either simple or complex where complex allows forcing/ignoring errors and/or warnings
@@ -54,6 +39,17 @@ pub struct ZookeeperConfig {
     pub init_limit: Option<u32>,  // int in Java
     pub sync_limit: Option<u32>,  // int in Java
     pub tick_time: Option<u32>,   // int in Java
+}
+
+impl Configuration for ZookeeperConfig {
+    type Configurable = ZookeeperCluster;
+
+    fn compute_properties(
+        &self,
+        _: &Self::Configurable,
+    ) -> Result<HashMap<String, String>, ConfigError> {
+        Ok(product_config::ser::to_hash_map(self).unwrap())
+    }
 }
 
 impl Crd for ZookeeperCluster {
