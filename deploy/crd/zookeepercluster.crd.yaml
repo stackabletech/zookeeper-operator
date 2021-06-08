@@ -23,14 +23,65 @@ spec:
               properties:
                 servers:
                   properties:
-                    selectors:
+                    cliOverrides:
+                      additionalProperties:
+                        nullable: true
+                        type: string
+                      nullable: true
+                      type: object
+                    config:
+                      nullable: true
+                      properties:
+                        clientPort:
+                          format: uint16
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        dataDir:
+                          nullable: true
+                          type: string
+                        initLimit:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        syncLimit:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        tickTime:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                      type: object
+                    configOverrides:
+                      additionalProperties:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      nullable: true
+                      type: object
+                    envOverrides:
+                      additionalProperties:
+                        type: string
+                      nullable: true
+                      type: object
+                    roleGroups:
                       additionalProperties:
                         properties:
+                          cliOverrides:
+                            additionalProperties:
+                              nullable: true
+                              type: string
+                            nullable: true
+                            type: object
                           config:
                             nullable: true
                             properties:
                               clientPort:
-                                format: uint32
+                                format: uint16
                                 minimum: 0.0
                                 nullable: true
                                 type: integer
@@ -53,12 +104,20 @@ spec:
                                 nullable: true
                                 type: integer
                             type: object
+                          configOverrides:
+                            additionalProperties:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            nullable: true
+                            type: object
+                          envOverrides:
+                            additionalProperties:
+                              type: string
+                            nullable: true
+                            type: object
                           instances:
                             format: uint16
-                            minimum: 0.0
-                            type: integer
-                          instancesPerNode:
-                            format: uint8
                             minimum: 0.0
                             type: integer
                           selector:
@@ -93,12 +152,11 @@ spec:
                             type: object
                         required:
                           - instances
-                          - instancesPerNode
                           - selector
                         type: object
                       type: object
                   required:
-                    - selectors
+                    - roleGroups
                   type: object
                 version:
                   enum:

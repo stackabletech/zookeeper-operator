@@ -623,11 +623,15 @@ impl ZookeeperState {
         id: usize,
         role_group: &str,
     ) -> Result<(), Error> {
-        let options = stackable_operator::config::get_config(
-            &self.context.resource,
+        let options = stackable_operator::config::get_role_config(
+            "zookeeper-server",
             &self.zk_spec.servers,
-            role_group,
+            &vec![PropertyNameKind::Conf("zoo.cfg".to_string())],
+            &self.context.resource,
         )
+        .get(role_group)
+        .unwrap()
+        .get(&PropertyNameKind::Conf("zoo.cfg".to_string()))
         .unwrap();
 
         let validation_result = self

@@ -3,6 +3,7 @@ pub mod util;
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::CustomResource;
+use product_config::types::PropertyNameKind;
 use schemars::JsonSchema;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
@@ -34,7 +35,7 @@ pub struct ZookeeperClusterSpec {
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperConfig {
-    pub client_port: Option<u32>, // int in Java
+    pub client_port: Option<u16>, // int in Java
     pub data_dir: Option<String>, // String in Java
     pub init_limit: Option<u32>,  // int in Java
     pub sync_limit: Option<u32>,  // int in Java
@@ -44,11 +45,33 @@ pub struct ZookeeperConfig {
 impl Configuration for ZookeeperConfig {
     type Configurable = ZookeeperCluster;
 
+    fn compute_env(
+        &self,
+        resource: &Self::Configurable,
+        role_name: &str,
+    ) -> Result<HashMap<String, String>, ConfigError> {
+        todo!()
+    }
+
+    fn compute_cli(
+        &self,
+        resource: &Self::Configurable,
+        role_name: &str,
+    ) -> Result<HashMap<String, String>, ConfigError> {
+        todo!()
+    }
+
     fn compute_properties(
         &self,
-        _: &Self::Configurable,
+        resource: &Self::Configurable,
+        role_name: &str,
+        file: &str,
     ) -> Result<HashMap<String, String>, ConfigError> {
         Ok(product_config::ser::to_hash_map(self).unwrap())
+    }
+
+    fn config_information() -> HashMap<String, (PropertyNameKind, String)> {
+        todo!()
     }
 }
 
