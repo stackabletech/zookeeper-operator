@@ -4,7 +4,7 @@ pub mod util;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, LabelSelector};
 use kube::CustomResource;
 use schemars::JsonSchema;
-use semver::{SemVerError, Version};
+use semver::{Error as SemVerError, Version};
 use serde::{Deserialize, Serialize};
 use stackable_operator::label_selector;
 use stackable_operator::Crd;
