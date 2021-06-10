@@ -356,7 +356,6 @@ mod tests {
     use super::*;
     use indoc::indoc;
     use rstest::rstest;
-    use std::iter::FromIterator;
 
     #[test]
     fn get_labels_from_name() {
@@ -455,8 +454,7 @@ mod tests {
     fn identify_illegal_characters(#[case] input: &str, #[case] expected_illegal_chars: Vec<char>) {
         // Convert vec to set because we do not care about the order of illegal characters
         // that are identified
-        let expected_illegal_chars: HashSet<char> =
-            HashSet::from_iter(expected_illegal_chars.into_iter());
+        let expected_illegal_chars: HashSet<char> = expected_illegal_chars.into_iter().collect();
         let illegal_chars = contains_illegal_character(input);
         assert_eq!(expected_illegal_chars, illegal_chars);
     }
@@ -567,8 +565,7 @@ mod tests {
         let zk = parse_zk_from_yaml(zookeeper_spec);
 
         let conn_string =
-            get_zk_connection_string_from_pods(zk.clone(), pods.clone(), chroot.clone())
-                .expect("should not fail");
+            get_zk_connection_string_from_pods(zk, pods, chroot).expect("should not fail");
         assert_eq!(expected_result, conn_string);
     }
 
@@ -659,8 +656,7 @@ mod tests {
         let pods = parse_pod_list_from_yaml(zk_pods);
         let zk = parse_zk_from_yaml(zookeeper_spec);
 
-        let conn_string =
-            get_zk_connection_string_from_pods(zk.clone(), pods.clone(), chroot.clone());
+        let conn_string = get_zk_connection_string_from_pods(zk, pods, chroot);
 
         assert!(conn_string.is_err())
     }
@@ -668,10 +664,7 @@ mod tests {
     fn parse_pod_list_from_yaml(pod_config: &str) -> Vec<Pod> {
         let kube_pods: Vec<k8s_openapi::api::core::v1::Pod> =
             serde_yaml::from_str(pod_config).unwrap();
-        kube_pods
-            .iter()
-            .map(|pod| Pod::from(pod.to_owned()))
-            .collect()
+        kube_pods.iter().map(|pod| pod.to_owned()).collect()
     }
 
     fn parse_zk_from_yaml(zk_config: &str) -> ZookeeperClusterSpec {
