@@ -845,9 +845,9 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.95"
+version = "0.2.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "789da6d93f1b866ffe175afc5322a4d76c038605a1c3319bb57b06967ca98a36"
+checksum = "5600b4e6efc5421841a2138a6b082e07fe12f9aaa12783d50e5d13325b26b4fc"
 
 [[package]]
 name = "linked-hash-map"
@@ -1182,19 +1182,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "product-config"
-version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/product-config.git?branch=properties_file#9c9ac6e3ed0f4a9fc2a057eb48864109375fde0b"
-dependencies = [
- "java-properties",
- "regex",
- "semver",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1229,9 +1216,9 @@ dependencies = [
 
 [[package]]
 name = "rand_chacha"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e12735cf05c9e10bf21534da50a147b924d555dc7a547c42e6bb2d5b6017ae0d"
+checksum = "e6c10a63a0fa32252be49d21e7709d4d4baf8d231c2dbce1eaa8141b9b127d88"
 dependencies = [
  "ppv-lite86",
  "rand_core",
@@ -1611,7 +1598,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=common_structs#2a41a20690d9900aeaedfa0fcb55513021ae3439"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=common_structs#afb341a1034f6c2e996df5d2a193b67d50e4e2b2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1623,7 +1610,7 @@ dependencies = [
  "kube",
  "kube-runtime",
  "lazy_static",
- "product-config 0.1.0-nightly (git+https://github.com/stackabletech/product-config.git?branch=properties_file)",
+ "product-config",
  "regex",
  "schemars",
  "serde",
@@ -1645,7 +1632,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "product-config 0.1.0-nightly (git+https://github.com/stackabletech/product-config.git?branch=properties_file)",
+ "product-config",
  "rstest",
  "schemars",
  "semver",
@@ -1669,7 +1656,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "product-config 0.1.0-nightly (git+https://github.com/stackabletech/product-config.git?branch=main)",
+ "product-config",
  "rstest",
  "serde",
  "serde_json",
@@ -1725,9 +1712,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "1.0.72"
+version = "1.0.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1e8cdbefb79a9a5a65e0db8b47b723ee907b7c7f8496c76a1770b5c310bab82"
+checksum = "f71489ff30030d2ae598524f61326b902466f72a0fb1a8564c001cc63425bcc7"
 dependencies = [
  "proc-macro2",
  "quote",

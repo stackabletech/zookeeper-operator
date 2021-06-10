@@ -4,7 +4,7 @@
       {
         "name": "tickTime",
         "kind": {
-          "type": "conf",
+          "type": "file",
           "file": "zoo.cfg"
         }
       }
@@ -17,9 +17,7 @@
     "datatype": {
       "type": "integer",
       "min": "1",
-      "unit": "time",
-      "default_unit_type": "ms",
-      "unit_in_value": "false"
+      "unit": "time"
     },
     "roles": [
       {
@@ -37,7 +35,7 @@
       {
         "name": "clientPort",
         "kind": {
-          "type": "conf",
+          "type": "file",
           "file": "zoo.cfg"
         },
         "config_file": "zoo.cfg"
@@ -49,7 +47,7 @@
     },
     "recommended_values": [
       {
-        "value": "2181"
+        "value": "3000"
       }
     ],
     "roles": [
@@ -68,7 +66,7 @@
       {
         "name": "dataDir",
         "kind": {
-          "type": "conf",
+          "type": "file",
           "file": "zoo.cfg"
         },
         "config_file": "zoo.cfg"
@@ -80,7 +78,7 @@
     },
     "recommended_values": [
       {
-        "value": "/var/lib/zookeeper"
+        "value": "/tmp/zookeeper"
       }
     ],
     "roles": [
@@ -99,7 +97,7 @@
       {
         "name": "initLimit",
         "kind": {
-          "type": "conf",
+          "type": "file",
           "file": "zoo.cfg"
         },
         "config_file": "zoo.cfg"
@@ -130,7 +128,7 @@
       {
         "name": "syncLimit",
         "kind": {
-          "type": "conf",
+          "type": "file",
           "file": "zoo.cfg"
         },
         "config_file": "zoo.cfg"

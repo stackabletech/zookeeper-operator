@@ -2,7 +2,7 @@ use stackable_zookeeper_crd::ZookeeperCluster;
 use std::fs;
 
 fn main() {
-    let target_file = "./crd/zookeepercluster.crd.yaml";
+    let target_file = "deploy/crd/zookeepercluster.crd.yaml";
     let schema = ZookeeperCluster::crd();
     let string_schema = match serde_yaml::to_string(&schema) {
         Ok(schema) => schema,

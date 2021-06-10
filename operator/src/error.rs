@@ -31,4 +31,10 @@ pub enum Error {
 
     #[error("Error creating properties file")]
     PropertiesError(#[from] product_config::writer::PropertiesWriterError),
+
+    #[error("ProductConfig Framework reported error: {source}")]
+    ProductConfigError {
+        #[from]
+        source: product_config::error::Error,
+    },
 }

@@ -5,10 +5,18 @@ metadata:
 spec:
   version: 3.4.14
   servers:
-    selectors:
+    config:
+      clientPort: 4000
+    roleGroups:
       default:
         selector:
           matchLabels:
-            kubernetes.io/hostname: main-1.stackable.demo
+            kubernetes.io/hostname: mdesktop
         instances: 1
-        instancesPerNode: 1
+        config:
+          clientPort: 3500
+      default2:
+        selector:
+          matchLabels:
+            kubernetes.io/hostname: mdesktop
+        instances: 1

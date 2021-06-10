@@ -17,16 +17,19 @@ use product_config::types::PropertyNameKind;
 use product_config::ProductConfigSpec;
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
+use stackable_operator::config::{transform_all_roles_to_config, RoleConfigByPropertyKind};
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
-use stackable_operator::k8s_utils::LabelOptionalValueMap;
-use stackable_operator::labels;
 use stackable_operator::metadata;
 use stackable_operator::reconcile::{
     ContinuationStrategy, ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
-use stackable_operator::{config_map, role_utils};
+use stackable_operator::role_utils;
+use stackable_operator::role_utils::{
+    get_role_and_group_labels, list_eligible_nodes_for_role_and_group,
+};
+use stackable_operator::{config_map, labels};
 use stackable_operator::{k8s_utils, krustlet};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, APP_NAME,
@@ -59,7 +62,8 @@ struct ZookeeperState {
     zk_status: Option<ZookeeperClusterStatus>,
     id_information: Option<IdInformation>,
     existing_pods: Vec<Pod>,
-    eligible_nodes: HashMap<ZookeeperRole, HashMap<String, Vec<Node>>>,
+    eligible_nodes: HashMap<String, HashMap<String, Vec<Node>>>,
+    role_config: RoleConfigByPropertyKind,
 }
 
 struct IdInformation {
@@ -149,32 +153,6 @@ impl ZookeeperState {
             .await?;
 
         Ok(resource)
-    }
-
-    /// For each existing role (server), return a tuple consisting of eligible nodes for a given
-    /// selector. Required to delete excess pods that do not match any node or selector description.
-    // TODO: move to operator-rs
-    pub fn get_full_pod_node_map(&self) -> Vec<(Vec<Node>, LabelOptionalValueMap)> {
-        let mut eligible_nodes_for_role_and_group = vec![];
-
-        for zookeeper_role in ZookeeperRole::iter() {
-            if let Some(eligible_nodes_for_role) = self.eligible_nodes.get(&zookeeper_role) {
-                for (group_name, eligible_nodes) in eligible_nodes_for_role {
-                    // Create labels to identify eligible nodes
-                    trace!(
-                        "Adding [{}] nodes to eligible node list for role [{}] and group [{}].",
-                        eligible_nodes.len(),
-                        zookeeper_role,
-                        group_name
-                    );
-                    eligible_nodes_for_role_and_group.push((
-                        eligible_nodes.clone(),
-                        get_role_and_group_labels(&zookeeper_role, group_name),
-                    ))
-                }
-            }
-        }
-        eligible_nodes_for_role_and_group
     }
 
     /// Required labels for pods. Pods without any of these will deleted and/or replaced.
@@ -435,7 +413,7 @@ impl ZookeeperState {
         id_information.used_ids.sort_unstable();
 
         for role in ZookeeperRole::iter() {
-            if let Some(eligible_nodes_for_role) = self.eligible_nodes.get(&role) {
+            if let Some(eligible_nodes_for_role) = self.eligible_nodes.get(&role.to_string()) {
                 for eligible_nodes in eligible_nodes_for_role.values() {
                     for node in eligible_nodes {
                         let node_name = match &node.metadata.name {
@@ -488,7 +466,7 @@ impl ZookeeperState {
         // - Roles (for ZooKeeper there - currently - is only a single role)
         //   - Role groups for this role (user defined)
         for zookeeper_role in ZookeeperRole::iter() {
-            if let Some(nodes_for_role) = self.eligible_nodes.get(&zookeeper_role) {
+            if let Some(nodes_for_role) = self.eligible_nodes.get(&zookeeper_role.to_string()) {
                 for (role_group, nodes) in nodes_for_role {
                     debug!(
                         "Identify missing pods for [{}] role and group [{}]",
@@ -513,12 +491,12 @@ impl ZookeeperState {
                     );
                     trace!(
                         "labels: [{:?}]",
-                        get_role_and_group_labels(&zookeeper_role, role_group)
+                        get_role_and_group_labels(&zookeeper_role.to_string(), role_group)
                     );
                     let nodes_that_need_pods = k8s_utils::find_nodes_that_need_pods(
                         nodes,
                         &self.existing_pods,
-                        &get_role_and_group_labels(&zookeeper_role, role_group),
+                        &get_role_and_group_labels(&zookeeper_role.to_string(), role_group),
                     );
 
                     for node in nodes_that_need_pods {
@@ -623,56 +601,53 @@ impl ZookeeperState {
         id: usize,
         role_group: &str,
     ) -> Result<(), Error> {
-        let options = stackable_operator::config::get_role_config(
-            "zookeeper-server",
-            &self.zk_spec.servers,
-            &vec![PropertyNameKind::Conf("zoo.cfg".to_string())],
-            &self.context.resource,
-        )
-        .get(role_group)
-        .unwrap()
-        .get(&PropertyNameKind::Conf("zoo.cfg".to_string()))
-        .unwrap();
+        let role = "zookeeper-server";
+        let version = &self.zk_spec.version.to_string();
+        let property_kind = PropertyNameKind::File("zoo.cfg".to_string());
 
-        let validation_result = self
-            .config
-            .get(
-                &self.zk_spec.version.to_string(),
-                &PropertyNameKind::Conf("zoo.cfg".to_string()),
-                Some("zookeeper-server"),
-                &options,
-            )
-            .unwrap();
+        if let Some(role_map) = self.role_config.get(role) {
+            if let Some(role_group_properties) = role_map.get(role_group) {
+                if let Some(config) = role_group_properties.get(&property_kind) {
+                    let validation_result =
+                        self.config
+                            .get(&version, &property_kind, Some(role), config)?;
 
-        let mut options =
-            stackable_operator::config::process_validation_result(&validation_result, true);
+                    let mut options = stackable_operator::config::process_validation_result(
+                        &validation_result,
+                        true,
+                    );
 
-        let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
+                    let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
-        for (node_name, id) in &id_information.node_name_to_id {
-            options.insert(format!("server.{}", id), format!("{}:2888:3888", node_name));
+                    for (node_name, id) in &id_information.node_name_to_id {
+                        options
+                            .insert(format!("server.{}", id), format!("{}:2888:3888", node_name));
+                    }
+
+                    let zoo_cfg =
+                        product_config::writer::create_java_properties_file(&options).unwrap();
+
+                    // Now we need to create two configmaps per server.
+                    // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
+                    // One for the configuration directory...
+                    let mut data = BTreeMap::new();
+                    data.insert("zoo.cfg".to_string(), zoo_cfg);
+
+                    let cm_name = format!("{}-config", pod_name);
+                    let cm = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
+                    self.context.client.apply_patch(&cm, &cm).await?;
+
+                    // ...and one for the data directory (which only contains the myid file)
+                    let mut data = BTreeMap::new();
+                    data.insert("myid".to_string(), id.to_string());
+                    let cm_name = format!("{}-data", pod_name);
+                    let cm = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
+                    self.context.client.apply_patch(&cm, &cm).await?;
+                }
+            }
         }
-
-        let zoo_cfg = product_config::writer::create_properties_file(&options).unwrap();
-
-        // Now we need to create two configmaps per server.
-        // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
-        // One for the configuration directory...
-        let mut data = BTreeMap::new();
-        data.insert("zoo.cfg".to_string(), zoo_cfg);
-
-        let cm_name = format!("{}-config", pod_name);
-        let cm = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
-        self.context.client.apply_patch(&cm, &cm).await?;
-
-        // ...and one for the data directory (which only contains the myid file)
-        let mut data = BTreeMap::new();
-        data.insert("myid".to_string(), id.to_string());
-        let cm_name = format!("{}-data", pod_name);
-        let cm = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
-        self.context.client.apply_patch(&cm, &cm).await?;
         Ok(())
     }
 
@@ -804,7 +779,7 @@ impl ReconciliationState for ZookeeperState {
                 )
                 .await?
                 .then(self.context.delete_excess_pods(
-                    self.get_full_pod_node_map().as_slice(),
+                    list_eligible_nodes_for_role_and_group(&self.eligible_nodes).as_slice(),
                     &self.existing_pods,
                     ContinuationStrategy::OneRequeue,
                 ))
@@ -857,10 +832,25 @@ impl ControllerStrategy for ZookeeperStrategy {
         let mut eligible_nodes = HashMap::new();
 
         eligible_nodes.insert(
-            ZookeeperRole::Server,
+            ZookeeperRole::Server.to_string(),
             role_utils::find_nodes_that_fit_selectors(&context.client, None, &zk_spec.servers)
                 .await?,
         );
+
+        // TODO: do not hardcode the zookeeper role
+        let mut role_information = HashMap::new();
+        role_information.insert(
+            "zookeeper-server".to_string(),
+            vec![PropertyNameKind::File("zoo.cfg".to_string())],
+        );
+
+        let mut roles = HashMap::new();
+        roles.insert(
+            "zookeeper-server".to_string(),
+            context.resource.spec.servers.clone(),
+        );
+
+        let role_config = transform_all_roles_to_config(&context.resource, role_information, roles);
 
         Ok(ZookeeperState {
             zk_spec: context.resource.spec.clone(),
@@ -870,6 +860,7 @@ impl ControllerStrategy for ZookeeperStrategy {
             config: self.config.clone(),
             existing_pods,
             eligible_nodes,
+            role_config,
         })
     }
 }
@@ -894,22 +885,6 @@ pub async fn create_controller(client: Client) {
     controller
         .run(client, strategy, Duration::from_secs(10))
         .await;
-}
-
-/// Return a map with labels and values for role (component) and group (role_group).
-/// Required to find nodes that are a possible match for pods.
-/// TODO: move to operator-rs
-fn get_role_and_group_labels(role: &ZookeeperRole, group_name: &str) -> LabelOptionalValueMap {
-    let mut labels = BTreeMap::new();
-    labels.insert(
-        labels::APP_COMPONENT_LABEL.to_string(),
-        Some(role.to_string()),
-    );
-    labels.insert(
-        labels::APP_ROLE_GROUP_LABEL.to_string(),
-        Some(group_name.to_string()),
-    );
-    labels
 }
 
 fn build_pod_labels(
@@ -941,6 +916,7 @@ fn build_pod_labels(
 mod tests {
 
     use super::*;
+    use product_config::PropertyValidationResult;
     use rstest::rstest;
 
     #[rstest]
@@ -974,7 +950,7 @@ mod tests {
         let validation_result = product_config
             .get(
                 "1.2.3",
-                &PropertyNameKind::Conf("zoo.cfg".to_string()),
+                &PropertyNameKind::File("zoo.cfg".to_string()),
                 Some("zookeeper-server"),
                 &options,
             )

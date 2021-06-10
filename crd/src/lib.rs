@@ -47,25 +47,25 @@ impl Configuration for ZookeeperConfig {
 
     fn compute_env(
         &self,
-        resource: &Self::Configurable,
-        role_name: &str,
+        _resource: &Self::Configurable,
+        _role_name: &str,
     ) -> Result<HashMap<String, String>, ConfigError> {
         todo!()
     }
 
     fn compute_cli(
         &self,
-        resource: &Self::Configurable,
-        role_name: &str,
+        _resource: &Self::Configurable,
+        _role_name: &str,
     ) -> Result<HashMap<String, String>, ConfigError> {
         todo!()
     }
 
     fn compute_properties(
         &self,
-        resource: &Self::Configurable,
-        role_name: &str,
-        file: &str,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+        _file: &str,
     ) -> Result<HashMap<String, String>, ConfigError> {
         Ok(product_config::ser::to_hash_map(self).unwrap())
     }
