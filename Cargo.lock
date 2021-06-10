@@ -1171,6 +1171,19 @@ dependencies = [
 [[package]]
 name = "product-config"
 version = "0.1.0-nightly"
+source = "git+https://github.com/stackabletech/product-config.git?branch=main#3730fe1882b585c26867f9d5cb1b5c00d8261b3e"
+dependencies = [
+ "java-properties",
+ "regex",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "product-config"
+version = "0.1.0-nightly"
 source = "git+https://github.com/stackabletech/product-config.git?branch=properties_file#9c9ac6e3ed0f4a9fc2a057eb48864109375fde0b"
 dependencies = [
  "java-properties",
@@ -1610,7 +1623,7 @@ dependencies = [
  "kube",
  "kube-runtime",
  "lazy_static",
- "product-config",
+ "product-config 0.1.0-nightly (git+https://github.com/stackabletech/product-config.git?branch=properties_file)",
  "regex",
  "schemars",
  "serde",
@@ -1632,7 +1645,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "product-config",
+ "product-config 0.1.0-nightly (git+https://github.com/stackabletech/product-config.git?branch=properties_file)",
  "rstest",
  "schemars",
  "semver",
@@ -1656,7 +1669,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "product-config",
+ "product-config 0.1.0-nightly (git+https://github.com/stackabletech/product-config.git?branch=main)",
  "rstest",
  "serde",
  "serde_json",
