@@ -15,8 +15,3 @@ spec:
         instances: 1
         config:
           clientPort: 3500
-      default2:
-        selector:
-          matchLabels:
-            kubernetes.io/hostname: mdesktop
-        instances: 1

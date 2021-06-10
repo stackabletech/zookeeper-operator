@@ -595,45 +595,62 @@ impl ZookeeperState {
         Ok(ReconcileFunctionAction::Done)
     }
 
+    fn get_validated_role_group_config(
+        &self,
+        role_group: &str,
+    ) -> Result<HashMap<PropertyNameKind, HashMap<String, String>>, Error> {
+        let version = &self.zk_spec.version.to_string();
+        let role = "zookeeper-server";
+
+        let mut result = HashMap::new();
+
+        if let Some(role_config) = self.role_config.get(role) {
+            if let Some(role_group_config) = role_config.get(role_group) {
+                for (property_name_kind, config) in role_group_config {
+                    let validation_result =
+                        self.config
+                            .get(&version, property_name_kind, Some(role), config)?;
+
+                    let validated_config = stackable_operator::config::process_validation_result(
+                        &validation_result,
+                        true,
+                    );
+
+                    result.insert(property_name_kind.clone(), validated_config);
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
     async fn create_config_maps(
         &self,
         pod_name: &str,
         id: usize,
         role_group: &str,
     ) -> Result<(), Error> {
-        let role = "zookeeper-server";
-        let version = &self.zk_spec.version.to_string();
-        let property_kind = PropertyNameKind::File("zoo.cfg".to_string());
+        let validated_config = self.get_validated_role_group_config(role_group)?;
 
-        if let Some(role_map) = self.role_config.get(role) {
-            if let Some(role_group_properties) = role_map.get(role_group) {
-                if let Some(config) = role_group_properties.get(&property_kind) {
-                    let validation_result =
-                        self.config
-                            .get(&version, &property_kind, Some(role), config)?;
-
-                    let mut options = stackable_operator::config::process_validation_result(
-                        &validation_result,
-                        true,
-                    );
-
+        for (property_name_kind, mut config) in validated_config {
+            match property_name_kind {
+                PropertyNameKind::File(file_name) => {
                     let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
                     for (node_name, id) in &id_information.node_name_to_id {
-                        options
-                            .insert(format!("server.{}", id), format!("{}:2888:3888", node_name));
+                        config.insert(format!("server.{}", id), format!("{}:2888:3888", node_name));
                     }
 
                     let zoo_cfg =
-                        product_config::writer::create_java_properties_file(&options).unwrap();
+                        product_config::writer::create_java_properties_file(&config).unwrap();
 
                     // Now we need to create two configmaps per server.
                     // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
                     // One for the configuration directory...
                     let mut data = BTreeMap::new();
-                    data.insert("zoo.cfg".to_string(), zoo_cfg);
+                    data.insert(file_name, zoo_cfg);
 
                     let cm_name = format!("{}-config", pod_name);
                     let cm = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
@@ -644,10 +661,18 @@ impl ZookeeperState {
                     data.insert("myid".to_string(), id.to_string());
                     let cm_name = format!("{}-data", pod_name);
                     let cm = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
+                    // create config maps....
                     self.context.client.apply_patch(&cm, &cm).await?;
+                }
+                PropertyNameKind::Env => {
+                    // TODO: add to container env
+                }
+                PropertyNameKind::Cli => {
+                    // TODO: add to start command
                 }
             }
         }
+
         Ok(())
     }
 
