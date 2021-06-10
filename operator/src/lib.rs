@@ -4,7 +4,7 @@ use crate::error::Error;
 
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{
-    ConfigMap, ConfigMapVolumeSource, Container, Node, Pod, PodSpec, Volume, VolumeMount,
+    ConfigMap, ConfigMapVolumeSource, Container, EnvVar, Node, Pod, PodSpec, Volume, VolumeMount,
 };
 use kube::api::{ListParams, Resource};
 use kube::Api;
@@ -542,8 +542,11 @@ impl ZookeeperState {
                                 &id.to_string(),
                             );
 
-                            self.create_config_maps(&pod_name, id, role_group).await?;
-                            self.create_pod(&node_name, &pod_name, pod_labels).await?;
+                            self.create_config_maps(
+                                &node_name, &pod_name, pod_labels, id, role_group,
+                            )
+                            .await?;
+                            //self.create_pod(&node_name, &pod_name, pod_labels).await?;
 
                             return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
                         } else {
@@ -626,11 +629,15 @@ impl ZookeeperState {
 
     async fn create_config_maps(
         &self,
+        node_name: &str,
         pod_name: &str,
+        labels: BTreeMap<String, String>,
         id: usize,
         role_group: &str,
     ) -> Result<(), Error> {
         let validated_config = self.get_validated_role_group_config(role_group)?;
+
+        let mut cli_command = vec![];
 
         for (property_name_kind, mut config) in validated_config {
             match property_name_kind {
@@ -669,9 +676,30 @@ impl ZookeeperState {
                 }
                 PropertyNameKind::Cli => {
                     // TODO: add to start command
+                    for (property_name, property_value) in config {
+                        if property_name.is_empty() {
+                            continue;
+                        }
+
+                        if property_value.is_empty() {
+                            cli_command.push(property_name);
+                        } else {
+                            // custom cli logic: name=value or --name value ...
+                        }
+                    }
                 }
             }
         }
+
+        // adapt in pod
+        self.create_pod(
+            node_name,
+            pod_name,
+            labels.clone(),
+            None,
+            Some(cli_command.as_slice()),
+        )
+        .await?;
 
         Ok(())
     }
@@ -681,8 +709,10 @@ impl ZookeeperState {
         node_name: &str,
         pod_name: &str,
         labels: BTreeMap<String, String>,
+        env: Option<HashMap<String, String>>,
+        cli: Option<&[String]>,
     ) -> Result<Pod, Error> {
-        let pod = self.build_pod(node_name, pod_name, labels)?;
+        let pod = self.build_pod(node_name, pod_name, labels, env, cli)?;
         Ok(self.context.client.create(&pod).await?)
     }
 
@@ -691,8 +721,10 @@ impl ZookeeperState {
         node_name: &str,
         pod_name: &str,
         labels: BTreeMap<String, String>,
+        env: Option<HashMap<String, String>>,
+        cli: Option<&[String]>,
     ) -> Result<Pod, Error> {
-        let (containers, volumes) = self.build_containers(pod_name);
+        let (containers, volumes) = self.build_containers(pod_name, env, cli);
 
         Ok(Pod {
             metadata: metadata::build_metadata(
@@ -713,20 +745,46 @@ impl ZookeeperState {
         })
     }
 
-    fn build_containers(&self, pod_name: &str) -> (Vec<Container>, Vec<Volume>) {
+    fn build_containers(
+        &self,
+        pod_name: &str,
+        env: Option<HashMap<String, String>>,
+        cli: Option<&[String]>,
+    ) -> (Vec<Container>, Vec<Volume>) {
         let version = &self.context.resource.spec.version;
 
         let image_name = format!("stackable/zookeeper:{}", version.to_string());
 
+        let mut command = vec![
+            format!("{}/bin/zkServer.sh", version.package_name()),
+            "start-foreground".to_string(),
+            // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
+        ];
+
+        if let Some(cli_commands) = cli {
+            command.extend_from_slice(cli_commands);
+        }
+
+        // TODO: Later versions can probably point to a directory instead, investigate
+        // ugly hack to keep order of cli commands
+        command.push("{{ configroot }}/conf/zoo.cfg".to_string());
+
+        let mut env_vec = vec![];
+        if let Some(env_x) = env {
+            for (key, value) in env_x {
+                env_vec.push(EnvVar {
+                    name: key,
+                    value: Some(value),
+                    value_from: None,
+                });
+            }
+        }
+
         let containers = vec![Container {
             image: Some(image_name),
             name: "zookeeper".to_string(),
-            command: Some(vec![
-                format!("{}/bin/zkServer.sh", version.package_name()),
-                "start-foreground".to_string(),
-                // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
-                "{{ configroot }}/conf/zoo.cfg".to_string(), // TODO: Later versions can probably point to a directory instead, investigate
-            ]),
+            command: Some(command),
+            env: Some(env_vec),
             volume_mounts: Some(vec![
                 // One mount for the config directory, this will be relative to the extracted package
                 VolumeMount {
@@ -866,7 +924,10 @@ impl ControllerStrategy for ZookeeperStrategy {
         let mut role_information = HashMap::new();
         role_information.insert(
             "zookeeper-server".to_string(),
-            vec![PropertyNameKind::File("zoo.cfg".to_string())],
+            vec![
+                PropertyNameKind::File("zoo.cfg".to_string()),
+                PropertyNameKind::Cli,
+            ],
         );
 
         let mut roles = HashMap::new();

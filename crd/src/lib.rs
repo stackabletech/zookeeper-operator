@@ -50,7 +50,7 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<HashMap<String, String>, ConfigError> {
-        todo!()
+        Ok(HashMap::new())
     }
 
     fn compute_cli(
@@ -58,7 +58,7 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<HashMap<String, String>, ConfigError> {
-        todo!()
+        Ok(HashMap::new())
     }
 
     fn compute_properties(

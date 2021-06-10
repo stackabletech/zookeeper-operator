@@ -2,6 +2,27 @@
   {
     "property_names": [
       {
+        "name": "start-foreground",
+        "kind": {
+          "type": "cli"
+        }
+      }
+    ],
+    "datatype": {
+      "type": "string"
+    },
+    "roles": [
+      {
+        "name": "zookeeper-server",
+        "required": true
+      }
+    ],
+    "as_of_version": "0.0.0",
+    "apply_mode": "restart"
+  },
+  {
+    "property_names": [
+      {
         "name": "tickTime",
         "kind": {
           "type": "file",
