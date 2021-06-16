@@ -7,6 +7,7 @@ use schemars::JsonSchema;
 use semver::{Error as SemVerError, Version};
 use serde::{Deserialize, Serialize};
 use stackable_operator::label_selector;
+use stackable_operator::status::Conditions;
 use stackable_operator::Crd;
 use std::collections::HashMap;
 
@@ -47,6 +48,23 @@ pub struct SelectorAndConfig<T> {
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 pub struct ZookeeperConfig {}
+
+impl Conditions for ZookeeperCluster {
+    fn conditions(&self) -> Option<&[Condition]> {
+        if let Some(status) = &self.status {
+            return Some(&status.conditions.as_slice());
+        }
+        None
+    }
+
+    fn conditions_mut(&mut self) -> &mut Vec<Condition> {
+        if self.status.is_none() {
+            self.status = Some(ZookeeperClusterStatus::default());
+            return &mut self.status.as_mut().unwrap().conditions;
+        }
+        return &mut self.status.as_mut().unwrap().conditions;
+    }
+}
 
 impl Crd for ZookeeperCluster {
     const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.tech";
