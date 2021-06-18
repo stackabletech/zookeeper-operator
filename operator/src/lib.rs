@@ -7,7 +7,7 @@ use handlebars::Handlebars;
 use k8s_openapi::api::core::v1::{
     ConfigMap, ConfigMapVolumeSource, Container, Node, Pod, PodSpec, Volume, VolumeMount,
 };
-use kube::api::{ListParams, Resource};
+use kube::api::{ListParams, ResourceExt};
 use kube::Api;
 use serde_json::json;
 use tracing::{debug, error, info, trace, warn};
@@ -387,7 +387,7 @@ impl ZookeeperState {
                                 "Found a duplicate `myid` [{}] in Pod [{}], we can't recover \
                                  from this error and you need to clean up manually",
                                 id,
-                                Resource::name(pod)
+                                pod.name()
                             );
                             return Err(Error::ReconcileError("Found duplicate id".to_string()));
                         }
@@ -607,7 +607,7 @@ impl ZookeeperState {
     }
 
     async fn delete_all_pods(&self) -> OperatorResult<ReconcileFunctionAction> {
-        let existing_pods = self.context.list_pods().await?;
+        let existing_pods: Vec<Pod> = self.context.list_owned().await?;
         for pod in existing_pods {
             self.context.client.delete(&pod).await?;
         }
@@ -824,7 +824,7 @@ impl ControllerStrategy for ZookeeperStrategy {
         &self,
         context: ReconciliationContext<Self::Item>,
     ) -> Result<Self::State, Self::Error> {
-        let existing_pods = context.list_pods().await?;
+        let existing_pods = context.list_owned().await?;
         trace!(
             "{}: Found [{}] pods",
             context.log_name(),
