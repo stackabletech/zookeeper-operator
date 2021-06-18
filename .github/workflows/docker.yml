@@ -26,7 +26,10 @@ jobs:
         with:
           command: build
           args: --release
-      - run: make docker
+      - shell: bash
+        env:
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: make docker
       - uses: actions-rs/cargo@v1.0.3
         with:
           command: clean
