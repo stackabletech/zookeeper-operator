@@ -8,4 +8,8 @@ RUN microdnf install --disablerepo=* --enablerepo=ubi-8-appstream --enablerepo=u
 
 COPY build/* /
 
+RUN addgroup -g 1000 stackable && adduser -D -u 1000 -G stackable -g 'Stackable Operator' stackable
+
+USER 1000:1000
+
 ENTRYPOINT ["/stackable-zookeeper-operator-server"]
