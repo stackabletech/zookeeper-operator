@@ -6,3 +6,6 @@ LABEL maintainer="Stackable GmbH"
 RUN microdnf update --disablerepo=* --enablerepo=ubi-8-appstream --enablerepo=ubi-8-baseos -y && rm -rf /var/cache/yum
 RUN microdnf install --disablerepo=* --enablerepo=ubi-8-appstream --enablerepo=ubi-8-baseos httpd -y && rm -rf /var/cache/yum
 
+COPY build/* /
+
+ENTRYPOINT ["/stackable-zookeeper-operator-server"]
