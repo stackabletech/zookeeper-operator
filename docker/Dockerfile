@@ -8,8 +8,6 @@ RUN microdnf update --disablerepo=* --enablerepo=ubi-8-baseos --enablerepo=ubi-8
   && microdnf install --disablerepo=* --enablerepo=ubi-8-baseos shadow-utils -y \
   && rm -rf /var/cache/yum
 
-RUN yum install --disablerepo=* --enablerepo=ubi-8-appstream --enablerepo=ubi-8-baseos httpd -y && rm -rf /var/cache/yum
-
 COPY build/* /
 
 RUN groupadd -g 1000 stackable && adduser -u 1000 -g stackable -c 'Stackable Operator' stackable
