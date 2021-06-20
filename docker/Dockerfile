@@ -3,12 +3,16 @@ USER root
 LABEL maintainer="Stackable GmbH"
 
 # Update image
-RUN microdnf update --disablerepo=* --enablerepo=ubi-8-appstream --enablerepo=ubi-8-baseos -y && rm -rf /var/cache/yum
-RUN microdnf install --disablerepo=* --enablerepo=ubi-8-appstream --enablerepo=ubi-8-baseos httpd -y && rm -rf /var/cache/yum
+RUN microdnf update --disablerepo=* --enablerepo=ubi-8-baseos --enablerepo=ubi-8-baseos -y \
+  && rm -rf /var/cache/yum \
+  && microdnf install --disablerepo=* --enablerepo=ubi-8-baseos shadow-utils -y \
+  && rm -rf /var/cache/yum
+
+RUN yum install --disablerepo=* --enablerepo=ubi-8-appstream --enablerepo=ubi-8-baseos httpd -y && rm -rf /var/cache/yum
 
 COPY build/* /
 
-RUN groupadd -g 1000 stackable && adduser -D -u 1000 -G stackable -g 'Stackable Operator' stackable
+RUN groupadd -g 1000 stackable && adduser -u 1000 -g stackable -c 'Stackable Operator' stackable
 
 USER 1000:1000
 
