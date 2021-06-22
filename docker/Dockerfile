@@ -1,4 +1,4 @@
-FROM docker.stackable.tech/ubi8-base-rust-builder AS builder
+FROM docker.stackable.tech/stackable/ubi8-rust-builder AS builder
 
 FROM registry.access.redhat.com/ubi8/ubi-minimal AS operator
 LABEL maintainer="Stackable GmbH"
