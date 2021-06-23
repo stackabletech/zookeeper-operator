@@ -1,18 +1,16 @@
 pub mod error;
 pub mod util;
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, LabelSelector};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::CustomResource;
-use product_config::types::PropertyNameKind;
 use schemars::JsonSchema;
 use semver::{Error as SemVerError, Version};
 use serde::{Deserialize, Serialize};
-use stackable_operator::label_selector;
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
 use stackable_operator::status::Conditions;
 use stackable_operator::Crd;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 pub const APP_NAME: &str = "zookeeper";
 pub const MANAGED_BY: &str = "stackable-zookeeper";

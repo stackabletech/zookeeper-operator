@@ -464,13 +464,12 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          selectors:
+          roleGroups:
             default:
               selector:
                 matchLabels:
                   kubernetes.io/hostname: debian
-              instances: 1
-              instancesPerNode: 1
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -492,13 +491,12 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          selectors:
+          roleGroups:
             default:
               selector:
                 matchLabels:
                   kubernetes.io/hostname: worker-1.stackable.tech
-              instances: 1
-              instancesPerNode: 1
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -520,13 +518,12 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          selectors:
+          roleGroups:
             default:
               selector:
                 matchLabels:
                   kubernetes.io/hostname: debian
-              instances: 1
-              instancesPerNode: 1
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -590,13 +587,11 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-            selectors:
-              default:
-                selector:
-                  matchLabels:
-                    kubernetes.io/hostname: debian
-                instances: 1
-                instancesPerNode: 1
+          roleGroups:
+            default:
+              selector:
+                kubernetes.io/hostname: debian
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -621,13 +616,11 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          selectors:
+          roleGroups:
             default:
               selector:
-                matchLabels:
                   kubernetes.io/hostname: debian
-              instances: 1
-              instancesPerNode: 1
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1

@@ -38,6 +38,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
+name = "backoff"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9fe17f59a06fe8b87a6fc8bf53bb70b3aba76d7685f432487a68cd5552853625"
+dependencies = [
+ "getrandom",
+ "instant",
+ "rand",
+]
+
+[[package]]
 name = "base64"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -274,6 +285,70 @@ name = "either"
 version = "1.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
+
+[[package]]
+name = "encoding"
+version = "0.2.33"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b0d943856b990d12d3b55b359144ff341533e516d94098b1d3fc1ac666d36ec"
+dependencies = [
+ "encoding-index-japanese",
+ "encoding-index-korean",
+ "encoding-index-simpchinese",
+ "encoding-index-singlebyte",
+ "encoding-index-tradchinese",
+]
+
+[[package]]
+name = "encoding-index-japanese"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04e8b2ff42e9a05335dbf8b5c6f7567e5591d0d916ccef4e0b1710d32a0d0c91"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding-index-korean"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4dc33fb8e6bcba213fe2f14275f0963fd16f0a02c878e3095ecfdf5bee529d81"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding-index-simpchinese"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d87a7194909b9118fc707194baa434a4e3b0fb6a5a757c73c3adb07aa25031f7"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding-index-singlebyte"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3351d5acffb224af9ca265f435b859c7c01537c0849754d3db3fdf2bfe2ae84a"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding-index-tradchinese"
+version = "1.20141219.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd0e20d5688ce3cab59eb3ef3a2083a5c77bf496cb798dc6fcdb75f323890c18"
+dependencies = [
+ "encoding_index_tests",
+]
+
+[[package]]
+name = "encoding_index_tests"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a246d82be1c9d791c5dfde9a2bd045fc3cbba3fa2b11ad558f27d01712f00569"
 
 [[package]]
 name = "fake-simd"
@@ -589,10 +664,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "instant"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61124eeebbd69b8190558df225adf7e4caafce0d743919e5d6b19652314ec5ec"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "itoa"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd25036021b0de88a0aff6b850051563c6516d0bf53f8638938edbb9de732736"
+
+[[package]]
+name = "java-properties"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d179c3692142e6fc4080d48d5a4d9c04738a3bece41ff2abdde13d505590c1b7"
+dependencies = [
+ "encoding",
+ "lazy_static",
+ "regex",
+]
 
 [[package]]
 name = "js-sys"
@@ -1059,6 +1154,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "product-config"
+version = "0.1.0-nightly"
+source = "git+https://github.com/stackabletech/product-config.git?branch=main#3748b9ccd71d0dca61ae6c4855e7ef7b827195ec"
+dependencies = [
+ "java-properties",
+ "regex",
+ "semver 1.0.3",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "quick-error"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1484,9 +1592,10 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#6ad69e3fbce64c488603520481f3ca9db82f2d3b"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=product_config_compability_for_role_and_group#720def5f879a6dac47fd768a2e95363b57dbf0e1"
 dependencies = [
  "async-trait",
+ "backoff",
  "chrono",
  "const_format",
  "either",
@@ -1496,6 +1605,7 @@ dependencies = [
  "kube",
  "kube-runtime",
  "lazy_static",
+ "product-config",
  "regex",
  "schemars",
  "serde",
@@ -1516,6 +1626,7 @@ dependencies = [
  "indoc",
  "k8s-openapi",
  "kube",
+ "product-config",
  "rstest",
  "schemars",
  "semver 1.0.3",
@@ -1538,6 +1649,7 @@ dependencies = [
  "handlebars",
  "k8s-openapi",
  "kube",
+ "product-config",
  "rstest",
  "serde",
  "serde_json",
@@ -1553,6 +1665,7 @@ dependencies = [
 name = "stackable-zookeeper-operator-server"
 version = "0.1.0-nightly"
 dependencies = [
+ "serde_yaml",
  "stackable-operator",
  "stackable-zookeeper-crd",
  "stackable-zookeeper-operator",

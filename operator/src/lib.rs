@@ -16,11 +16,13 @@ use product_config::types::PropertyNameKind;
 use product_config::ProductConfigSpec;
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
-use stackable_operator::config::{transform_all_roles_to_config, RoleConfigByPropertyKind};
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
 use stackable_operator::metadata;
+use stackable_operator::product_config_utils::{
+    process_validation_result, transform_all_roles_to_config, RoleConfigByPropertyKind,
+};
 use stackable_operator::reconcile::{
     ContinuationStrategy, ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
@@ -618,13 +620,11 @@ impl ZookeeperState {
                         &version,
                         property_name_kind,
                         Some(ZOOKEEPER_SERVER_ROLE),
-                        config,
+                        &config.clone().into_iter().collect::<HashMap<_, _>>(),
                     )?;
 
-                    let validated_config = stackable_operator::config::process_validation_result(
-                        &validation_result,
-                        true,
-                    );
+                    let validated_config =
+                        process_validation_result(&validation_result, false, false);
 
                     result.insert(property_name_kind.clone(), validated_config);
                 }
@@ -1053,11 +1053,11 @@ mod tests {
                 PropertyValidationResult::Valid(value) => {
                     println!("Valid: {} -> {}", key, value);
                 }
-                PropertyValidationResult::Warn(a, b) => {
-                    println!("Warn: {} -> ({}, {:?})", key, a, b);
+                PropertyValidationResult::Warn(a, err) => {
+                    println!("Warn: {} -> ({}, {:?})", key, a, err);
                 }
-                PropertyValidationResult::Error(err) => {
-                    println!("Error: {} -> {:?}", key, err)
+                PropertyValidationResult::Error(a, err) => {
+                    println!("Warn: {} -> ({}, {:?})", key, a, err);
                 }
             }
         }

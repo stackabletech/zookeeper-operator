@@ -12,8 +12,10 @@ spec:
         selector:
           matchLabels:
             kubernetes.io/hostname: mdesktop
-        instances: 1
+        replicas: 1
         config:
           clientPort: 3500
         cliOverrides:
-          test: "abc"
+          clientPort: "3000"
+          someOverride: "abc"
+

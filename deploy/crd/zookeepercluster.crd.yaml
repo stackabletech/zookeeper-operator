@@ -25,7 +25,6 @@ spec:
                   properties:
                     cliOverrides:
                       additionalProperties:
-                        nullable: true
                         type: string
                       nullable: true
                       type: object
@@ -73,7 +72,6 @@ spec:
                         properties:
                           cliOverrides:
                             additionalProperties:
-                              nullable: true
                               type: string
                             nullable: true
                             type: object
@@ -116,7 +114,7 @@ spec:
                               type: string
                             nullable: true
                             type: object
-                          instances:
+                          replicas:
                             format: uint16
                             minimum: 0.0
                             type: integer
@@ -151,7 +149,7 @@ spec:
                                 type: object
                             type: object
                         required:
-                          - instances
+                          - replicas
                           - selector
                         type: object
                       type: object
