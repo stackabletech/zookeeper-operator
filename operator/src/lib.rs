@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{
     ConfigMap, ConfigMapVolumeSource, Container, EnvVar, Node, Pod, PodSpec, Volume, VolumeMount,
 };
-use kube::api::{ListParams, Resource};
+use kube::api::{ListParams, ResourceExt};
 use kube::Api;
 use serde_json::json;
 use tracing::{debug, error, info, trace, warn};
@@ -367,7 +367,7 @@ impl ZookeeperState {
                                 "Found a duplicate `myid` [{}] in Pod [{}], we can't recover \
                                  from this error and you need to clean up manually",
                                 id,
-                                Resource::name(pod)
+                                pod.name()
                             );
                             return Err(Error::ReconcileError("Found duplicate id".to_string()));
                         }

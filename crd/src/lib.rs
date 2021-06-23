@@ -1,14 +1,16 @@
 pub mod error;
 pub mod util;
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, LabelSelector};
 use kube::CustomResource;
 use product_config::types::PropertyNameKind;
 use schemars::JsonSchema;
-use semver::{SemVerError, Version};
+use semver::{Error as SemVerError, Version};
 use serde::{Deserialize, Serialize};
+use stackable_operator::label_selector;
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
+use stackable_operator::status::Conditions;
 use stackable_operator::Crd;
 use std::collections::{BTreeMap, HashMap};
 
@@ -70,6 +72,23 @@ impl Configuration for ZookeeperConfig {
         let mut temp = BTreeMap::new();
         temp.extend(product_config::ser::to_hash_map(self).unwrap());
         Ok(temp)
+    }
+}
+
+impl Conditions for ZookeeperCluster {
+    fn conditions(&self) -> Option<&[Condition]> {
+        if let Some(status) = &self.status {
+            return Some(&status.conditions.as_slice());
+        }
+        None
+    }
+
+    fn conditions_mut(&mut self) -> &mut Vec<Condition> {
+        if self.status.is_none() {
+            self.status = Some(ZookeeperClusterStatus::default());
+            return &mut self.status.as_mut().unwrap().conditions;
+        }
+        return &mut self.status.as_mut().unwrap().conditions;
     }
 }
 
