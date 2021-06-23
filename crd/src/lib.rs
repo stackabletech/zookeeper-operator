@@ -7,10 +7,10 @@ use product_config::types::PropertyNameKind;
 use schemars::JsonSchema;
 use semver::{SemVerError, Version};
 use serde::{Deserialize, Serialize};
-use stackable_operator::config::{ConfigError, Configuration};
+use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
 use stackable_operator::Crd;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 pub const APP_NAME: &str = "zookeeper";
 pub const MANAGED_BY: &str = "stackable-zookeeper";
@@ -49,16 +49,16 @@ impl Configuration for ZookeeperConfig {
         &self,
         _resource: &Self::Configurable,
         _role_name: &str,
-    ) -> Result<HashMap<String, String>, ConfigError> {
-        Ok(HashMap::new())
+    ) -> Result<BTreeMap<String, String>, ConfigError> {
+        Ok(BTreeMap::new())
     }
 
     fn compute_cli(
         &self,
         _resource: &Self::Configurable,
         _role_name: &str,
-    ) -> Result<HashMap<String, String>, ConfigError> {
-        Ok(HashMap::new())
+    ) -> Result<BTreeMap<String, String>, ConfigError> {
+        Ok(BTreeMap::new())
     }
 
     fn compute_properties(
@@ -66,12 +66,10 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
         _file: &str,
-    ) -> Result<HashMap<String, String>, ConfigError> {
-        Ok(product_config::ser::to_hash_map(self).unwrap())
-    }
-
-    fn config_information() -> HashMap<String, (PropertyNameKind, String)> {
-        todo!()
+    ) -> Result<BTreeMap<String, String>, ConfigError> {
+        let mut temp = BTreeMap::new();
+        temp.extend(product_config::ser::to_hash_map(self).unwrap());
+        Ok(temp)
     }
 }
 
