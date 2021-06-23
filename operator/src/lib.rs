@@ -12,7 +12,6 @@ use serde_json::json;
 use tracing::{debug, error, info, trace, warn};
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
-use product_config;
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigSpec;
 use stackable_operator::client::Client;
@@ -45,8 +44,8 @@ use strum_macros::Display;
 use strum_macros::EnumIter;
 
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
-
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
+const ZOOKEEPER_SERVER_ROLE: &str = "servers";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
@@ -542,11 +541,17 @@ impl ZookeeperState {
                                 &id.to_string(),
                             );
 
-                            self.create_pod_and_config_maps(
-                                &node_name, &pod_name, pod_labels, id, role_group,
-                            )
-                            .await?;
-                            //self.create_pod(&node_name, &pod_name, pod_labels).await?;
+                            let (pod, config_maps) = self
+                                .create_pod_and_config_maps(
+                                    &node_name, &pod_name, pod_labels, id, role_group,
+                                )
+                                .await?;
+
+                            self.context.client.create(&pod).await?;
+
+                            for config_map in &config_maps {
+                                self.context.client.create(config_map).await?;
+                            }
 
                             return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
                         } else {
@@ -603,16 +608,18 @@ impl ZookeeperState {
         role_group: &str,
     ) -> Result<HashMap<PropertyNameKind, HashMap<String, String>>, Error> {
         let version = &self.zk_spec.version.to_string();
-        let role = "zookeeper-server";
 
         let mut result = HashMap::new();
 
-        if let Some(role_config) = self.role_config.get(role) {
+        if let Some(role_config) = self.role_config.get(ZOOKEEPER_SERVER_ROLE) {
             if let Some(role_group_config) = role_config.get(role_group) {
                 for (property_name_kind, config) in role_group_config {
-                    let validation_result =
-                        self.config
-                            .get(&version, property_name_kind, Some(role), config)?;
+                    let validation_result = self.config.get(
+                        &version,
+                        property_name_kind,
+                        Some(ZOOKEEPER_SERVER_ROLE),
+                        config,
+                    )?;
 
                     let validated_config = stackable_operator::config::process_validation_result(
                         &validation_result,
@@ -665,14 +672,6 @@ impl ZookeeperState {
                     let cm_config =
                         config_map::create_config_map(&self.context.resource, &cm_name, data)?;
                     config_maps.push(cm_config);
-
-                    // ...and one for the data directory (which only contains the myid file)
-                    let mut data = BTreeMap::new();
-                    data.insert("myid".to_string(), id.to_string());
-                    let cm_name = format!("{}-data", pod_name);
-                    let cm_data =
-                        config_map::create_config_map(&self.context.resource, &cm_name, data)?;
-                    config_maps.push(cm_data);
                 }
                 PropertyNameKind::Env => {
                     for (property_name, property_value) in config {
@@ -705,31 +704,29 @@ impl ZookeeperState {
                             cli_command.push(property_name);
                         } else {
                             // TODO: custom cli logic: name=value or --name value ...
+                            cli_command.push(format!("{}={}", property_name, property_value));
                         }
                     }
                 }
             }
         }
 
+        // config map for the data directory (which only contains the myid file)
+        let mut data = BTreeMap::new();
+        data.insert("myid".to_string(), id.to_string());
+        let cm_name = format!("{}-data", pod_name);
+        let cm_data = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
+        config_maps.push(cm_data);
+
         let pod = self.build_pod(
             node_name,
             pod_name,
             labels,
-            env_vars,
-            Some(cli_command.as_slice()),
+            Some(env_vars),
+            Some(cli_command),
         )?;
 
         Ok((pod, config_maps))
-    }
-
-    async fn create_pod(
-        &self,
-        node_name: &str,
-        pod_name: &str,
-        labels: BTreeMap<String, String>,
-    ) -> Result<Pod, Error> {
-        let pod = self.build_pod(node_name, pod_name, labels)?;
-        Ok(self.context.client.create(&pod).await?)
     }
 
     fn build_pod(
@@ -738,7 +735,7 @@ impl ZookeeperState {
         pod_name: &str,
         labels: BTreeMap<String, String>,
         env: Option<Vec<EnvVar>>,
-        cli: Option<&[String]>,
+        cli: Option<Vec<String>>,
     ) -> Result<Pod, Error> {
         let (containers, volumes) = self.build_containers(pod_name, env, cli);
 
@@ -765,26 +762,24 @@ impl ZookeeperState {
         &self,
         pod_name: &str,
         env: Option<Vec<EnvVar>>,
-        cli: Option<&[String]>,
+        cli: Option<Vec<String>>,
     ) -> (Vec<Container>, Vec<Volume>) {
         let version = &self.context.resource.spec.version;
 
         let image_name = build_image_name(&version);
 
-        let mut command = vec![
+        let command = vec![
             format!("{}/bin/zkServer.sh", version.package_name()),
             "start-foreground".to_string(),
             // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
+            "{{ configroot }}/conf/zoo.cfg".to_string(),
         ];
-
-        // TODO: Later versions can probably point to a directory instead, investigate
-        // ugly hack to keep order of cli commands
-        command.push("{{ configroot }}/conf/zoo.cfg".to_string());
 
         let containers = vec![Container {
             image: Some(image_name),
             name: "zookeeper".to_string(),
             command: Some(command),
+            args: cli,
             env,
             volume_mounts: Some(vec![
                 // One mount for the config directory, this will be relative to the extracted package
@@ -924,7 +919,7 @@ impl ControllerStrategy for ZookeeperStrategy {
         // TODO: do not hardcode the zookeeper role
         let mut role_information = HashMap::new();
         role_information.insert(
-            "zookeeper-server".to_string(),
+            ZOOKEEPER_SERVER_ROLE.to_string(),
             vec![
                 PropertyNameKind::File("zoo.cfg".to_string()),
                 PropertyNameKind::Cli,
@@ -933,7 +928,7 @@ impl ControllerStrategy for ZookeeperStrategy {
 
         let mut roles = HashMap::new();
         roles.insert(
-            "zookeeper-server".to_string(),
+            ZOOKEEPER_SERVER_ROLE.to_string(),
             context.resource.spec.servers.clone(),
         );
 
@@ -1001,39 +996,6 @@ fn build_pod_labels(
 
 fn build_image_name(version: &ZookeeperVersion) -> String {
     format!("stackable/zookeeper:{}", version.to_string())
-}
-
-fn adapt_pod_container(
-    pod: &mut Pod,
-    env: Option<Vec<EnvVar>>,
-    cli: Option<&[String]>,
-    version: &ZookeeperVersion,
-) {
-    let image_name = build_image_name(&version);
-
-    if let Some(spec) = &mut pod.spec {
-        for container in &mut spec.containers {
-            if container.image == Some(image_name.clone()) {
-                // found right container
-                // add env
-                match (&env, &mut container.env) {
-                    (Some(env), Some(container_env)) => {
-                        container_env.extend(env.clone());
-                    }
-                    (Some(env), None) => container.env = Some(env.clone()),
-                    (_, _) => {}
-                }
-                // add cli
-                match (cli, &mut container.command) {
-                    (Some(cli), Some(command)) => {
-                        command.extend(cli.to_vec());
-                    }
-                    (Some(cli), None) => container.command = Some(cli.to_vec()),
-                    (_, _) => {}
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]

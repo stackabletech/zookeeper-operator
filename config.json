@@ -2,27 +2,6 @@
   {
     "property_names": [
       {
-        "name": "start-foreground",
-        "kind": {
-          "type": "cli"
-        }
-      }
-    ],
-    "datatype": {
-      "type": "string"
-    },
-    "roles": [
-      {
-        "name": "zookeeper-server",
-        "required": true
-      }
-    ],
-    "as_of_version": "0.0.0",
-    "apply_mode": "restart"
-  },
-  {
-    "property_names": [
-      {
         "name": "tickTime",
         "kind": {
           "type": "file",
@@ -30,19 +9,18 @@
         }
       }
     ],
-    "default_value": [
+    "recommended_values": [
       {
         "value": "3000"
       }
     ],
     "datatype": {
       "type": "integer",
-      "min": "1",
-      "unit": "time"
+      "min": "1"
     },
     "roles": [
       {
-        "name": "zookeeper-server",
+        "name": "servers",
         "required": true
       }
     ],
@@ -58,8 +36,7 @@
         "kind": {
           "type": "file",
           "file": "zoo.cfg"
-        },
-        "config_file": "zoo.cfg"
+        }
       }
     ],
     "datatype": {
@@ -73,7 +50,7 @@
     ],
     "roles": [
       {
-        "name": "zookeeper-server",
+        "name": "servers",
         "required": true
       }
     ],
@@ -89,8 +66,7 @@
         "kind": {
           "type": "file",
           "file": "zoo.cfg"
-        },
-        "config_file": "zoo.cfg"
+        }
       }
     ],
     "datatype": {
@@ -104,7 +80,7 @@
     ],
     "roles": [
       {
-        "name": "zookeeper-server",
+        "name": "servers",
         "required": true
       }
     ],
@@ -120,8 +96,7 @@
         "kind": {
           "type": "file",
           "file": "zoo.cfg"
-        },
-        "config_file": "zoo.cfg"
+        }
       }
     ],
     "recommended_values": [
@@ -135,7 +110,7 @@
     },
     "roles": [
       {
-        "name": "zookeeper-server",
+        "name": "servers",
         "required": true
       }
     ],
@@ -151,8 +126,7 @@
         "kind": {
           "type": "file",
           "file": "zoo.cfg"
-        },
-        "config_file": "zoo.cfg"
+        }
       }
     ],
     "recommended_values": [
@@ -166,7 +140,7 @@
     },
     "roles": [
       {
-        "name": "zookeeper-server",
+        "name": "servers",
         "required": true
       }
     ],

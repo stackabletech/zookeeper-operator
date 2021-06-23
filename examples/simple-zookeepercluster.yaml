@@ -15,3 +15,5 @@ spec:
         instances: 1
         config:
           clientPort: 3500
+        cliOverrides:
+          test: "abc"

@@ -1,4 +1,3 @@
-use serde_yaml;
 use stackable_zookeeper_crd::ZookeeperCluster;
 use std::error::Error;
 
