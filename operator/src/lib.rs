@@ -38,6 +38,7 @@ use stackable_zookeeper_crd::{
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
+use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -608,7 +609,7 @@ impl ZookeeperState {
     fn get_validated_role_group_config(
         &self,
         role_group: &str,
-    ) -> Result<HashMap<PropertyNameKind, HashMap<String, String>>, Error> {
+    ) -> Result<HashMap<PropertyNameKind, BTreeMap<String, String>>, Error> {
         let version = &self.zk_spec.version.to_string();
 
         let mut result = HashMap::new();
@@ -624,7 +625,7 @@ impl ZookeeperState {
                     )?;
 
                     let validated_config =
-                        process_validation_result(&validation_result, false, false);
+                        process_validation_result(&validation_result, false, false)?;
 
                     result.insert(property_name_kind.clone(), validated_config);
                 }
@@ -659,8 +660,12 @@ impl ZookeeperState {
                         config.insert(format!("server.{}", id), format!("{}:2888:3888", node_name));
                     }
 
+                    // TODO: use BTreeMap
                     let zoo_cfg =
-                        product_config::writer::create_java_properties_file(&config).unwrap();
+                        product_config::writer::create_java_properties_file(&HashMap::from_iter(
+                            config.into_iter().collect::<HashMap<String, String>>(),
+                        ))
+                        .unwrap();
 
                     // Now we need to create two configmaps per server.
                     // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
@@ -916,23 +921,19 @@ impl ControllerStrategy for ZookeeperStrategy {
                 .await?,
         );
 
-        // TODO: do not hardcode the zookeeper role
-        let mut role_information = HashMap::new();
-        role_information.insert(
-            ZOOKEEPER_SERVER_ROLE.to_string(),
-            vec![
-                PropertyNameKind::File("zoo.cfg".to_string()),
-                PropertyNameKind::Cli,
-            ],
-        );
-
         let mut roles = HashMap::new();
         roles.insert(
             ZOOKEEPER_SERVER_ROLE.to_string(),
-            context.resource.spec.servers.clone(),
+            (
+                context.resource.spec.servers.clone(),
+                vec![
+                    PropertyNameKind::File("zoo.cfg".to_string()),
+                    PropertyNameKind::Cli,
+                ],
+            ),
         );
 
-        let role_config = transform_all_roles_to_config(&context.resource, role_information, roles);
+        let role_config = transform_all_roles_to_config(&context.resource, roles);
 
         Ok(ZookeeperState {
             zk_spec: context.resource.spec.clone(),

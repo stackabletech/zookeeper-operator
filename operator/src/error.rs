@@ -37,4 +37,10 @@ pub enum Error {
         #[from]
         source: product_config::error::Error,
     },
+
+    #[error("Operator Framework reported config error: {source}")]
+    OperatorConfigError {
+        #[from]
+        source: stackable_operator::product_config_utils::ConfigError,
+    },
 }
