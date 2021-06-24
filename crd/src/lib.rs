@@ -61,7 +61,7 @@ impl Configuration for ZookeeperConfig {
         Ok(BTreeMap::new())
     }
 
-    fn compute_properties(
+    fn compute_files(
         &self,
         _resource: &Self::Configurable,
         _role_name: &str,
