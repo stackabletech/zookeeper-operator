@@ -1002,7 +1002,6 @@ fn build_image_name(version: &ZookeeperVersion) -> String {
 mod tests {
 
     use super::*;
-    use product_config::PropertyValidationResult;
     use rstest::rstest;
 
     #[rstest]
@@ -1015,51 +1014,5 @@ mod tests {
     fn test_first_missing(#[case] input: Vec<usize>, #[case] expected: usize) {
         let first = find_first_missing(&input);
         assert_eq!(first, expected);
-    }
-
-    #[test]
-    fn foo() {
-        let config_reader = product_config::reader::ConfigJsonReader::new(
-            "../config_config.json",
-            "../config.json",
-        );
-        let product_config = ProductConfigSpec::new(config_reader).unwrap();
-
-        let mut options = HashMap::new();
-        options.insert("clientPort".to_string(), "888888888".to_string());
-        options.insert(
-            "dataDir".to_string(),
-            "!!/////foobar wer das liest ist doof!!!".to_string(),
-        );
-        options.insert("tickTime".to_string(), "-1".to_string());
-
-        let validation_result = product_config
-            .get(
-                "1.2.3",
-                &PropertyNameKind::File("zoo.cfg".to_string()),
-                Some("zookeeper-server"),
-                &options,
-            )
-            .unwrap();
-
-        for (key, result) in validation_result.iter() {
-            match result {
-                PropertyValidationResult::Default(value) => {
-                    println!("Def: {} -> {}", key, value);
-                }
-                PropertyValidationResult::RecommendedDefault(value) => {
-                    println!("RecDef: {} -> {}", key, value);
-                }
-                PropertyValidationResult::Valid(value) => {
-                    println!("Valid: {} -> {}", key, value);
-                }
-                PropertyValidationResult::Warn(a, err) => {
-                    println!("Warn: {} -> ({}, {:?})", key, a, err);
-                }
-                PropertyValidationResult::Error(a, err) => {
-                    println!("Warn: {} -> ({}, {:?})", key, a, err);
-                }
-            }
-        }
     }
 }
