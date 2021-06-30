@@ -13,7 +13,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use product_config::types::PropertyNameKind;
-use product_config::ProductConfigSpec;
+use product_config::ProductConfigManager;
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::controller::Controller;
@@ -38,7 +38,6 @@ use stackable_zookeeper_crd::{
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
-use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -59,7 +58,7 @@ pub enum ZookeeperRole {
 
 struct ZookeeperState {
     context: ReconciliationContext<ZookeeperCluster>,
-    config: Arc<ProductConfigSpec>,
+    config: Arc<ProductConfigManager>,
     zk_spec: ZookeeperClusterSpec,
     zk_status: Option<ZookeeperClusterStatus>,
     id_information: Option<IdInformation>,
@@ -336,15 +335,12 @@ impl ZookeeperState {
 
         // Iterate over all existing pods and read the label which contains the `myid`
         for pod in &self.existing_pods {
-            if let (
-                Some(labels),
-                Some(PodSpec {
-                    node_name: Some(node_name),
-                    ..
-                }),
-            ) = (&pod.metadata.labels, &pod.spec)
+            if let Some(PodSpec {
+                node_name: Some(node_name),
+                ..
+            }) = &pod.spec
             {
-                match labels.get(ID_LABEL) {
+                match pod.metadata.labels.get(ID_LABEL) {
                     None => {
                         error!("ZookeeperCluster {}: Pod [{:?}] does not have the `id` label, this is illegal, deleting it.",
                                self.context.log_name(),
@@ -619,10 +615,10 @@ impl ZookeeperState {
                 for (property_name_kind, config) in role_group_config {
                     let validation_result = self.config.get(
                         &version,
+                        ZOOKEEPER_SERVER_ROLE,
                         property_name_kind,
-                        Some(ZOOKEEPER_SERVER_ROLE),
-                        &config.clone().into_iter().collect::<HashMap<_, _>>(),
-                    )?;
+                        config.clone().into_iter().collect::<HashMap<_, _>>(),
+                    );
 
                     let validated_config =
                         process_validation_result(&validation_result, false, false)?;
@@ -649,23 +645,30 @@ impl ZookeeperState {
         let mut cli_command = vec![];
         let mut env_vars = vec![];
 
-        for (property_name_kind, mut config) in validated_config {
+        for (property_name_kind, config) in validated_config {
+            // we need to convert to <String, String> to <String, Option<String>> to deal with
+            // CLI flags etc. We can not currently represent that via operator-rs / product-config.
+            // This is a preparation for that.
+            let mut transformed_config: BTreeMap<String, Option<String>> =
+                config.into_iter().map(|(k, v)| (k, Some(v))).collect();
+
             match property_name_kind {
                 PropertyNameKind::File(file_name) => {
                     let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
                         "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
                     ))?;
 
+                    // add dynamic config map requirement for server ids
                     for (node_name, id) in &id_information.node_name_to_id {
-                        config.insert(format!("server.{}", id), format!("{}:2888:3888", node_name));
+                        transformed_config.insert(
+                            format!("server.{}", id),
+                            Some(format!("{}:2888:3888", node_name)),
+                        );
                     }
 
-                    // TODO: use BTreeMap
-                    let zoo_cfg =
-                        product_config::writer::create_java_properties_file(&HashMap::from_iter(
-                            config.into_iter().collect::<HashMap<String, String>>(),
-                        ))
-                        .unwrap();
+                    let zoo_cfg = product_config::writer::to_java_properties_string(
+                        transformed_config.iter(),
+                    )?;
 
                     // Now we need to create two configmaps per server.
                     // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
@@ -679,37 +682,35 @@ impl ZookeeperState {
                     config_maps.push(cm_config);
                 }
                 PropertyNameKind::Env => {
-                    for (property_name, property_value) in config {
+                    for (property_name, property_value) in transformed_config {
                         if property_name.is_empty() {
+                            debug!("Received empty property_name for ENV... skipping");
                             continue;
                         }
 
-                        if property_value.is_empty() {
-                            env_vars.push(EnvVar {
-                                name: property_name,
-                                value: None,
-                                value_from: None,
-                            })
-                        } else {
-                            env_vars.push(EnvVar {
-                                name: property_name,
-                                value: Some(property_value),
-                                value_from: None,
-                            })
-                        }
+                        env_vars.push(EnvVar {
+                            name: property_name,
+                            value: property_value,
+                            value_from: None,
+                        });
                     }
                 }
                 PropertyNameKind::Cli => {
-                    for (property_name, property_value) in config {
+                    for (property_name, property_value) in transformed_config {
                         if property_name.is_empty() {
+                            debug!("Received empty property_name for CLI... skipping");
                             continue;
                         }
-
-                        if property_value.is_empty() {
+                        // TODO: custom cli logic: name=value or --name value ...
+                        // single argument / flag
+                        if property_value.is_none() {
                             cli_command.push(property_name);
                         } else {
-                            // TODO: custom cli logic: name=value or --name value ...
-                            cli_command.push(format!("{}={}", property_name, property_value));
+                            cli_command.push(format!(
+                                "{}={}",
+                                property_name,
+                                property_value.unwrap()
+                            ));
                         }
                     }
                 }
@@ -723,13 +724,7 @@ impl ZookeeperState {
         let cm_data = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
         config_maps.push(cm_data);
 
-        let pod = self.build_pod(
-            node_name,
-            pod_name,
-            labels,
-            Some(env_vars),
-            Some(cli_command),
-        )?;
+        let pod = self.build_pod(node_name, pod_name, labels, env_vars, cli_command)?;
 
         Ok((pod, config_maps))
     }
@@ -739,8 +734,8 @@ impl ZookeeperState {
         node_name: &str,
         pod_name: &str,
         labels: BTreeMap<String, String>,
-        env: Option<Vec<EnvVar>>,
-        cli: Option<Vec<String>>,
+        env: Vec<EnvVar>,
+        cli: Vec<String>,
     ) -> Result<Pod, Error> {
         let (containers, volumes) = self.build_containers(pod_name, env, cli);
 
@@ -753,9 +748,9 @@ impl ZookeeperState {
             )?,
             spec: Some(PodSpec {
                 node_name: Some(node_name.to_string()),
-                tolerations: Some(krustlet::create_tolerations()),
+                tolerations: krustlet::create_tolerations(),
                 containers,
-                volumes: Some(volumes),
+                volumes,
                 ..PodSpec::default()
             }),
 
@@ -766,8 +761,8 @@ impl ZookeeperState {
     fn build_containers(
         &self,
         pod_name: &str,
-        env: Option<Vec<EnvVar>>,
-        cli: Option<Vec<String>>,
+        env: Vec<EnvVar>,
+        cli: Vec<String>,
     ) -> (Vec<Container>, Vec<Volume>) {
         let version = &self.context.resource.spec.version;
 
@@ -777,16 +772,16 @@ impl ZookeeperState {
             format!("{}/bin/zkServer.sh", version.package_name()),
             "start-foreground".to_string(),
             // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
-            "{{ configroot }}/conf/zoo.cfg".to_string(),
+            "{{configroot}}/conf/zoo.cfg".to_string(),
         ];
 
         let containers = vec![Container {
             image: Some(image_name),
             name: "zookeeper".to_string(),
-            command: Some(command),
+            command,
             args: cli,
             env,
-            volume_mounts: Some(vec![
+            volume_mounts: vec![
                 // One mount for the config directory, this will be relative to the extracted package
                 VolumeMount {
                     mount_path: "conf".to_string(),
@@ -800,7 +795,7 @@ impl ZookeeperState {
                     name: "data-volume".to_string(),
                     ..VolumeMount::default()
                 },
-            ]),
+            ],
             ..Container::default()
         }];
 
@@ -835,7 +830,6 @@ impl ReconciliationState for ZookeeperState {
     ) -> Pin<Box<dyn Future<Output = Result<ReconcileFunctionAction, Self::Error>> + Send + '_>>
     {
         info!("========================= Starting reconciliation =========================");
-        debug!("Deletion Labels: [{:?}]", &self.get_required_labels());
 
         Box::pin(async move {
             self.init_status()
@@ -878,13 +872,12 @@ impl ReconciliationState for ZookeeperState {
     }
 }
 
-#[derive(Debug)]
 struct ZookeeperStrategy {
-    config: Arc<ProductConfigSpec>,
+    config: Arc<ProductConfigManager>,
 }
 
 impl ZookeeperStrategy {
-    pub fn new(config: ProductConfigSpec) -> ZookeeperStrategy {
+    pub fn new(config: ProductConfigManager) -> ZookeeperStrategy {
         ZookeeperStrategy {
             config: Arc::new(config),
         }
@@ -960,9 +953,7 @@ pub async fn create_controller(client: Client) {
         .owns(pods_api, ListParams::default())
         .owns(config_maps_api, ListParams::default());
 
-    let config_reader =
-        product_config::reader::ConfigJsonReader::new("config_config.json", "config.json");
-    let product_config = ProductConfigSpec::new(config_reader).unwrap();
+    let product_config = ProductConfigManager::from_yaml_file("config.yaml").unwrap();
     let strategy = ZookeeperStrategy::new(product_config);
 
     controller

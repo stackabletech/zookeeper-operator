@@ -5,17 +5,12 @@ metadata:
 spec:
   version: 3.4.14
   servers:
-    config:
-      clientPort: 4000
     roleGroups:
       default:
         selector:
           matchLabels:
             kubernetes.io/hostname: mdesktop
         replicas: 1
-        config:
-          clientPort: 3500
-        cliOverrides:
-          clientPort: "3000"
-          someOverride: "abc"
+
+
 

@@ -22,6 +22,7 @@ pub const MANAGED_BY: &str = "stackable-zookeeper";
     group = "zookeeper.stackable.tech",
     version = "v1",
     kind = "ZookeeperCluster",
+    plural = "zookeeperclusters",
     shortname = "zk",
     namespaced
 )]
@@ -49,7 +50,7 @@ impl Configuration for ZookeeperConfig {
         &self,
         _resource: &Self::Configurable,
         _role_name: &str,
-    ) -> Result<BTreeMap<String, String>, ConfigError> {
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         Ok(BTreeMap::new())
     }
 
@@ -57,7 +58,7 @@ impl Configuration for ZookeeperConfig {
         &self,
         _resource: &Self::Configurable,
         _role_name: &str,
-    ) -> Result<BTreeMap<String, String>, ConfigError> {
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         Ok(BTreeMap::new())
     }
 
@@ -66,10 +67,11 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
         _file: &str,
-    ) -> Result<BTreeMap<String, String>, ConfigError> {
-        let mut temp = BTreeMap::new();
-        temp.extend(product_config::ser::to_hash_map(self).unwrap());
-        Ok(temp)
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        let temp = product_config::ser::to_hash_map(self).unwrap();
+        let result: BTreeMap<String, Option<String>> =
+            temp.into_iter().map(|(k, v)| (k, Some(v))).collect();
+        Ok(result)
     }
 }
 

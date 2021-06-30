@@ -1,3 +1,4 @@
+use kube::CustomResourceExt;
 use stackable_zookeeper_crd::ZookeeperCluster;
 use std::fs;
 
