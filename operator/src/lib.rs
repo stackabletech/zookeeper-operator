@@ -21,7 +21,7 @@ use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
 use stackable_operator::metadata;
 use stackable_operator::product_config_utils::{
-    process_validation_result, transform_all_roles_to_config, RoleConfigByPropertyKind,
+    transform_all_roles_to_config, validate_role_and_group_config, RoleConfigByPropertyKind,
 };
 use stackable_operator::reconcile::{
     ContinuationStrategy, ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
@@ -47,12 +47,12 @@ use strum_macros::EnumIter;
 
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
-const ZOOKEEPER_SERVER_ROLE: &str = "servers";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
 #[derive(EnumIter, Debug, Display, PartialEq, Eq, Hash)]
 pub enum ZookeeperRole {
+    #[strum(serialize = "server")]
     Server,
 }
 
@@ -542,7 +542,12 @@ impl ZookeeperState {
 
                             let (pod, config_maps) = self
                                 .create_pod_and_config_maps(
-                                    &node_name, &pod_name, pod_labels, id, role_group,
+                                    &node_name,
+                                    &pod_name,
+                                    pod_labels,
+                                    id,
+                                    &zookeeper_role.to_string(),
+                                    role_group,
                                 )
                                 .await?;
 
@@ -602,44 +607,25 @@ impl ZookeeperState {
         Ok(ReconcileFunctionAction::Done)
     }
 
-    fn get_validated_role_group_config(
-        &self,
-        role_group: &str,
-    ) -> Result<HashMap<PropertyNameKind, BTreeMap<String, String>>, Error> {
-        let version = &self.zk_spec.version.to_string();
-
-        let mut result = HashMap::new();
-
-        if let Some(role_config) = self.role_config.get(ZOOKEEPER_SERVER_ROLE) {
-            if let Some(role_group_config) = role_config.get(role_group) {
-                for (property_name_kind, config) in role_group_config {
-                    let validation_result = self.config.get(
-                        &version,
-                        ZOOKEEPER_SERVER_ROLE,
-                        property_name_kind,
-                        config.clone().into_iter().collect::<HashMap<_, _>>(),
-                    );
-
-                    let validated_config =
-                        process_validation_result(&validation_result, false, false)?;
-
-                    result.insert(property_name_kind.clone(), validated_config);
-                }
-            }
-        }
-
-        Ok(result)
-    }
-
     async fn create_pod_and_config_maps(
         &self,
         node_name: &str,
         pod_name: &str,
         labels: BTreeMap<String, String>,
         id: usize,
+        role: &str,
         role_group: &str,
     ) -> Result<(Pod, Vec<ConfigMap>), Error> {
-        let validated_config = self.get_validated_role_group_config(role_group)?;
+        let version = &self.zk_spec.version.to_string();
+        let validated_config = validate_role_and_group_config(
+            role,
+            role_group,
+            version,
+            &self.role_config,
+            &self.config,
+            false,
+            false,
+        )?;
 
         let mut config_maps = vec![];
         let mut cli_command = vec![];
@@ -684,7 +670,7 @@ impl ZookeeperState {
                 PropertyNameKind::Env => {
                     for (property_name, property_value) in transformed_config {
                         if property_name.is_empty() {
-                            debug!("Received empty property_name for ENV... skipping");
+                            warn!("Received empty property_name for ENV... skipping");
                             continue;
                         }
 
@@ -698,7 +684,7 @@ impl ZookeeperState {
                 PropertyNameKind::Cli => {
                     for (property_name, property_value) in transformed_config {
                         if property_name.is_empty() {
-                            debug!("Received empty property_name for CLI... skipping");
+                            warn!("Received empty property_name for CLI... skipping");
                             continue;
                         }
                         // TODO: custom cli logic: name=value or --name value ...
@@ -706,6 +692,7 @@ impl ZookeeperState {
                         if property_value.is_none() {
                             cli_command.push(property_name);
                         } else {
+                            // key value pair
                             cli_command.push(format!(
                                 "{}={}",
                                 property_name,
@@ -916,7 +903,7 @@ impl ControllerStrategy for ZookeeperStrategy {
 
         let mut roles = HashMap::new();
         roles.insert(
-            ZOOKEEPER_SERVER_ROLE.to_string(),
+            ZookeeperRole::Server.to_string(),
             (
                 context.resource.spec.servers.clone(),
                 vec![

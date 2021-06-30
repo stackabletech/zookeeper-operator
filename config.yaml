@@ -23,7 +23,7 @@ properties:
         - fromVersion: "0.0.0"
           value: "3000"
       roles:
-        - name: "servers"
+        - name: "server"
           required: true
       asOfVersion: "0.0.0"
       comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
@@ -43,7 +43,7 @@ properties:
       recommendedValues:
         - value: "2181"
       roles:
-        - name: "servers"
+        - name: "server"
           required: true
       asOfVersion: "0.0.0"
       comment: "See QuorumPeerConfig.java, I'm unsure what happens when this is set to 0, it might work, it might not"
@@ -61,7 +61,7 @@ properties:
       recommendedValues:
         - value: "/tmp/zookeeper"
       roles:
-        - name: "servers"
+        - name: "server"
           required: true
       asOfVersion: "0.0.0"
       comment: "See QuorumPeerConfig.java"
@@ -79,7 +79,7 @@ properties:
       recommendedValues:
         - value: "5"
       roles:
-        - name: "servers"
+        - name: "server"
           required: true
       asOfVersion: "0.0.0"
       comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
@@ -97,7 +97,7 @@ properties:
       recommendedValues:
         - value: "2"
       roles:
-        - name: "servers"
+        - name: "server"
           required: true
       asOfVersion: "0.0.0"
       comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
