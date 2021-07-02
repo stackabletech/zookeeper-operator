@@ -905,11 +905,8 @@ impl ControllerStrategy for ZookeeperStrategy {
         roles.insert(
             ZookeeperRole::Server.to_string(),
             (
-                context.resource.spec.servers.clone(),
-                vec![
-                    PropertyNameKind::File("zoo.cfg".to_string()),
-                    PropertyNameKind::Cli,
-                ],
+                vec![PropertyNameKind::File("zoo.cfg".to_string())],
+                context.resource.spec.servers.clone().into_dyn(),
             ),
         );
 

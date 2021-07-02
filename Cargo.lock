@@ -1155,7 +1155,7 @@ dependencies = [
 [[package]]
 name = "product-config"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/product-config.git?branch=switch_from_json_to_yaml#3c44040deff50a227bfb0e5e6484e09e7d8ed6aa"
+source = "git+https://github.com/stackabletech/product-config.git?branch=main#32a81b9adf744c4c02ac4f123f9a4b7bddc94bfc"
 dependencies = [
  "java-properties",
  "regex",
@@ -1593,7 +1593,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=adapt_to_product_config_interface#f6f7c5d2d7ea2f8148773e434534a07738dac104"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=adapt_to_product_config_interface#b0d15dd31da82f0901eab3d76b51278568c964df"
 dependencies = [
  "async-trait",
  "backoff",
@@ -1997,9 +1997,9 @@ checksum = "56dee185309b50d1f11bfedef0fe6d036842e3fb77413abef29f8f8d1c5d4c1c"
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.7.1"
+version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb0d2e7be6ae3a5fa87eed5fb451aff96f2573d2694942e40543ae0bbe19c796"
+checksum = "8895849a949e7845e06bd6dc1aa51731a103c42707010a5b591c0038fb73385b"
 
 [[package]]
 name = "unicode-xid"
