@@ -21,7 +21,8 @@ use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
 use stackable_operator::metadata;
 use stackable_operator::product_config_utils::{
-    transform_all_roles_to_config, validate_role_and_group_config, RoleConfigByPropertyKind,
+    transform_all_roles_to_config, validate_all_roles_and_groups_config,
+    ValidatedRoleConfigByPropertyKind,
 };
 use stackable_operator::reconcile::{
     ContinuationStrategy, ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
@@ -58,13 +59,12 @@ pub enum ZookeeperRole {
 
 struct ZookeeperState {
     context: ReconciliationContext<ZookeeperCluster>,
-    config: Arc<ProductConfigManager>,
     zk_spec: ZookeeperClusterSpec,
     zk_status: Option<ZookeeperClusterStatus>,
     id_information: Option<IdInformation>,
     existing_pods: Vec<Pod>,
     eligible_nodes: HashMap<String, HashMap<String, Vec<Node>>>,
-    role_config: RoleConfigByPropertyKind,
+    validated_role_config: ValidatedRoleConfigByPropertyKind,
 }
 
 struct IdInformation {
@@ -522,6 +522,15 @@ impl ZookeeperState {
                                 .get(node_name)
                                 .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", node_name)))?;
 
+                            // not we have a node that needs pods -> get validated config
+                            // TODO: unwraps cannot fail
+                            let validated_config = self
+                                .validated_role_config
+                                .get(&zookeeper_role.to_string())
+                                .unwrap()
+                                .get(role_group)
+                                .unwrap();
+
                             let pod_name = format!(
                                 "{}-{}-{}-{}-{}",
                                 APP_NAME,
@@ -546,8 +555,7 @@ impl ZookeeperState {
                                     &pod_name,
                                     pod_labels,
                                     id,
-                                    &zookeeper_role.to_string(),
-                                    role_group,
+                                    validated_config,
                                 )
                                 .await?;
 
@@ -613,20 +621,8 @@ impl ZookeeperState {
         pod_name: &str,
         labels: BTreeMap<String, String>,
         id: usize,
-        role: &str,
-        role_group: &str,
+        validated_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     ) -> Result<(Pod, Vec<ConfigMap>), Error> {
-        let version = &self.zk_spec.version.to_string();
-        let validated_config = validate_role_and_group_config(
-            role,
-            role_group,
-            version,
-            &self.role_config,
-            &self.config,
-            false,
-            false,
-        )?;
-
         let mut config_maps = vec![];
         let mut cli_command = vec![];
         let mut env_vars = vec![];
@@ -635,8 +631,10 @@ impl ZookeeperState {
             // we need to convert to <String, String> to <String, Option<String>> to deal with
             // CLI flags etc. We can not currently represent that via operator-rs / product-config.
             // This is a preparation for that.
-            let mut transformed_config: BTreeMap<String, Option<String>> =
-                config.into_iter().map(|(k, v)| (k, Some(v))).collect();
+            let mut transformed_config: BTreeMap<String, Option<String>> = config
+                .into_iter()
+                .map(|(k, v)| (k.clone(), Some(v.clone())))
+                .collect();
 
             match property_name_kind {
                 PropertyNameKind::File(file_name) => {
@@ -660,7 +658,7 @@ impl ZookeeperState {
                     // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
                     // One for the configuration directory...
                     let mut data = BTreeMap::new();
-                    data.insert(file_name, zoo_cfg);
+                    data.insert(file_name.clone(), zoo_cfg);
 
                     let cm_name = format!("{}-config", pod_name);
                     let cm_config =
@@ -911,16 +909,22 @@ impl ControllerStrategy for ZookeeperStrategy {
         );
 
         let role_config = transform_all_roles_to_config(&context.resource, roles);
+        let validated_role_config = validate_all_roles_and_groups_config(
+            &context.resource.spec.version.to_string(),
+            &role_config,
+            &self.config,
+            false,
+            false,
+        )?;
 
         Ok(ZookeeperState {
             zk_spec: context.resource.spec.clone(),
             zk_status: context.resource.status.clone(),
             context,
             id_information: None,
-            config: self.config.clone(),
             existing_pods,
             eligible_nodes,
-            role_config,
+            validated_role_config,
         })
     }
 }
