@@ -3,9 +3,7 @@ mod error;
 use crate::error::Error;
 
 use async_trait::async_trait;
-use k8s_openapi::api::core::v1::{
-    ConfigMap, ConfigMapVolumeSource, Container, EnvVar, Node, Pod, PodSpec, Volume, VolumeMount,
-};
+use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Node, Pod, PodSpec};
 use kube::api::{ListParams, ResourceExt};
 use kube::Api;
 use serde_json::json;
@@ -14,12 +12,19 @@ use tracing::{debug, error, info, trace, warn};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
+use stackable_operator::builder::{
+    ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
+};
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
-use stackable_operator::metadata;
+use stackable_operator::k8s_utils;
+use stackable_operator::labels;
+use stackable_operator::labels::{
+    build_common_labels_for_all_managed_resources, get_recommended_labels,
+};
 use stackable_operator::product_config_utils::{
     transform_all_roles_to_config, validate_all_roles_and_groups_config,
     ValidatedRoleConfigByPropertyKind,
@@ -31,8 +36,6 @@ use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group,
 };
-use stackable_operator::{config_map, labels};
-use stackable_operator::{k8s_utils, krustlet};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, APP_NAME,
     MANAGED_BY,
@@ -522,7 +525,7 @@ impl ZookeeperState {
                                 .get(node_name)
                                 .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", node_name)))?;
 
-                            // not we have a node that needs pods -> get validated config
+                            // now we have a node that needs pods -> get validated config
                             // TODO: unwraps cannot fail
                             let validated_config = self
                                 .validated_role_config
@@ -541,13 +544,15 @@ impl ZookeeperState {
                             )
                             .to_lowercase();
 
-                            let pod_labels = build_pod_labels(
+                            let mut pod_labels = get_recommended_labels(
+                                &self.context.resource,
+                                APP_NAME,
+                                &self.context.resource.spec.version.to_string(),
                                 &zookeeper_role.to_string(),
                                 role_group,
-                                &self.context.name(),
-                                &self.context.resource.spec.version.to_string(),
-                                &id.to_string(),
                             );
+
+                            pod_labels.insert(ID_LABEL.to_string(), id.to_string());
 
                             let (pod, config_maps) = self
                                 .create_pod_and_config_maps(
@@ -608,9 +613,8 @@ impl ZookeeperState {
     }
 
     async fn delete_all_pods(&self) -> OperatorResult<ReconcileFunctionAction> {
-        let existing_pods: Vec<Pod> = self.context.list_owned().await?;
-        for pod in existing_pods {
-            self.context.client.delete(&pod).await?;
+        for pod in &self.existing_pods {
+            self.context.client.delete(pod).await?;
         }
         Ok(ReconcileFunctionAction::Done)
     }
@@ -624,8 +628,9 @@ impl ZookeeperState {
         validated_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     ) -> Result<(Pod, Vec<ConfigMap>), Error> {
         let mut config_maps = vec![];
-        let mut cli_command = vec![];
         let mut env_vars = vec![];
+
+        let cm_config_name = format!("{}-config", pod_name);
 
         for (property_name_kind, config) in validated_config {
             // we need to convert to <String, String> to <String, Option<String>> to deal with
@@ -657,13 +662,25 @@ impl ZookeeperState {
                     // Now we need to create two configmaps per server.
                     // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
                     // One for the configuration directory...
-                    let mut data = BTreeMap::new();
-                    data.insert(file_name.clone(), zoo_cfg);
+                    let mut cm_config_data = BTreeMap::new();
+                    cm_config_data.insert(file_name.clone(), zoo_cfg);
 
-                    let cm_name = format!("{}-config", pod_name);
-                    let cm_config =
-                        config_map::create_config_map(&self.context.resource, &cm_name, data)?;
-                    config_maps.push(cm_config);
+                    config_maps.push(
+                        ConfigMapBuilder::new()
+                            .metadata(
+                                ObjectMetaBuilder::new()
+                                    .name(cm_config_name.clone())
+                                    .ownerreference_from_resource(
+                                        &self.context.resource,
+                                        Some(true),
+                                        Some(true),
+                                    )?
+                                    .namespace(&self.context.client.default_namespace)
+                                    .build()?,
+                            )
+                            .data(cm_config_data)
+                            .build()?,
+                    );
                 }
                 PropertyNameKind::Env => {
                     for (property_name, property_value) in transformed_config {
@@ -679,132 +696,166 @@ impl ZookeeperState {
                         });
                     }
                 }
-                PropertyNameKind::Cli => {
-                    for (property_name, property_value) in transformed_config {
-                        if property_name.is_empty() {
-                            warn!("Received empty property_name for CLI... skipping");
-                            continue;
-                        }
-                        // TODO: custom cli logic: name=value or --name value ...
-                        // single argument / flag
-                        if property_value.is_none() {
-                            cli_command.push(property_name);
-                        } else {
-                            // key value pair
-                            cli_command.push(format!(
-                                "{}={}",
-                                property_name,
-                                property_value.unwrap()
-                            ));
-                        }
-                    }
-                }
+                _ => {}
             }
         }
 
         // config map for the data directory (which only contains the myid file)
-        let mut data = BTreeMap::new();
-        data.insert("myid".to_string(), id.to_string());
-        let cm_name = format!("{}-data", pod_name);
-        let cm_data = config_map::create_config_map(&self.context.resource, &cm_name, data)?;
-        config_maps.push(cm_data);
+        let mut cm_data_data = BTreeMap::new();
+        cm_data_data.insert("myid".to_string(), id.to_string());
+        let cm_data_name = format!("{}-data", pod_name);
 
-        let pod = self.build_pod(node_name, pod_name, labels, env_vars, cli_command)?;
+        config_maps.push(
+            ConfigMapBuilder::new()
+                .metadata(
+                    ObjectMetaBuilder::new()
+                        .name(cm_data_name.clone())
+                        .ownerreference_from_resource(
+                            &self.context.resource,
+                            Some(true),
+                            Some(true),
+                        )?
+                        .namespace(&self.context.client.default_namespace)
+                        .build()?,
+                )
+                .data(cm_data_data)
+                .build()?,
+        );
+
+        let version = &self.context.resource.spec.version.to_string();
+
+        let mut container_builder = ContainerBuilder::new("zookeeper");
+        container_builder.image(format!("stackable/zookeeper:{}", version.to_string()));
+        container_builder.command(vec![
+            format!(
+                "{}/bin/zkServer.sh",
+                self.context.resource.spec.version.package_name()
+            ),
+            "start-foreground".to_string(),
+            // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
+            "{{configroot}}/conf/zoo.cfg".to_string(),
+        ]);
+        // One mount for the config directory, this will be relative to the extracted package
+        container_builder.add_configmapvolume(cm_config_name, "conf".to_string());
+        // We need a second mount for the data directory
+        // because we need to write the myid file into the data directory
+        // TODO: Make configurable
+        container_builder.add_configmapvolume(cm_data_name, "/tmp/zookeeper".to_string());
+
+        for env in env_vars {
+            if let Some(val) = env.value {
+                container_builder.add_env_var(env.name, val);
+            }
+        }
+
+        let pod = PodBuilder::new()
+            .metadata(
+                ObjectMetaBuilder::new()
+                    .name(pod_name)
+                    .namespace(&self.context.client.default_namespace)
+                    .with_labels(labels)
+                    .ownerreference_from_resource(&self.context.resource, Some(true), Some(true))?
+                    .build()?,
+            )
+            .add_stackable_agent_tolerations()
+            .add_container(container_builder.build())
+            .node_name(node_name)
+            .build()?;
 
         Ok((pod, config_maps))
     }
 
-    fn build_pod(
-        &self,
-        node_name: &str,
-        pod_name: &str,
-        labels: BTreeMap<String, String>,
-        env: Vec<EnvVar>,
-        cli: Vec<String>,
-    ) -> Result<Pod, Error> {
-        let (containers, volumes) = self.build_containers(pod_name, env, cli);
-
-        Ok(Pod {
-            metadata: metadata::build_metadata(
-                pod_name.to_string(),
-                Some(labels),
-                &self.context.resource,
-                true,
-            )?,
-            spec: Some(PodSpec {
-                node_name: Some(node_name.to_string()),
-                tolerations: krustlet::create_tolerations(),
-                containers,
-                volumes,
-                ..PodSpec::default()
-            }),
-
-            ..Pod::default()
-        })
-    }
-
-    fn build_containers(
-        &self,
-        pod_name: &str,
-        env: Vec<EnvVar>,
-        cli: Vec<String>,
-    ) -> (Vec<Container>, Vec<Volume>) {
-        let version = &self.context.resource.spec.version;
-
-        let image_name = build_image_name(&version);
-
-        let command = vec![
-            format!("{}/bin/zkServer.sh", version.package_name()),
-            "start-foreground".to_string(),
-            // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
-            "{{configroot}}/conf/zoo.cfg".to_string(),
-        ];
-
-        let containers = vec![Container {
-            image: Some(image_name),
-            name: "zookeeper".to_string(),
-            command,
-            args: cli,
-            env,
-            volume_mounts: vec![
-                // One mount for the config directory, this will be relative to the extracted package
-                VolumeMount {
-                    mount_path: "conf".to_string(),
-                    name: "config-volume".to_string(),
-                    ..VolumeMount::default()
-                },
-                // We need a second mount for the data directory
-                // because we need to write the myid file into the data directory
-                VolumeMount {
-                    mount_path: "/tmp/zookeeper".to_string(), // TODO: Make configurable
-                    name: "data-volume".to_string(),
-                    ..VolumeMount::default()
-                },
-            ],
-            ..Container::default()
-        }];
-
-        let volumes = vec![
-            Volume {
-                name: "config-volume".to_string(),
-                config_map: Some(ConfigMapVolumeSource {
-                    name: Some(format!("{}-config", pod_name)),
-                    ..ConfigMapVolumeSource::default()
-                }),
-                ..Volume::default()
-            },
-            Volume {
-                name: "data-volume".to_string(),
-                config_map: Some(ConfigMapVolumeSource {
-                    name: Some(format!("{}-data", pod_name)),
-                    ..ConfigMapVolumeSource::default()
-                }),
-                ..Volume::default()
-            },
-        ];
-
-        (containers, volumes)
-    }
+    // fn build_pod(
+    //     &self,
+    //     node_name: &str,
+    //     pod_name: &str,
+    //     labels: BTreeMap<String, String>,
+    //     env: Vec<EnvVar>,
+    //     cli: Vec<String>,
+    // ) -> Result<Pod, Error> {
+    //     let (containers, volumes) = self.build_containers(pod_name, env, cli);
+    //
+    //     Ok(Pod {
+    //         metadata: metadata::build_metadata(
+    //             pod_name.to_string(),
+    //             Some(labels),
+    //             &self.context.resource,
+    //             true,
+    //         )?,
+    //         spec: Some(PodSpec {
+    //             node_name: Some(node_name.to_string()),
+    //             tolerations: krustlet::create_tolerations(),
+    //             containers,
+    //             volumes,
+    //             ..PodSpec::default()
+    //         }),
+    //
+    //         ..Pod::default()
+    //     })
+    // }
+    //
+    // fn build_containers(
+    //     &self,
+    //     pod_name: &str,
+    //     env: Vec<EnvVar>,
+    //     cli: Vec<String>,
+    // ) -> (Vec<Container>, Vec<Volume>) {
+    //     let version = &self.context.resource.spec.version;
+    //
+    //     let image_name = build_image_name(&version);
+    //
+    //     let command = vec![
+    //         format!("{}/bin/zkServer.sh", version.package_name()),
+    //         "start-foreground".to_string(),
+    //         // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
+    //         "{{configroot}}/conf/zoo.cfg".to_string(),
+    //     ];
+    //
+    //     let containers = vec![Container {
+    //         image: Some(image_name),
+    //         name: "zookeeper".to_string(),
+    //         command,
+    //         args: cli,
+    //         env,
+    //         volume_mounts: vec![
+    //             // One mount for the config directory, this will be relative to the extracted package
+    //             VolumeMount {
+    //                 mount_path: "conf".to_string(),
+    //                 name: "config-volume".to_string(),
+    //                 ..VolumeMount::default()
+    //             },
+    //             // We need a second mount for the data directory
+    //             // because we need to write the myid file into the data directory
+    //             VolumeMount {
+    //                 mount_path: "/tmp/zookeeper".to_string(),
+    //                 name: "data-volume".to_string(),
+    //                 ..VolumeMount::default()
+    //             },
+    //         ],
+    //         ..Container::default()
+    //     }];
+    //
+    //     let volumes = vec![
+    //         Volume {
+    //             name: "config-volume".to_string(),
+    //             config_map: Some(ConfigMapVolumeSource {
+    //                 name: Some(format!("{}-config", pod_name)),
+    //                 ..ConfigMapVolumeSource::default()
+    //             }),
+    //             ..Volume::default()
+    //         },
+    //         Volume {
+    //             name: "data-volume".to_string(),
+    //             config_map: Some(ConfigMapVolumeSource {
+    //                 name: Some(format!("{}-data", pod_name)),
+    //                 ..ConfigMapVolumeSource::default()
+    //             }),
+    //             ..Volume::default()
+    //         },
+    //     ];
+    //
+    //     (containers, volumes)
+    // }
 }
 
 impl ReconciliationState for ZookeeperState {
@@ -882,7 +933,12 @@ impl ControllerStrategy for ZookeeperStrategy {
         &self,
         context: ReconciliationContext<Self::Item>,
     ) -> Result<Self::State, Self::Error> {
-        let existing_pods = context.list_owned().await?;
+        let existing_pods = context
+            .list_owned(build_common_labels_for_all_managed_resources(
+                APP_NAME,
+                &context.resource.name(),
+            ))
+            .await?;
         trace!(
             "{}: Found [{}] pods",
             context.log_name(),
@@ -972,10 +1028,6 @@ fn build_pod_labels(
     labels.insert(ID_LABEL.to_string(), id.to_string());
 
     labels
-}
-
-fn build_image_name(version: &ZookeeperVersion) -> String {
-    format!("stackable/zookeeper:{}", version.to_string())
 }
 
 #[cfg(test)]

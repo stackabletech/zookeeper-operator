@@ -503,9 +503,9 @@ dependencies = [
 
 [[package]]
 name = "handlebars"
-version = "4.0.1"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2060119114dd8a8bc87facce6384751af8280a7adc8e203c023c95cbb11f5663"
+checksum = "72a0ffab8c36d0436114310c7e10b59b3307e650ddfabf6d006028e29a70c6e6"
 dependencies = [
  "log",
  "pest",
@@ -1593,7 +1593,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=adapt_to_product_config_interface#48c687d5f884a373ec733b189ca87d27b899df6f"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=adapt_to_product_config_interface#8addde4adaecfd52ec0878bf2fa39dc6a7076727"
 dependencies = [
  "async-trait",
  "backoff",
