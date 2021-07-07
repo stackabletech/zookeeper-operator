@@ -20,6 +20,9 @@ pub enum Error {
         source: serde_json::Error,
     },
 
+    #[error("Invalid Configmap. No name found which is required to query the ConfigMap.")]
+    InvalidConfigMap,
+
     #[error("Pod contains invalid id: {source}")]
     InvalidId {
         #[from]

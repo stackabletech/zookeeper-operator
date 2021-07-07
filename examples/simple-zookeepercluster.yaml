@@ -12,7 +12,7 @@ spec:
             kubernetes.io/hostname: mdesktop
         replicas: 1
         config:
-          clientPort: 3000
+          clientPort: 2181
 
 
 

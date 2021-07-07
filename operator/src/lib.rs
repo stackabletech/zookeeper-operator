@@ -454,6 +454,49 @@ impl ZookeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
+    /// Create or update a config map.
+    /// - Create if no config map of that name exists
+    /// - Update if config map exists but the content differs
+    /// - Do nothing if the config map exists and the content is identical
+    async fn create_config_map(&self, config_map: ConfigMap) -> Result<(), Error> {
+        let cm_name = match config_map.metadata.name.as_deref() {
+            None => return Err(Error::InvalidConfigMap),
+            Some(name) => name,
+        };
+
+        match self
+            .context
+            .client
+            .get::<ConfigMap>(cm_name, Some(&self.context.namespace()))
+            .await
+        {
+            Ok(ConfigMap {
+                data: existing_config_map_data,
+                ..
+            }) if existing_config_map_data == config_map.data => {
+                debug!(
+                    "ConfigMap [{}] already exists with identical data, skipping creation!",
+                    cm_name
+                );
+            }
+            Ok(_) => {
+                debug!(
+                    "ConfigMap [{}] already exists, but differs, updating it!",
+                    cm_name
+                );
+                self.context.client.update(&config_map).await?;
+            }
+            Err(e) => {
+                // TODO: This is shit, but works for now. If there is an actual error in comes with
+                //   K8S, it will most probably also occur further down and be properly handled
+                debug!("Error getting ConfigMap [{}]: [{:?}]", cm_name, e);
+                self.context.client.create(&config_map).await?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn create_missing_pods(&mut self) -> ZookeeperReconcileResult {
         trace!("Starting `create_missing_pods`");
 
@@ -564,11 +607,11 @@ impl ZookeeperState {
                                 )
                                 .await?;
 
-                            self.context.client.create(&pod).await?;
-
-                            for config_map in &config_maps {
-                                self.context.client.create(config_map).await?;
+                            for config_map in config_maps {
+                                self.create_config_map(config_map).await?;
                             }
+
+                            self.context.client.create(&pod).await?;
 
                             return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
                         } else {
@@ -764,98 +807,6 @@ impl ZookeeperState {
 
         Ok((pod, config_maps))
     }
-
-    // fn build_pod(
-    //     &self,
-    //     node_name: &str,
-    //     pod_name: &str,
-    //     labels: BTreeMap<String, String>,
-    //     env: Vec<EnvVar>,
-    //     cli: Vec<String>,
-    // ) -> Result<Pod, Error> {
-    //     let (containers, volumes) = self.build_containers(pod_name, env, cli);
-    //
-    //     Ok(Pod {
-    //         metadata: metadata::build_metadata(
-    //             pod_name.to_string(),
-    //             Some(labels),
-    //             &self.context.resource,
-    //             true,
-    //         )?,
-    //         spec: Some(PodSpec {
-    //             node_name: Some(node_name.to_string()),
-    //             tolerations: krustlet::create_tolerations(),
-    //             containers,
-    //             volumes,
-    //             ..PodSpec::default()
-    //         }),
-    //
-    //         ..Pod::default()
-    //     })
-    // }
-    //
-    // fn build_containers(
-    //     &self,
-    //     pod_name: &str,
-    //     env: Vec<EnvVar>,
-    //     cli: Vec<String>,
-    // ) -> (Vec<Container>, Vec<Volume>) {
-    //     let version = &self.context.resource.spec.version;
-    //
-    //     let image_name = build_image_name(&version);
-    //
-    //     let command = vec![
-    //         format!("{}/bin/zkServer.sh", version.package_name()),
-    //         "start-foreground".to_string(),
-    //         // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
-    //         "{{configroot}}/conf/zoo.cfg".to_string(),
-    //     ];
-    //
-    //     let containers = vec![Container {
-    //         image: Some(image_name),
-    //         name: "zookeeper".to_string(),
-    //         command,
-    //         args: cli,
-    //         env,
-    //         volume_mounts: vec![
-    //             // One mount for the config directory, this will be relative to the extracted package
-    //             VolumeMount {
-    //                 mount_path: "conf".to_string(),
-    //                 name: "config-volume".to_string(),
-    //                 ..VolumeMount::default()
-    //             },
-    //             // We need a second mount for the data directory
-    //             // because we need to write the myid file into the data directory
-    //             VolumeMount {
-    //                 mount_path: "/tmp/zookeeper".to_string(),
-    //                 name: "data-volume".to_string(),
-    //                 ..VolumeMount::default()
-    //             },
-    //         ],
-    //         ..Container::default()
-    //     }];
-    //
-    //     let volumes = vec![
-    //         Volume {
-    //             name: "config-volume".to_string(),
-    //             config_map: Some(ConfigMapVolumeSource {
-    //                 name: Some(format!("{}-config", pod_name)),
-    //                 ..ConfigMapVolumeSource::default()
-    //             }),
-    //             ..Volume::default()
-    //         },
-    //         Volume {
-    //             name: "data-volume".to_string(),
-    //             config_map: Some(ConfigMapVolumeSource {
-    //                 name: Some(format!("{}-data", pod_name)),
-    //                 ..ConfigMapVolumeSource::default()
-    //             }),
-    //             ..Volume::default()
-    //         },
-    //     ];
-    //
-    //     (containers, volumes)
-    // }
 }
 
 impl ReconciliationState for ZookeeperState {

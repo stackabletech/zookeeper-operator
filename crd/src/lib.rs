@@ -13,7 +13,7 @@ use stackable_operator::Crd;
 use std::collections::BTreeMap;
 
 pub const APP_NAME: &str = "zookeeper";
-pub const MANAGED_BY: &str = "stackable-zookeeper";
+pub const MANAGED_BY: &str = "zookeeper-operator";
 
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
