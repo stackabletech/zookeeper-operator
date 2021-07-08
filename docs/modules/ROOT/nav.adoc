@@ -1,1 +1,2 @@
 * xref:building.adoc[]
+* xref:installation.adoc[]
