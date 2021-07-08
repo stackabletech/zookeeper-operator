@@ -38,7 +38,6 @@ use stackable_operator::role_utils::{
 };
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, APP_NAME,
-    MANAGED_BY,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -594,7 +593,7 @@ impl ZookeeperState {
                                 &zookeeper_role.to_string(),
                                 role_group,
                             );
-
+                            // we need to at the zookeeper id to labels
                             pod_labels.insert(ID_LABEL.to_string(), id.to_string());
 
                             let (pod, config_maps) = self
@@ -680,7 +679,7 @@ impl ZookeeperState {
             // CLI flags etc. We can not currently represent that via operator-rs / product-config.
             // This is a preparation for that.
             let mut transformed_config: BTreeMap<String, Option<String>> = config
-                .into_iter()
+                .iter()
                 .map(|(k, v)| (k.clone(), Some(v.clone())))
                 .collect();
 
@@ -911,7 +910,7 @@ impl ControllerStrategy for ZookeeperStrategy {
             ZookeeperRole::Server.to_string(),
             (
                 vec![PropertyNameKind::File("zoo.cfg".to_string())],
-                context.resource.spec.servers.clone().into_dyn(),
+                context.resource.spec.servers.clone().into(),
             ),
         );
 
@@ -954,31 +953,6 @@ pub async fn create_controller(client: Client) {
     controller
         .run(client, strategy, Duration::from_secs(10))
         .await;
-}
-
-fn build_pod_labels(
-    role: &str,
-    role_group: &str,
-    name: &str,
-    version: &str,
-    id: &str,
-) -> BTreeMap<String, String> {
-    let mut labels = BTreeMap::new();
-    labels.insert(labels::APP_NAME_LABEL.to_string(), APP_NAME.to_string());
-    labels.insert(
-        labels::APP_MANAGED_BY_LABEL.to_string(),
-        MANAGED_BY.to_string(),
-    );
-    labels.insert(labels::APP_COMPONENT_LABEL.to_string(), role.to_string());
-    labels.insert(
-        labels::APP_ROLE_GROUP_LABEL.to_string(),
-        role_group.to_string(),
-    );
-    labels.insert(labels::APP_INSTANCE_LABEL.to_string(), name.to_string());
-    labels.insert(labels::APP_VERSION_LABEL.to_string(), version.to_string());
-    labels.insert(ID_LABEL.to_string(), id.to_string());
-
-    labels
 }
 
 #[cfg(test)]

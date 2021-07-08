@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
 use stackable_operator::status::Conditions;
-use stackable_operator::Crd;
 use std::collections::BTreeMap;
 
 pub const APP_NAME: &str = "zookeeper";
@@ -20,7 +19,7 @@ pub const MANAGED_BY: &str = "zookeeper-operator";
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[kube(
     group = "zookeeper.stackable.tech",
-    version = "v1",
+    version = "v1alpha1",
     kind = "ZookeeperCluster",
     plural = "zookeeperclusters",
     shortname = "zk",
@@ -90,11 +89,6 @@ impl Conditions for ZookeeperCluster {
         }
         return &mut self.status.as_mut().unwrap().conditions;
     }
-}
-
-impl Crd for ZookeeperCluster {
-    const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.tech";
-    const CRD_DEFINITION: &'static str = include_str!("../../deploy/crd/zookeepercluster.crd.yaml");
 }
 
 #[allow(non_camel_case_types)]

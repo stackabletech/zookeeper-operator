@@ -13,8 +13,7 @@ spec:
     singular: zookeepercluster
   scope: Namespaced
   versions:
-    - additionalPrinterColumns: []
-      name: v1
+    - name: v1alpha1
       schema:
         openAPIV3Schema:
           description: "Auto-generated derived type for ZookeeperClusterSpec via `CustomResource`"

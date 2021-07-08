@@ -362,7 +362,7 @@ mod tests {
         assert_eq!(selector.match_labels.len(), 3);
         assert_eq!(
             selector.match_labels.get("app.kubernetes.io/name").unwrap(),
-            "zookeeper"
+            APP_NAME
         );
         assert_eq!(
             selector
@@ -376,7 +376,7 @@ mod tests {
                 .match_labels
                 .get("app.kubernetes.io/managed-by")
                 .unwrap(),
-            "stackable-zookeeper"
+            MANAGED_BY
         );
     }
 
