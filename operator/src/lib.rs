@@ -568,13 +568,22 @@ impl ZookeeperState {
                                 .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", node_name)))?;
 
                             // now we have a node that needs pods -> get validated config
-                            // TODO: unwraps cannot fail
-                            let validated_config = self
+                            let validated_config = match self
                                 .validated_role_config
                                 .get(&zookeeper_role.to_string())
-                                .unwrap()
-                                .get(role_group)
-                                .unwrap();
+                            {
+                                None => {
+                                    error!("Could not find combination of Role [{}] in product-config. This should not happen, please open a ticket.", zookeeper_role.to_string());
+                                    continue;
+                                }
+                                Some(role_groups) => match role_groups.get(role_group) {
+                                    None => {
+                                        error!("Could not find combination of Role [{}] and RoleGroup [{}] in product-config. This should not happen, please open a ticket.", zookeeper_role.to_string(), role_group);
+                                        continue;
+                                    }
+                                    Some(validated_config) => validated_config,
+                                },
+                            };
 
                             let pod_name = format!(
                                 "{}-{}-{}-{}-{}",
@@ -593,7 +602,7 @@ impl ZookeeperState {
                                 &zookeeper_role.to_string(),
                                 role_group,
                             );
-                            // we need to at the zookeeper id to labels
+                            // we need to add the zookeeper id to labels
                             pod_labels.insert(ID_LABEL.to_string(), id.to_string());
 
                             let (pod, config_maps) = self
@@ -661,6 +670,12 @@ impl ZookeeperState {
         Ok(ReconcileFunctionAction::Done)
     }
 
+    /// This method creates a pod and required config map(s) for a certain role and role_group.
+    /// The validated_config from the product-config is used to create the config map data, as
+    /// well as setting the ENV variables in the containers or adapt / expand the CLI parameters.
+    /// First we iterate through the validated_config and extract files (which represents one or
+    /// more config map(s)), env variables for the pod containers and cli parameters for the
+    /// container start command and arguments.
     async fn create_pod_and_config_maps(
         &self,
         node_name: &str,

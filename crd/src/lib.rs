@@ -67,7 +67,11 @@ impl Configuration for ZookeeperConfig {
         _role_name: &str,
         _file: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let temp = product_config::ser::to_hash_map(self).unwrap();
+        let temp = product_config::ser::to_hash_map(self).map_err(|err| {
+            ConfigError::InvalidConfiguration {
+                reason: format!("Could not deserialize config: {}", err.to_string()),
+            }
+        })?;
         let result: BTreeMap<String, Option<String>> =
             temp.into_iter().map(|(k, v)| (k, Some(v))).collect();
         Ok(result)

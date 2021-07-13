@@ -67,6 +67,7 @@ properties:
       comment: "See QuorumPeerConfig.java"
       description: "The location where ZooKeeper will store the in-memory database snapshots and, unless specified otherwise, the transaction log of updates to the database. Note: Be careful where you put the transaction log. A dedicated transaction log device is key to consistent good performance. Putting the log on a busy device will adversely affect performance."
 
+  # Role required "true" is only correct if more than one zookeeper instances is used.
   - property: &initLimit
       propertyNames:
         - name: "initLimit"
@@ -85,6 +86,7 @@ properties:
       comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
       description: "Amount of time, in ticks (see `tickTime`), to allow followers to connect and sync to a leader. Increased this value as needed, if the amount of data managed by ZooKeeper is large."
 
+  # Role required "true" is only correct if more than one zookeeper instances is used.
   - property: &syncLimit
       propertyNames:
         - name: "syncLimit"
