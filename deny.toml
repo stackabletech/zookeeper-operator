@@ -24,6 +24,9 @@ deny = [
     "AGPL-3.0"
 ]
 
+[licenses.private]
+ignore = true
+
 [[licenses.clarify]]
 name = "ring"
 expression = "LicenseRef-ring"
