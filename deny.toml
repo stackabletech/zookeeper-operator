@@ -24,8 +24,12 @@ deny = [
     "AGPL-3.0"
 ]
 
-[licenses.private]
-ignore = true
+exceptions = [
+    { name = "stackable-zookeeper-crd", allow = ["OSL-3.0"] },
+    { name = "stackable-zookeeper-operator-server", allow = ["OSL-3.0"] },
+    { name = "stackable-zookeeper-operator", allow = ["OSL-3.0"] },
+]
+
 
 [[licenses.clarify]]
 name = "ring"
