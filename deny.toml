@@ -30,7 +30,6 @@ exceptions = [
     { name = "stackable-zookeeper-operator", allow = ["OSL-3.0"] },
 ]
 
-
 [[licenses.clarify]]
 name = "ring"
 expression = "LicenseRef-ring"
