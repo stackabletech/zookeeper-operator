@@ -1553,6 +1553,7 @@ dependencies = [
 name = "stackable-zookeeper-operator-server"
 version = "0.1.0-nightly"
 dependencies = [
+ "k8s-openapi",
  "stackable-operator",
  "stackable-zookeeper-crd",
  "stackable-zookeeper-operator",
