@@ -14,7 +14,7 @@ use kube::error::ErrorResponse;
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
 use stackable_operator::builder::{
-    ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
+    ConfigMapBuilder, ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
 };
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
@@ -688,8 +688,11 @@ impl ZookeeperState {
     ) -> Result<(Pod, Vec<ConfigMap>), Error> {
         let mut config_maps = vec![];
         let mut env_vars = vec![];
+        let mut metrics_port: Option<u16> = None;
 
         let cm_config_name = format!("{}-config", pod_name);
+
+        let version: &ZookeeperVersion = &self.context.resource.spec.version;
 
         for (property_name_kind, config) in validated_config {
             // we need to convert to <String, String> to <String, Option<String>> to deal with
@@ -748,6 +751,22 @@ impl ZookeeperState {
                             continue;
                         }
 
+                        // if a metrics port is provided (for now by user, it is not required in
+                        // product config to be able to not configure any monitoring / metrics)
+                        if property_name == "metricsPort" {
+                            if let Some(port) = &property_value {
+                                // cannot panic because checked in product config
+                                metrics_port = Some(port.parse::<u16>()?);
+                                env_vars.push(EnvVar {
+                                name: "SERVER_JVMFLAGS".to_string(),
+                                // TODO: avoid that "{{" and "}}" formatting
+                                value: Some(format!("-javaagent:{}packageroot{}/{}/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:{}packageroot{}/{}/stackable/conf/jmx_exporter.yaml",
+                                            "{{", "}}", version.package_name(), port,  "{{", "}}", version.package_name())),
+                                ..EnvVar::default()
+                            })
+                            }
+                        }
+
                         env_vars.push(EnvVar {
                             name: property_name,
                             value: property_value,
@@ -781,8 +800,6 @@ impl ZookeeperState {
                 .build()?,
         );
 
-        let version = &self.context.resource.spec.version.to_string();
-
         let mut container_builder = ContainerBuilder::new("zookeeper");
         container_builder.image(format!("stackable/zookeeper:{}", version.to_string()));
         container_builder.command(vec![
@@ -800,11 +817,15 @@ impl ZookeeperState {
         // because we need to write the myid file into the data directory
         // TODO: Make configurable
         container_builder.add_configmapvolume(cm_data_name, "/tmp/zookeeper".to_string());
+        container_builder.add_env_vars(env_vars);
 
-        for env in env_vars {
-            if let Some(val) = env.value {
-                container_builder.add_env_var(env.name, val);
-            }
+        // only add metrics container port if available
+        if let Some(metrics_port) = metrics_port {
+            container_builder.add_container_port(
+                ContainerPortBuilder::new(metrics_port)
+                    .name("metrics")
+                    .build(),
+            );
         }
 
         let pod = PodBuilder::new()
@@ -926,7 +947,10 @@ impl ControllerStrategy for ZookeeperStrategy {
         roles.insert(
             ZookeeperRole::Server.to_string(),
             (
-                vec![PropertyNameKind::File("zoo.cfg".to_string())],
+                vec![
+                    PropertyNameKind::File("zoo.cfg".to_string()),
+                    PropertyNameKind::Env,
+                ],
                 context.resource.spec.servers.clone().into(),
             ),
         );
@@ -964,7 +988,8 @@ pub async fn create_controller(client: Client) {
         .owns(pods_api, ListParams::default())
         .owns(config_maps_api, ListParams::default());
 
-    let product_config = ProductConfigManager::from_yaml_file("config.yaml").unwrap();
+    let product_config =
+        ProductConfigManager::from_yaml_file("deploy/config-spec/properties.yaml").unwrap();
     let strategy = ZookeeperStrategy::new(product_config);
 
     controller
