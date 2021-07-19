@@ -26,6 +26,7 @@ use stackable_operator::labels;
 use stackable_operator::labels::{
     build_common_labels_for_all_managed_resources, get_recommended_labels,
 };
+use stackable_operator::pod_utils;
 use stackable_operator::product_config_utils::{
     transform_all_roles_to_config, validate_all_roles_and_groups_config,
     ValidatedRoleConfigByPropertyKind,
@@ -458,6 +459,7 @@ impl ZookeeperState {
     /// - Create if no config map of that name exists
     /// - Update if config map exists but the content differs
     /// - Do nothing if the config map exists and the content is identical
+    /// - Forward any kube errors that may appear
     async fn create_config_map(&self, config_map: ConfigMap) -> Result<(), Error> {
         let cm_name = match config_map.metadata.name.as_deref() {
             None => return Err(Error::InvalidConfigMap),
@@ -587,15 +589,13 @@ impl ZookeeperState {
                                 },
                             };
 
-                            let pod_name = format!(
-                                "{}-{}-{}-{}-{}",
+                            let pod_name = pod_utils::get_pod_name(
                                 APP_NAME,
-                                self.context.name(),
+                                &self.context.name(),
                                 role_group,
-                                zookeeper_role,
-                                node_name
-                            )
-                            .to_lowercase();
+                                &zookeeper_role.to_string(),
+                                node_name,
+                            );
 
                             let mut pod_labels = get_recommended_labels(
                                 &self.context.resource,
