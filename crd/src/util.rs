@@ -236,13 +236,13 @@ fn contains_illegal_character(node_name: &str) -> HashSet<char> {
 // Build a Labelselector that applies only to pods belonging to the cluster instance referenced
 // by `name`
 fn get_match_labels(name: &str) -> LabelSelector {
-    let mut zk_pod_matchlabels = BTreeMap::new();
-    zk_pod_matchlabels.insert(String::from(APP_NAME_LABEL), String::from(APP_NAME));
-    zk_pod_matchlabels.insert(String::from(APP_MANAGED_BY_LABEL), String::from(MANAGED_BY));
-    zk_pod_matchlabels.insert(String::from(APP_INSTANCE_LABEL), name.to_string());
+    let mut match_labels = BTreeMap::new();
+    match_labels.insert(String::from(APP_NAME_LABEL), String::from(APP_NAME));
+    match_labels.insert(String::from(APP_MANAGED_BY_LABEL), String::from(MANAGED_BY));
+    match_labels.insert(String::from(APP_INSTANCE_LABEL), name.to_string());
 
     LabelSelector {
-        match_labels: Some(zk_pod_matchlabels),
+        match_labels,
         ..Default::default()
     }
 }
@@ -304,12 +304,7 @@ fn get_zk_connection_string_from_pods(
             Some(node_name) => node_name,
         };
 
-        let role_group = match pod
-            .metadata
-            .labels
-            .unwrap_or_default()
-            .get(APP_ROLE_GROUP_LABEL)
-        {
+        let role_group = match pod.metadata.labels.get(APP_ROLE_GROUP_LABEL) {
             None => {
                 return Err(PodMissingLabels {
                     labels: vec![String::from(APP_ROLE_GROUP_LABEL)],
@@ -362,27 +357,26 @@ mod tests {
         let test_name = "testcluster";
         let selector = get_match_labels(test_name);
 
-        assert!(selector.match_expressions.is_none());
+        assert!(selector.match_expressions.is_empty());
 
-        let generated_labels_selector = selector.match_labels.expect("labels were None");
-        assert!(generated_labels_selector.len() == 3);
+        assert_eq!(selector.match_labels.len(), 3);
         assert_eq!(
-            generated_labels_selector
-                .get("app.kubernetes.io/name")
-                .unwrap(),
-            "zookeeper"
+            selector.match_labels.get("app.kubernetes.io/name").unwrap(),
+            APP_NAME
         );
         assert_eq!(
-            generated_labels_selector
+            selector
+                .match_labels
                 .get("app.kubernetes.io/instance")
                 .unwrap(),
             "testcluster"
         );
         assert_eq!(
-            generated_labels_selector
+            selector
+                .match_labels
                 .get("app.kubernetes.io/managed-by")
                 .unwrap(),
-            "stackable-zookeeper"
+            MANAGED_BY
         );
     }
 
@@ -464,13 +458,12 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          selectors:
+          roleGroups:
             default:
               selector:
                 matchLabels:
                   kubernetes.io/hostname: debian
-              instances: 1
-              instancesPerNode: 1
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -492,13 +485,12 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          selectors:
+          roleGroups:
             default:
               selector:
                 matchLabels:
                   kubernetes.io/hostname: worker-1.stackable.tech
-              instances: 1
-              instancesPerNode: 1
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -520,13 +512,12 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          selectors:
+          roleGroups:
             default:
               selector:
                 matchLabels:
                   kubernetes.io/hostname: debian
-              instances: 1
-              instancesPerNode: 1
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -590,13 +581,11 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-            selectors:
-              default:
-                selector:
-                  matchLabels:
-                    kubernetes.io/hostname: debian
-                instances: 1
-                instancesPerNode: 1
+          roleGroups:
+            default:
+              selector:
+                kubernetes.io/hostname: debian
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1
@@ -621,13 +610,11 @@ mod tests {
       indoc! {"
         version: 3.4.14
         servers:
-          selectors:
+          roleGroups:
             default:
               selector:
-                matchLabels:
                   kubernetes.io/hostname: debian
-              instances: 1
-              instancesPerNode: 1
+              replicas: 1
       "},
       indoc! {"
         - apiVersion: v1

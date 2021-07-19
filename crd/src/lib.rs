@@ -1,53 +1,82 @@
 pub mod error;
 pub mod util;
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, LabelSelector};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::CustomResource;
 use schemars::JsonSchema;
 use semver::{Error as SemVerError, Version};
 use serde::{Deserialize, Serialize};
-use stackable_operator::label_selector;
+use stackable_operator::product_config_utils::{ConfigError, Configuration};
+use stackable_operator::role_utils::Role;
 use stackable_operator::status::Conditions;
-use stackable_operator::Crd;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 pub const APP_NAME: &str = "zookeeper";
-pub const MANAGED_BY: &str = "stackable-zookeeper";
+pub const MANAGED_BY: &str = "zookeeper-operator";
 
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[kube(
     group = "zookeeper.stackable.tech",
-    version = "v1",
+    version = "v1alpha1",
     kind = "ZookeeperCluster",
+    plural = "zookeeperclusters",
     shortname = "zk",
     namespaced
 )]
 #[kube(status = "ZookeeperClusterStatus")]
 pub struct ZookeeperClusterSpec {
     pub version: ZookeeperVersion,
-    pub servers: RoleGroups<ZookeeperConfig>,
+    pub servers: Role<ZookeeperConfig>,
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RoleGroups<T> {
-    pub selectors: HashMap<String, SelectorAndConfig<T>>,
-}
-
-#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SelectorAndConfig<T> {
-    pub instances: u16,
-    pub instances_per_node: u8,
-    pub config: Option<T>,
-    #[schemars(schema_with = "label_selector::schema")]
-    pub selector: Option<LabelSelector>,
-}
-
+// TODO: These all should be "Property" Enums that can be either simple or complex where complex allows forcing/ignoring errors and/or warnings
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-pub struct ZookeeperConfig {}
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperConfig {
+    pub client_port: Option<u16>, // int in Java
+    pub data_dir: Option<String>, // String in Java
+    pub init_limit: Option<u32>,  // int in Java
+    pub sync_limit: Option<u32>,  // int in Java
+    pub tick_time: Option<u32>,   // int in Java
+}
+
+impl Configuration for ZookeeperConfig {
+    type Configurable = ZookeeperCluster;
+
+    fn compute_env(
+        &self,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        Ok(BTreeMap::new())
+    }
+
+    fn compute_cli(
+        &self,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        Ok(BTreeMap::new())
+    }
+
+    fn compute_files(
+        &self,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+        _file: &str,
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        let temp = product_config::ser::to_hash_map(self).map_err(|err| {
+            ConfigError::InvalidConfiguration {
+                reason: format!("Could not deserialize config: {}", err.to_string()),
+            }
+        })?;
+        let result: BTreeMap<String, Option<String>> =
+            temp.into_iter().map(|(k, v)| (k, Some(v))).collect();
+        Ok(result)
+    }
+}
 
 impl Conditions for ZookeeperCluster {
     fn conditions(&self) -> Option<&[Condition]> {
@@ -64,11 +93,6 @@ impl Conditions for ZookeeperCluster {
         }
         return &mut self.status.as_mut().unwrap().conditions;
     }
-}
-
-impl Crd for ZookeeperCluster {
-    const RESOURCE_NAME: &'static str = "zookeeperclusters.zookeeper.stackable.tech";
-    const CRD_DEFINITION: &'static str = include_str!("../../deploy/crd/zookeepercluster.crd.yaml");
 }
 
 #[allow(non_camel_case_types)]

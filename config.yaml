@@ -1,0 +1,106 @@
+version: 0.1.0
+spec:
+  units:
+    - unit: &unitDirectory
+        name: "directory"
+        regex: "^/|(/[\\w-]+)+$"
+        examples:
+          - "/tmp/xyz"
+    - unit: &unitPort
+        name: "port"
+        regex: "^([0-9]{1,4}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])$"
+properties:
+  - property: &tickTime
+      propertyNames:
+        - name: "tickTime"
+          kind:
+            type: "file"
+            file: "zoo.cfg"
+      datatype:
+        type: "integer"
+        min: "1"
+      recommendedValues:
+        - fromVersion: "0.0.0"
+          value: "3000"
+      roles:
+        - name: "server"
+          required: true
+      asOfVersion: "0.0.0"
+      comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
+      description: "The basic time unit in milliseconds used by ZooKeeper. It is used to do heartbeats and the minimum session timeout will be twice the tickTime."
+
+  - property: &clientPort
+      propertyNames:
+        - name: "clientPort"
+          kind:
+            type: "file"
+            file: "zoo.cfg"
+      datatype:
+        type: "string"
+        unit: *unitPort
+      defaultValues:
+        - value: "2181"
+      recommendedValues:
+        - value: "2181"
+      roles:
+        - name: "server"
+          required: true
+      asOfVersion: "0.0.0"
+      comment: "See QuorumPeerConfig.java, I'm unsure what happens when this is set to 0, it might work, it might not"
+      description: "The port to listen for client connections; that is, the port that clients attempt to connect to."
+
+  - property: &dataDir
+      propertyNames:
+        - name: "dataDir"
+          kind:
+            type: "file"
+            file: "zoo.cfg"
+      datatype:
+        type: "string"
+        unit: *unitDirectory
+      recommendedValues:
+        - value: "/tmp/zookeeper"
+      roles:
+        - name: "server"
+          required: true
+      asOfVersion: "0.0.0"
+      comment: "See QuorumPeerConfig.java"
+      description: "The location where ZooKeeper will store the in-memory database snapshots and, unless specified otherwise, the transaction log of updates to the database. Note: Be careful where you put the transaction log. A dedicated transaction log device is key to consistent good performance. Putting the log on a busy device will adversely affect performance."
+
+  # Role required "true" is only correct if more than one zookeeper instances is used.
+  - property: &initLimit
+      propertyNames:
+        - name: "initLimit"
+          kind:
+            type: "file"
+            file: "zoo.cfg"
+      datatype:
+        type: "integer"
+        min: "1"
+      recommendedValues:
+        - value: "5"
+      roles:
+        - name: "server"
+          required: true
+      asOfVersion: "0.0.0"
+      comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
+      description: "Amount of time, in ticks (see `tickTime`), to allow followers to connect and sync to a leader. Increased this value as needed, if the amount of data managed by ZooKeeper is large."
+
+  # Role required "true" is only correct if more than one zookeeper instances is used.
+  - property: &syncLimit
+      propertyNames:
+        - name: "syncLimit"
+          kind:
+            type: "file"
+            file: "zoo.cfg"
+      datatype:
+        type: "integer"
+        min: "1"
+      recommendedValues:
+        - value: "2"
+      roles:
+        - name: "server"
+          required: true
+      asOfVersion: "0.0.0"
+      comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
+      description: "Amount of time, in ticks (see `tickTime`), to allow followers to sync with ZooKeeper. If followers fall too far behind a leader, they will be dropped. In other words: The number of ticks that can pass between sending a request and getting an acknowledgment before a follower is dropped."

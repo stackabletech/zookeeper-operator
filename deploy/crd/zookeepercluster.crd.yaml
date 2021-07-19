@@ -13,8 +13,7 @@ spec:
     singular: zookeepercluster
   scope: Namespaced
   versions:
-    - additionalPrinterColumns: []
-      name: v1
+    - name: v1alpha1
       schema:
         openAPIV3Schema:
           description: "Auto-generated derived type for ZookeeperClusterSpec via `CustomResource`"
@@ -23,18 +22,99 @@ spec:
               properties:
                 servers:
                   properties:
-                    selectors:
+                    cliOverrides:
+                      additionalProperties:
+                        type: string
+                      nullable: true
+                      type: object
+                    config:
+                      nullable: true
+                      properties:
+                        clientPort:
+                          format: uint16
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        dataDir:
+                          nullable: true
+                          type: string
+                        initLimit:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        syncLimit:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        tickTime:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                      type: object
+                    configOverrides:
+                      additionalProperties:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      nullable: true
+                      type: object
+                    envOverrides:
+                      additionalProperties:
+                        type: string
+                      nullable: true
+                      type: object
+                    roleGroups:
                       additionalProperties:
                         properties:
-                          config:
+                          cliOverrides:
+                            additionalProperties:
+                              type: string
                             nullable: true
                             type: object
-                          instances:
+                          config:
+                            nullable: true
+                            properties:
+                              clientPort:
+                                format: uint16
+                                minimum: 0.0
+                                nullable: true
+                                type: integer
+                              dataDir:
+                                nullable: true
+                                type: string
+                              initLimit:
+                                format: uint32
+                                minimum: 0.0
+                                nullable: true
+                                type: integer
+                              syncLimit:
+                                format: uint32
+                                minimum: 0.0
+                                nullable: true
+                                type: integer
+                              tickTime:
+                                format: uint32
+                                minimum: 0.0
+                                nullable: true
+                                type: integer
+                            type: object
+                          configOverrides:
+                            additionalProperties:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            nullable: true
+                            type: object
+                          envOverrides:
+                            additionalProperties:
+                              type: string
+                            nullable: true
+                            type: object
+                          replicas:
                             format: uint16
-                            minimum: 0.0
-                            type: integer
-                          instancesPerNode:
-                            format: uint8
                             minimum: 0.0
                             type: integer
                           selector:
@@ -68,13 +148,12 @@ spec:
                                 type: object
                             type: object
                         required:
-                          - instances
-                          - instancesPerNode
+                          - replicas
                           - selector
                         type: object
                       type: object
                   required:
-                    - selectors
+                    - roleGroups
                   type: object
                 version:
                   enum:
