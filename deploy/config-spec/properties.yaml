@@ -36,8 +36,10 @@ properties:
             type: "file"
             file: "zoo.cfg"
       datatype:
-        type: "string"
+        type: "integer"
         unit: *unitPort
+        min: "1024"
+        max: "65535"
       defaultValues:
         - value: "2181"
       recommendedValues:
@@ -104,3 +106,19 @@ properties:
       asOfVersion: "0.0.0"
       comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
       description: "Amount of time, in ticks (see `tickTime`), to allow followers to sync with ZooKeeper. If followers fall too far behind a leader, they will be dropped. In other words: The number of ticks that can pass between sending a request and getting an acknowledgment before a follower is dropped."
+
+  - property: &metricsPort
+      propertyNames:
+        - name: "metricsPort"
+          kind:
+            type: "env"
+      datatype:
+        type: "integer"
+        unit: *unitPort
+        min: "1024"
+        max: "65535"
+      roles:
+        - name: "server"
+          required: false
+      asOfVersion: "0.0.0"
+      description: "The port where ZooKeeper metrics are exposed as a Prometheus endpoint."
