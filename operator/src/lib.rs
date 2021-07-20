@@ -52,6 +52,7 @@ use strum_macros::EnumIter;
 
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
+const SHOULD_BE_SCRAPED: &str = "monitoring.stackable.tech/should_be_scraped";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
@@ -820,8 +821,10 @@ impl ZookeeperState {
         container_builder.add_configmapvolume(cm_data_name, "/tmp/zookeeper".to_string());
         container_builder.add_env_vars(env_vars);
 
-        // only add metrics container port if available
+        let mut annotations = BTreeMap::new();
+        // only add metrics container port and annotation if available
         if let Some(metrics_port) = metrics_port {
+            annotations.insert(SHOULD_BE_SCRAPED.to_string(), "true".to_string());
             container_builder.add_container_port(
                 ContainerPortBuilder::new(metrics_port)
                     .name("metrics")
@@ -835,6 +838,7 @@ impl ZookeeperState {
                     .name(pod_name)
                     .namespace(&self.context.client.default_namespace)
                     .with_labels(labels)
+                    .with_annotations(annotations)
                     .ownerreference_from_resource(&self.context.resource, Some(true), Some(true))?
                     .build()?,
             )
