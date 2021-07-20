@@ -36,8 +36,10 @@ properties:
             type: "file"
             file: "zoo.cfg"
       datatype:
-        type: "string"
+        type: "integer"
         unit: *unitPort
+        min: "1024"
+        max: "65535"
       defaultValues:
         - value: "2181"
       recommendedValues:
@@ -111,10 +113,12 @@ properties:
           kind:
             type: "env"
       datatype:
-        type: "string"
+        type: "integer"
         unit: *unitPort
+        min: "1024"
+        max: "65535"
       roles:
         - name: "server"
           required: false
       asOfVersion: "0.0.0"
-      description: "The port where ZooKeeper metrics are exposed."
+      description: "The port where ZooKeeper metrics are exposed as a Prometheus endpoint."

@@ -761,8 +761,8 @@ impl ZookeeperState {
                                 env_vars.push(EnvVar {
                                 name: "SERVER_JVMFLAGS".to_string(),
                                 // TODO: avoid that "{{" and "}}" formatting
-                                value: Some(format!("-javaagent:{}packageroot{}/{}/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:{}packageroot{}/{}/stackable/conf/jmx_exporter.yaml",
-                                            "{{", "}}", version.package_name(), port,  "{{", "}}", version.package_name())),
+                                    value: Some(format!("-javaagent:{{{{packageroot}}}}/{}/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:{{{{packageroot}}}}/{}/stackable/conf/jmx_exporter.yaml",
+                                                        version.package_name(), port,  version.package_name())),
                                 ..EnvVar::default()
                             });
                             }
