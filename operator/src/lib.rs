@@ -461,6 +461,7 @@ impl ZookeeperState {
     /// - Update if config map exists but the content differs
     /// - Do nothing if the config map exists and the content is identical
     /// - Forward any kube errors that may appear
+    // TODO: move to operator-rs
     async fn create_config_map(&self, config_map: ConfigMap) -> Result<(), Error> {
         let cm_name = match config_map.metadata.name.as_deref() {
             None => return Err(Error::InvalidConfigMap),

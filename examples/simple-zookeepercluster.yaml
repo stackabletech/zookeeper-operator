@@ -9,7 +9,7 @@ spec:
       default:
         selector:
           matchLabels:
-            kubernetes.io/hostname: debian
+            kubernetes.io/arch: stackable-linux
         replicas: 1
         config:
           metricsPort: 9505
