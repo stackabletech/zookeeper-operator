@@ -14,6 +14,13 @@ use std::collections::BTreeMap;
 pub const APP_NAME: &str = "zookeeper";
 pub const MANAGED_BY: &str = "zookeeper-operator";
 
+pub const CLIENT_PORT: &str = "clientPort";
+pub const DATA_DIR: &str = "dataDir";
+pub const INIT_LIMIT: &str = "initLimit";
+pub const SYNC_LIMIT: &str = "syncLimit";
+pub const TICK_TIME: &str = "tickTime";
+pub const METRICS_PORT: &str = "metricsPort";
+
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -53,7 +60,7 @@ impl Configuration for ZookeeperConfig {
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         let mut result = BTreeMap::new();
         if let Some(metrics_port) = self.metrics_port {
-            result.insert("metricsPort".to_string(), Some(metrics_port.to_string()));
+            result.insert(METRICS_PORT.to_string(), Some(metrics_port.to_string()));
         }
         Ok(result)
     }
@@ -74,19 +81,19 @@ impl Configuration for ZookeeperConfig {
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         let mut result = BTreeMap::new();
         if let Some(client_port) = &self.client_port {
-            result.insert("clientPort".to_string(), Some(client_port.to_string()));
+            result.insert(CLIENT_PORT.to_string(), Some(client_port.to_string()));
         }
         if let Some(data_dir) = &self.data_dir {
-            result.insert("dataDir".to_string(), Some(data_dir.clone()));
+            result.insert(DATA_DIR.to_string(), Some(data_dir.clone()));
         }
         if let Some(init_limit) = self.init_limit {
-            result.insert("initLimit".to_string(), Some(init_limit.to_string()));
+            result.insert(INIT_LIMIT.to_string(), Some(init_limit.to_string()));
         }
         if let Some(sync_limit) = self.sync_limit {
-            result.insert("syncLimit".to_string(), Some(sync_limit.to_string()));
+            result.insert(SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
         }
         if let Some(tick_time) = self.tick_time {
-            result.insert("tickTime".to_string(), Some(tick_time.to_string()));
+            result.insert(TICK_TIME.to_string(), Some(tick_time.to_string()));
         }
         Ok(result)
     }

@@ -21,7 +21,6 @@ use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
-use stackable_operator::k8s_utils;
 use stackable_operator::labels;
 use stackable_operator::labels::{
     build_common_labels_for_all_managed_resources, get_recommended_labels,
@@ -38,8 +37,10 @@ use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group,
 };
+use stackable_operator::{cli, k8s_utils};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, APP_NAME,
+    CLIENT_PORT,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -68,7 +69,7 @@ struct ZookeeperState {
     zk_status: Option<ZookeeperClusterStatus>,
     id_information: Option<IdInformation>,
     existing_pods: Vec<Pod>,
-    eligible_nodes: HashMap<String, HashMap<String, Vec<Node>>>,
+    eligible_nodes: HashMap<String, HashMap<String, (Vec<Node>, usize)>>,
     validated_role_config: ValidatedRoleConfigByPropertyKind,
 }
 
@@ -417,7 +418,7 @@ impl ZookeeperState {
 
         for role in ZookeeperRole::iter() {
             if let Some(eligible_nodes_for_role) = self.eligible_nodes.get(&role.to_string()) {
-                for eligible_nodes in eligible_nodes_for_role.values() {
+                for (eligible_nodes, _replicas) in eligible_nodes_for_role.values() {
                     for node in eligible_nodes {
                         let node_name = match &node.metadata.name {
                             Some(name) => name,
@@ -516,7 +517,7 @@ impl ZookeeperState {
         //   - Role groups for this role (user defined)
         for zookeeper_role in ZookeeperRole::iter() {
             if let Some(nodes_for_role) = self.eligible_nodes.get(&zookeeper_role.to_string()) {
-                for (role_group, nodes) in nodes_for_role {
+                for (role_group, (nodes, replicas)) in nodes_for_role {
                     debug!(
                         "Identify missing pods for [{}] role and group [{}]",
                         zookeeper_role, role_group
@@ -546,6 +547,7 @@ impl ZookeeperState {
                         nodes,
                         &self.existing_pods,
                         &get_role_and_group_labels(&zookeeper_role.to_string(), role_group),
+                        *replicas,
                     );
 
                     for node in nodes_that_need_pods {
@@ -690,7 +692,8 @@ impl ZookeeperState {
     ) -> Result<(Pod, Vec<ConfigMap>), Error> {
         let mut config_maps = vec![];
         let mut env_vars = vec![];
-        let mut metrics_port: Option<u16> = None;
+        let mut metrics_port: Option<String> = None;
+        let mut client_port: Option<String> = None;
 
         let cm_config_name = format!("{}-config", pod_name);
 
@@ -722,6 +725,9 @@ impl ZookeeperState {
                     let zoo_cfg = product_config::writer::to_java_properties_string(
                         transformed_config.iter(),
                     )?;
+
+                    // we need to extract the client port here to add to container ports later
+                    client_port = config.get(CLIENT_PORT).cloned();
 
                     // Now we need to create two configmaps per server.
                     // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
@@ -757,15 +763,13 @@ impl ZookeeperState {
                         // product config to be able to not configure any monitoring / metrics)
                         if property_name == "metricsPort" {
                             if let Some(port) = &property_value {
-                                // cannot panic because checked in product config
-                                metrics_port = Some(port.parse::<u16>()?);
+                                metrics_port = Some(port.clone());
                                 env_vars.push(EnvVar {
-                                name: "SERVER_JVMFLAGS".to_string(),
-                                // TODO: avoid that "{{" and "}}" formatting
+                                    name: "SERVER_JVMFLAGS".to_string(),
                                     value: Some(format!("-javaagent:{{{{packageroot}}}}/{}/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:{{{{packageroot}}}}/{}/stackable/conf/jmx_exporter.yaml",
                                                         version.package_name(), port,  version.package_name())),
-                                ..EnvVar::default()
-                            });
+                                    ..EnvVar::default()
+                                });
                             }
                             continue;
                         }
@@ -827,8 +831,16 @@ impl ZookeeperState {
         if let Some(metrics_port) = metrics_port {
             annotations.insert(SHOULD_BE_SCRAPED.to_string(), "true".to_string());
             container_builder.add_container_port(
-                ContainerPortBuilder::new(metrics_port)
+                ContainerPortBuilder::new(metrics_port.parse()?)
                     .name("metrics")
+                    .build(),
+            );
+        }
+        // add client port if available
+        if let Some(client_port) = client_port {
+            container_builder.add_container_port(
+                ContainerPortBuilder::new(client_port.parse()?)
+                    .name(CLIENT_PORT.to_lowercase())
                     .build(),
             );
         }
@@ -985,7 +997,7 @@ impl ControllerStrategy for ZookeeperStrategy {
 /// This creates an instance of a [`Controller`] which waits for incoming events and reconciles them.
 ///
 /// This is an async method and the returned future needs to be consumed to make progress.
-pub async fn create_controller(client: Client) {
+pub async fn create_controller(client: Client) -> OperatorResult<()> {
     let zk_api: Api<ZookeeperCluster> = client.get_all_api();
     let pods_api: Api<Pod> = client.get_all_api();
     let config_maps_api: Api<ConfigMap> = client.get_all_api();
@@ -994,13 +1006,23 @@ pub async fn create_controller(client: Client) {
         .owns(pods_api, ListParams::default())
         .owns(config_maps_api, ListParams::default());
 
-    let product_config =
-        ProductConfigManager::from_yaml_file("deploy/config-spec/properties.yaml").unwrap();
+    let product_config_path = cli::product_config_path(
+        "zookeeper-operator",
+        vec![
+            "deploy/config-spec/properties.yaml",
+            "/etc/stackable/zookeeper-operator/config-spec/properties.yaml",
+        ],
+    )?;
+
+    let product_config = ProductConfigManager::from_yaml_file(&product_config_path).unwrap();
+
     let strategy = ZookeeperStrategy::new(product_config);
 
     controller
         .run(client, strategy, Duration::from_secs(10))
         .await;
+
+    Ok(())
 }
 
 #[cfg(test)]
