@@ -40,7 +40,7 @@ use stackable_operator::role_utils::{
 use stackable_operator::{cli, k8s_utils};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, APP_NAME,
-    CLIENT_PORT,
+    CLIENT_PORT, METRICS_PORT,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -761,7 +761,7 @@ impl ZookeeperState {
 
                         // if a metrics port is provided (for now by user, it is not required in
                         // product config to be able to not configure any monitoring / metrics)
-                        if property_name == "metricsPort" {
+                        if property_name == METRICS_PORT {
                             if let Some(port) = &property_value {
                                 metrics_port = Some(port.clone());
                                 env_vars.push(EnvVar {
