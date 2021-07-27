@@ -20,4 +20,6 @@ maintainer-scripts = "packaging/debian/"
 systemd-units = { enable = false }
 assets = [
     ["../target/release/stackable-zookeeper-operator-server", "opt/stackable/zookeeper-operator/", "755"],
+    ["../deploy/crd/zookeepercluster.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
+    ["../deploy/config-spec/properties.yaml", "etc/stackable/zookeeper-operator/config-spec/", "644"],
 ]

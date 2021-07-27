@@ -22,6 +22,6 @@ async fn main() -> Result<(), error::Error> {
         return Err(error);
     };
 
-    stackable_zookeeper_operator::create_controller(client).await;
+    stackable_zookeeper_operator::create_controller(client).await?;
     Ok(())
 }

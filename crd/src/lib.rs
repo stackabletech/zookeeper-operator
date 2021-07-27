@@ -14,6 +14,13 @@ use std::collections::BTreeMap;
 pub const APP_NAME: &str = "zookeeper";
 pub const MANAGED_BY: &str = "zookeeper-operator";
 
+pub const CLIENT_PORT: &str = "clientPort";
+pub const DATA_DIR: &str = "dataDir";
+pub const INIT_LIMIT: &str = "initLimit";
+pub const SYNC_LIMIT: &str = "syncLimit";
+pub const TICK_TIME: &str = "tickTime";
+pub const METRICS_PORT: &str = "metricsPort";
+
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -40,6 +47,7 @@ pub struct ZookeeperConfig {
     pub init_limit: Option<u32>,  // int in Java
     pub sync_limit: Option<u32>,  // int in Java
     pub tick_time: Option<u32>,   // int in Java
+    pub metrics_port: Option<u16>,
 }
 
 impl Configuration for ZookeeperConfig {
@@ -50,7 +58,11 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        Ok(BTreeMap::new())
+        let mut result = BTreeMap::new();
+        if let Some(metrics_port) = self.metrics_port {
+            result.insert(METRICS_PORT.to_string(), Some(metrics_port.to_string()));
+        }
+        Ok(result)
     }
 
     fn compute_cli(
@@ -67,13 +79,22 @@ impl Configuration for ZookeeperConfig {
         _role_name: &str,
         _file: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let temp = product_config::ser::to_hash_map(self).map_err(|err| {
-            ConfigError::InvalidConfiguration {
-                reason: format!("Could not deserialize config: {}", err.to_string()),
-            }
-        })?;
-        let result: BTreeMap<String, Option<String>> =
-            temp.into_iter().map(|(k, v)| (k, Some(v))).collect();
+        let mut result = BTreeMap::new();
+        if let Some(client_port) = &self.client_port {
+            result.insert(CLIENT_PORT.to_string(), Some(client_port.to_string()));
+        }
+        if let Some(data_dir) = &self.data_dir {
+            result.insert(DATA_DIR.to_string(), Some(data_dir.clone()));
+        }
+        if let Some(init_limit) = self.init_limit {
+            result.insert(INIT_LIMIT.to_string(), Some(init_limit.to_string()));
+        }
+        if let Some(sync_limit) = self.sync_limit {
+            result.insert(SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
+        }
+        if let Some(tick_time) = self.tick_time {
+            result.insert(TICK_TIME.to_string(), Some(tick_time.to_string()));
+        }
         Ok(result)
     }
 }

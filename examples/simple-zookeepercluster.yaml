@@ -3,16 +3,16 @@ kind: ZookeeperCluster
 metadata:
   name: simple
 spec:
-  version: 3.4.14
+  version: 3.5.8
   servers:
     roleGroups:
       default:
         selector:
           matchLabels:
-            kubernetes.io/hostname: debian
+            kubernetes.io/arch: stackable-linux
         replicas: 1
         config:
-          clientPort: 2181
+          metricsPort: 9505
 
 
 
