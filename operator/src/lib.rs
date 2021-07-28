@@ -3,7 +3,7 @@ mod error;
 use crate::error::Error;
 
 use async_trait::async_trait;
-use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Node, Pod, PodSpec};
+use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod, PodSpec};
 use kube::api::{ListParams, ResourceExt};
 use kube::Api;
 use serde_json::json;
@@ -35,12 +35,12 @@ use stackable_operator::reconcile::{
 };
 use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
-    get_role_and_group_labels, list_eligible_nodes_for_role_and_group,
+    get_role_and_group_labels, list_eligible_nodes_for_role_and_group, EligibleNodesForRoleAndGroup,
 };
 use stackable_operator::{cli, k8s_utils};
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, APP_NAME,
-    CLIENT_PORT, METRICS_PORT,
+    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
+    APP_NAME, CLIENT_PORT, METRICS_PORT,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -69,7 +69,7 @@ struct ZookeeperState {
     zk_status: Option<ZookeeperClusterStatus>,
     id_information: Option<IdInformation>,
     existing_pods: Vec<Pod>,
-    eligible_nodes: HashMap<String, HashMap<String, (Vec<Node>, usize)>>,
+    eligible_nodes: EligibleNodesForRoleAndGroup,
     validated_role_config: ValidatedRoleConfigByPropertyKind,
 }
 
@@ -694,6 +694,7 @@ impl ZookeeperState {
         let mut env_vars = vec![];
         let mut metrics_port: Option<String> = None;
         let mut client_port: Option<String> = None;
+        let mut admin_port: Option<String> = None;
 
         let cm_config_name = format!("{}-config", pod_name);
 
@@ -728,6 +729,8 @@ impl ZookeeperState {
 
                     // we need to extract the client port here to add to container ports later
                     client_port = config.get(CLIENT_PORT).cloned();
+                    // we need to extract the admin port here to add to container ports later
+                    admin_port = config.get(ADMIN_PORT).cloned();
 
                     // Now we need to create two configmaps per server.
                     // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
@@ -840,7 +843,16 @@ impl ZookeeperState {
         if let Some(client_port) = client_port {
             container_builder.add_container_port(
                 ContainerPortBuilder::new(client_port.parse()?)
-                    .name(CLIENT_PORT.to_lowercase())
+                    .name("client".to_lowercase())
+                    .build(),
+            );
+        }
+
+        // add admin port if available
+        if let Some(admin_port) = admin_port {
+            container_builder.add_container_port(
+                ContainerPortBuilder::new(admin_port.parse()?)
+                    .name("admin".to_lowercase())
                     .build(),
             );
         }

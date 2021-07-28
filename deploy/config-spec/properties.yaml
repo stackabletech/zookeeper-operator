@@ -122,3 +122,21 @@ properties:
           required: false
       asOfVersion: "0.0.0"
       description: "The port where ZooKeeper metrics are exposed as a Prometheus endpoint."
+
+  - property: &admin_serverPort
+      propertyNames:
+        - name: "admin.serverPort"
+          kind:
+            type: "env"
+      datatype:
+        type: "integer"
+        unit: *unitPort
+        min: "1024"
+        max: "65535"
+      defaultValues:
+        - value: "8080"
+      roles:
+        - name: "server"
+          required: true
+      asOfVersion: "0.0.0"
+      description: "The zookeeper admin server port."

@@ -7,7 +7,7 @@ name = "stackable-zookeeper-operator-server"
 version = "0.1.0-nightly"
 
 [dependencies]
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", branch = "main" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", branch = "make_replicas_optional" }
 stackable-zookeeper-crd = { path = "../crd" }
 stackable-zookeeper-operator = { path = "../operator" }
 
