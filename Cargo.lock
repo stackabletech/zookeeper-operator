@@ -1493,7 +1493,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=make_replicas_optional#f05194f2602404a621c8dd5e0da53edec9d5589c"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#19d41adaadb5f8e1dab75c8dde511bb5fd788be1"
 dependencies = [
  "async-trait",
  "backoff",
