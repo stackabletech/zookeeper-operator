@@ -20,6 +20,7 @@ pub const INIT_LIMIT: &str = "initLimit";
 pub const SYNC_LIMIT: &str = "syncLimit";
 pub const TICK_TIME: &str = "tickTime";
 pub const METRICS_PORT: &str = "metricsPort";
+pub const ADMIN_PORT: &str = "admin.serverPort";
 
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
@@ -48,6 +49,7 @@ pub struct ZookeeperConfig {
     pub sync_limit: Option<u32>,  // int in Java
     pub tick_time: Option<u32>,   // int in Java
     pub metrics_port: Option<u16>,
+    pub admin_port: Option<u16>,
 }
 
 impl Configuration for ZookeeperConfig {
@@ -94,6 +96,9 @@ impl Configuration for ZookeeperConfig {
         }
         if let Some(tick_time) = self.tick_time {
             result.insert(TICK_TIME.to_string(), Some(tick_time.to_string()));
+        }
+        if let Some(admin_port) = self.admin_port {
+            result.insert(ADMIN_PORT.to_string(), Some(admin_port.to_string()));
         }
         Ok(result)
     }

@@ -10,9 +10,10 @@ spec:
         selector:
           matchLabels:
             kubernetes.io/arch: stackable-linux
-        replicas: 1
         config:
+          adminPort: 12000
           metricsPort: 9505
+
 
 
 
