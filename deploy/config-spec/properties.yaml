@@ -127,7 +127,8 @@ properties:
       propertyNames:
         - name: "admin.serverPort"
           kind:
-            type: "env"
+            type: "file"
+            file: "zoo.cfg"
       datatype:
         type: "integer"
         unit: *unitPort
