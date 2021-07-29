@@ -843,7 +843,7 @@ impl ZookeeperState {
         if let Some(client_port) = client_port {
             container_builder.add_container_port(
                 ContainerPortBuilder::new(client_port.parse()?)
-                    .name("client".to_lowercase())
+                    .name("client")
                     .build(),
             );
         }
@@ -852,7 +852,7 @@ impl ZookeeperState {
         if let Some(admin_port) = admin_port {
             container_builder.add_container_port(
                 ContainerPortBuilder::new(admin_port.parse()?)
-                    .name("admin".to_lowercase())
+                    .name("admin")
                     .build(),
             );
         }
