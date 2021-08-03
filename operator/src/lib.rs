@@ -613,7 +613,7 @@ impl ZookeeperState {
 
                             let (pod, config_maps) = self
                                 .create_pod_and_config_maps(
-                                    &node_name,
+                                    node_name,
                                     &pod_name,
                                     pod_labels,
                                     id,
@@ -648,10 +648,7 @@ impl ZookeeperState {
         // target_version to None
         if let Some(target_version) = &status.target_version {
             self.zk_status = self.set_target_version(None).await?.status;
-            self.zk_status = self
-                .set_current_version(Some(&target_version))
-                .await?
-                .status;
+            self.zk_status = self.set_current_version(Some(target_version)).await?.status;
             self.zk_status = self
                 .set_upgrading_condition(
                     &status.conditions,
