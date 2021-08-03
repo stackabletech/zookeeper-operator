@@ -1,5 +1,6 @@
 use std::num::ParseIntError;
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Kubernetes reported error: {source}")]

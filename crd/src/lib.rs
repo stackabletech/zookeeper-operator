@@ -107,7 +107,7 @@ impl Configuration for ZookeeperConfig {
 impl Conditions for ZookeeperCluster {
     fn conditions(&self) -> Option<&[Condition]> {
         if let Some(status) = &self.status {
-            return Some(&status.conditions.as_slice());
+            return Some(status.conditions.as_slice());
         }
         None
     }
