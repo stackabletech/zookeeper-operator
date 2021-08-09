@@ -700,9 +700,9 @@ dependencies = [
 
 [[package]]
 name = "kube"
-version = "0.57.0"
+version = "0.58.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8152fba26129a09bf30179092753b399760a305a218b8bc558f9a2087b5c1d70"
+checksum = "21d3c79fb97a822a63ce9422f7302484748032c808954898ba248705e99ea110"
 dependencies = [
  "base64",
  "bytes",
@@ -740,9 +740,9 @@ dependencies = [
 
 [[package]]
 name = "kube-core"
-version = "0.57.0"
+version = "0.58.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36b767df01404bb99fb75ac2ceded28ce34c30fdcffbb4346e2c44d30756bfba"
+checksum = "ffbce0d890efc42abb31e974419e25a643a97ab7c6b3b9498bda686d10b55f8d"
 dependencies = [
  "form_urlencoded",
  "http",
@@ -755,9 +755,9 @@ dependencies = [
 
 [[package]]
 name = "kube-derive"
-version = "0.57.0"
+version = "0.58.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6d0e5489859d9430689f64e69cacc9bf8cb68556f436c73a6a308d4e256b7a0"
+checksum = "95a28be5ca4f233b5dd872f426fdc75d6765c34576b590c44564982c05fdb400"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -768,21 +768,24 @@ dependencies = [
 
 [[package]]
 name = "kube-runtime"
-version = "0.57.0"
+version = "0.58.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8358421de932e06d0521700fc8ecfc7058c95509e0770d2da88be78cd737c07"
+checksum = "a4f034d330a0849e1603e285389e3f0ed93b9a86017d46e851c9e49e6d0b99e2"
 dependencies = [
  "dashmap",
  "derivative",
  "futures",
+ "json-patch",
  "k8s-openapi",
  "kube",
  "pin-project 1.0.8",
  "serde",
+ "serde_json",
  "smallvec",
  "snafu",
  "tokio",
  "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -1466,7 +1469,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#7fe4205b667fb5975041f20104357f9bdec7e4bc"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#4394131b2c1326129b97a1b8b97d24dc85c30f70"
 dependencies = [
  "async-trait",
  "backoff",
@@ -1748,6 +1751,7 @@ version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b7b56efe69aa0ad2b5da6b942e57ea9f6fe683b7a314d4ff48662e2c8838de1"
 dependencies = [
+ "base64",
  "bytes",
  "futures-core",
  "futures-util",
