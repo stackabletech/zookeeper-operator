@@ -12,7 +12,7 @@ stackable-zookeeper-crd = { path = "../crd" }
 stackable-zookeeper-operator = { path = "../operator" }
 
 k8s-openapi = { version = "0.12", default-features = false, features = ["v1_20"] } # Depending on this here to choose the supported K8s version.
-tokio = { version = "1.9", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.10", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1"
 
 [package.metadata.deb]
