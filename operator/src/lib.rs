@@ -21,6 +21,7 @@ use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
+use stackable_operator::k8s_utils;
 use stackable_operator::labels;
 use stackable_operator::labels::{
     build_common_labels_for_all_managed_resources, get_recommended_labels,
@@ -37,7 +38,6 @@ use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group, EligibleNodesForRoleAndGroup,
 };
-use stackable_operator::{cli, k8s_utils};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
     APP_NAME, CLIENT_PORT, METRICS_PORT,
@@ -1006,7 +1006,7 @@ impl ControllerStrategy for ZookeeperStrategy {
 /// This creates an instance of a [`Controller`] which waits for incoming events and reconciles them.
 ///
 /// This is an async method and the returned future needs to be consumed to make progress.
-pub async fn create_controller(client: Client) -> OperatorResult<()> {
+pub async fn create_controller(client: Client, product_config_path: &str) -> OperatorResult<()> {
     let zk_api: Api<ZookeeperCluster> = client.get_all_api();
     let pods_api: Api<Pod> = client.get_all_api();
     let config_maps_api: Api<ConfigMap> = client.get_all_api();
@@ -1015,15 +1015,7 @@ pub async fn create_controller(client: Client) -> OperatorResult<()> {
         .owns(pods_api, ListParams::default())
         .owns(config_maps_api, ListParams::default());
 
-    let product_config_path = cli::product_config_path(
-        "zookeeper-operator",
-        vec![
-            "deploy/config-spec/properties.yaml",
-            "/etc/stackable/zookeeper-operator/config-spec/properties.yaml",
-        ],
-    )?;
-
-    let product_config = ProductConfigManager::from_yaml_file(&product_config_path).unwrap();
+    let product_config = ProductConfigManager::from_yaml_file(product_config_path).unwrap();
 
     let strategy = ZookeeperStrategy::new(product_config);
 
