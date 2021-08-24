@@ -10,14 +10,14 @@ use serde_json::json;
 use tracing::{debug, error, info, trace, warn};
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
-use kube::error::ErrorResponse;
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
 use stackable_operator::builder::{
-    ConfigMapBuilder, ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
+    ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
 };
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
+use stackable_operator::configmap;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
@@ -26,9 +26,9 @@ use stackable_operator::labels;
 use stackable_operator::labels::{
     build_common_labels_for_all_managed_resources, get_recommended_labels,
 };
-use stackable_operator::pod_utils;
+use stackable_operator::name_utils;
 use stackable_operator::product_config_utils::{
-    transform_all_roles_to_config, validate_all_roles_and_groups_config,
+    config_for_role_and_group, transform_all_roles_to_config, validate_all_roles_and_groups_config,
     ValidatedRoleConfigByPropertyKind,
 };
 use stackable_operator::reconcile::{
@@ -40,7 +40,7 @@ use stackable_operator::role_utils::{
 };
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
-    APP_NAME, CLIENT_PORT, METRICS_PORT,
+    APP_NAME, CLIENT_PORT, DATA_DIR, METRICS_PORT,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -54,6 +54,10 @@ use strum_macros::EnumIter;
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
 const SHOULD_BE_SCRAPED: &str = "monitoring.stackable.tech/should_be_scraped";
+
+const PROPERTIES_FILE: &str = "zoo.cfg";
+const CONFIG_MAP_TYPE_DATA: &str = "data";
+const CONFIG_MAP_TYPE_ID: &str = "id";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
@@ -411,8 +415,8 @@ impl ZookeeperState {
         trace!("Assigning ids to new servers from the spec",);
 
         let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
-                        "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-                    ))?;
+            "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+        ))?;
 
         id_information.used_ids.sort_unstable();
 
@@ -457,58 +461,12 @@ impl ZookeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
-    /// Create or update a config map.
-    /// - Create if no config map of that name exists
-    /// - Update if config map exists but the content differs
-    /// - Do nothing if the config map exists and the content is identical
-    /// - Forward any kube errors that may appear
-    // TODO: move to operator-rs
-    async fn create_config_map(&self, config_map: ConfigMap) -> Result<(), Error> {
-        let cm_name = match config_map.metadata.name.as_deref() {
-            None => return Err(Error::InvalidConfigMap),
-            Some(name) => name,
-        };
-
-        match self
-            .context
-            .client
-            .get::<ConfigMap>(cm_name, Some(&self.context.namespace()))
-            .await
-        {
-            Ok(ConfigMap {
-                data: existing_config_map_data,
-                ..
-            }) if existing_config_map_data == config_map.data => {
-                debug!(
-                    "ConfigMap [{}] already exists with identical data, skipping creation!",
-                    cm_name
-                );
-            }
-            Ok(_) => {
-                debug!(
-                    "ConfigMap [{}] already exists, but differs, updating it!",
-                    cm_name
-                );
-                self.context.client.update(&config_map).await?;
-            }
-            Err(stackable_operator::error::Error::KubeError {
-                source: kube::error::Error::Api(ErrorResponse { reason, .. }),
-            }) if reason == "NotFound" => {
-                debug!("Error getting ConfigMap [{}]: [{:?}]", cm_name, reason);
-                self.context.client.create(&config_map).await?;
-            }
-            Err(e) => return Err(Error::OperatorError { source: e }),
-        }
-
-        Ok(())
-    }
-
     pub async fn create_missing_pods(&mut self) -> ZookeeperReconcileResult {
         trace!("Starting `create_missing_pods`");
 
         let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
-                        "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-                    ))?;
+            "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+        ))?;
 
         // The iteration happens in two stages here, to accommodate the way our operators think
         // about roles and role groups.
@@ -570,62 +528,41 @@ impl ZookeeperState {
                         if id_information.node_name_to_pod.get(node_name).is_none() {
                             info!("Pod for server [{}] missing, creating now...", node_name);
 
-                            let id = *id_information
-                                .node_name_to_id
-                                .get(node_name)
-                                .ok_or_else(|| Error::ReconcileError(format!("We didn't find a `myid` for [{}] but it should have been assigned, this is a bug, please report it", node_name)))?;
+                            let id = *id_information.node_name_to_id.get(node_name).ok_or_else(
+                                || {
+                                    Error::ReconcileError(format!(
+                                        "We didn't find a `myid` for [{}] but it \
+                                        should have been assigned, this is a bug, please report it",
+                                        node_name
+                                    ))
+                                },
+                            )?;
 
                             // now we have a node that needs pods -> get validated config
-                            let validated_config = match self
-                                .validated_role_config
-                                .get(&zookeeper_role.to_string())
-                            {
-                                None => {
-                                    error!("Could not find combination of Role [{}] in product-config. This should not happen, please open a ticket.", zookeeper_role.to_string());
-                                    continue;
-                                }
-                                Some(role_groups) => match role_groups.get(role_group) {
-                                    None => {
-                                        error!("Could not find combination of Role [{}] and RoleGroup [{}] in product-config. This should not happen, please open a ticket.", zookeeper_role.to_string(), role_group);
-                                        continue;
-                                    }
-                                    Some(validated_config) => validated_config,
-                                },
-                            };
-
-                            let pod_name = pod_utils::get_pod_name(
-                                APP_NAME,
-                                &self.context.name(),
-                                role_group,
-                                &zookeeper_role.to_string(),
-                                node_name,
-                            );
-
-                            let mut pod_labels = get_recommended_labels(
-                                &self.context.resource,
-                                APP_NAME,
-                                &self.context.resource.spec.version.to_string(),
+                            let validated_config = config_for_role_and_group(
                                 &zookeeper_role.to_string(),
                                 role_group,
-                            );
-                            // we need to add the zookeeper id to labels
-                            pod_labels.insert(ID_LABEL.to_string(), id.to_string());
+                                &self.validated_role_config,
+                            )?;
 
-                            let (pod, config_maps) = self
-                                .create_pod_and_config_maps(
-                                    node_name,
-                                    &pod_name,
-                                    pod_labels,
+                            let config_maps = self
+                                .create_config_maps(
+                                    &zookeeper_role.to_string(),
+                                    role_group,
                                     id,
                                     validated_config,
                                 )
                                 .await?;
 
-                            for config_map in config_maps {
-                                self.create_config_map(config_map).await?;
-                            }
-
-                            self.context.client.create(&pod).await?;
+                            self.create_pod(
+                                &zookeeper_role.to_string(),
+                                role_group,
+                                node_name,
+                                id,
+                                &config_maps,
+                                validated_config,
+                            )
+                            .await?;
 
                             return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
                         } else {
@@ -666,94 +603,176 @@ impl ZookeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
-    async fn delete_all_pods(&self) -> OperatorResult<ReconcileFunctionAction> {
-        for pod in &self.existing_pods {
-            self.context.client.delete(pod).await?;
-        }
-        Ok(ReconcileFunctionAction::Done)
-    }
-
-    /// This method creates a pod and required config map(s) for a certain role and role_group.
-    /// The validated_config from the product-config is used to create the config map data, as
-    /// well as setting the ENV variables in the containers or adapt / expand the CLI parameters.
-    /// First we iterate through the validated_config and extract files (which represents one or
-    /// more config map(s)), env variables for the pod containers and cli parameters for the
-    /// container start command and arguments.
-    async fn create_pod_and_config_maps(
+    /// Create the config maps required for a zookeeper instance (or role, role_group combination):
+    /// * The 'zoo.cfg' properties file
+    /// * The 'myid' file
+    ///
+    /// The 'zoo.cfg' properties are read from the product_config.
+    ///
+    /// Labels are automatically adapted from the `recommended_labels` with a type (data for
+    /// 'zoo.cfg' and id for 'myid'). Names are generated
+    ///
+    /// Return a map with a 'type' identifier (e.g. data, id) as key and the corresponding
+    /// ConfigMap as value. This is required to set the volume mounts in the pod later.
+    ///
+    /// # Arguments
+    ///
+    /// - `role` - The Zookeeper role.
+    /// - `group` - The role group.
+    /// - `id` - The 'myid' for this instance.
+    /// - `validated_config` - The validated product config.
+    ///
+    async fn create_config_maps(
         &self,
-        node_name: &str,
-        pod_name: &str,
-        labels: BTreeMap<String, String>,
+        role: &str,
+        group: &str,
         id: usize,
         validated_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
-    ) -> Result<(Pod, Vec<ConfigMap>), Error> {
-        let mut config_maps = vec![];
-        let mut env_vars = vec![];
-        let mut metrics_port: Option<String> = None;
-        let mut client_port: Option<String> = None;
-        let mut admin_port: Option<String> = None;
+    ) -> Result<HashMap<&'static str, ConfigMap>, Error> {
+        let mut config_maps = HashMap::new();
 
-        let cm_config_name = format!("{}-config", pod_name);
+        let recommended_labels = get_recommended_labels(
+            &self.context.resource,
+            APP_NAME,
+            &self.context.resource.spec.version.to_string(),
+            role,
+            group,
+        );
 
-        let version: &ZookeeperVersion = &self.context.resource.spec.version;
+        // Get config from product-config for the zookeeper properties file (zoo.cfg)
+        if let Some(config) =
+            validated_config.get(&PropertyNameKind::File(PROPERTIES_FILE.to_string()))
+        {
+            let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
+                "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
+            ))?;
 
-        for (property_name_kind, config) in validated_config {
-            // we need to convert to <String, String> to <String, Option<String>> to deal with
-            // CLI flags etc. We can not currently represent that via operator-rs / product-config.
-            // This is a preparation for that.
             let mut transformed_config: BTreeMap<String, Option<String>> = config
                 .iter()
                 .map(|(k, v)| (k.clone(), Some(v.clone())))
                 .collect();
 
+            // add dynamic config map requirement for server ids
+            for (node_name, id) in &id_information.node_name_to_id {
+                transformed_config.insert(
+                    format!("server.{}", id),
+                    Some(format!("{}:2888:3888", node_name)),
+                );
+            }
+
+            let zoo_cfg =
+                product_config::writer::to_java_properties_string(transformed_config.iter())?;
+
+            // enhance with config map type label
+            let mut cm_config_data_labels = recommended_labels.clone();
+            cm_config_data_labels.insert(
+                configmap::CM_TYPE_LABEL.to_string(),
+                CONFIG_MAP_TYPE_DATA.to_string(),
+            );
+
+            let cm_data_name = name_utils::build_resource_name(
+                APP_NAME,
+                &self.context.name(),
+                role,
+                Some(group),
+                None,
+                Some(CONFIG_MAP_TYPE_DATA),
+            )?;
+
+            let mut cm_config_data = BTreeMap::new();
+            cm_config_data.insert(PROPERTIES_FILE.to_string(), zoo_cfg);
+
+            let cm_data = configmap::build_config_map(
+                &self.context.resource,
+                &cm_data_name,
+                &self.context.namespace(),
+                cm_config_data_labels,
+                cm_config_data,
+            )?;
+
+            config_maps.insert(
+                CONFIG_MAP_TYPE_DATA,
+                configmap::create_config_map(&self.context.client, cm_data).await?,
+            );
+        }
+
+        // config map for the data directory (which only contains the 'myid' file)
+        let cm_config_id_name = name_utils::build_resource_name(
+            APP_NAME,
+            &self.context.name(),
+            role,
+            Some(group),
+            None,
+            Some(CONFIG_MAP_TYPE_ID),
+        )?;
+
+        // enhance with config map type label and the id for differentiation
+        let mut cm_config_id_labels = recommended_labels.clone();
+        cm_config_id_labels.insert(
+            configmap::CM_TYPE_LABEL.to_string(),
+            CONFIG_MAP_TYPE_ID.to_string(),
+        );
+        cm_config_id_labels.insert(ID_LABEL.to_string(), id.to_string());
+
+        let mut cm_id_data = BTreeMap::new();
+        cm_id_data.insert("myid".to_string(), id.to_string());
+
+        let cm_id = configmap::build_config_map(
+            &self.context.resource,
+            &cm_config_id_name,
+            &self.context.namespace(),
+            cm_config_id_labels,
+            cm_id_data,
+        )?;
+
+        config_maps.insert(
+            CONFIG_MAP_TYPE_ID,
+            configmap::create_config_map(&self.context.client, cm_id).await?,
+        );
+
+        Ok(config_maps)
+    }
+
+    /// Create the pod required for the zookeeper instance.
+    ///
+    /// # Arguments
+    ///
+    /// - `role` - The Zookeeper role.
+    /// - `group` - The role group.
+    /// - `node_name` - The 'myid' for this instance.
+    /// - `id` - The 'myid' for this instance.
+    /// - `recommended_labels` - The recommended labels containing e.g. component, instance etc.
+    /// - `validated_config` - The validated product config.
+    ///
+    async fn create_pod(
+        &self,
+        role: &str,
+        group: &str,
+        node_name: &str,
+        id: usize,
+        config_maps: &HashMap<&'static str, ConfigMap>,
+        validated_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
+    ) -> Result<Pod, Error> {
+        let mut env_vars = vec![];
+        let mut metrics_port: Option<String> = None;
+        let mut client_port: Option<String> = None;
+        let mut admin_port: Option<String> = None;
+        let mut data_dir: Option<String> = None;
+
+        let version: &ZookeeperVersion = &self.context.resource.spec.version;
+
+        for (property_name_kind, config) in validated_config {
             match property_name_kind {
-                PropertyNameKind::File(file_name) => {
-                    let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
-                        "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-                    ))?;
-
-                    // add dynamic config map requirement for server ids
-                    for (node_name, id) in &id_information.node_name_to_id {
-                        transformed_config.insert(
-                            format!("server.{}", id),
-                            Some(format!("{}:2888:3888", node_name)),
-                        );
-                    }
-
-                    let zoo_cfg = product_config::writer::to_java_properties_string(
-                        transformed_config.iter(),
-                    )?;
-
+                PropertyNameKind::File(_file_name) => {
                     // we need to extract the client port here to add to container ports later
                     client_port = config.get(CLIENT_PORT).cloned();
                     // we need to extract the admin port here to add to container ports later
                     admin_port = config.get(ADMIN_PORT).cloned();
-
-                    // Now we need to create two configmaps per server.
-                    // The names are "zk-<cluster name>-<node name>-config" and "zk-<cluster name>-<node name>-data"
-                    // One for the configuration directory...
-                    let mut cm_config_data = BTreeMap::new();
-                    cm_config_data.insert(file_name.clone(), zoo_cfg);
-
-                    config_maps.push(
-                        ConfigMapBuilder::new()
-                            .metadata(
-                                ObjectMetaBuilder::new()
-                                    .name(cm_config_name.clone())
-                                    .ownerreference_from_resource(
-                                        &self.context.resource,
-                                        Some(true),
-                                        Some(true),
-                                    )?
-                                    .namespace(&self.context.client.default_namespace)
-                                    .build()?,
-                            )
-                            .data(cm_config_data)
-                            .build()?,
-                    );
+                    // we need to extract the data dir for the volume mounts later
+                    data_dir = config.get(DATA_DIR).cloned();
                 }
                 PropertyNameKind::Env => {
-                    for (property_name, property_value) in transformed_config {
+                    for (property_name, property_value) in config {
                         if property_name.is_empty() {
                             warn!("Received empty property_name for ENV... skipping");
                             continue;
@@ -762,21 +781,19 @@ impl ZookeeperState {
                         // if a metrics port is provided (for now by user, it is not required in
                         // product config to be able to not configure any monitoring / metrics)
                         if property_name == METRICS_PORT {
-                            if let Some(port) = &property_value {
-                                metrics_port = Some(port.clone());
-                                env_vars.push(EnvVar {
-                                    name: "SERVER_JVMFLAGS".to_string(),
-                                    value: Some(format!("-javaagent:{{{{packageroot}}}}/{}/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:{{{{packageroot}}}}/{}/stackable/conf/jmx_exporter.yaml",
-                                                        version.package_name(), port,  version.package_name())),
-                                    ..EnvVar::default()
-                                });
-                            }
+                            metrics_port = Some(property_value.to_string());
+                            env_vars.push(EnvVar {
+                                name: "SERVER_JVMFLAGS".to_string(),
+                                value: Some(format!("-javaagent:{{{{packageroot}}}}/{}/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:{{{{packageroot}}}}/{}/stackable/conf/jmx_exporter.yaml",
+                                                    version.package_name(), property_value, version.package_name())),
+                                ..EnvVar::default()
+                            });
                             continue;
                         }
 
                         env_vars.push(EnvVar {
-                            name: property_name,
-                            value: property_value,
+                            name: property_name.clone(),
+                            value: Some(property_value.clone()),
                             value_from: None,
                         });
                     }
@@ -785,29 +802,7 @@ impl ZookeeperState {
             }
         }
 
-        // config map for the data directory (which only contains the myid file)
-        let mut cm_data_data = BTreeMap::new();
-        cm_data_data.insert("myid".to_string(), id.to_string());
-        let cm_data_name = format!("{}-data", pod_name);
-
-        config_maps.push(
-            ConfigMapBuilder::new()
-                .metadata(
-                    ObjectMetaBuilder::new()
-                        .name(cm_data_name.clone())
-                        .ownerreference_from_resource(
-                            &self.context.resource,
-                            Some(true),
-                            Some(true),
-                        )?
-                        .namespace(&self.context.client.default_namespace)
-                        .build()?,
-                )
-                .data(cm_data_data)
-                .build()?,
-        );
-
-        let mut container_builder = ContainerBuilder::new("zookeeper");
+        let mut container_builder = ContainerBuilder::new(APP_NAME);
         container_builder.image(format!("stackable/zookeeper:{}", version.to_string()));
         container_builder.command(vec![
             format!(
@@ -818,12 +813,31 @@ impl ZookeeperState {
             // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
             "{{configroot}}/conf/zoo.cfg".to_string(),
         ]);
+
         // One mount for the config directory, this will be relative to the extracted package
-        container_builder.add_configmapvolume(cm_config_name, "conf".to_string());
+        // TODO: Error handling
+        if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_DATA) {
+            if let Some(name) = config_map_data.metadata.name.as_ref() {
+                container_builder.add_configmapvolume(name, "conf".to_string());
+            } else {
+                info!("Configmap missing name {}", CONFIG_MAP_TYPE_DATA);
+            }
+        }
+
         // We need a second mount for the data directory
         // because we need to write the myid file into the data directory
-        // TODO: Make configurable
-        container_builder.add_configmapvolume(cm_data_name, "/tmp/zookeeper".to_string());
+        // TODO: Error handling
+        if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_ID) {
+            if let Some(name) = config_map_data.metadata.name.as_ref() {
+                container_builder.add_configmapvolume(
+                    name,
+                    data_dir.unwrap_or_else(|| "/tmp/zookeeper".to_string()),
+                );
+            } else {
+                info!("Configmap missing name {}", CONFIG_MAP_TYPE_ID);
+            }
+        }
+
         container_builder.add_env_vars(env_vars);
 
         let mut annotations = BTreeMap::new();
@@ -854,12 +868,31 @@ impl ZookeeperState {
             );
         }
 
+        let pod_name = name_utils::build_resource_name(
+            APP_NAME,
+            &self.context.name(),
+            role,
+            Some(group),
+            Some(node_name),
+            None,
+        )?;
+
+        let mut pod_labels = get_recommended_labels(
+            &self.context.resource,
+            APP_NAME,
+            &self.context.resource.spec.version.to_string(),
+            role,
+            group,
+        );
+        // we need to add the zookeeper id to the labels
+        pod_labels.insert(ID_LABEL.to_string(), id.to_string());
+
         let pod = PodBuilder::new()
             .metadata(
                 ObjectMetaBuilder::new()
-                    .name(pod_name)
+                    .generate_name(pod_name)
                     .namespace(&self.context.client.default_namespace)
-                    .with_labels(labels)
+                    .with_labels(pod_labels)
                     .with_annotations(annotations)
                     .ownerreference_from_resource(&self.context.resource, Some(true), Some(true))?
                     .build()?,
@@ -869,7 +902,14 @@ impl ZookeeperState {
             .node_name(node_name)
             .build()?;
 
-        Ok((pod, config_maps))
+        Ok(self.context.client.create(&pod).await?)
+    }
+
+    async fn delete_all_pods(&self) -> OperatorResult<ReconcileFunctionAction> {
+        for pod in &self.existing_pods {
+            self.context.client.delete(pod).await?;
+        }
+        Ok(ReconcileFunctionAction::Done)
     }
 }
 
@@ -975,7 +1015,7 @@ impl ControllerStrategy for ZookeeperStrategy {
             ZookeeperRole::Server.to_string(),
             (
                 vec![
-                    PropertyNameKind::File("zoo.cfg".to_string()),
+                    PropertyNameKind::File(PROPERTIES_FILE.to_string()),
                     PropertyNameKind::Env,
                 ],
                 context.resource.spec.servers.clone().into(),

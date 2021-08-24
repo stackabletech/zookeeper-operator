@@ -1555,7 +1555,6 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#ed04ff725de4167ca70857431eded3209d9caf20"
 dependencies = [
  "async-trait",
  "backoff",
@@ -1576,6 +1575,8 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "strum",
+ "strum_macros",
  "thiserror",
  "tokio",
  "tracing",
