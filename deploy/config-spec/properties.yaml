@@ -107,6 +107,24 @@ properties:
       comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
       description: "Amount of time, in ticks (see `tickTime`), to allow followers to sync with ZooKeeper. If followers fall too far behind a leader, they will be dropped. In other words: The number of ticks that can pass between sending a request and getting an acknowledgment before a follower is dropped."
 
+  - property: &zooLogDir
+      propertyNames:
+        - name: "ZOO_LOG_DIR"
+          kind:
+            type: "env"
+      datatype:
+        type: "string"
+        unit: *unitDirectory
+      defaultValues:
+        - value: "/var/log/stackable/servicelogs"
+      recommendedValues:
+        - value: "/var/log/stackable/servicelogs"
+      roles:
+        - name: "server"
+          required: true
+      asOfVersion: "0.0.0"
+      description: "The port where ZooKeeper metrics are exposed as a Prometheus endpoint."
+
   - property: &metricsPort
       propertyNames:
         - name: "metricsPort"
