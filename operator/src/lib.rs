@@ -666,7 +666,7 @@ impl ZookeeperState {
             // enhance with config map type label
             let mut cm_config_data_labels = recommended_labels.clone();
             cm_config_data_labels.insert(
-                configmap::CM_TYPE_LABEL.to_string(),
+                configmap::CONFIGMAP_TYPE_LABEL.to_string(),
                 CONFIG_MAP_TYPE_DATA.to_string(),
             );
 
@@ -709,7 +709,7 @@ impl ZookeeperState {
         // enhance with config map type label and the id for differentiation
         let mut cm_config_id_labels = recommended_labels.clone();
         cm_config_id_labels.insert(
-            configmap::CM_TYPE_LABEL.to_string(),
+            configmap::CONFIGMAP_TYPE_LABEL.to_string(),
             CONFIG_MAP_TYPE_ID.to_string(),
         );
         cm_config_id_labels.insert(ID_LABEL.to_string(), id.to_string());
