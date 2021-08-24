@@ -1555,7 +1555,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=feature/windows-security-context#8b7ddb1c6ce0b4f97b7505d9fa86fa1b2efa7735"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#2554705f7a25d7b9366c37d57dbbaa6c45a0c95c"
 dependencies = [
  "async-trait",
  "backoff",
@@ -1762,9 +1762,9 @@ checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
 
 [[package]]
 name = "tokio"
-version = "1.10.0"
+version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01cf844b23c6131f624accf65ce0e4e9956a8bb329400ea5bcc26ae3a5c20b0b"
+checksum = "92036be488bb6594459f2e03b60e42df6f937fe6ca5c5ffdcb539c6b84dc40f5"
 dependencies = [
  "autocfg",
  "libc",
