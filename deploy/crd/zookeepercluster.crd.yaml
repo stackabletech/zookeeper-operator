@@ -1,3 +1,5 @@
+[2mAug 24 15:56:58.434[0m [32m INFO[0m stackable_operator::utils: Starting Stackable Operator for Apache ZooKeeper
+[2mAug 24 15:56:58.434[0m [32m INFO[0m stackable_operator::utils: This is version 0.1.0-nightly (Git information: 19bcfc5), built for x86_64-unknown-linux-gnu by rustc 1.54.0 (a178d0322 2021-07-26) at Tue, 24 Aug 2021 13:54:14 +0000
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
@@ -53,6 +55,9 @@ spec:
                           minimum: 0.0
                           nullable: true
                           type: integer
+                        runAsUser:
+                          nullable: true
+                          type: string
                         syncLimit:
                           format: uint32
                           minimum: 0.0
@@ -110,6 +115,9 @@ spec:
                                 minimum: 0.0
                                 nullable: true
                                 type: integer
+                              runAsUser:
+                                nullable: true
+                                type: string
                               syncLimit:
                                 format: uint32
                                 minimum: 0.0

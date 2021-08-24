@@ -15,6 +15,7 @@ use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
 use stackable_operator::builder::{
     ConfigMapBuilder, ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
+    PodSecurityContextBuilder,
 };
 use stackable_operator::client::Client;
 use stackable_operator::conditions::ConditionStatus;
@@ -40,7 +41,7 @@ use stackable_operator::role_utils::{
 };
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
-    APP_NAME, CLIENT_PORT, METRICS_PORT,
+    APP_NAME, CLIENT_PORT, METRICS_PORT, RUN_AS_USER,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -692,6 +693,7 @@ impl ZookeeperState {
         let mut metrics_port: Option<String> = None;
         let mut client_port: Option<String> = None;
         let mut admin_port: Option<String> = None;
+        let mut run_as_user: Option<String> = None;
 
         let cm_config_name = format!("{}-config", pod_name);
 
@@ -761,24 +763,27 @@ impl ZookeeperState {
 
                         // if a metrics port is provided (for now by user, it is not required in
                         // product config to be able to not configure any monitoring / metrics)
-                        if property_name == METRICS_PORT {
-                            if let Some(port) = &property_value {
-                                metrics_port = Some(port.clone());
-                                env_vars.push(EnvVar {
+                        match property_name.as_str() {
+                            METRICS_PORT => {
+                                if let Some(port) = &property_value {
+                                    metrics_port = Some(port.clone());
+                                    env_vars.push(EnvVar {
                                     name: "SERVER_JVMFLAGS".to_string(),
                                     value: Some(format!("-javaagent:{{{{packageroot}}}}/{}/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:{{{{packageroot}}}}/{}/stackable/conf/jmx_exporter.yaml",
                                                         version.package_name(), port,  version.package_name())),
                                     ..EnvVar::default()
                                 });
+                                }
                             }
-                            continue;
+                            RUN_AS_USER => {
+                                run_as_user = property_value;
+                            }
+                            _ => env_vars.push(EnvVar {
+                                name: property_name,
+                                value: property_value,
+                                value_from: None,
+                            }),
                         }
-
-                        env_vars.push(EnvVar {
-                            name: property_name,
-                            value: property_value,
-                            value_from: None,
-                        });
                     }
                 }
                 _ => {}
@@ -854,6 +859,12 @@ impl ZookeeperState {
             );
         }
 
+        let security_context = run_as_user.map_or(PodSecurityContextBuilder::new().build(), |u| {
+            PodSecurityContextBuilder::new()
+                .win_run_as_user_name(u.as_str())
+                .build()
+        });
+
         let pod = PodBuilder::new()
             .metadata(
                 ObjectMetaBuilder::new()
@@ -867,6 +878,7 @@ impl ZookeeperState {
             .add_stackable_agent_tolerations()
             .add_container(container_builder.build())
             .node_name(node_name)
+            .security_context(security_context)
             .build()?;
 
         Ok((pod, config_maps))

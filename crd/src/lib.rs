@@ -20,6 +20,7 @@ pub const INIT_LIMIT: &str = "initLimit";
 pub const SYNC_LIMIT: &str = "syncLimit";
 pub const TICK_TIME: &str = "tickTime";
 pub const METRICS_PORT: &str = "metricsPort";
+pub const RUN_AS_USER: &str = "runAsUser";
 pub const ADMIN_PORT: &str = "admin.serverPort";
 
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
@@ -50,6 +51,7 @@ pub struct ZookeeperConfig {
     pub tick_time: Option<u32>,   // int in Java
     pub metrics_port: Option<u16>,
     pub admin_port: Option<u16>,
+    pub run_as_user: Option<String>,
 }
 
 impl Configuration for ZookeeperConfig {
@@ -63,6 +65,9 @@ impl Configuration for ZookeeperConfig {
         let mut result = BTreeMap::new();
         if let Some(metrics_port) = self.metrics_port {
             result.insert(METRICS_PORT.to_string(), Some(metrics_port.to_string()));
+        }
+        if let Some(run_as_user) = &self.run_as_user {
+            result.insert(RUN_AS_USER.to_string(), Some(run_as_user.clone()));
         }
         Ok(result)
     }
