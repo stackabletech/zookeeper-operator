@@ -610,7 +610,7 @@ impl ZookeeperState {
     /// The 'zoo.cfg' properties are read from the product_config.
     ///
     /// Labels are automatically adapted from the `recommended_labels` with a type (data for
-    /// 'zoo.cfg' and id for 'myid'). Names are generated
+    /// 'zoo.cfg' and id for 'myid'). Names are generated via `name_utils::build_resource_name`.
     ///
     /// Returns a map with a 'type' identifier (e.g. data, id) as key and the corresponding
     /// ConfigMap as value. This is required to set the volume mounts in the pod later on.
