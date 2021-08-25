@@ -603,7 +603,7 @@ impl ZookeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
-    /// Create the config maps required for a zookeeper instance (or role, role_group combination):
+    /// Creates the config maps required for a zookeeper instance (or role, role_group combination):
     /// * The 'zoo.cfg' properties file
     /// * The 'myid' file
     ///
@@ -612,8 +612,8 @@ impl ZookeeperState {
     /// Labels are automatically adapted from the `recommended_labels` with a type (data for
     /// 'zoo.cfg' and id for 'myid'). Names are generated
     ///
-    /// Return a map with a 'type' identifier (e.g. data, id) as key and the corresponding
-    /// ConfigMap as value. This is required to set the volume mounts in the pod later.
+    /// Returns a map with a 'type' identifier (e.g. data, id) as key and the corresponding
+    /// ConfigMap as value. This is required to set the volume mounts in the pod later on.
     ///
     /// # Arguments
     ///
@@ -733,7 +733,7 @@ impl ZookeeperState {
         Ok(config_maps)
     }
 
-    /// Create the pod required for the zookeeper instance.
+    /// Creates the pod required for the zookeeper instance.
     ///
     /// # Arguments
     ///
@@ -741,7 +741,7 @@ impl ZookeeperState {
     /// - `group` - The role group.
     /// - `node_name` - The 'myid' for this instance.
     /// - `id` - The 'myid' for this instance.
-    /// - `recommended_labels` - The recommended labels containing e.g. component, instance etc.
+    /// - `config_maps` - The config maps and respective types required for this pod.
     /// - `validated_config` - The validated product config.
     ///
     async fn create_pod(
@@ -763,7 +763,7 @@ impl ZookeeperState {
 
         for (property_name_kind, config) in validated_config {
             match property_name_kind {
-                PropertyNameKind::File(_file_name) => {
+                PropertyNameKind::File(_) => {
                     // we need to extract the client port here to add to container ports later
                     client_port = config.get(CLIENT_PORT).cloned();
                     // we need to extract the admin port here to add to container ports later
@@ -802,6 +802,15 @@ impl ZookeeperState {
             }
         }
 
+        let pod_name = name_utils::build_resource_name(
+            APP_NAME,
+            &self.context.name(),
+            role,
+            Some(group),
+            Some(node_name),
+            None,
+        )?;
+
         let mut container_builder = ContainerBuilder::new(APP_NAME);
         container_builder.image(format!("stackable/zookeeper:{}", version.to_string()));
         container_builder.command(vec![
@@ -815,18 +824,23 @@ impl ZookeeperState {
         ]);
 
         // One mount for the config directory, this will be relative to the extracted package
-        // TODO: Error handling
         if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_DATA) {
             if let Some(name) = config_map_data.metadata.name.as_ref() {
                 container_builder.add_configmapvolume(name, "conf".to_string());
             } else {
-                info!("Configmap missing name {}", CONFIG_MAP_TYPE_DATA);
+                return Err(error::Error::MissingConfigMapNameError {
+                    cm_type: CONFIG_MAP_TYPE_DATA,
+                });
             }
+        } else {
+            return Err(error::Error::MissingConfigMapError {
+                cm_type: CONFIG_MAP_TYPE_DATA,
+                pod_name,
+            });
         }
 
         // We need a second mount for the data directory
-        // because we need to write the myid file into the data directory
-        // TODO: Error handling
+        // because we need to write the 'myid' file into the data directory
         if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_ID) {
             if let Some(name) = config_map_data.metadata.name.as_ref() {
                 container_builder.add_configmapvolume(
@@ -834,8 +848,15 @@ impl ZookeeperState {
                     data_dir.unwrap_or_else(|| "/tmp/zookeeper".to_string()),
                 );
             } else {
-                info!("Configmap missing name {}", CONFIG_MAP_TYPE_ID);
+                return Err(error::Error::MissingConfigMapNameError {
+                    cm_type: CONFIG_MAP_TYPE_ID,
+                });
             }
+        } else {
+            return Err(error::Error::MissingConfigMapError {
+                cm_type: CONFIG_MAP_TYPE_ID,
+                pod_name,
+            });
         }
 
         container_builder.add_env_vars(env_vars);
@@ -867,15 +888,6 @@ impl ZookeeperState {
                     .build(),
             );
         }
-
-        let pod_name = name_utils::build_resource_name(
-            APP_NAME,
-            &self.context.name(),
-            role,
-            Some(group),
-            Some(node_name),
-            None,
-        )?;
 
         let mut pod_labels = get_recommended_labels(
             &self.context.resource,
