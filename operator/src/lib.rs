@@ -739,7 +739,7 @@ impl ZookeeperState {
     ///
     /// - `role` - The Zookeeper role.
     /// - `group` - The role group.
-    /// - `node_name` - The 'myid' for this instance.
+    /// - `node_name` - The node_name for this pod.
     /// - `id` - The 'myid' for this instance.
     /// - `config_maps` - The config maps and respective types required for this pod.
     /// - `validated_config` - The validated product config.
