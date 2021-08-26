@@ -1555,7 +1555,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.1.0-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=add_create_config_maps_with_labels#f15c45e7fda1851b46231df7246ad303eacdaefc"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#38283c5df040bf82bf2ddc834e9509be6c52ea65"
 dependencies = [
  "async-trait",
  "backoff",
