@@ -55,6 +55,7 @@ const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
 const SHOULD_BE_SCRAPED: &str = "monitoring.stackable.tech/should_be_scraped";
 const PROPERTIES_FILE: &str = "zoo.cfg";
+const CONFIG_DIR_NAME: &str = "conf";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
@@ -535,7 +536,7 @@ impl ZookeeperState {
                                 },
                             )?;
 
-                            // now we have a node that needs pods -> get validated config
+                            // now we have a node that needs a pod -> get validated config
                             let validated_config = config_for_role_and_group(
                                 &zookeeper_role.to_string(),
                                 role_group,
@@ -604,7 +605,8 @@ impl ZookeeperState {
     /// * The 'zoo.cfg' properties file
     /// * The 'myid' file
     ///
-    /// The 'zoo.cfg' properties are read from the product_config.
+    /// The 'zoo.cfg' properties are read from the product_config and/or merged with the cluster
+    /// custom resource.
     ///
     /// Labels are automatically adapted from the `recommended_labels` with a type (data for
     /// 'zoo.cfg' and id for 'myid'). Names are generated via `name_utils::build_resource_name`.
@@ -644,6 +646,9 @@ impl ZookeeperState {
                 "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
             ))?;
 
+            // We need to convert from <String, String> to <String, Option<String>> to deal with
+            // CLI flags or the java properties writer etc. We can not currently represent that
+            // via operator-rs / product-config. This is a preparation for that.
             let mut transformed_config: BTreeMap<String, Option<String>> = config
                 .iter()
                 .map(|(k, v)| (k.clone(), Some(v.clone())))
@@ -817,13 +822,13 @@ impl ZookeeperState {
             ),
             "start-foreground".to_string(),
             // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
-            "{{configroot}}/conf/zoo.cfg".to_string(),
+            format!("{{{{configroot}}}}/{}/zoo.cfg", CONFIG_DIR_NAME),
         ]);
 
-        // One mount for the config directory, this will be relative to the extracted package
+        // One mount for the config directory
         if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_DATA) {
             if let Some(name) = config_map_data.metadata.name.as_ref() {
-                container_builder.add_configmapvolume(name, "conf".to_string());
+                container_builder.add_configmapvolume(name, CONFIG_DIR_NAME.to_string());
             } else {
                 return Err(error::Error::MissingConfigMapNameError {
                     cm_type: CONFIG_MAP_TYPE_DATA,
