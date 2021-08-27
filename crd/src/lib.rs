@@ -22,6 +22,9 @@ pub const TICK_TIME: &str = "tickTime";
 pub const METRICS_PORT: &str = "metricsPort";
 pub const ADMIN_PORT: &str = "admin.serverPort";
 
+pub const CONFIG_MAP_TYPE_DATA: &str = "data";
+pub const CONFIG_MAP_TYPE_ID: &str = "id";
+
 // TODO: We need to validate the name of the cluster because it is used in pod and configmap names, it can't bee too long
 // This probably also means we shouldn't use the node_names in the pod_name...
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
