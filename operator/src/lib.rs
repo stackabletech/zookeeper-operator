@@ -40,7 +40,7 @@ use stackable_operator::role_utils::{
 };
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
-    APP_NAME, CLIENT_PORT, DATA_DIR, METRICS_PORT,
+    APP_NAME, CLIENT_PORT, CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -54,10 +54,7 @@ use strum_macros::EnumIter;
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
 const SHOULD_BE_SCRAPED: &str = "monitoring.stackable.tech/should_be_scraped";
-
 const PROPERTIES_FILE: &str = "zoo.cfg";
-const CONFIG_MAP_TYPE_DATA: &str = "data";
-const CONFIG_MAP_TYPE_ID: &str = "id";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
