@@ -7,7 +7,7 @@ pub enum Error {
     IllegalZnode { znode: String, reason: String },
 
     #[error("No pods are found for ZooKeeper cluster [{namespace}/{name}]. Please check the ZooKeeper custom resource and Zookeeper Operator for errors.")]
-    NoZookeeperPodsAvailableForConnectString { namespace: String, name: String },
+    NoZookeeperPodsAvailableForConnectionInfo { namespace: String, name: String },
 
     #[error("Pod has no hostname assignment, this is most probably a transitive failure and should be retried: [{pod}]")]
     PodWithoutHostname { pod: String },
