@@ -1,6 +1,6 @@
 use crate::error::Error::{
-    IllegalZnode, IllegalZookeeperPath, ObjectWithoutName, OperatorFrameworkError,
-    PodMissingLabels, PodWithoutHostname,
+    IllegalZnode, IllegalZookeeperPath, MissingZookeeperPods, ObjectWithoutName,
+    OperatorFrameworkError, PodMissingLabels, PodWithoutHostname,
 };
 use crate::error::ZookeeperOperatorResult;
 use crate::util::TicketReferences::ErrZkPodWithoutName;
@@ -82,6 +82,15 @@ pub async fn get_zk_connection_info(
     let zk_pods = client
         .list_with_label_selector(None, &get_match_labels(&zk_reference.name))
         .await?;
+
+    // No zookeeper pods means empty connect string. We throw an error indicating to check the
+    // ZooKeeper custom resource or the ZooKeeper operator for errors.
+    if zk_pods.is_empty() {
+        return Err(MissingZookeeperPods {
+            namespace: zk_reference.namespace.clone(),
+            name: zk_reference.name.clone(),
+        });
+    }
 
     let connection_string =
         get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, clean_chroot.as_deref())?;
