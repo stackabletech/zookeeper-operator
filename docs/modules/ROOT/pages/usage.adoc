@@ -24,3 +24,16 @@ To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metric
                 config:
                     metricsPort: 9505
     EOF
+
+== Running as non-root
+
+To start the service as a user other than `root`, add `runAsUser` to the service configuration. For example:
+
+    # ... skipped spec contents
+    config:
+        metricsPort: 9505
+        runAsUser: stackable
+
+will run ZooKeeper as the user `stackable`.
+
+The user under which the service runs must exist on the target nodes.
