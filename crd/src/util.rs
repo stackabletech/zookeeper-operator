@@ -1,5 +1,5 @@
 use crate::error::Error::{
-    IllegalZnode, IllegalZookeeperPath, MissingZookeeperPods, ObjectWithoutName,
+    IllegalZnode, IllegalZookeeperPath, NoZookeeperPodsAvailable, ObjectWithoutName,
     OperatorFrameworkError, PodMissingLabels, PodWithoutHostname,
 };
 use crate::error::ZookeeperOperatorResult;
@@ -86,7 +86,7 @@ pub async fn get_zk_connection_info(
     // No zookeeper pods means empty connect string. We throw an error indicating to check the
     // ZooKeeper custom resource or the ZooKeeper operator for errors.
     if zk_pods.is_empty() {
-        return Err(MissingZookeeperPods {
+        return Err(NoZookeeperPodsAvailable {
             namespace: zk_reference.namespace.clone(),
             name: zk_reference.name.clone(),
         });
