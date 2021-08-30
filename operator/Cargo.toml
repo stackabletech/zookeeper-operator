@@ -4,6 +4,7 @@ description = "Stackable Operator for Apache ZooKeeper - The Operator Library"
 edition = "2018"
 license = "OSL-3.0"
 name = "stackable-zookeeper-operator"
+repository = "https://github.com/stackabletech/zookeeper-operator"
 version = "0.1.0-nightly"
 
 [dependencies]
