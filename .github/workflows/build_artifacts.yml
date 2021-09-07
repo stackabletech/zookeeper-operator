@@ -26,15 +26,10 @@ jobs:
         run: ~/.cargo/bin/cargo +nightly build --verbose --release
       - name: Build apt package
         run: ~/.cargo/bin/cargo deb --manifest-path server/Cargo.toml --no-build
-      - name: Check workflow permissions
-        id: check_permissions
-        uses: scherermichael-oss/action-has-permission@1.0.6
-        with:
-          required-permission: write
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish apt package
-        if: steps.check_permissions.outputs.has-permission
+        env:
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        if: env.NEXUS_PASSWORD != null
         run: >-
           /usr/bin/curl
           --fail
@@ -62,15 +57,10 @@ jobs:
         run: ~/.cargo/bin/cargo +nightly build --verbose --release
       - name: Build RPM package
         run: server/packaging/buildrpm.sh stackable-zookeeper-operator-server
-      - name: Check workflow permissions
-        id: check_permissions
-        uses: scherermichael-oss/action-has-permission@1.0.6
-        with:
-          required-permission: write
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish RPM package
-        if: steps.check_permissions.outputs.has-permission
+        env:
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        if: env.NEXUS_PASSWORD != null
         run: >-
           /usr/bin/curl
           --fail
