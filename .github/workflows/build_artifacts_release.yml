@@ -7,8 +7,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  REPO_APT_DEV_URL: https://repo.stackable.tech/repository/deb-release
-  REPO_RPM_DEV_URL: https://repo.stackable.tech/repository/rpm-release
+  REPO_APT_RELEASE_URL: https://repo.stackable.tech/repository/deb-release
+  REPO_RPM_RELEASE_URL: https://repo.stackable.tech/repository/rpm-release
 
 jobs:
   debian10:
@@ -29,7 +29,7 @@ jobs:
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           -H "Content-Type: multipart/form-data"
           --data-binary "@./$(find target/debian/ -name *.deb)"
-          "${{ env.REPO_APT_DEV_URL }}/"
+          "${{ env.REPO_APT_RELEASE_URL }}/"
       - name: Clean
         run: ~/.cargo/bin/cargo clean
 
@@ -53,6 +53,6 @@ jobs:
           --fail
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           --upload-file "./$(find  target/rpm/RPMS/x86_64/ -name *.rpm)"
-          "${{ env.REPO_RPM_DEV_URL }}/el${{ matrix.node }}/"
+          "${{ env.REPO_RPM_RELEASE_URL }}/el${{ matrix.node }}/"
       - name: Clean
         run: ~/.cargo/bin/cargo clean
