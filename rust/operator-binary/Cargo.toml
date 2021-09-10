@@ -3,7 +3,7 @@ authors = ["Lars Francke <lars.francke@stackable.de>"]
 description = "Stackable Operator for Apache ZooKeeper"
 edition = "2018"
 license = "OSL-3.0"
-name = "stackable-zookeeper-operator-server"
+name = "stackable-zookeeper-operator-binary"
 repository = "https://github.com/stackabletech/zookeeper-operator"
 version = "0.2.0-nightly"
 build = "build.rs"
@@ -24,10 +24,15 @@ stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git",
 stackable-zookeeper-crd = { path = "../crd" }
 
 [package.metadata.deb]
-maintainer-scripts = "packaging/debian/"
-systemd-units = { enable = false }
+name = "stackable-zookeeper-operator"
+maintainer-scripts = "../../packaging/debian/"
+systemd-units = { enable = false, unit-name = "stackable-zookeeper-operator" }
 assets = [
-    ["../target/release/stackable-zookeeper-operator-server", "opt/stackable/zookeeper-operator/", "755"],
-    ["../deploy/crd/zookeepercluster.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
-    ["../deploy/config-spec/properties.yaml", "etc/stackable/zookeeper-operator/config-spec/", "644"],
+    ["../../target/release/stackable-zookeeper-operator", "opt/stackable/zookeeper-operator/", "755"],
+    ["../../deploy/crd/zookeepercluster.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
+    ["../../deploy/config-spec/properties.yaml", "etc/stackable/zookeeper-operator/config-spec/", "644"],
 ]
+
+[[bin]]
+name = "stackable-zookeeper-operator"
+path = "src/stackable-zookeeper-operator.rs"
