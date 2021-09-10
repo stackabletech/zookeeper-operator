@@ -233,6 +233,26 @@ spec:
                     - 3.5.8
                   nullable: true
                   type: string
+                history:
+                  nullable: true
+                  properties:
+                    history:
+                      properties:
+                        mapping:
+                          additionalProperties:
+                            properties:
+                              name:
+                                type: string
+                            required:
+                              - name
+                            type: object
+                          type: object
+                      required:
+                        - mapping
+                      type: object
+                  required:
+                    - history
+                  type: object
                 targetVersion:
                   enum:
                     - 3.4.14

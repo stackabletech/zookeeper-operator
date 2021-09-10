@@ -1,3 +1,4 @@
+use stackable_operator::scheduler;
 use std::num::ParseIntError;
 
 #[allow(clippy::enum_variant_names)]
@@ -24,6 +25,12 @@ pub enum Error {
     OperatorError {
         #[from]
         source: stackable_operator::error::Error,
+    },
+
+    #[error("Scheduler reported error: {source}")]
+    SchedulerError {
+        #[from]
+        source: scheduler::Error,
     },
 
     #[error("Error from serde_json: {source}")]

@@ -3,13 +3,13 @@ mod error;
 use crate::error::Error;
 
 use async_trait::async_trait;
-use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod, PodSpec};
+use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod};
 use kube::api::{ListParams, ResourceExt};
 use kube::Api;
 use serde_json::json;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, Time};
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
 use stackable_operator::builder::{
@@ -21,7 +21,6 @@ use stackable_operator::configmap;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
-use stackable_operator::k8s_utils;
 use stackable_operator::labels;
 use stackable_operator::labels::{
     build_common_labels_for_all_managed_resources, get_recommended_labels,
@@ -37,6 +36,10 @@ use stackable_operator::reconcile::{
 use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group, EligibleNodesForRoleAndGroup,
+};
+use stackable_operator::scheduler::{
+    NodeIdentity, PodIdentity, PodIdentityGenerator, PodToNodeMapping, ScheduleStrategy, Scheduler,
+    SimpleSchedulerHistory, StickyScheduler,
 };
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
@@ -69,48 +72,36 @@ struct ZookeeperState {
     context: ReconciliationContext<ZookeeperCluster>,
     zk_spec: ZookeeperClusterSpec,
     zk_status: Option<ZookeeperClusterStatus>,
-    id_information: Option<IdInformation>,
     existing_pods: Vec<Pod>,
     eligible_nodes: EligibleNodesForRoleAndGroup,
     validated_role_config: ValidatedRoleConfigByPropertyKind,
 }
 
-struct IdInformation {
-    used_ids: Vec<usize>,
-    node_name_to_pod: HashMap<String, Pod>,
-    node_name_to_id: HashMap<String, usize>,
-}
-
-impl IdInformation {
-    fn new(
-        used_ids: Vec<usize>,
-        node_name_to_pod: HashMap<String, Pod>,
-        node_name_to_id: HashMap<String, usize>,
-    ) -> IdInformation {
-        IdInformation {
-            used_ids,
-            node_name_to_pod,
-            node_name_to_id,
+impl PodIdentityGenerator for ZookeeperState {
+    fn generate(&self) -> Vec<PodIdentity> {
+        let mut id: u16 = 1;
+        let mut generated_ids = vec![];
+        for (role_name, groups) in &self.eligible_nodes {
+            for (group_name, eligible_nodes) in groups {
+                let ids_per_group = eligible_nodes
+                    .replicas
+                    .map(|rep| usize::from(rep))
+                    .unwrap_or_else(|| eligible_nodes.nodes.len());
+                for _ in 1..ids_per_group + 1 {
+                    generated_ids.push(PodIdentity {
+                        app: APP_NAME.to_string(),
+                        instance: self.context.name(),
+                        role: role_name.clone(),
+                        group: group_name.clone(),
+                        id: id.to_string(),
+                    });
+                    id += 1;
+                }
+            }
         }
-    }
-}
 
-/// This finds the first missing number in a sorted vector.
-/// Zero is not a valid input in the vector.
-/// If you pass in zero the result will be undefined.
-fn find_first_missing(vec: &[usize]) -> usize {
-    let mut added_id = None;
-    for (index, id) in vec.iter().enumerate() {
-        if index + 1 != *id {
-            let new_id = index + 1;
-            added_id = Some(new_id);
-            break;
-        }
+        generated_ids
     }
-
-    // Either we found an unused id above (which would be a "hole" between existing ones, e.g. 1,2,4 could find "3")
-    // or we need to create a new one which would be the number of used ids (because we "plug" holes first) plus one.
-    added_id.unwrap_or_else(|| vec.len() + 1)
 }
 
 impl ZookeeperState {
@@ -319,152 +310,8 @@ impl ZookeeperState {
         Ok(ReconcileFunctionAction::Continue)
     }
 
-    // This looks at all currently existing Pods for the current ZookeeperCluster object.
-    // It checks if all the pods are valid (i.e. contain required labels) and then builds an `IdInformation`
-    // object and sets it on the current state.
-    async fn read_existing_pod_information(&mut self) -> ZookeeperReconcileResult {
-        trace!(
-            "Reading existing pod information for {}",
-            self.context.log_name()
-        );
-
-        // We first create a list of all used ids (`myid`) so we know which we can reuse
-        // At the same time we create a map of id to pod for all pods which already exist
-        // Later we fill those up.
-        // It depends on the ZooKeeper version on whether this requires a full restart of the cluster
-        // or whether this can be done dynamically.
-        // This list also includes all ids currently in use by terminating or otherwise not-ready pods.
-        // We never want to use those as long as there's a chance that some process might be actively
-        // using it.
-        // There can be a maximum of 255 (I believe) ids.
-        let mut used_ids = Vec::with_capacity(self.existing_pods.len());
-        let mut node_name_to_pod = HashMap::new(); // This is going to own the pods
-        let mut node_name_to_id = HashMap::new();
-
-        // Iterate over all existing pods and read the label which contains the `myid`
-        for pod in &self.existing_pods {
-            if let Some(PodSpec {
-                node_name: Some(node_name),
-                ..
-            }) = &pod.spec
-            {
-                match pod.metadata.labels.get(ID_LABEL) {
-                    None => {
-                        error!("ZookeeperCluster {}: Pod [{:?}] does not have the `id` label, this is illegal, deleting it.",
-                               self.context.log_name(),
-                               pod);
-                        self.context.client.delete(pod).await?;
-                    }
-                    Some(label) => {
-                        let id = match label.parse::<usize>() {
-                            Ok(id) => id,
-                            Err(_) => {
-                                error!("ZookeeperCluster {}: Pod [{:?}] does have the `id` label but the label ([{}]) cannot be parsed, this is illegal, deleting the pod.",
-                                       self.context.log_name(), pod, label);
-                                self.context.client.delete(pod).await?;
-                                continue;
-                            }
-                        };
-
-                        // Check if we have seen the same id before
-                        // This should never happen and would currently require manual cleanup
-                        if used_ids.contains(&id) {
-                            // TODO: Update status
-                            error!(
-                                "Found a duplicate `myid` [{}] in Pod [{}], we can't recover \
-                                 from this error and you need to clean up manually",
-                                id,
-                                pod.name()
-                            );
-                            return Err(Error::ReconcileError("Found duplicate id".to_string()));
-                        }
-
-                        used_ids.push(id);
-                        node_name_to_id.insert(node_name.clone(), id);
-                        node_name_to_pod.insert(node_name.clone(), pod.clone());
-                    }
-                };
-            } else {
-                error!("ZookeeperCluster {}: Pod [{:?}] does not have any spec or labels, this is illegal, deleting it.",
-                       self.context.log_name(),
-                       pod);
-                self.context.client.delete(pod).await?;
-            }
-        }
-
-        debug!(
-            "ZookeeperCluster {}: Found these myids in use [{:?}]",
-            self.context.log_name(),
-            used_ids
-        );
-
-        let id_information = IdInformation::new(used_ids, node_name_to_pod, node_name_to_id);
-        self.id_information = Some(id_information);
-
-        Ok(ReconcileFunctionAction::Continue)
-    }
-
-    /// This function looks at all the requested servers from the spec and assigns ids to those
-    /// that don't have one yet.
-    /// We do this here - and not later - because we need the id mapping information for the
-    /// ConfigMap generation later.
-    /// NOTE: This method will _not_ work if multiple servers should run on a single node
-    async fn assign_ids(&mut self) -> ZookeeperReconcileResult {
-        trace!("Assigning ids to new servers from the spec",);
-
-        let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
-            "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-        ))?;
-
-        id_information.used_ids.sort_unstable();
-
-        for role in ZookeeperRole::iter() {
-            if let Some(eligible_nodes_for_role) = self.eligible_nodes.get(&role.to_string()) {
-                for (eligible_nodes, _replicas) in eligible_nodes_for_role.values() {
-                    for node in eligible_nodes {
-                        let node_name = match &node.metadata.name {
-                            Some(name) => name,
-                            None => continue,
-                        };
-
-                        match id_information.node_name_to_pod.get(node_name) {
-                            None => {
-                                // TODO: Need to check whether the topology has changed. If it has we need to restart all servers depending on the ZK version
-                                let new_id = find_first_missing(&id_information.used_ids);
-
-                                id_information.used_ids.push(new_id);
-                                id_information.used_ids.sort_unstable();
-                                id_information
-                                    .node_name_to_id
-                                    .insert(node_name.clone(), new_id);
-
-                                info!(
-                                    "Assigning new id [{}] to server/node [{}]",
-                                    new_id, node_name
-                                )
-                            }
-                            Some(_) => {
-                                trace!(
-                                    "Pod for node [{}] already exists and is assigned id [{:?}]",
-                                    node_name,
-                                    id_information.node_name_to_id.get(node_name)
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(ReconcileFunctionAction::Continue)
-    }
-
     pub async fn create_missing_pods(&mut self) -> ZookeeperReconcileResult {
         trace!("Starting `create_missing_pods`");
-
-        let id_information = self.id_information.as_mut().ok_or_else(|| error::Error::ReconcileError(
-            "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-        ))?;
 
         // The iteration happens in two stages here, to accommodate the way our operators think
         // about roles and role groups.
@@ -473,15 +320,16 @@ impl ZookeeperState {
         //   - Role groups for this role (user defined)
         for zookeeper_role in ZookeeperRole::iter() {
             if let Some(nodes_for_role) = self.eligible_nodes.get(&zookeeper_role.to_string()) {
-                for (role_group, (nodes, replicas)) in nodes_for_role {
+                for (role_group, eligible_nodes) in nodes_for_role {
                     debug!(
                         "Identify missing pods for [{}] role and group [{}]",
                         zookeeper_role, role_group
                     );
                     trace!(
                         "candidate_nodes[{}]: [{:?}]",
-                        nodes.len(),
-                        nodes
+                        eligible_nodes.nodes.len(),
+                        eligible_nodes
+                            .nodes
                             .iter()
                             .map(|node| node.metadata.name.as_ref().unwrap())
                             .collect::<Vec<_>>()
@@ -499,76 +347,90 @@ impl ZookeeperState {
                         "labels: [{:?}]",
                         get_role_and_group_labels(&zookeeper_role.to_string(), role_group)
                     );
-                    let nodes_that_need_pods = k8s_utils::find_nodes_that_need_pods(
-                        nodes,
-                        &self.existing_pods,
-                        &get_role_and_group_labels(&zookeeper_role.to_string(), role_group),
-                        *replicas,
-                    );
 
-                    for node in nodes_that_need_pods {
-                        let node_name = if let Some(node_name) = &node.metadata.name {
-                            node_name
-                        } else {
-                            warn!("No name found in metadata, this should not happen! Skipping node: [{:?}]", node);
-                            continue;
-                        };
-                        debug!(
-                            "Creating pod on node [{}] for [{}] role and group [{}]",
-                            node.metadata
-                                .name
-                                .as_deref()
-                                .unwrap_or("<no node name found>"),
-                            zookeeper_role,
-                            role_group
+                    let mut history = &SimpleSchedulerHistory::new();
+
+                    if let Some(simple_history) = self
+                        .zk_status
+                        .as_ref()
+                        .and_then(|status| status.history.as_ref())
+                    {
+                        history = simple_history;
+                    }
+
+                    let mut scheduler =
+                        StickyScheduler::new(history.clone(), ScheduleStrategy::GroupAntiAffinity);
+
+                    let mut matching_nodes = BTreeMap::new();
+                    for (role_name, group) in &self.eligible_nodes {
+                        let mut temp = BTreeMap::new();
+                        for (group_name, eligible_nodes) in group {
+                            let mut nodes_transformed = vec![];
+                            for node in &eligible_nodes.nodes {
+                                nodes_transformed.push(NodeIdentity::from(node.clone()));
+                            }
+                            temp.insert(group_name.clone(), nodes_transformed);
+                        }
+                        matching_nodes.insert(role_name.clone(), temp);
+                    }
+Time
+                    let mut pod_node_mapping = PodToNodeMapping::new();
+                    for pod in &self.existing_pods {
+                        let labels = &pod.metadata.labels;
+                        let node_name = pod.spec.as_ref().unwrap().node_name.as_ref().unwrap();
+                        let app = labels.get(labels::APP_NAME_LABEL);
+                        let instance = labels.get(labels::APP_INSTANCE_LABEL);
+                        let role = labels.get(labels::APP_COMPONENT_LABEL);
+                        let group = labels.get(labels::APP_ROLE_GROUP_LABEL);
+                        let id = labels.get(ID_LABEL);
+                        pod_node_mapping.insert(
+                            PodIdentity {
+                                app: app.unwrap().clone(),
+                                instance: instance.unwrap().clone(),
+                                role: role.unwrap().clone(),
+                                group: group.unwrap().clone(),
+                                id: id.unwrap().clone(),
+                            },
+                            NodeIdentity {
+                                name: node_name.to_string(),
+                            },
                         );
+                    }
 
-                        if id_information.node_name_to_pod.get(node_name).is_none() {
-                            info!("Pod for server [{}] missing, creating now...", node_name);
+                    let state = scheduler.schedule(self, matching_nodes, &pod_node_mapping)?;
+                    let mapping = state
+                        .new_mapping()
+                        .get_filtered(&zookeeper_role.to_string(), role_group);
 
-                            let id = *id_information.node_name_to_id.get(node_name).ok_or_else(
-                                || {
-                                    Error::ReconcileError(format!(
-                                        "We didn't find a `myid` for [{}] but it \
-                                        should have been assigned, this is a bug, please report it",
-                                        node_name
-                                    ))
-                                },
-                            )?;
+                    for (pod_id, node_id) in mapping {
+                        // now we have a node that needs a pod -> get validated config
+                        let validated_config = config_for_role_and_group(
+                            &pod_id.role,
+                            &pod_id.group,
+                            &self.validated_role_config,
+                        )?;
 
-                            // now we have a node that needs a pod -> get validated config
-                            let validated_config = config_for_role_and_group(
-                                &zookeeper_role.to_string(),
-                                role_group,
-                                &self.validated_role_config,
-                            )?;
-
-                            let config_maps = self
-                                .create_config_maps(
-                                    &zookeeper_role.to_string(),
-                                    role_group,
-                                    id,
-                                    validated_config,
-                                )
-                                .await?;
-
-                            self.create_pod(
-                                &zookeeper_role.to_string(),
-                                role_group,
-                                node_name,
-                                id,
-                                &config_maps,
+                        let config_maps = self
+                            .create_config_maps(
+                                &pod_id.role,
+                                &pod_id.group,
+                                &pod_id.id,
                                 validated_config,
+                                &state.mapping(),
                             )
                             .await?;
 
-                            return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
-                        } else {
-                            debug!(
-                                "Pod for server [{}] already created, skipping ...",
-                                node_name
-                            );
-                        }
+                        self.create_pod(
+                            &pod_id.role,
+                            &pod_id.group,
+                            &node_id.name,
+                            &pod_id.id,
+                            &config_maps,
+                            validated_config,
+                        )
+                        .await?;
+
+                        return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
                     }
                 }
             }
@@ -620,13 +482,15 @@ impl ZookeeperState {
     /// - `group` - The role group.
     /// - `id` - The 'myid' for this instance.
     /// - `validated_config` - The validated product config.
+    /// - `id_mapping` - All id to node mappings required to create config maps
     ///
     async fn create_config_maps(
         &self,
         role: &str,
         group: &str,
-        id: usize,
+        id: &str,
         validated_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
+        id_mapping: &PodToNodeMapping,
     ) -> Result<HashMap<&'static str, ConfigMap>, Error> {
         let mut config_maps = HashMap::new();
 
@@ -642,10 +506,6 @@ impl ZookeeperState {
         if let Some(config) =
             validated_config.get(&PropertyNameKind::File(PROPERTIES_FILE.to_string()))
         {
-            let id_information = self.id_information.as_ref().ok_or_else(|| error::Error::ReconcileError(
-                "id_information missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-            ))?;
-
             // We need to convert from <String, String> to <String, Option<String>> to deal with
             // CLI flags or the java properties writer etc. We can not currently represent that
             // via operator-rs / product-config. This is a preparation for that.
@@ -655,10 +515,10 @@ impl ZookeeperState {
                 .collect();
 
             // add dynamic config map requirement for server ids
-            for (node_name, id) in &id_information.node_name_to_id {
+            for (pod_id, node_id) in id_mapping.iter() {
                 transformed_config.insert(
-                    format!("server.{}", id),
-                    Some(format!("{}:2888:3888", node_name)),
+                    format!("server.{}", pod_id.id),
+                    Some(format!("{}:2888:3888", node_id.name)),
                 );
             }
 
@@ -751,7 +611,7 @@ impl ZookeeperState {
         role: &str,
         group: &str,
         node_name: &str,
-        id: usize,
+        id: &str,
         config_maps: &HashMap<&'static str, ConfigMap>,
         validated_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     ) -> Result<Pod, Error> {
@@ -967,10 +827,6 @@ impl ReconciliationState for ZookeeperState {
                     ContinuationStrategy::OneRequeue,
                 ))
                 .await?
-                .then(self.read_existing_pod_information())
-                .await?
-                .then(self.assign_ids())
-                .await?
                 .then(self.create_missing_pods())
                 .await
         })
@@ -1049,7 +905,6 @@ impl ControllerStrategy for ZookeeperStrategy {
             zk_spec: context.resource.spec.clone(),
             zk_status: context.resource.status.clone(),
             context,
-            id_information: None,
             existing_pods,
             eligible_nodes,
             validated_role_config,
