@@ -1,5 +1,5 @@
 [Unit]
-Description=Stackable Zookeeper Operator
+Description=Stackable ZooKeeper Operator
 Before=
 After=network.target
 [Service]
