@@ -37,10 +37,7 @@ use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group, EligibleNodesForRoleAndGroup,
 };
-use stackable_operator::scheduler::{
-    NodeIdentity, PodIdentity, PodIdentityGenerator, PodToNodeMapping, ScheduleStrategy, Scheduler,
-    SimpleSchedulerHistory, StickyScheduler,
-};
+use stackable_operator::scheduler::{NodeIdentity, PodIdentity, PodIdentityGenerator, PodToNodeMapping, ScheduleStrategy, Scheduler, SimpleSchedulerHistory, StickyScheduler, RoleGroupEligibleNodes};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
     APP_NAME, CLIENT_PORT, CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
@@ -361,43 +358,7 @@ impl ZookeeperState {
                     let mut scheduler =
                         StickyScheduler::new(history.clone(), ScheduleStrategy::GroupAntiAffinity);
 
-                    let mut matching_nodes = BTreeMap::new();
-                    for (role_name, group) in &self.eligible_nodes {
-                        let mut temp = BTreeMap::new();
-                        for (group_name, eligible_nodes) in group {
-                            let mut nodes_transformed = vec![];
-                            for node in &eligible_nodes.nodes {
-                                nodes_transformed.push(NodeIdentity::from(node.clone()));
-                            }
-                            temp.insert(group_name.clone(), nodes_transformed);
-                        }
-                        matching_nodes.insert(role_name.clone(), temp);
-                    }
-Time
-                    let mut pod_node_mapping = PodToNodeMapping::new();
-                    for pod in &self.existing_pods {
-                        let labels = &pod.metadata.labels;
-                        let node_name = pod.spec.as_ref().unwrap().node_name.as_ref().unwrap();
-                        let app = labels.get(labels::APP_NAME_LABEL);
-                        let instance = labels.get(labels::APP_INSTANCE_LABEL);
-                        let role = labels.get(labels::APP_COMPONENT_LABEL);
-                        let group = labels.get(labels::APP_ROLE_GROUP_LABEL);
-                        let id = labels.get(ID_LABEL);
-                        pod_node_mapping.insert(
-                            PodIdentity {
-                                app: app.unwrap().clone(),
-                                instance: instance.unwrap().clone(),
-                                role: role.unwrap().clone(),
-                                group: group.unwrap().clone(),
-                                id: id.unwrap().clone(),
-                            },
-                            NodeIdentity {
-                                name: node_name.to_string(),
-                            },
-                        );
-                    }
-
-                    let state = scheduler.schedule(self, matching_nodes, &pod_node_mapping)?;
+                    let state = scheduler.schedule(self, &RoleGroupEligibleNodes::from(&self.eligible_nodes), &PodToNodeMapping::from(&self.existing_pods, Some(ID_LABEL)))?;
                     let mapping = state
                         .new_mapping()
                         .get_filtered(&zookeeper_role.to_string(), role_group);
