@@ -1627,7 +1627,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "stackable-zookeeper-operator-server"
+name = "stackable-zookeeper-operator-binary"
 version = "0.2.0-nightly"
 dependencies = [
  "built",

@@ -24,3 +24,18 @@ To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metric
                     config:
                         metricsPort: 9505
     EOF
+
+
+WARNING: Due to https://github.com/stackabletech/zookeeper-operator/issues/176[#176] it is not currently possible to deploy a ZooKeeper cluster with a _selector_ that matches more nodes than the value that was specified for _replicas_.
+The recommended workaround is to directly target the hosts which the ZooKeeper service should be rolled out to with a selector like the following:
+
+----
+selector:
+  matchExpressions:
+    - key: kubernetes.io/hostname
+      operator: In
+      values:
+      - worker-1.stackable.demo
+      - worker-2.stackable.demo
+      - worker-3.stackable.demo
+----
