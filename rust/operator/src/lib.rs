@@ -9,7 +9,7 @@ use kube::Api;
 use serde_json::json;
 use tracing::{debug, info, trace, warn};
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition, Time};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition};
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
 use stackable_operator::builder::{
@@ -37,7 +37,7 @@ use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group, EligibleNodesForRoleAndGroup,
 };
-use stackable_operator::scheduler::{NodeIdentity, PodIdentity, PodIdentityGenerator, PodToNodeMapping, ScheduleStrategy, Scheduler, SimpleSchedulerHistory, StickyScheduler, RoleGroupEligibleNodes};
+use stackable_operator::scheduler::{PodIdentity, PodIdentityGenerator, PodToNodeMapping, ScheduleStrategy, Scheduler, SimpleSchedulerHistory, StickyScheduler, RoleGroupEligibleNodes};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
     APP_NAME, CLIENT_PORT, CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
@@ -896,21 +896,3 @@ pub async fn create_controller(client: Client, product_config_path: &str) -> Ope
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    use rstest::rstest;
-
-    #[rstest]
-    #[case(vec![1, 2, 3], 4)]
-    #[case(vec![1, 3, 5], 2)]
-    #[case(vec![], 1)]
-    #[case(vec![3, 4, 6], 1)]
-    #[case(vec![1], 2)]
-    #[case(vec![2], 1)]
-    fn test_first_missing(#[case] input: Vec<usize>, #[case] expected: usize) {
-        let first = find_first_missing(&input);
-        assert_eq!(first, expected);
-    }
-}
