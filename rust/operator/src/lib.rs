@@ -1,17 +1,17 @@
-mod error;
-
-use crate::error::Error;
+use std::collections::{BTreeMap, HashMap};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::api::{ListParams, ResourceExt};
 use kube::Api;
-use serde_json::json;
-use tracing::{debug, info, trace, warn};
-
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{Condition};
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
+use serde_json::json;
 use stackable_operator::builder::{
     ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
 };
@@ -37,19 +37,24 @@ use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group, EligibleNodesForRoleAndGroup,
 };
-use stackable_operator::scheduler::{PodIdentity, PodIdentityGenerator, PodToNodeMapping, ScheduleStrategy, Scheduler, SimpleSchedulerHistory, StickyScheduler, RoleGroupEligibleNodes};
+use stackable_operator::scheduler;
+use stackable_operator::scheduler::{
+    K8SUnboundedHistory, PodToNodeMapping, RoleGroupEligibleNodes, ScheduleStrategy, Scheduler,
+    StickyScheduler,
+};
+use strum::IntoEnumIterator;
+use strum_macros::Display;
+use strum_macros::EnumIter;
+use tracing::{debug, info, trace, warn};
+
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
     APP_NAME, CLIENT_PORT, CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
 };
-use std::collections::{BTreeMap, HashMap};
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
-use strum::IntoEnumIterator;
-use strum_macros::Display;
-use strum_macros::EnumIter;
+
+use crate::error::Error;
+
+mod error;
 
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
@@ -72,33 +77,6 @@ struct ZookeeperState {
     existing_pods: Vec<Pod>,
     eligible_nodes: EligibleNodesForRoleAndGroup,
     validated_role_config: ValidatedRoleConfigByPropertyKind,
-}
-
-impl PodIdentityGenerator for ZookeeperState {
-    fn generate(&self) -> Vec<PodIdentity> {
-        let mut id: u16 = 1;
-        let mut generated_ids = vec![];
-        for (role_name, groups) in &self.eligible_nodes {
-            for (group_name, eligible_nodes) in groups {
-                let ids_per_group = eligible_nodes
-                    .replicas
-                    .map(|rep| usize::from(rep))
-                    .unwrap_or_else(|| eligible_nodes.nodes.len());
-                for _ in 1..ids_per_group + 1 {
-                    generated_ids.push(PodIdentity {
-                        app: APP_NAME.to_string(),
-                        instance: self.context.name(),
-                        role: role_name.clone(),
-                        group: group_name.clone(),
-                        id: id.to_string(),
-                    });
-                    id += 1;
-                }
-            }
-        }
-
-        generated_ids
-    }
 }
 
 impl ZookeeperState {
@@ -345,25 +323,44 @@ impl ZookeeperState {
                         get_role_and_group_labels(&zookeeper_role.to_string(), role_group)
                     );
 
-                    let mut history = &SimpleSchedulerHistory::new();
-
-                    if let Some(simple_history) = self
+                    let mut history = match self
                         .zk_status
                         .as_ref()
                         .and_then(|status| status.history.as_ref())
                     {
-                        history = simple_history;
-                    }
+                        Some(simple_history) => {
+                            // we clone here because we cannot access mut self because we need it later
+                            // to create config maps and pods. The `status` history will be out of sync
+                            // with the cloned `simple_history` until the next reconcile.
+                            // The `status` history should not be used after this method to avoid side
+                            // effects.
+                            K8SUnboundedHistory::new(&self.context.client, simple_history.clone())
+                        }
+                        None => K8SUnboundedHistory::new(
+                            &self.context.client,
+                            PodToNodeMapping::default(),
+                        ),
+                    };
 
                     let mut scheduler =
-                        StickyScheduler::new(history.clone(), ScheduleStrategy::GroupAntiAffinity);
+                        StickyScheduler::new(&mut history, ScheduleStrategy::GroupAntiAffinity);
 
-                    let state = scheduler.schedule(self, &RoleGroupEligibleNodes::from(&self.eligible_nodes), &PodToNodeMapping::from(&self.existing_pods, Some(ID_LABEL)))?;
+                    let state = scheduler.schedule(
+                        scheduler::generate_ids(
+                            APP_NAME,
+                            &self.context.name(),
+                            &self.eligible_nodes,
+                        )
+                        .as_slice(),
+                        &RoleGroupEligibleNodes::from(&self.eligible_nodes),
+                        &PodToNodeMapping::from(&self.existing_pods, Some(ID_LABEL)),
+                    )?;
+
                     let mapping = state
                         .new_mapping()
                         .get_filtered(&zookeeper_role.to_string(), role_group);
 
-                    for (pod_id, node_id) in mapping {
+                    if let Some((pod_id, node_id)) = mapping.iter().next() {
                         // now we have a node that needs a pod -> get validated config
                         let validated_config = config_for_role_and_group(
                             &pod_id.role,
@@ -390,6 +387,8 @@ impl ZookeeperState {
                             validated_config,
                         )
                         .await?;
+
+                        history.save(&self.context.resource).await?;
 
                         return Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(10)));
                     }
@@ -895,4 +894,3 @@ pub async fn create_controller(client: Client, product_config_path: &str) -> Ope
 
     Ok(())
 }
-

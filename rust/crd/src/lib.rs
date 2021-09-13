@@ -8,7 +8,7 @@ use semver::{Error as SemVerError, Version};
 use serde::{Deserialize, Serialize};
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
-use stackable_operator::scheduler::SimpleSchedulerHistory;
+use stackable_operator::scheduler::PodToNodeMapping;
 use stackable_operator::status::Conditions;
 use std::collections::BTreeMap;
 
@@ -178,7 +178,7 @@ pub struct ZookeeperClusterStatus {
     #[schemars(schema_with = "stackable_operator::conditions::schema")]
     pub conditions: Vec<Condition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub history: Option<SimpleSchedulerHistory>,
+    pub history: Option<PodToNodeMapping>,
 }
 
 impl ZookeeperClusterStatus {
