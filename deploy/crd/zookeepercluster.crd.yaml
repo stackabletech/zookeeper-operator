@@ -239,6 +239,22 @@ spec:
                     - 3.5.8
                   nullable: true
                   type: string
+                version:
+                  nullable: true
+                  properties:
+                    currentVersion:
+                      enum:
+                        - 3.4.14
+                        - 3.5.8
+                      nullable: true
+                      type: string
+                    targetVersion:
+                      enum:
+                        - 3.4.14
+                        - 3.5.8
+                      nullable: true
+                      type: string
+                  type: object
               type: object
           required:
             - spec

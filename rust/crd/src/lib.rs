@@ -8,7 +8,8 @@ use semver::{Error as SemVerError, Version};
 use serde::{Deserialize, Serialize};
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
-use stackable_operator::status::Conditions;
+use stackable_operator::status::{Conditions, Versioned};
+use stackable_operator::versioning::{Version as StatusVersion, Versioning, VersioningState};
 use std::collections::BTreeMap;
 
 pub const APP_NAME: &str = "zookeeper";
@@ -107,23 +108,6 @@ impl Configuration for ZookeeperConfig {
     }
 }
 
-impl Conditions for ZookeeperCluster {
-    fn conditions(&self) -> Option<&[Condition]> {
-        if let Some(status) = &self.status {
-            return Some(status.conditions.as_slice());
-        }
-        None
-    }
-
-    fn conditions_mut(&mut self) -> &mut Vec<Condition> {
-        if self.status.is_none() {
-            self.status = Some(ZookeeperClusterStatus::default());
-            return &mut self.status.as_mut().unwrap().conditions;
-        }
-        return &mut self.status.as_mut().unwrap().conditions;
-    }
-}
-
 #[allow(non_camel_case_types)]
 #[derive(
     Clone,
@@ -166,6 +150,40 @@ impl ZookeeperVersion {
     }
 }
 
+impl Versioning for ZookeeperVersion {
+    fn versioning_state(&self, other: &Self) -> VersioningState {
+        let from_version = match Version::parse(&self.to_string()) {
+            Ok(v) => v,
+            Err(e) => {
+                return VersioningState::Invalid(format!(
+                    "Could not parse [{}] to SemVer: {}",
+                    self.to_string(),
+                    e.to_string()
+                ))
+            }
+        };
+
+        let to_version = match Version::parse(&other.to_string()) {
+            Ok(v) => v,
+            Err(e) => {
+                return VersioningState::Invalid(format!(
+                    "Could not parse [{}] to SemVer: {}",
+                    other.to_string(),
+                    e.to_string()
+                ))
+            }
+        };
+
+        return if to_version > from_version {
+            VersioningState::ValidUpgrade
+        } else if to_version < from_version {
+            VersioningState::ValidDowngrade
+        } else {
+            VersioningState::NoOp
+        };
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterStatus {
@@ -176,6 +194,18 @@ pub struct ZookeeperClusterStatus {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(schema_with = "stackable_operator::conditions::schema")]
     pub conditions: Vec<Condition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<StatusVersion<ZookeeperVersion>>,
+}
+
+impl Versioned<ZookeeperVersion> for ZookeeperClusterStatus {
+    fn version(&self) -> &Option<StatusVersion<ZookeeperVersion>> {
+        &self.version
+    }
+
+    fn version_mut(&mut self) -> &mut Option<StatusVersion<ZookeeperVersion>> {
+        &mut self.version
+    }
 }
 
 impl ZookeeperClusterStatus {
@@ -183,6 +213,16 @@ impl ZookeeperClusterStatus {
         self.target_version
             .as_ref()
             .map(|version| format!("stackable/zookeeper:{}", version.to_string()))
+    }
+}
+
+impl Conditions for ZookeeperClusterStatus {
+    fn conditions(&self) -> &[Condition] {
+        self.conditions.as_slice()
+    }
+
+    fn conditions_mut(&mut self) -> &mut Vec<Condition> {
+        &mut self.conditions
     }
 }
 

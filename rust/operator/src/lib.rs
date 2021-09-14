@@ -6,17 +6,14 @@ use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod, PodSpec};
 use kube::api::{ListParams, ResourceExt};
 use kube::Api;
-use serde_json::json;
 use tracing::{debug, error, info, trace, warn};
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
 use stackable_operator::builder::{
     ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
 };
 use stackable_operator::client::Client;
-use stackable_operator::conditions::ConditionStatus;
 use stackable_operator::configmap;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
@@ -114,56 +111,6 @@ fn find_first_missing(vec: &[usize]) -> usize {
 }
 
 impl ZookeeperState {
-    async fn set_upgrading_condition(
-        &self,
-        conditions: &[Condition],
-        message: &str,
-        reason: &str,
-        status: ConditionStatus,
-    ) -> OperatorResult<ZookeeperCluster> {
-        let resource = self
-            .context
-            .build_and_set_condition(
-                Some(conditions),
-                message.to_string(),
-                reason.to_string(),
-                status,
-                "Upgrading".to_string(),
-            )
-            .await?;
-
-        Ok(resource)
-    }
-
-    async fn set_current_version(
-        &self,
-        version: Option<&ZookeeperVersion>,
-    ) -> OperatorResult<ZookeeperCluster> {
-        let resource = self
-            .context
-            .client
-            .merge_patch_status(
-                &self.context.resource,
-                &json!({ "currentVersion": version }),
-            )
-            .await?;
-
-        Ok(resource)
-    }
-
-    async fn set_target_version(
-        &self,
-        version: Option<&ZookeeperVersion>,
-    ) -> OperatorResult<ZookeeperCluster> {
-        let resource = self
-            .context
-            .client
-            .merge_patch_status(&self.context.resource, &json!({ "targetVersion": version }))
-            .await?;
-
-        Ok(resource)
-    }
-
     /// Required labels for pods. Pods without any of these will deleted and/or replaced.
     // TODO: Now we create this every reconcile run, should be created once and reused.
     pub fn get_required_labels(&self) -> BTreeMap<String, Option<Vec<String>>> {
@@ -188,133 +135,17 @@ impl ZookeeperState {
 
     /// Will initialize the status object if it's never been set.
     async fn init_status(&mut self) -> ZookeeperReconcileResult {
-        // We'll begin by setting an empty status here because later in this method we might
-        // update its conditions. To avoid any issues we'll just create it once here.
-        if self.zk_status.is_none() {
-            let status = ZookeeperClusterStatus::default();
-            self.context
-                .client
-                .merge_patch_status(&self.context.resource, &status)
-                .await?;
-            self.zk_status = Some(status);
-        }
+        let version_manager = stackable_operator::versioning::StatusVersionManager::new(
+            &self.context.client,
+            &self.context.resource,
+        );
 
-        // This should always return either the existing one or the one we just created above.
-        let status = self.zk_status.take().unwrap_or_default();
-        let spec_version = self.zk_spec.version.clone();
-
-        match (&status.current_version, &status.target_version) {
-            (None, None) => {
-                // No current_version and no target_version must be initial installation.
-                // We'll set the Upgrading condition and the target_version to the version from spec.
-                info!(
-                    "Initial installation, now moving towards version [{}]",
-                    self.zk_spec.version
-                );
-                self.zk_status = self
-                    .set_upgrading_condition(
-                        &status.conditions,
-                        &format!("Initial installation to version [{:?}]", spec_version),
-                        "InitialInstallation",
-                        ConditionStatus::True,
-                    )
-                    .await?
-                    .status;
-                self.zk_status = self.set_target_version(Some(&spec_version)).await?.status;
-            }
-            (None, Some(target_version)) => {
-                // No current_version but a target_version means we're still doing the initial
-                // installation. Will continue working towards that goal even if another version
-                // was set in the meantime.
-                debug!(
-                    "Initial installation, still moving towards version [{}]",
-                    target_version
-                );
-                if &spec_version != target_version {
-                    info!("A new target version ([{}]) was requested while we still do the initial installation to [{}], finishing running upgrade first", spec_version, target_version)
-                }
-                // We do this here to update the observedGeneration if needed
-                self.zk_status = self
-                    .set_upgrading_condition(
-                        &status.conditions,
-                        &format!("Initial installation to version [{:?}]", target_version),
-                        "InitialInstallation",
-                        ConditionStatus::True,
-                    )
-                    .await?
-                    .status;
-            }
-            (Some(current_version), None) => {
-                // We are at a stable version but have no target_version set.
-                // This will be the normal state.
-                // We'll check if there is a different version in spec and if it is will
-                // set it in target_version, but only if it's actually a compatible upgrade.
-                if current_version != &spec_version {
-                    if current_version.is_valid_upgrade(&spec_version).unwrap() {
-                        let new_version = spec_version;
-                        let message = format!(
-                            "Upgrading from [{:?}] to [{:?}]",
-                            current_version, &new_version
-                        );
-                        info!("{}", message);
-                        self.zk_status = self.set_target_version(Some(&new_version)).await?.status;
-                        self.zk_status = self
-                            .set_upgrading_condition(
-                                &status.conditions,
-                                &message,
-                                "Upgrading",
-                                ConditionStatus::True,
-                            )
-                            .await?
-                            .status;
-                    } else {
-                        // TODO: This should be caught by an validating admission webhook
-                        warn!("Upgrade from [{}] to [{}] not possible but requested in spec: Ignoring, will continue reconcile as if the invalid version weren't set", current_version, spec_version);
-                    }
-                } else {
-                    let message = format!(
-                        "No upgrade required [{:?}] is still the current_version",
-                        current_version
-                    );
-                    trace!("{}", message);
-                    self.zk_status = self
-                        .set_upgrading_condition(
-                            &status.conditions,
-                            &message,
-                            "",
-                            ConditionStatus::False,
-                        )
-                        .await?
-                        .status;
-                }
-            }
-            (Some(current_version), Some(target_version)) => {
-                // current_version and target_version are set means we're still in the process
-                // of upgrading. We'll only do some logging and checks and will update
-                // the condition so observedGeneration can be updated.
-                debug!(
-                    "Still upgrading from [{}] to [{}]",
-                    current_version, target_version
-                );
-                if &self.zk_spec.version != target_version {
-                    info!("A new target version was requested while we still upgrade from [{}] to [{}], finishing running upgrade first", current_version, target_version)
-                }
-                let message = format!(
-                    "Upgrading from [{:?}] to [{:?}]",
-                    current_version, target_version
-                );
-
-                self.zk_status = self
-                    .set_upgrading_condition(
-                        &status.conditions,
-                        &message,
-                        "",
-                        ConditionStatus::False,
-                    )
-                    .await?
-                    .status;
-            }
-        }
+        version_manager
+            .process(
+                self.zk_status.clone(),
+                self.context.resource.spec.version.clone(),
+            )
+            .await?;
 
         Ok(ReconcileFunctionAction::Continue)
     }
@@ -574,29 +405,15 @@ impl ZookeeperState {
             }
         }
 
-        let status = self.zk_status.clone().ok_or_else(|| error::Error::ReconcileError(
-            "`zk_status missing, this is a programming error and should never happen. Please report in our issue tracker.".to_string(),
-        ))?;
-
         // If we reach here it means all pods must be running on target_version.
         // We can now set current_version to target_version (if target_version was set) and
         // target_version to None
-        if let Some(target_version) = &status.target_version {
-            self.zk_status = self.set_target_version(None).await?.status;
-            self.zk_status = self.set_current_version(Some(target_version)).await?.status;
-            self.zk_status = self
-                .set_upgrading_condition(
-                    &status.conditions,
-                    &format!(
-                        "No upgrade required [{:?}] is still the current_version",
-                        target_version
-                    ),
-                    "",
-                    ConditionStatus::False,
-                )
-                .await?
-                .status;
-        }
+        let version_manager = stackable_operator::versioning::StatusVersionManager::new(
+            &self.context.client,
+            &self.context.resource,
+        );
+
+        version_manager.finalize(self.zk_status.clone()).await?;
 
         Ok(ReconcileFunctionAction::Continue)
     }
