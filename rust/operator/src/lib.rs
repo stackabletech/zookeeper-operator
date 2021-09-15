@@ -35,9 +35,11 @@ use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group, EligibleNodesForRoleAndGroup,
 };
+use stackable_operator::status::init_status;
+use stackable_operator::versioning::{finalize_versioning, init_versioning};
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperVersion, ADMIN_PORT,
-    APP_NAME, CLIENT_PORT, CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
+    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperVersion, ADMIN_PORT, APP_NAME, CLIENT_PORT,
+    CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -64,8 +66,6 @@ pub enum ZookeeperRole {
 
 struct ZookeeperState {
     context: ReconciliationContext<ZookeeperCluster>,
-    zk_spec: ZookeeperClusterSpec,
-    zk_status: Option<ZookeeperClusterStatus>,
     id_information: Option<IdInformation>,
     existing_pods: Vec<Pod>,
     eligible_nodes: EligibleNodesForRoleAndGroup,
@@ -135,17 +135,15 @@ impl ZookeeperState {
 
     /// Will initialize the status object if it's never been set.
     async fn init_status(&mut self) -> ZookeeperReconcileResult {
-        let version_manager = stackable_operator::versioning::StatusVersionManager::new(
+        // init status with default values if not available yet.
+        init_status(&self.context.client, &self.context.resource).await?;
+
+        init_versioning(
             &self.context.client,
             &self.context.resource,
-        );
-
-        version_manager
-            .process(
-                self.zk_status.clone(),
-                self.context.resource.spec.version.clone(),
-            )
-            .await?;
+            self.context.resource.spec.version.clone(),
+        )
+        .await?;
 
         Ok(ReconcileFunctionAction::Continue)
     }
@@ -408,12 +406,7 @@ impl ZookeeperState {
         // If we reach here it means all pods must be running on target_version.
         // We can now set current_version to target_version (if target_version was set) and
         // target_version to None
-        let version_manager = stackable_operator::versioning::StatusVersionManager::new(
-            &self.context.client,
-            &self.context.resource,
-        );
-
-        version_manager.finalize(self.zk_status.clone()).await?;
+        finalize_versioning(&self.context.client, &self.context.resource).await?;
 
         Ok(ReconcileFunctionAction::Continue)
     }
@@ -863,8 +856,6 @@ impl ControllerStrategy for ZookeeperStrategy {
         )?;
 
         Ok(ZookeeperState {
-            zk_spec: context.resource.spec.clone(),
-            zk_status: context.resource.status.clone(),
             context,
             id_information: None,
             existing_pods,

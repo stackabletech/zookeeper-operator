@@ -8,8 +8,8 @@ use semver::{Error as SemVerError, Version};
 use serde::{Deserialize, Serialize};
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
-use stackable_operator::status::{Conditions, Versioned};
-use stackable_operator::versioning::{Version as StatusVersion, Versioning, VersioningState};
+use stackable_operator::status::{Conditions, Status, Versioned};
+use stackable_operator::versioning::{ProductVersion, Versioning, VersioningState};
 use std::collections::BTreeMap;
 
 pub const APP_NAME: &str = "zookeeper";
@@ -41,6 +41,16 @@ pub const CONFIG_MAP_TYPE_ID: &str = "id";
 pub struct ZookeeperClusterSpec {
     pub version: ZookeeperVersion,
     pub servers: Role<ZookeeperConfig>,
+}
+
+impl Status<ZookeeperClusterStatus> for ZookeeperCluster {
+    fn status(&self) -> &Option<ZookeeperClusterStatus> {
+        &self.status
+    }
+
+    fn status_mut(&mut self) -> &mut Option<ZookeeperClusterStatus> {
+        &mut self.status
+    }
 }
 
 // TODO: These all should be "Property" Enums that can be either simple or complex where complex allows forcing/ignoring errors and/or warnings
@@ -195,17 +205,7 @@ pub struct ZookeeperClusterStatus {
     #[schemars(schema_with = "stackable_operator::conditions::schema")]
     pub conditions: Vec<Condition>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<StatusVersion<ZookeeperVersion>>,
-}
-
-impl Versioned<ZookeeperVersion> for ZookeeperClusterStatus {
-    fn version(&self) -> &Option<StatusVersion<ZookeeperVersion>> {
-        &self.version
-    }
-
-    fn version_mut(&mut self) -> &mut Option<StatusVersion<ZookeeperVersion>> {
-        &mut self.version
-    }
+    pub version: Option<ProductVersion<ZookeeperVersion>>,
 }
 
 impl ZookeeperClusterStatus {
@@ -213,6 +213,16 @@ impl ZookeeperClusterStatus {
         self.target_version
             .as_ref()
             .map(|version| format!("stackable/zookeeper:{}", version.to_string()))
+    }
+}
+
+impl Versioned<ZookeeperVersion> for ZookeeperClusterStatus {
+    fn version(&self) -> &Option<ProductVersion<ZookeeperVersion>> {
+        &self.version
+    }
+
+    fn version_mut(&mut self) -> &mut Option<ProductVersion<ZookeeperVersion>> {
+        &mut self.version
     }
 }
 

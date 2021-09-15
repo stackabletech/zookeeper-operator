@@ -240,15 +240,16 @@ spec:
                   nullable: true
                   type: string
                 version:
+                  description: The version of the product provided by the operator. Split into current and target version in order track upgrading and downgrading progress.
                   nullable: true
                   properties:
-                    currentVersion:
+                    current:
                       enum:
                         - 3.4.14
                         - 3.5.8
                       nullable: true
                       type: string
-                    targetVersion:
+                    target:
                       enum:
                         - 3.4.14
                         - 3.5.8
