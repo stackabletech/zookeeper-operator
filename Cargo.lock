@@ -1554,7 +1554,8 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "stackable-operator"
-version = "0.1.0-nightly"
+version = "0.2.0-nightly"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=track_cluster_state_in_status#8059b55259241dccd8ac02137b58d0b771003b10"
 dependencies = [
  "async-trait",
  "backoff",
