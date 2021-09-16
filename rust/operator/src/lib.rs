@@ -136,14 +136,12 @@ impl ZookeeperState {
     /// Will initialize the status object if it's never been set.
     async fn init_status(&mut self) -> ZookeeperReconcileResult {
         // init status with default values if not available yet.
-        init_status(&self.context.client, &self.context.resource).await?;
+        self.context.resource = init_status(&self.context.client, &self.context.resource).await?;
 
-        init_versioning(
-            &self.context.client,
-            &self.context.resource,
-            self.context.resource.spec.version.clone(),
-        )
-        .await?;
+        let spec_version = self.context.resource.spec.version.clone();
+
+        self.context.resource =
+            init_versioning(&self.context.client, &self.context.resource, spec_version).await?;
 
         Ok(ReconcileFunctionAction::Continue)
     }

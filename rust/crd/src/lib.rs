@@ -4,12 +4,13 @@ pub mod util;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::CustomResource;
 use schemars::JsonSchema;
-use semver::{Error as SemVerError, Version};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
 use stackable_operator::status::{Conditions, Status, Versioned};
 use stackable_operator::versioning::{ProductVersion, Versioning, VersioningState};
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 pub const APP_NAME: &str = "zookeeper";
@@ -141,13 +142,6 @@ pub enum ZookeeperVersion {
 }
 
 impl ZookeeperVersion {
-    pub fn is_valid_upgrade(&self, to: &Self) -> Result<bool, SemVerError> {
-        let from_version = Version::parse(&self.to_string())?;
-        let to_version = Version::parse(&to.to_string())?;
-
-        Ok(to_version > from_version)
-    }
-
     pub fn package_name(&self) -> String {
         match self {
             ZookeeperVersion::v3_4_14 => {
@@ -184,23 +178,17 @@ impl Versioning for ZookeeperVersion {
             }
         };
 
-        return if to_version > from_version {
-            VersioningState::ValidUpgrade
-        } else if to_version < from_version {
-            VersioningState::ValidDowngrade
-        } else {
-            VersioningState::NoOp
-        };
+        match to_version.cmp(&from_version) {
+            Ordering::Greater => VersioningState::ValidUpgrade,
+            Ordering::Less => VersioningState::ValidDowngrade,
+            Ordering::Equal => VersioningState::NoOp,
+        }
     }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterStatus {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_version: Option<ZookeeperVersion>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_version: Option<ZookeeperVersion>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(schema_with = "stackable_operator::conditions::schema")]
     pub conditions: Vec<Condition>,
@@ -208,19 +196,10 @@ pub struct ZookeeperClusterStatus {
     pub version: Option<ProductVersion<ZookeeperVersion>>,
 }
 
-impl ZookeeperClusterStatus {
-    pub fn target_image_name(&self) -> Option<String> {
-        self.target_version
-            .as_ref()
-            .map(|version| format!("stackable/zookeeper:{}", version.to_string()))
-    }
-}
-
 impl Versioned<ZookeeperVersion> for ZookeeperClusterStatus {
     fn version(&self) -> &Option<ProductVersion<ZookeeperVersion>> {
         &self.version
     }
-
     fn version_mut(&mut self) -> &mut Option<ProductVersion<ZookeeperVersion>> {
         &mut self.version
     }
@@ -230,7 +209,6 @@ impl Conditions for ZookeeperClusterStatus {
     fn conditions(&self) -> &[Condition] {
         self.conditions.as_slice()
     }
-
     fn conditions_mut(&mut self) -> &mut Vec<Condition> {
         &mut self.conditions
     }
@@ -239,17 +217,23 @@ impl Conditions for ZookeeperClusterStatus {
 #[cfg(test)]
 mod tests {
     use crate::ZookeeperVersion;
+    use stackable_operator::versioning::{Versioning, VersioningState};
     use std::str::FromStr;
 
     #[test]
-    fn test_version_upgrade() {
-        assert!(ZookeeperVersion::v3_4_14
-            .is_valid_upgrade(&ZookeeperVersion::v3_5_8)
-            .unwrap());
-
-        assert!(!ZookeeperVersion::v3_5_8
-            .is_valid_upgrade(&ZookeeperVersion::v3_4_14)
-            .unwrap());
+    fn test_zookeeper_version_versioning() {
+        assert_eq!(
+            ZookeeperVersion::v3_4_14.versioning_state(&ZookeeperVersion::v3_5_8),
+            VersioningState::ValidUpgrade
+        );
+        assert_eq!(
+            ZookeeperVersion::v3_5_8.versioning_state(&ZookeeperVersion::v3_4_14),
+            VersioningState::ValidDowngrade
+        );
+        assert_eq!(
+            ZookeeperVersion::v3_4_14.versioning_state(&ZookeeperVersion::v3_4_14),
+            VersioningState::NoOp
+        );
     }
 
     #[test]
