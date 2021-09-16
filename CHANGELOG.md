@@ -2,7 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
-## 0.2.0 - unreleased
+## [Unreleased]
+
+## [0.2.0] - 2021-09-14
 
 ### Added
 - Added versioning code from operator-rs for up and downgrades ([#210]).
@@ -21,5 +23,4 @@ All notable changes to this project will be documented in this file.
 ## 0.1.0 - 2021.09.07
 
 ### Added
-
 - Initial release
