@@ -4,11 +4,13 @@ pub mod util;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::CustomResource;
 use schemars::JsonSchema;
-use semver::{Error as SemVerError, Version};
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
-use stackable_operator::status::Conditions;
+use stackable_operator::status::{Conditions, Status, Versioned};
+use stackable_operator::versioning::{ProductVersion, Versioning, VersioningState};
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 pub const APP_NAME: &str = "zookeeper";
@@ -40,6 +42,16 @@ pub const CONFIG_MAP_TYPE_ID: &str = "id";
 pub struct ZookeeperClusterSpec {
     pub version: ZookeeperVersion,
     pub servers: Role<ZookeeperConfig>,
+}
+
+impl Status<ZookeeperClusterStatus> for ZookeeperCluster {
+    fn status(&self) -> &Option<ZookeeperClusterStatus> {
+        &self.status
+    }
+
+    fn status_mut(&mut self) -> &mut Option<ZookeeperClusterStatus> {
+        &mut self.status
+    }
 }
 
 // TODO: These all should be "Property" Enums that can be either simple or complex where complex allows forcing/ignoring errors and/or warnings
@@ -107,23 +119,6 @@ impl Configuration for ZookeeperConfig {
     }
 }
 
-impl Conditions for ZookeeperCluster {
-    fn conditions(&self) -> Option<&[Condition]> {
-        if let Some(status) = &self.status {
-            return Some(status.conditions.as_slice());
-        }
-        None
-    }
-
-    fn conditions_mut(&mut self) -> &mut Vec<Condition> {
-        if self.status.is_none() {
-            self.status = Some(ZookeeperClusterStatus::default());
-            return &mut self.status.as_mut().unwrap().conditions;
-        }
-        return &mut self.status.as_mut().unwrap().conditions;
-    }
-}
-
 #[allow(non_camel_case_types)]
 #[derive(
     Clone,
@@ -147,13 +142,6 @@ pub enum ZookeeperVersion {
 }
 
 impl ZookeeperVersion {
-    pub fn is_valid_upgrade(&self, to: &Self) -> Result<bool, SemVerError> {
-        let from_version = Version::parse(&self.to_string())?;
-        let to_version = Version::parse(&to.to_string())?;
-
-        Ok(to_version > from_version)
-    }
-
     pub fn package_name(&self) -> String {
         match self {
             ZookeeperVersion::v3_4_14 => {
@@ -166,40 +154,86 @@ impl ZookeeperVersion {
     }
 }
 
+impl Versioning for ZookeeperVersion {
+    fn versioning_state(&self, other: &Self) -> VersioningState {
+        let from_version = match Version::parse(&self.to_string()) {
+            Ok(v) => v,
+            Err(e) => {
+                return VersioningState::Invalid(format!(
+                    "Could not parse [{}] to SemVer: {}",
+                    self.to_string(),
+                    e.to_string()
+                ))
+            }
+        };
+
+        let to_version = match Version::parse(&other.to_string()) {
+            Ok(v) => v,
+            Err(e) => {
+                return VersioningState::Invalid(format!(
+                    "Could not parse [{}] to SemVer: {}",
+                    other.to_string(),
+                    e.to_string()
+                ))
+            }
+        };
+
+        match to_version.cmp(&from_version) {
+            Ordering::Greater => VersioningState::ValidUpgrade,
+            Ordering::Less => VersioningState::ValidDowngrade,
+            Ordering::Equal => VersioningState::NoOp,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterStatus {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_version: Option<ZookeeperVersion>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_version: Option<ZookeeperVersion>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[schemars(schema_with = "stackable_operator::conditions::schema")]
     pub conditions: Vec<Condition>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<ProductVersion<ZookeeperVersion>>,
 }
 
-impl ZookeeperClusterStatus {
-    pub fn target_image_name(&self) -> Option<String> {
-        self.target_version
-            .as_ref()
-            .map(|version| format!("stackable/zookeeper:{}", version.to_string()))
+impl Versioned<ZookeeperVersion> for ZookeeperClusterStatus {
+    fn version(&self) -> &Option<ProductVersion<ZookeeperVersion>> {
+        &self.version
+    }
+    fn version_mut(&mut self) -> &mut Option<ProductVersion<ZookeeperVersion>> {
+        &mut self.version
+    }
+}
+
+impl Conditions for ZookeeperClusterStatus {
+    fn conditions(&self) -> &[Condition] {
+        self.conditions.as_slice()
+    }
+    fn conditions_mut(&mut self) -> &mut Vec<Condition> {
+        &mut self.conditions
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::ZookeeperVersion;
+    use stackable_operator::versioning::{Versioning, VersioningState};
     use std::str::FromStr;
 
     #[test]
-    fn test_version_upgrade() {
-        assert!(ZookeeperVersion::v3_4_14
-            .is_valid_upgrade(&ZookeeperVersion::v3_5_8)
-            .unwrap());
-
-        assert!(!ZookeeperVersion::v3_5_8
-            .is_valid_upgrade(&ZookeeperVersion::v3_4_14)
-            .unwrap());
+    fn test_zookeeper_version_versioning() {
+        assert_eq!(
+            ZookeeperVersion::v3_4_14.versioning_state(&ZookeeperVersion::v3_5_8),
+            VersioningState::ValidUpgrade
+        );
+        assert_eq!(
+            ZookeeperVersion::v3_5_8.versioning_state(&ZookeeperVersion::v3_4_14),
+            VersioningState::ValidDowngrade
+        );
+        assert_eq!(
+            ZookeeperVersion::v3_4_14.versioning_state(&ZookeeperVersion::v3_4_14),
+            VersioningState::NoOp
+        );
     }
 
     #[test]
