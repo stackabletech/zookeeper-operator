@@ -247,8 +247,8 @@ impl ZookeeperState {
 
         for role in ZookeeperRole::iter() {
             if let Some(eligible_nodes_for_role) = self.eligible_nodes.get(&role.to_string()) {
-                for (eligible_nodes, _replicas) in eligible_nodes_for_role.values() {
-                    for node in eligible_nodes {
+                for eligible_nodes in eligible_nodes_for_role.values() {
+                    for node in &eligible_nodes.nodes {
                         let node_name = match &node.metadata.name {
                             Some(name) => name,
                             None => continue,
@@ -300,15 +300,16 @@ impl ZookeeperState {
         //   - Role groups for this role (user defined)
         for zookeeper_role in ZookeeperRole::iter() {
             if let Some(nodes_for_role) = self.eligible_nodes.get(&zookeeper_role.to_string()) {
-                for (role_group, (nodes, replicas)) in nodes_for_role {
+                for (role_group, eligible_nodes_and_replicas) in nodes_for_role {
                     debug!(
                         "Identify missing pods for [{}] role and group [{}]",
                         zookeeper_role, role_group
                     );
                     trace!(
                         "candidate_nodes[{}]: [{:?}]",
-                        nodes.len(),
-                        nodes
+                        eligible_nodes_and_replicas.nodes.len(),
+                        eligible_nodes_and_replicas
+                            .nodes
                             .iter()
                             .map(|node| node.metadata.name.as_ref().unwrap())
                             .collect::<Vec<_>>()
@@ -327,10 +328,10 @@ impl ZookeeperState {
                         get_role_and_group_labels(&zookeeper_role.to_string(), role_group)
                     );
                     let nodes_that_need_pods = k8s_utils::find_nodes_that_need_pods(
-                        nodes,
+                        &eligible_nodes_and_replicas.nodes,
                         &self.existing_pods,
                         &get_role_and_group_labels(&zookeeper_role.to_string(), role_group),
-                        *replicas,
+                        eligible_nodes_and_replicas.replicas,
                     );
 
                     for node in nodes_that_need_pods {
