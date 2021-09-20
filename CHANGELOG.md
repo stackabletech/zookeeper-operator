@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2021-09-20
+
+
 ### Added
 - Added versioning code from operator-rs for up and downgrades ([#210]).
 - Added `ProductVersion` to status ([#210]).
