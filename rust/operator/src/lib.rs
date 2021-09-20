@@ -1,18 +1,10 @@
 mod error;
 use crate::error::Error;
 
-use std::collections::{BTreeMap, HashMap};
-use std::future::Future;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
-
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod};
 use kube::api::{ListParams, ResourceExt};
 use kube::Api;
-use tracing::{debug, info, trace, warn};
-
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
 use stackable_operator::builder::{
@@ -41,19 +33,24 @@ use stackable_operator::role_utils::{
 };
 use stackable_operator::scheduler;
 use stackable_operator::scheduler::{
-    K8SUnboundedHistory, PodToNodeMapping, RoleGroupEligibleNodes, ScheduleStrategy, Scheduler,
-    StickyScheduler,
+    K8SUnboundedHistory, PodIdentity, PodToNodeMapping, RoleGroupEligibleNodes, ScheduleStrategy,
+    Scheduler, StickyScheduler,
 };
-use strum::IntoEnumIterator;
-use strum_macros::Display;
-use strum_macros::EnumIter;
-
 use stackable_operator::status::init_status;
 use stackable_operator::versioning::{finalize_versioning, init_versioning};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperVersion, ADMIN_PORT, APP_NAME, CLIENT_PORT,
     CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
 };
+use std::collections::{BTreeMap, HashMap};
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+use strum::IntoEnumIterator;
+use strum_macros::Display;
+use strum_macros::EnumIter;
+use tracing::{debug, info, trace, warn};
 
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
@@ -78,7 +75,6 @@ struct ZookeeperState {
 
 impl ZookeeperState {
     /// Required labels for pods. Pods without any of these will deleted and/or replaced.
-    // TODO: Now we create this every reconcile run, should be created once and reused.
     pub fn get_required_labels(&self) -> BTreeMap<String, Option<Vec<String>>> {
         let roles = ZookeeperRole::iter()
             .map(|role| role.to_string())
@@ -114,7 +110,6 @@ impl ZookeeperState {
 
     pub async fn create_missing_pods(&mut self) -> ZookeeperReconcileResult {
         trace!("Starting `create_missing_pods`");
-
         // The iteration happens in two stages here, to accommodate the way our operators think
         // about roles and role groups.
         // The hierarchy is:
@@ -198,24 +193,11 @@ impl ZookeeperState {
                         )?;
 
                         let config_maps = self
-                            .create_config_maps(
-                                pod_id.role(),
-                                pod_id.group(),
-                                pod_id.id(),
-                                validated_config,
-                                &state.mapping(),
-                            )
+                            .create_config_maps(pod_id, validated_config, &state.mapping())
                             .await?;
 
-                        self.create_pod(
-                            pod_id.role(),
-                            pod_id.group(),
-                            &node_id.name,
-                            pod_id.id(),
-                            &config_maps,
-                            validated_config,
-                        )
-                        .await?;
+                        self.create_pod(pod_id, &node_id.name, &config_maps, validated_config)
+                            .await?;
 
                         history.save(&self.context.resource).await?;
 
@@ -248,17 +230,13 @@ impl ZookeeperState {
     ///
     /// # Arguments
     ///
-    /// - `role` - The Zookeeper role.
-    /// - `group` - The role group.
-    /// - `id` - The 'myid' for this instance.
+    /// - `pod_id` - The `PodIdentity` containing app, instance, role, group names and the id.
     /// - `validated_config` - The validated product config.
     /// - `id_mapping` - All id to node mappings required to create config maps
     ///
     async fn create_config_maps(
         &self,
-        role: &str,
-        group: &str,
-        id: &str,
+        pod_id: &PodIdentity,
         validated_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
         id_mapping: &PodToNodeMapping,
     ) -> Result<HashMap<&'static str, ConfigMap>, Error> {
@@ -266,10 +244,10 @@ impl ZookeeperState {
 
         let recommended_labels = get_recommended_labels(
             &self.context.resource,
-            APP_NAME,
+            pod_id.app(),
             &self.context.resource.spec.version.to_string(),
-            role,
-            group,
+            pod_id.role(),
+            pod_id.group(),
         );
 
         // Get config from product-config for the zookeeper properties file (zoo.cfg)
@@ -303,10 +281,10 @@ impl ZookeeperState {
             );
 
             let cm_data_name = name_utils::build_resource_name(
-                APP_NAME,
-                &self.context.name(),
-                role,
-                Some(group),
+                pod_id.app(),
+                pod_id.instance(),
+                pod_id.role(),
+                Some(pod_id.group()),
                 None,
                 Some(CONFIG_MAP_TYPE_DATA),
             )?;
@@ -330,10 +308,10 @@ impl ZookeeperState {
 
         // config map for the data directory (which only contains the 'myid' file)
         let cm_config_id_name = name_utils::build_resource_name(
-            APP_NAME,
-            &self.context.name(),
-            role,
-            Some(group),
+            pod_id.app(),
+            pod_id.instance(),
+            pod_id.role(),
+            Some(pod_id.group()),
             None,
             Some(CONFIG_MAP_TYPE_ID),
         )?;
@@ -344,10 +322,10 @@ impl ZookeeperState {
             configmap::CONFIGMAP_TYPE_LABEL.to_string(),
             CONFIG_MAP_TYPE_ID.to_string(),
         );
-        cm_config_id_labels.insert(ID_LABEL.to_string(), id.to_string());
+        cm_config_id_labels.insert(ID_LABEL.to_string(), pod_id.id().to_string());
 
         let mut cm_id_data = BTreeMap::new();
-        cm_id_data.insert("myid".to_string(), id.to_string());
+        cm_id_data.insert("myid".to_string(), pod_id.id().to_string());
 
         let cm_id = configmap::build_config_map(
             &self.context.resource,
@@ -369,19 +347,15 @@ impl ZookeeperState {
     ///
     /// # Arguments
     ///
-    /// - `role` - The Zookeeper role.
-    /// - `group` - The role group.
+    /// - `pod_id` - The `PodIdentity` containing app, instance, role, group names and the id.
     /// - `node_name` - The node_name for this pod.
-    /// - `id` - The 'myid' for this instance.
     /// - `config_maps` - The config maps and respective types required for this pod.
     /// - `validated_config` - The validated product config.
     ///
     async fn create_pod(
         &self,
-        role: &str,
-        group: &str,
+        pod_id: &PodIdentity,
         node_name: &str,
-        id: &str,
         config_maps: &HashMap<&'static str, ConfigMap>,
         validated_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     ) -> Result<Pod, Error> {
@@ -435,10 +409,10 @@ impl ZookeeperState {
         }
 
         let pod_name = name_utils::build_resource_name(
-            APP_NAME,
-            &self.context.name(),
-            role,
-            Some(group),
+            pod_id.app(),
+            pod_id.instance(),
+            pod_id.role(),
+            Some(pod_id.group()),
             Some(node_name),
             None,
         )?;
@@ -523,13 +497,13 @@ impl ZookeeperState {
 
         let mut pod_labels = get_recommended_labels(
             &self.context.resource,
-            APP_NAME,
+            pod_id.app(),
             &self.context.resource.spec.version.to_string(),
-            role,
-            group,
+            pod_id.role(),
+            pod_id.group(),
         );
         // we need to add the zookeeper id to the labels
-        pod_labels.insert(ID_LABEL.to_string(), id.to_string());
+        pod_labels.insert(ID_LABEL.to_string(), pod_id.id().to_string());
 
         let pod = PodBuilder::new()
             .metadata(
