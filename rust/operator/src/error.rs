@@ -45,9 +45,6 @@ pub enum Error {
         source: ParseIntError,
     },
 
-    #[error("Error during reconciliation: {0}")]
-    ReconcileError(String),
-
     #[error("Error creating properties file")]
     PropertiesError(#[from] product_config::writer::PropertiesWriterError),
 

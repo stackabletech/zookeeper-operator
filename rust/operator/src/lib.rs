@@ -9,14 +9,12 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::api::{ListParams, ResourceExt};
 use kube::Api;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
-use serde_json::json;
 use stackable_operator::builder::{
     ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
 };
@@ -73,7 +71,6 @@ pub enum ZookeeperRole {
 
 struct ZookeeperState {
     context: ReconciliationContext<ZookeeperCluster>,
-    id_information: Option<IdInformation>,
     existing_pods: Vec<Pod>,
     eligible_nodes: EligibleNodesForRoleAndGroup,
     validated_role_config: ValidatedRoleConfigByPropertyKind,
@@ -154,7 +151,9 @@ impl ZookeeperState {
                     );
 
                     let mut history = match self
-                        .zk_status
+                        .context
+                        .resource
+                        .status
                         .as_ref()
                         .and_then(|status| status.history.as_ref())
                     {
@@ -187,32 +186,32 @@ impl ZookeeperState {
                     )?;
 
                     let mapping = state
-                        .new_mapping()
+                        .remaining_mapping()
                         .get_filtered(&zookeeper_role.to_string(), role_group);
 
                     if let Some((pod_id, node_id)) = mapping.iter().next() {
                         // now we have a node that needs a pod -> get validated config
                         let validated_config = config_for_role_and_group(
-                            &pod_id.role,
-                            &pod_id.group,
+                            pod_id.role(),
+                            pod_id.group(),
                             &self.validated_role_config,
                         )?;
 
                         let config_maps = self
                             .create_config_maps(
-                                &pod_id.role,
-                                &pod_id.group,
-                                &pod_id.id,
+                                pod_id.role(),
+                                pod_id.group(),
+                                pod_id.id(),
                                 validated_config,
                                 &state.mapping(),
                             )
                             .await?;
 
                         self.create_pod(
-                            &pod_id.role,
-                            &pod_id.group,
+                            pod_id.role(),
+                            pod_id.group(),
                             &node_id.name,
-                            &pod_id.id,
+                            pod_id.id(),
                             &config_maps,
                             validated_config,
                         )
@@ -288,7 +287,7 @@ impl ZookeeperState {
             // add dynamic config map requirement for server ids
             for (pod_id, node_id) in id_mapping.iter() {
                 transformed_config.insert(
-                    format!("server.{}", pod_id.id),
+                    format!("server.{}", pod_id.id()),
                     Some(format!("{}:2888:3888", node_id.name)),
                 );
             }
