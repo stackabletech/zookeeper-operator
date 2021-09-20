@@ -227,33 +227,23 @@ spec:
                   x-kubernetes-list-map-keys:
                     - type
                   x-kubernetes-list-type: map
-                currentVersion:
-                  enum:
-                    - 3.4.14
-                    - 3.5.8
-                  nullable: true
-                  type: string
-                history:
+                version:
+                  description: The version of the product provided by the operator. Split into current and target version in order track upgrading and downgrading progress.
                   nullable: true
                   properties:
-                    mapping:
-                      additionalProperties:
-                        properties:
-                          name:
-                            type: string
-                        required:
-                          - name
-                        type: object
-                      type: object
-                  required:
-                    - mapping
+                    current:
+                      enum:
+                        - 3.4.14
+                        - 3.5.8
+                      nullable: true
+                      type: string
+                    target:
+                      enum:
+                        - 3.4.14
+                        - 3.5.8
+                      nullable: true
+                      type: string
                   type: object
-                targetVersion:
-                  enum:
-                    - 3.4.14
-                    - 3.5.8
-                  nullable: true
-                  type: string
               type: object
           required:
             - spec
