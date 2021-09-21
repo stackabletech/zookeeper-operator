@@ -251,7 +251,7 @@ fn get_match_labels(name: &str) -> LabelSelector {
     match_labels.insert(String::from(APP_INSTANCE_LABEL), name.to_string());
 
     LabelSelector {
-        match_labels,
+        match_labels: Some(match_labels),
         ..Default::default()
     }
 }
@@ -313,17 +313,19 @@ fn get_zk_connection_string_from_pods(
             Some(node_name) => node_name,
         };
 
-        let role_group = match pod.metadata.labels.get(APP_ROLE_GROUP_LABEL) {
-            None => {
-                return Err(PodMissingLabels {
-                    labels: vec![String::from(APP_ROLE_GROUP_LABEL)],
-                    pod: pod_name,
-                })
-            }
-            Some(role_group) => role_group.to_owned(),
-        };
+        if let Some(labels) = &pod.metadata.labels {
+            let role_group = match labels.get(APP_ROLE_GROUP_LABEL) {
+                None => {
+                    return Err(PodMissingLabels {
+                        labels: vec![String::from(APP_ROLE_GROUP_LABEL)],
+                        pod: pod_name,
+                    })
+                }
+                Some(role_group) => role_group.to_owned(),
+            };
 
-        server_and_port_list.push((node_name, get_zk_port(&zookeeper_spec, &role_group)?));
+            server_and_port_list.push((node_name, get_zk_port(&zookeeper_spec, &role_group)?));
+        }
     }
 
     // Sort list by hostname to make resulting connection strings predictable
@@ -366,16 +368,23 @@ mod tests {
         let test_name = "testcluster";
         let selector = get_match_labels(test_name);
 
-        assert!(selector.match_expressions.is_empty());
+        assert!(selector.match_expressions.is_none());
 
-        assert_eq!(selector.match_labels.len(), 3);
+        assert_eq!(selector.match_labels.as_ref().unwrap().len(), 3);
         assert_eq!(
-            selector.match_labels.get("app.kubernetes.io/name").unwrap(),
+            selector
+                .match_labels
+                .as_ref()
+                .unwrap()
+                .get("app.kubernetes.io/name")
+                .unwrap(),
             APP_NAME
         );
         assert_eq!(
             selector
                 .match_labels
+                .as_ref()
+                .unwrap()
                 .get("app.kubernetes.io/instance")
                 .unwrap(),
             "testcluster"
@@ -383,6 +392,8 @@ mod tests {
         assert_eq!(
             selector
                 .match_labels
+                .as_ref()
+                .unwrap()
                 .get("app.kubernetes.io/managed-by")
                 .unwrap(),
             MANAGED_BY

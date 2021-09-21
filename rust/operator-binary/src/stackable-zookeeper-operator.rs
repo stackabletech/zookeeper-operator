@@ -1,5 +1,5 @@
 use clap::{crate_version, App, AppSettings, SubCommand};
-use stackable_operator::crd::CustomResourceExt;
+use kube::CustomResourceExt;
 use stackable_operator::{cli, logging};
 use stackable_operator::{client, error};
 use stackable_zookeeper_crd::ZookeeperCluster;
@@ -52,7 +52,7 @@ async fn main() -> Result<(), error::Error> {
 
     if let Err(error) = stackable_operator::crd::wait_until_crds_present(
         &client,
-        vec![&ZookeeperCluster::crd_name()],
+        vec![ZookeeperCluster::crd_name()],
         None,
     )
     .await

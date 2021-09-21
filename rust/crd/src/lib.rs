@@ -191,7 +191,6 @@ impl Versioning for ZookeeperVersion {
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterStatus {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[schemars(schema_with = "stackable_operator::conditions::schema")]
     pub conditions: Vec<Condition>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<ProductVersion<ZookeeperVersion>>,
