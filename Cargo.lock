@@ -1590,7 +1590,7 @@ dependencies = [
 
 [[package]]
 name = "stackable-zookeeper-crd"
-version = "0.4.0"
+version = "0.4.1-nightly"
 dependencies = [
  "indoc",
  "k8s-openapi",
@@ -1611,7 +1611,7 @@ dependencies = [
 
 [[package]]
 name = "stackable-zookeeper-operator"
-version = "0.4.0"
+version = "0.4.1-nightly"
 dependencies = [
  "async-trait",
  "futures",
@@ -1631,7 +1631,7 @@ dependencies = [
 
 [[package]]
 name = "stackable-zookeeper-operator-binary"
-version = "0.4.0"
+version = "0.4.1-nightly"
 dependencies = [
  "built",
  "clap",
