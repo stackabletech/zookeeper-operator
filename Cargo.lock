@@ -1636,7 +1636,6 @@ dependencies = [
  "built",
  "clap",
  "k8s-openapi",
- "kube",
  "stackable-operator",
  "stackable-zookeeper-crd",
  "stackable-zookeeper-operator",
