@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- `kube-rs`: `0.59` → `0.60` ([#214]).
+- `k8s-openapi` features: `v1_21` → `v1_22` ([#214]).
+
+[#214]: https://github.com/stackabletech/zookeeper-operator/pull/214
+
 ## [0.3.0] - 2021-09-20
 
 
