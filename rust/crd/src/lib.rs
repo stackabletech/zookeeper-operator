@@ -1,19 +1,28 @@
+pub mod commands;
 pub mod error;
 pub mod util;
+
+use crate::commands::{Restart, Start, Stop};
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::api::ApiResource;
 use kube::CustomResource;
+use kube::CustomResourceExt;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
+use stackable_operator::command::{CommandRef, HasCommands, HasRoleRestartOrder};
+use stackable_operator::controller::HasOwned;
+use stackable_operator::crd::HasApplication;
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
 use stackable_operator::scheduler::PodToNodeMapping;
-use stackable_operator::status::{Conditions, Status, Versioned};
+use stackable_operator::status::{Conditions, HasCurrentCommand, Status, Versioned};
 use stackable_operator::versioning::{ProductVersion, Versioning, VersioningState};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use strum_macros::Display;
+use strum_macros::EnumIter;
 
 pub const APP_NAME: &str = "zookeeper";
 pub const MANAGED_BY: &str = "zookeeper-operator";
@@ -46,10 +55,22 @@ pub struct ZookeeperClusterSpec {
     pub servers: Role<ZookeeperConfig>,
 }
 
-#[derive(EnumIter, Debug, Display, PartialEq, Eq, Hash)]
+#[derive(
+    Clone, Debug, Deserialize, Display, EnumIter, Eq, Hash, JsonSchema, PartialEq, Serialize,
+)]
 pub enum ZookeeperRole {
     #[strum(serialize = "server")]
     Server,
+}
+
+impl Status<ZookeeperClusterStatus> for ZookeeperCluster {
+    fn status(&self) -> &Option<ZookeeperClusterStatus> {
+        &self.status
+    }
+
+    fn status_mut(&mut self) -> &mut Option<ZookeeperClusterStatus> {
+        &mut self.status
+    }
 }
 
 impl HasRoleRestartOrder for ZookeeperCluster {
@@ -68,13 +89,15 @@ impl HasCommands for ZookeeperCluster {
     }
 }
 
-impl Status<ZookeeperClusterStatus> for ZookeeperCluster {
-    fn status(&self) -> &Option<ZookeeperClusterStatus> {
-        &self.status
+impl HasOwned for ZookeeperCluster {
+    fn owned_objects() -> Vec<&'static str> {
+        vec![&Restart::crd_name(), &Start::crd_name(), &Stop::crd_name()]
     }
+}
 
-    fn status_mut(&mut self) -> &mut Option<ZookeeperClusterStatus> {
-        &mut self.status
+impl HasApplication for ZookeeperCluster {
+    fn get_application_name() -> &'static str {
+        APP_NAME
     }
 }
 
@@ -219,6 +242,8 @@ pub struct ZookeeperClusterStatus {
     pub version: Option<ProductVersion<ZookeeperVersion>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub history: Option<PodToNodeMapping>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_command: Option<CommandRef>,
 }
 
 impl Versioned<ZookeeperVersion> for ZookeeperClusterStatus {
@@ -236,6 +261,23 @@ impl Conditions for ZookeeperClusterStatus {
     }
     fn conditions_mut(&mut self) -> &mut Vec<Condition> {
         &mut self.conditions
+    }
+}
+
+impl HasCurrentCommand for ZookeeperClusterStatus {
+    fn current_command(&self) -> Option<CommandRef> {
+        self.current_command.clone()
+    }
+    fn set_current_command(&mut self, command: CommandRef) {
+        self.current_command = Some(command);
+    }
+
+    fn tracking_location() -> &'static str {
+        todo!()
+    }
+
+    fn clear_current_command(&mut self) {
+        self.current_command = None
     }
 }
 

@@ -1,6 +1,7 @@
 use clap::{crate_version, App, AppSettings, SubCommand};
 use stackable_operator::{cli, logging};
 use stackable_operator::{client, error};
+use stackable_zookeeper_crd::commands::{Restart, Start, Stop};
 use stackable_zookeeper_crd::ZookeeperCluster;
 
 mod built_info {
@@ -48,6 +49,19 @@ async fn main() -> Result<(), error::Error> {
 
     let client = client::create_client(Some("zookeeper.stackable.tech".to_string())).await?;
 
-    stackable_zookeeper_operator::create_controller(client, &product_config_path).await?;
+    tokio::join!(
+        stackable_zookeeper_operator::create_controller(client.clone(), &product_config_path),
+        stackable_operator::command_controller::create_command_controller::<
+            Restart,
+            ZookeeperCluster,
+        >(client.clone()),
+        stackable_operator::command_controller::create_command_controller::<Start, ZookeeperCluster>(
+            client.clone()
+        ),
+        stackable_operator::command_controller::create_command_controller::<Stop, ZookeeperCluster>(
+            client.clone()
+        )
+    );
+
     Ok(())
 }

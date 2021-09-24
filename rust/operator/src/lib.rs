@@ -1,5 +1,6 @@
 mod error;
 use crate::error::Error;
+use stackable_zookeeper_crd::commands::{Restart, Start, Stop};
 
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod};
@@ -12,9 +13,12 @@ use stackable_operator::builder::{
     ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
 };
 use stackable_operator::client::Client;
+use stackable_operator::command::{clear_current_command, materialize_command, CommandRef};
+use stackable_operator::command_controller::Command;
 use stackable_operator::configmap;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
+use stackable_operator::error::Error::InvalidName;
 use stackable_operator::error::OperatorResult;
 use stackable_operator::labels;
 use stackable_operator::labels::{
@@ -26,7 +30,8 @@ use stackable_operator::product_config_utils::{
     ValidatedRoleConfigByPropertyKind,
 };
 use stackable_operator::reconcile::{
-    ContinuationStrategy, ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
+    ContinuationStrategy, ProvidesPod, ReconcileFunctionAction, ReconcileResult,
+    ReconciliationContext,
 };
 use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
@@ -40,8 +45,8 @@ use stackable_operator::scheduler::{
 use stackable_operator::status::init_status;
 use stackable_operator::versioning::{finalize_versioning, init_versioning};
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperVersion, ADMIN_PORT, APP_NAME, CLIENT_PORT,
-    CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
+    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperRole, ZookeeperVersion, ADMIN_PORT, APP_NAME,
+    CLIENT_PORT, CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -49,8 +54,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use strum::IntoEnumIterator;
-use strum_macros::Display;
-use strum_macros::EnumIter;
 use tracing::error;
 use tracing::{debug, info, trace, warn};
 
@@ -67,6 +70,31 @@ struct ZookeeperState {
     existing_pods: Vec<Pod>,
     eligible_nodes: EligibleNodesForRoleAndGroup,
     validated_role_config: ValidatedRoleConfigByPropertyKind,
+}
+
+#[async_trait]
+impl ProvidesPod for ZookeeperState {
+    async fn get_pod_and_context(
+        &self,
+        role: &str,
+        role_group: &str,
+        node: &str,
+    ) -> OperatorResult<(Pod, Vec<ConfigMap>)> {
+        // self.create_pod_and_config_maps(
+        //     &ZookeeperRole::from_str(role).unwrap(),
+        //     role_group,
+        //     node,
+        //     config_for_role_and_group(role, role_group, &self.validated_role_config)?,
+        // )
+        // .await
+        // .map_err(|_| InvalidName {
+        //     errors: vec!["Stuff went wrong!".to_string()],
+        // })
+
+        Err(InvalidName {
+            errors: vec!["Stuff went wrong!".to_string()],
+        })
+    }
 }
 
 impl ZookeeperState {
@@ -525,6 +553,105 @@ impl ZookeeperState {
         }
         Ok(ReconcileFunctionAction::Done)
     }
+
+    pub async fn process_command(&mut self) -> ZookeeperReconcileResult {
+        match self.context.retrieve_current_command().await? {
+            None => Ok(ReconcileFunctionAction::Continue),
+            Some(command_ref) => match command_ref.command_kind.as_str() {
+                "Restart" => self.handle_restart(command_ref).await,
+                "Start" => self.handle_start(command_ref).await,
+                "Stop" => self.handle_stop(command_ref).await,
+
+                _ => {
+                    error!("Got unknown type of command: [{:?}]", command_ref);
+                    Ok(ReconcileFunctionAction::Done)
+                }
+            },
+        }
+    }
+
+    pub async fn handle_start(&mut self, command: CommandRef) -> ZookeeperReconcileResult {
+        info!("Starting");
+        // TODO: traitify this
+        // let _ = update_cluster_execution_status(
+        //     &self.context.client,
+        //     &self.context.resource,
+        //     &ClusterExecutionStatus::Running,
+        // )
+        // .await?;
+
+        // TODO: We should probably only clear the command after it has finished starting
+        //  but that will require some thought about the code structure
+        clear_current_command(&mut self.context.resource, &self.context.client).await?;
+
+        // Clearing the stopped condition and requeing will cause the operator to add all missing
+        // pods (should be all of them) which effectively causes the service to start again
+        // TODO: By handling this in the normal pod start functionality we lose control over
+        //   whether to start all pods at once one by one, ...
+        //   might be worthwhile adding starting behavior to the command handling instead
+        //   As discussed with Lars, the way forward might be to create a "ProvidesPods" trait
+        //   which the Operator needs to implement, which would enable the framework to ask for
+        //   the pod that should be created for this "node, role, rolegroup" combination (all of
+        //   which are provided by the labels, so should be available)
+        Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(5)))
+    }
+
+    pub async fn handle_stop(&mut self, command: CommandRef) -> ZookeeperReconcileResult {
+        info!("Stöpping");
+        // let stop_command: Stop = materialize_command(&command, &self.context.client).await?;
+        //
+        // // TODO: traitify this
+        // let _ = update_cluster_execution_status(
+        //     &self.context.client,
+        //     &self.context.resource,
+        //     &ClusterExecutionStatus::Stopped,
+        // )
+        // .await?;
+        /*
+               match self.context.default_restart(&stop_command).await {
+                   Ok(ReconcileFunctionAction::Done) => {
+                       clear_current_command(&mut self.context.resource, &self.context.client).await?;
+
+                       // TODO: This is a temporary "fix", the proper way would be to handle the return value
+                       //  from `remove_pods()` - but I don't trust that yet
+                       self.context.client.delete(&stop_command).await?;
+                       Ok(ReconcileFunctionAction::Continue)
+                   }
+                   Ok(_) => Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(5))),
+                   Err(e) => Err(SparkError::OperatorError { source: e }),
+               }
+
+        */
+        Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(5)))
+    }
+
+    pub async fn handle_restart(&mut self, command: CommandRef) -> ZookeeperReconcileResult {
+        info!("Restarting");
+        let mut restart_command: Restart =
+            materialize_command(&command, &self.context.client).await?;
+
+        Command::start(&mut restart_command);
+        // TODO: Can we maybe have a patch method that accepts something than needs to implement a
+        //   get_patch() trait?
+        let patch = Command::get_start_patch(&restart_command);
+        // TODO: patch start time
+        self.context
+            .client
+            .merge_patch(&restart_command, &patch)
+            .await?;
+        // The returned value from this indicates if all eligible pods have been restarted already
+        // if this returns ::Done the command has been finished, we can remove it from the status
+        // and continue
+        // TODO: Should we continue or requeue to check for a new command?
+        match self.context.default_restart(&restart_command, self).await {
+            Ok(ReconcileFunctionAction::Done) => {
+                clear_current_command(&mut self.context.resource, &self.context.client).await?;
+                Ok(ReconcileFunctionAction::Continue)
+            }
+            Ok(_) => Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(5))),
+            Err(e) => Err(Error::OperatorError { source: e }),
+        }
+    }
 }
 
 impl ReconciliationState for ZookeeperState {
@@ -668,10 +795,16 @@ pub async fn create_controller(client: Client, product_config_path: &str) -> Ope
     let zk_api: Api<ZookeeperCluster> = client.get_all_api();
     let pods_api: Api<Pod> = client.get_all_api();
     let config_maps_api: Api<ConfigMap> = client.get_all_api();
+    let cmd_restart_api: Api<Restart> = client.get_all_api();
+    let cmd_start_api: Api<Start> = client.get_all_api();
+    let cmd_stop_api: Api<Stop> = client.get_all_api();
 
     let controller = Controller::new(zk_api)
         .owns(pods_api, ListParams::default())
-        .owns(config_maps_api, ListParams::default());
+        .owns(config_maps_api, ListParams::default())
+        .owns(cmd_restart_api, ListParams::default())
+        .owns(cmd_start_api, ListParams::default())
+        .owns(cmd_stop_api, ListParams::default());
 
     let product_config = ProductConfigManager::from_yaml_file(product_config_path).unwrap();
 

@@ -220,6 +220,23 @@ spec:
                       - type
                     type: object
                   type: array
+                currentCommand:
+                  nullable: true
+                  properties:
+                    commandKind:
+                      type: string
+                    commandName:
+                      type: string
+                    commandNs:
+                      type: string
+                    commandUid:
+                      type: string
+                  required:
+                    - commandKind
+                    - commandName
+                    - commandNs
+                    - commandUid
+                  type: object
                 history:
                   nullable: true
                   properties:
