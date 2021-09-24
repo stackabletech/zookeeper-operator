@@ -62,12 +62,6 @@ const CONFIG_DIR_NAME: &str = "conf";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
-#[derive(EnumIter, Debug, Display, PartialEq, Eq, Hash)]
-pub enum ZookeeperRole {
-    #[strum(serialize = "server")]
-    Server,
-}
-
 struct ZookeeperState {
     context: ReconciliationContext<ZookeeperCluster>,
     existing_pods: Vec<Pod>,

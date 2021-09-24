@@ -2,6 +2,7 @@ pub mod error;
 pub mod util;
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
+use kube::api::ApiResource;
 use kube::CustomResource;
 use schemars::JsonSchema;
 use semver::Version;
@@ -43,6 +44,28 @@ pub const CONFIG_MAP_TYPE_ID: &str = "id";
 pub struct ZookeeperClusterSpec {
     pub version: ZookeeperVersion,
     pub servers: Role<ZookeeperConfig>,
+}
+
+#[derive(EnumIter, Debug, Display, PartialEq, Eq, Hash)]
+pub enum ZookeeperRole {
+    #[strum(serialize = "server")]
+    Server,
+}
+
+impl HasRoleRestartOrder for ZookeeperCluster {
+    fn get_role_restart_order() -> Vec<String> {
+        vec![ZookeeperRole::Server.to_string()]
+    }
+}
+
+impl HasCommands for ZookeeperCluster {
+    fn get_command_types() -> Vec<ApiResource> {
+        vec![
+            Start::api_resource(),
+            Stop::api_resource(),
+            Restart::api_resource(),
+        ]
+    }
 }
 
 impl Status<ZookeeperClusterStatus> for ZookeeperCluster {
