@@ -12,9 +12,7 @@ spec:
             - operator: In
               key: kubernetes.io/hostname
               values:
-                - worker-1.stackable.demo
-                - worker-2.stackable.demo
-                - worker-3.stackable.demo
+                - mdesktop
         config:
           adminPort: 12000
           metricsPort: 9505

@@ -273,7 +273,7 @@ impl HasCurrentCommand for ZookeeperClusterStatus {
     }
 
     fn tracking_location() -> &'static str {
-        todo!()
+        "/status/currentCommand"
     }
 
     fn clear_current_command(&mut self) {

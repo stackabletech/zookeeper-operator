@@ -688,6 +688,8 @@ impl ReconciliationState for ZookeeperState {
                         .wait_for_running_and_ready_pods(&self.existing_pods),
                 )
                 .await?
+                .then(self.process_command())
+                .await?
                 .then(self.context.delete_excess_pods(
                     list_eligible_nodes_for_role_and_group(&self.eligible_nodes).as_slice(),
                     &self.existing_pods,

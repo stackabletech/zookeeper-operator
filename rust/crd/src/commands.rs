@@ -1,4 +1,5 @@
 use crate::ZookeeperRole;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use k8s_openapi::chrono::{DateTime, FixedOffset, Utc};
 use kube::api::ApiResource;
 use kube::{CustomResource, CustomResourceExt};
@@ -14,6 +15,7 @@ use stackable_operator::command_controller::Command;
     group = "command.zookeeper.stackable.tech",
     version = "v1alpha1",
     kind = "Restart",
+    plural = "restarts",
     namespaced
 )]
 #[kube(status = "CommandStatus")]
@@ -76,6 +78,7 @@ impl HasRoles for Restart {
     group = "command.zookeeper.stackable.tech",
     version = "v1alpha1",
     kind = "Start",
+    plural = "starts",
     namespaced
 )]
 #[kube(status = "CommandStatus")]
@@ -110,6 +113,7 @@ impl Command for Start {
     group = "command.zookeeper.stackable.tech",
     version = "v1alpha1",
     kind = "Stop",
+    plural = "stops",
     namespaced
 )]
 #[kube(status = "CommandStatus")]
@@ -141,4 +145,9 @@ impl Command for Stop {
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct CommandStatus {}
+pub struct CommandStatus {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<Time>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<Time>,
+}
