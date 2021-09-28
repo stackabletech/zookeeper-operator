@@ -186,7 +186,7 @@ impl ZookeeperState {
 
                     let mapping = state
                         .remaining_mapping()
-                        .get_filtered(&zookeeper_role.to_string(), role_group);
+                        .filter(APP_NAME, &self.context.name(), &zookeeper_role.to_string(), role_group);
 
                     if let Some((pod_id, node_id)) = mapping.iter().next() {
                         // now we have a node that needs a pod -> get validated config
@@ -267,7 +267,7 @@ impl ZookeeperState {
                 .collect();
 
             // add dynamic config map requirement for server ids
-            for (pod_id, node_id) in id_mapping.iter() {
+            for (pod_id, node_id) in id_mapping.mapping.iter() {
                 transformed_config.insert(
                     format!("server.{}", pod_id.id()),
                     Some(format!("{}:2888:3888", node_id.name)),
