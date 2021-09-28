@@ -1557,7 +1557,7 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 [[package]]
 name = "stackable-operator"
 version = "0.2.3-nightly"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=feature/schedule-pods-without-ids#0e26ca8155633d30a83fc42ca146192194e72527"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#2e86c04a89a839446bee48e8df68006af04a14be"
 dependencies = [
  "async-trait",
  "backoff",
