@@ -4,11 +4,13 @@ use stackable_zookeeper_crd::commands::{Restart, Start, Stop};
 
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod};
+use k8s_openapi::chrono::{DateTime, FixedOffset, Utc};
 use kube::api::{ListParams, ResourceExt};
 use kube::Api;
 use kube::CustomResourceExt;
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
+use serde_json::json;
 use stackable_operator::builder::{
     ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
 };
@@ -646,6 +648,17 @@ impl ZookeeperState {
         match self.context.default_restart(&restart_command, self).await {
             Ok(ReconcileFunctionAction::Done) => {
                 clear_current_command(&mut self.context.resource, &self.context.client).await?;
+                // patch finished time in command cr
+                let patch = json!({
+                    "spec": {
+                        "finishedAt": Some(Utc::now().to_rfc3339())
+                    }
+                });
+                self.context
+                    .client
+                    .merge_patch(&restart_command, &patch)
+                    .await?;
+
                 Ok(ReconcileFunctionAction::Continue)
             }
             Ok(_) => Ok(ReconcileFunctionAction::Requeue(Duration::from_secs(5))),

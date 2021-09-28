@@ -67,7 +67,6 @@ impl Status<ZookeeperClusterStatus> for ZookeeperCluster {
     fn status(&self) -> &Option<ZookeeperClusterStatus> {
         &self.status
     }
-
     fn status_mut(&mut self) -> &mut Option<ZookeeperClusterStatus> {
         &mut self.status
     }
