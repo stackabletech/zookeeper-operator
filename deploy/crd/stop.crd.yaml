@@ -23,8 +23,18 @@ spec:
               properties:
                 name:
                   type: string
+                roles:
+                  items:
+                    enum:
+                      - Server
+                    type: string
+                  nullable: true
+                  type: array
+                rolling:
+                  type: boolean
               required:
                 - name
+                - rolling
               type: object
             status:
               nullable: true
