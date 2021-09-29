@@ -4,10 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- `process_command` to reconcile loop for command handling ([#223]).
+- `rust/crd/lib/command.rs` for command CRDs
+- Trait implementations for command handling for the cluster and status ([#223]):
+  - `HasCurrentCommand` to manipulate the current_command in the status
+  - `HasClusterExecutionStatus` to access cluster_execution_status in the status
+  - `HasRoleRestartOrder` to determine the restart order of different roles
+  - `HasCommands` to provide all supported commands like Restart, Start, Stop ...
+  - `CanBeRolling` to perform a rolling restart
+  - `HasRoles` to run a command only on a subset of roles
+- Generated CRDs for Restart, Start, Stop ([#223]).
+- Example custom resources for Restart, Start, Stop ([#223]).
+
 ### Changed
 - Use `identity::LabeledPodIdentityFactory` to generate pod ids. ([#217])
 
-[#217] https://github.com/stackabletech/zookeeper-operator/pull/217
+[#223]: https://github.com/stackabletech/zookeeper-operator/pull/223
+[#217]: https://github.com/stackabletech/zookeeper-operator/pull/217
 
 ## [0.4.0] - 2021-09-21
 

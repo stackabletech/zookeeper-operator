@@ -17,7 +17,6 @@ use stackable_operator::command::materialize_command;
 use stackable_operator::configmap;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
-use stackable_operator::error::Error::InvalidName;
 use stackable_operator::error::OperatorResult;
 use stackable_operator::identity::{LabeledPodIdentityFactory, PodIdentity, PodToNodeMapping};
 use stackable_operator::labels;
@@ -30,8 +29,7 @@ use stackable_operator::product_config_utils::{
     ValidatedRoleConfigByPropertyKind,
 };
 use stackable_operator::reconcile::{
-    ContinuationStrategy, ProvidesPod, ReconcileFunctionAction, ReconcileResult,
-    ReconciliationContext,
+    ContinuationStrategy, ReconcileFunctionAction, ReconcileResult, ReconciliationContext,
 };
 use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
@@ -69,31 +67,6 @@ struct ZookeeperState {
     existing_pods: Vec<Pod>,
     eligible_nodes: EligibleNodesForRoleAndGroup,
     validated_role_config: ValidatedRoleConfigByPropertyKind,
-}
-
-#[async_trait]
-impl ProvidesPod for ZookeeperState {
-    async fn get_pod_and_context(
-        &self,
-        _role: &str,
-        _role_group: &str,
-        _node: &str,
-    ) -> OperatorResult<(Pod, Vec<ConfigMap>)> {
-        // self.create_pod_and_config_maps(
-        //     &ZookeeperRole::from_str(role).unwrap(),
-        //     role_group,
-        //     node,
-        //     config_for_role_and_group(role, role_group, &self.validated_role_config)?,
-        // )
-        // .await
-        // .map_err(|_| InvalidName {
-        //     errors: vec!["Stuff went wrong!".to_string()],
-        // })
-
-        Err(InvalidName {
-            errors: vec!["Stuff went wrong!".to_string()],
-        })
-    }
 }
 
 impl ZookeeperState {
