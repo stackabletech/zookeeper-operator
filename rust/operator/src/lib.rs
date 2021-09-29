@@ -16,6 +16,7 @@ use stackable_operator::configmap;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
+use stackable_operator::identity::{LabeledPodIdentityFactory, PodIdentity, PodToNodeMapping};
 use stackable_operator::labels;
 use stackable_operator::labels::{
     build_common_labels_for_all_managed_resources, get_recommended_labels,
@@ -32,10 +33,8 @@ use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group, EligibleNodesForRoleAndGroup,
 };
-use stackable_operator::scheduler;
 use stackable_operator::scheduler::{
-    K8SUnboundedHistory, PodIdentity, PodToNodeMapping, RoleGroupEligibleNodes, ScheduleStrategy,
-    Scheduler, StickyScheduler,
+    K8SUnboundedHistory, RoleGroupEligibleNodes, ScheduleStrategy, Scheduler, StickyScheduler,
 };
 use stackable_operator::status::init_status;
 use stackable_operator::versioning::{finalize_versioning, init_versioning};
@@ -171,20 +170,26 @@ impl ZookeeperState {
                     let mut scheduler =
                         StickyScheduler::new(&mut history, ScheduleStrategy::GroupAntiAffinity);
 
+                    let pod_id_factory = LabeledPodIdentityFactory::new(
+                        APP_NAME,
+                        &self.context.name(),
+                        &self.eligible_nodes,
+                        ID_LABEL,
+                        1,
+                    );
+
                     let state = scheduler.schedule(
-                        scheduler::generate_ids(
-                            APP_NAME,
-                            &self.context.name(),
-                            &self.eligible_nodes,
-                        )
-                        .as_slice(),
+                        &pod_id_factory,
                         &RoleGroupEligibleNodes::from(&self.eligible_nodes),
-                        &PodToNodeMapping::from(&self.existing_pods, Some(ID_LABEL)),
+                        &self.existing_pods,
                     )?;
 
-                    let mapping = state
-                        .remaining_mapping()
-                        .get_filtered(&zookeeper_role.to_string(), role_group);
+                    let mapping = state.remaining_mapping().filter(
+                        APP_NAME,
+                        &self.context.name(),
+                        &zookeeper_role.to_string(),
+                        role_group,
+                    );
 
                     if let Some((pod_id, node_id)) = mapping.iter().next() {
                         // now we have a node that needs a pod -> get validated config
@@ -265,7 +270,7 @@ impl ZookeeperState {
                 .collect();
 
             // add dynamic config map requirement for server ids
-            for (pod_id, node_id) in id_mapping.iter() {
+            for (pod_id, node_id) in id_mapping.mapping.iter() {
                 transformed_config.insert(
                     format!("server.{}", pod_id.id()),
                     Some(format!("{}:2888:3888", node_id.name)),

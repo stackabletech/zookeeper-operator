@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Use `identity::LabeledPodIdentityFactory` to generate pod ids. ([#217])
+
+[#217] https://github.com/stackabletech/zookeeper-operator/pull/217
+
 ## [0.4.0] - 2021-09-21
 
 
