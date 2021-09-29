@@ -33,15 +33,13 @@ allow = [
     "Zlib"
 ]
 
-deny = [
-    "AGPL-3.0"
-]
-
 exceptions = [
+    { name = "stackable-opa-crd", allow = ["OSL-3.0"] },
     { name = "stackable-zookeeper-crd", allow = ["OSL-3.0"] },
-    { name = "stackable-zookeeper-operator-binary", allow = ["OSL-3.0"] },
+    { name = "stackable-zookeeper-crd", allow = ["OSL-3.0"] },
     { name = "stackable-zookeeper-operator", allow = ["OSL-3.0"] },
-]
+    { name = "stackable-zookeeper-operator-binary", allow = ["OSL-3.0"] },
+    ]
 
 [[licenses.clarify]]
 name = "ring"
@@ -60,7 +58,6 @@ license-files = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-required-git-spec = "tag"
 
 [sources.allow-org]
 github = ["stackabletech"]
