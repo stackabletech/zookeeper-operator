@@ -12,15 +12,13 @@ use kube::CustomResourceExt;
 use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use stackable_operator::identity::PodToNodeMapping;
 use serde_json::json;
 use stackable_operator::command::{CommandRef, HasCommands, HasRoleRestartOrder};
 use stackable_operator::controller::HasOwned;
 use stackable_operator::crd::HasApplication;
+use stackable_operator::identity::PodToNodeMapping;
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
-use stackable_operator::status::{Conditions, Status, Versioned};
-use stackable_operator::scheduler::PodToNodeMapping;
 use stackable_operator::status::{
     ClusterExecutionStatus, Conditions, HasClusterExecutionStatus, HasCurrentCommand, Status,
     Versioned,
