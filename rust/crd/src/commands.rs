@@ -1,9 +1,8 @@
 use crate::ZookeeperRole;
 use duplicate::duplicate;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
-use k8s_openapi::chrono::{DateTime, FixedOffset, Utc};
-use kube::api::ApiResource;
-use kube::{CustomResource, CustomResourceExt};
+use k8s_openapi::chrono::Utc;
+use kube::CustomResource;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::json;

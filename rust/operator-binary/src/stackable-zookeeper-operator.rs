@@ -49,7 +49,7 @@ async fn main() -> Result<(), error::Error> {
 
     let client = client::create_client(Some("zookeeper.stackable.tech".to_string())).await?;
 
-    tokio::join!(
+    tokio::try_join!(
         stackable_zookeeper_operator::create_controller(client.clone(), &product_config_path),
         stackable_operator::command_controller::create_command_controller::<
             Restart,
@@ -61,7 +61,7 @@ async fn main() -> Result<(), error::Error> {
         stackable_operator::command_controller::create_command_controller::<Stop, ZookeeperCluster>(
             client.clone()
         )
-    );
+    )?;
 
     Ok(())
 }

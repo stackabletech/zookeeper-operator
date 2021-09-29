@@ -4,14 +4,11 @@ use stackable_zookeeper_crd::commands::{Restart, Start, Stop};
 
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
-use k8s_openapi::chrono::{DateTime, FixedOffset, Utc};
 use kube::api::{ListParams, ResourceExt};
 use kube::Api;
 use kube::CustomResourceExt;
 use product_config::types::PropertyNameKind;
 use product_config::ProductConfigManager;
-use serde_json::json;
 use stackable_operator::builder::{
     ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
 };
@@ -45,7 +42,7 @@ use stackable_operator::scheduler::{
     K8SUnboundedHistory, PodIdentity, PodToNodeMapping, RoleGroupEligibleNodes, ScheduleStrategy,
     Scheduler, StickyScheduler,
 };
-use stackable_operator::status::{init_status, ClusterExecutionStatus, HasClusterExecutionStatus};
+use stackable_operator::status::{init_status, ClusterExecutionStatus};
 use stackable_operator::versioning::{finalize_versioning, init_versioning};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperRole, ZookeeperVersion, ADMIN_PORT, APP_NAME,
@@ -79,9 +76,9 @@ struct ZookeeperState {
 impl ProvidesPod for ZookeeperState {
     async fn get_pod_and_context(
         &self,
-        role: &str,
-        role_group: &str,
-        node: &str,
+        _role: &str,
+        _role_group: &str,
+        _node: &str,
     ) -> OperatorResult<(Pod, Vec<ConfigMap>)> {
         // self.create_pod_and_config_maps(
         //     &ZookeeperRole::from_str(role).unwrap(),
@@ -589,7 +586,7 @@ impl ZookeeperState {
     pub async fn handle_restart(&mut self, command: CommandRef) -> ZookeeperReconcileResult {
         info!("Restarting for [{:?}]", command);
         let mut restart_command: Restart =
-            materialize_command(&command, &self.context.client).await?;
+            materialize_command(&self.context.client, &command).await?;
 
         let patch = Command::start_patch(&mut restart_command);
         self.context
@@ -603,7 +600,7 @@ impl ZookeeperState {
         // TODO: Should we continue or requeue to check for a new command?
         match self.context.default_restart(&restart_command, self).await {
             Ok(ReconcileFunctionAction::Done) => {
-                clear_current_command(&mut self.context.resource, &self.context.client).await?;
+                clear_current_command(&self.context.client, &mut self.context.resource).await?;
 
                 let patch = Command::finish_patch(&mut restart_command);
                 self.context
@@ -620,7 +617,7 @@ impl ZookeeperState {
 
     pub async fn handle_start(&mut self, command: CommandRef) -> ZookeeperReconcileResult {
         info!("Starting for [{:?}]", command);
-        let mut start_command: Start = materialize_command(&command, &self.context.client).await?;
+        let mut start_command: Start = materialize_command(&self.context.client, &command).await?;
 
         let patch = Command::start_patch(&mut start_command);
         self.context
@@ -632,7 +629,7 @@ impl ZookeeperState {
 
         // TODO: We should probably only clear the command after it has finished starting
         //  but that will require some thought about the code structure
-        clear_current_command(&mut self.context.resource, &self.context.client).await?;
+        clear_current_command(&self.context.client, &mut self.context.resource).await?;
 
         let patch = Command::finish_patch(&mut start_command);
         self.context
@@ -654,7 +651,7 @@ impl ZookeeperState {
 
     pub async fn handle_stop(&mut self, command: CommandRef) -> ZookeeperReconcileResult {
         info!("Stopping for [{:?}]", command);
-        let mut stop_command: Stop = materialize_command(&command, &self.context.client).await?;
+        let mut stop_command: Stop = materialize_command(&self.context.client, &command).await?;
 
         let patch = Command::start_patch(&mut stop_command);
         self.context
@@ -667,7 +664,7 @@ impl ZookeeperState {
         // and continue
         match self.context.default_stop(&stop_command).await {
             Ok(ReconcileFunctionAction::Done) => {
-                clear_current_command(&mut self.context.resource, &self.context.client).await?;
+                clear_current_command(&self.context.client, &mut self.context.resource).await?;
 
                 let patch = Command::finish_patch(&mut stop_command);
                 self.context

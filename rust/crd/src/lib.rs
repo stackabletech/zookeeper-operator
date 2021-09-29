@@ -93,7 +93,7 @@ impl HasCommands for ZookeeperCluster {
 
 impl HasOwned for ZookeeperCluster {
     fn owned_objects() -> Vec<&'static str> {
-        vec![&Restart::crd_name(), &Start::crd_name(), &Stop::crd_name()]
+        vec![Restart::crd_name(), Start::crd_name(), Stop::crd_name()]
     }
 }
 
