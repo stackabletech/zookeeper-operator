@@ -42,6 +42,7 @@ use stackable_operator::scheduler::{
     K8SUnboundedHistory, PodIdentity, PodToNodeMapping, RoleGroupEligibleNodes, ScheduleStrategy,
     Scheduler, StickyScheduler,
 };
+use stackable_operator::status::HasClusterExecutionStatus;
 use stackable_operator::status::{init_status, ClusterExecutionStatus};
 use stackable_operator::versioning::{finalize_versioning, init_versioning};
 use stackable_zookeeper_crd::{
@@ -128,6 +129,20 @@ impl ZookeeperState {
 
         self.context.resource =
             init_versioning(&self.context.client, &self.context.resource, spec_version).await?;
+
+        // set the cluster status to running
+        if self.context.resource.cluster_execution_status().is_none() {
+            self.context
+                .client
+                .merge_patch_status(
+                    &self.context.resource,
+                    &self
+                        .context
+                        .resource
+                        .cluster_execution_status_patch(&ClusterExecutionStatus::Running),
+                )
+                .await?;
+        }
 
         Ok(ReconcileFunctionAction::Continue)
     }
@@ -555,22 +570,14 @@ impl ZookeeperState {
 
     pub async fn process_command(&mut self) -> ZookeeperReconcileResult {
         match self.context.retrieve_current_command().await? {
-            None => {
-                match self
-                    .context
-                    .resource
-                    .status
-                    .as_ref()
-                    .and_then(|status| status.cluster_execution_status.as_ref())
-                {
-                    Some(execution_status)
-                        if execution_status == &ClusterExecutionStatus::Stopped =>
-                    {
-                        Ok(ReconcileFunctionAction::Done)
-                    }
-                    _ => Ok(ReconcileFunctionAction::Continue),
+            // if there is no new command and the execution status is stopped we stop the
+            // reconcile loop here.
+            None => match self.context.resource.cluster_execution_status() {
+                Some(execution_status) if execution_status == ClusterExecutionStatus::Stopped => {
+                    Ok(ReconcileFunctionAction::Done)
                 }
-            }
+                _ => Ok(ReconcileFunctionAction::Continue),
+            },
             Some(command_ref) => match command_ref.kind.as_str() {
                 "Restart" => self.handle_restart(command_ref).await,
                 "Start" => self.handle_start(command_ref).await,
@@ -584,7 +591,7 @@ impl ZookeeperState {
     }
 
     pub async fn handle_restart(&mut self, command: CommandRef) -> ZookeeperReconcileResult {
-        info!("Restarting for [{:?}]", command);
+        info!("Restarting cluster [{:?}]", command);
         let mut restart_command: Restart =
             materialize_command(&self.context.client, &command).await?;
 
@@ -616,7 +623,7 @@ impl ZookeeperState {
     }
 
     pub async fn handle_start(&mut self, command: CommandRef) -> ZookeeperReconcileResult {
-        info!("Starting for [{:?}]", command);
+        info!("Starting cluster [{:?}]", command);
         let mut start_command: Start = materialize_command(&self.context.client, &command).await?;
 
         let patch = Command::start_patch(&mut start_command);
@@ -650,7 +657,7 @@ impl ZookeeperState {
     }
 
     pub async fn handle_stop(&mut self, command: CommandRef) -> ZookeeperReconcileResult {
-        info!("Stopping for [{:?}]", command);
+        info!("Stopping cluster [{:?}]", command);
         let mut stop_command: Stop = materialize_command(&self.context.client, &command).await?;
 
         let patch = Command::start_patch(&mut stop_command);
@@ -659,9 +666,8 @@ impl ZookeeperState {
             .merge_patch_status(&stop_command, &patch)
             .await?;
 
-        // The returned value from this indicates if all eligible pods have been restarted already
-        // if this returns ::Done the command has been finished, we can remove it from the status
-        // and continue
+        // The returned value from this indicates if all eligible pods have been stopped already
+        // if this returns ::Done the command has been finished, we can remove it from the status.
         match self.context.default_stop(&stop_command).await {
             Ok(ReconcileFunctionAction::Done) => {
                 clear_current_command(&self.context.client, &mut self.context.resource).await?;

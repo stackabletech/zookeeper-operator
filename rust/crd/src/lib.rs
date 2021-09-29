@@ -104,6 +104,12 @@ impl HasApplication for ZookeeperCluster {
 }
 
 impl HasClusterExecutionStatus for ZookeeperCluster {
+    fn cluster_execution_status(&self) -> Option<ClusterExecutionStatus> {
+        self.status
+            .as_ref()
+            .and_then(|status| status.cluster_execution_status.clone())
+    }
+
     fn cluster_execution_status_patch(&self, execution_status: &ClusterExecutionStatus) -> Value {
         json!({ "clusterExecutionStatus": execution_status })
     }
