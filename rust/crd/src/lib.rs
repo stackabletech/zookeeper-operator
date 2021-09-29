@@ -287,13 +287,11 @@ impl HasCurrentCommand for ZookeeperClusterStatus {
     fn set_current_command(&mut self, command: CommandRef) {
         self.current_command = Some(command);
     }
-
-    fn tracking_location() -> &'static str {
-        "/status/currentCommand"
-    }
-
     fn clear_current_command(&mut self) {
         self.current_command = None
+    }
+    fn tracking_location() -> &'static str {
+        "/status/currentCommand"
     }
 }
 
