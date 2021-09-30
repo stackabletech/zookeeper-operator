@@ -32,7 +32,7 @@ pub enum TicketReferences {
 /// ZooKeeper ensemble to use in their CRDs.
 /// This has the benefit of keeping references to Zookeeper ensembles consistent
 /// throughout the entire stack.
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, Hash, JsonSchema, PartialEq, Serialize)]
 pub struct ZookeeperReference {
     pub namespace: String,
     pub name: String,
@@ -42,7 +42,7 @@ pub struct ZookeeperReference {
 /// Contains all necessary information to establish a connection with a
 /// ZooKeeper ensemble
 #[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, Hash, PartialEq)]
 pub struct ZookeeperConnectionInformation {
     // A connection string as defined by ZooKeeper
     // https://zookeeper.apache.org/doc/current/zookeeperProgrammers.html#ch_zkSessions
