@@ -188,6 +188,13 @@ spec:
             status:
               nullable: true
               properties:
+                clusterExecutionStatus:
+                  description: Signals the current status of the cluster
+                  enum:
+                    - Stopped
+                    - Running
+                  nullable: true
+                  type: string
                 conditions:
                   items:
                     description: Condition contains details for one aspect of the current state of this API Resource.
@@ -220,6 +227,23 @@ spec:
                       - type
                     type: object
                   type: array
+                currentCommand:
+                  nullable: true
+                  properties:
+                    kind:
+                      type: string
+                    name:
+                      type: string
+                    namespace:
+                      type: string
+                    uid:
+                      type: string
+                  required:
+                    - kind
+                    - name
+                    - namespace
+                    - uid
+                  type: object
                 history:
                   nullable: true
                   properties:
