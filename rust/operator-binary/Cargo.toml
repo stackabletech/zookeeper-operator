@@ -33,7 +33,7 @@ assets = [
     ["../../deploy/crd/restart.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
     ["../../deploy/crd/start.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
     ["../../deploy/crd/stop.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
-    ["../../Deploy/config-spec/properties.yaml", "etc/stackable/zookeeper-operator/config-spec/", "644"],
+    ["../../deploy/config-spec/properties.yaml", "etc/stackable/zookeeper-operator/config-spec/", "644"],
 ]
 
 [[bin]]
