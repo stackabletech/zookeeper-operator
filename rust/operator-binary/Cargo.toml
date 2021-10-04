@@ -30,6 +30,9 @@ systemd-units = { enable = false, unit-name = "stackable-zookeeper-operator" }
 assets = [
     ["../../target/release/stackable-zookeeper-operator", "opt/stackable/zookeeper-operator/", "755"],
     ["../../deploy/crd/zookeepercluster.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
+    ["../../deploy/crd/restart.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
+    ["../../deploy/crd/start.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
+    ["../../deploy/crd/stop.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
     ["../../deploy/config-spec/properties.yaml", "etc/stackable/zookeeper-operator/config-spec/", "644"],
 ]
 
