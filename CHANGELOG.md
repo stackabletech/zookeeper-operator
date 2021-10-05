@@ -19,9 +19,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - Use `identity::LabeledPodIdentityFactory` to generate pod ids. ([#217])
+- Fix `ZookeeperCluster` conditions overwriting each other ([#228])
 
 [#223]: https://github.com/stackabletech/zookeeper-operator/pull/223
 [#217]: https://github.com/stackabletech/zookeeper-operator/pull/217
+[#228]: https://github.com/stackabletech/zookeeper-operator/pull/228
 
 ## [0.4.0] - 2021-09-21
 
