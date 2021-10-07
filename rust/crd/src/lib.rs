@@ -1,6 +1,6 @@
 pub mod commands;
+pub mod discovery;
 pub mod error;
-pub mod util;
 
 use crate::commands::{Restart, Start, Stop};
 
@@ -32,16 +32,20 @@ use strum_macros::EnumIter;
 pub const APP_NAME: &str = "zookeeper";
 pub const MANAGED_BY: &str = "zookeeper-operator";
 
-pub const CLIENT_PORT: &str = "clientPort";
+pub const CLIENT_PORT_PROPERTY: &str = "clientPort";
 pub const DATA_DIR: &str = "dataDir";
 pub const INIT_LIMIT: &str = "initLimit";
 pub const SYNC_LIMIT: &str = "syncLimit";
 pub const TICK_TIME: &str = "tickTime";
-pub const METRICS_PORT: &str = "metricsPort";
-pub const ADMIN_PORT: &str = "admin.serverPort";
+pub const METRICS_PORT_PROPERTY: &str = "metricsPort";
+pub const ADMIN_PORT_PROPERTY: &str = "admin.serverPort";
 
 pub const CONFIG_MAP_TYPE_DATA: &str = "data";
 pub const CONFIG_MAP_TYPE_ID: &str = "id";
+
+pub const CLIENT_PORT: &str = "client";
+pub const ADMIN_PORT: &str = "admin";
+pub const METRICS_PORT: &str = "metrics";
 
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[kube(
@@ -138,7 +142,10 @@ impl Configuration for ZookeeperConfig {
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         let mut result = BTreeMap::new();
         if let Some(metrics_port) = self.metrics_port {
-            result.insert(METRICS_PORT.to_string(), Some(metrics_port.to_string()));
+            result.insert(
+                METRICS_PORT_PROPERTY.to_string(),
+                Some(metrics_port.to_string()),
+            );
         }
         Ok(result)
     }
@@ -159,7 +166,10 @@ impl Configuration for ZookeeperConfig {
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         let mut result = BTreeMap::new();
         if let Some(client_port) = &self.client_port {
-            result.insert(CLIENT_PORT.to_string(), Some(client_port.to_string()));
+            result.insert(
+                CLIENT_PORT_PROPERTY.to_string(),
+                Some(client_port.to_string()),
+            );
         }
         if let Some(data_dir) = &self.data_dir {
             result.insert(DATA_DIR.to_string(), Some(data_dir.clone()));
@@ -174,7 +184,10 @@ impl Configuration for ZookeeperConfig {
             result.insert(TICK_TIME.to_string(), Some(tick_time.to_string()));
         }
         if let Some(admin_port) = self.admin_port {
-            result.insert(ADMIN_PORT.to_string(), Some(admin_port.to_string()));
+            result.insert(
+                ADMIN_PORT_PROPERTY.to_string(),
+                Some(admin_port.to_string()),
+            );
         }
         Ok(result)
     }
