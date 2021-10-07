@@ -42,8 +42,9 @@ use stackable_operator::status::HasClusterExecutionStatus;
 use stackable_operator::status::{init_status, ClusterExecutionStatus};
 use stackable_operator::versioning::{finalize_versioning, init_versioning};
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperRole, ZookeeperVersion, ADMIN_PORT, APP_NAME,
-    CLIENT_PORT, CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
+    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperRole, ZookeeperVersion, ADMIN_PORT,
+    ADMIN_PORT_PROPERTY, APP_NAME, CLIENT_PORT, CLIENT_PORT_PROPERTY, CONFIG_MAP_TYPE_DATA,
+    CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT, METRICS_PORT_PROPERTY,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -386,9 +387,9 @@ impl ZookeeperState {
             match property_name_kind {
                 PropertyNameKind::File(_) => {
                     // we need to extract the client port here to add to container ports later
-                    client_port = config.get(CLIENT_PORT).cloned();
+                    client_port = config.get(CLIENT_PORT_PROPERTY).cloned();
                     // we need to extract the admin port here to add to container ports later
-                    admin_port = config.get(ADMIN_PORT).cloned();
+                    admin_port = config.get(ADMIN_PORT_PROPERTY).cloned();
                     // we need to extract the data dir for the volume mounts later
                     data_dir = config.get(DATA_DIR).cloned();
                 }
@@ -401,7 +402,7 @@ impl ZookeeperState {
 
                         // if a metrics port is provided (for now by user, it is not required in
                         // product config to be able to not configure any monitoring / metrics)
-                        if property_name == METRICS_PORT {
+                        if property_name == METRICS_PORT_PROPERTY {
                             metrics_port = Some(property_value.to_string());
                             env_vars.push(EnvVar {
                                 name: "SERVER_JVMFLAGS".to_string(),
@@ -488,7 +489,7 @@ impl ZookeeperState {
             annotations.insert(SHOULD_BE_SCRAPED.to_string(), "true".to_string());
             container_builder.add_container_port(
                 ContainerPortBuilder::new(metrics_port.parse()?)
-                    .name("metrics")
+                    .name(METRICS_PORT)
                     .build(),
             );
         }
@@ -496,7 +497,7 @@ impl ZookeeperState {
         if let Some(client_port) = client_port {
             container_builder.add_container_port(
                 ContainerPortBuilder::new(client_port.parse()?)
-                    .name("client")
+                    .name(CLIENT_PORT)
                     .build(),
             );
         }
@@ -505,7 +506,7 @@ impl ZookeeperState {
         if let Some(admin_port) = admin_port {
             container_builder.add_container_port(
                 ContainerPortBuilder::new(admin_port.parse()?)
-                    .name("admin")
+                    .name(ADMIN_PORT)
                     .build(),
             );
         }

@@ -1,19 +1,17 @@
+use crate::discovery::TicketReferences::{ErrZkPodWithoutContainerPort, ErrZkPodWithoutName};
 use crate::error::Error::{
     IllegalZnode, IllegalZookeeperPath, NoZookeeperPodsAvailableForConnectionInfo,
-    ObjectWithoutName, OperatorFrameworkError, PodMissingLabels, PodWithoutHostname,
+    ObjectWithoutName, OperatorFrameworkError, PodWithoutContainerPort, PodWithoutHostname,
 };
 use crate::error::ZookeeperOperatorResult;
-use crate::util::TicketReferences::ErrZkPodWithoutName;
-use crate::{ZookeeperCluster, ZookeeperClusterSpec, APP_NAME, MANAGED_BY};
+use crate::{ZookeeperCluster, APP_NAME, CLIENT_PORT, MANAGED_BY};
 use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use stackable_operator::client::Client;
 use stackable_operator::error::OperatorResult;
-use stackable_operator::labels::{
-    APP_INSTANCE_LABEL, APP_MANAGED_BY_LABEL, APP_NAME_LABEL, APP_ROLE_GROUP_LABEL,
-};
+use stackable_operator::labels::{APP_INSTANCE_LABEL, APP_MANAGED_BY_LABEL, APP_NAME_LABEL};
 use std::collections::{BTreeMap, HashSet};
 use std::string::ToString;
 use strum_macros::Display;
@@ -24,6 +22,7 @@ const RESERVED_WORDS: [&str; 3] = [".", "..", "zookeeper"];
 #[derive(Display)]
 pub enum TicketReferences {
     ErrZkPodWithoutName,
+    ErrZkPodWithoutContainerPort,
 }
 
 /// Contains all necessary information identify a Stackable managed ZooKeeper
@@ -76,8 +75,12 @@ pub async fn get_zk_connection_info(
 ) -> ZookeeperOperatorResult<ZookeeperConnectionInformation> {
     let clean_chroot = pad_and_check_chroot(zk_reference.chroot.as_deref())?;
 
-    let zk_cluster =
-        check_zookeeper_reference(client, &zk_reference.name, &zk_reference.namespace).await?;
+    check_zookeeper_reference(
+        client,
+        zk_reference.name.as_str(),
+        zk_reference.namespace.as_str(),
+    )
+    .await?;
 
     let zk_pods = client
         .list_with_label_selector(None, &get_match_labels(&zk_reference.name))
@@ -92,8 +95,7 @@ pub async fn get_zk_connection_info(
         });
     }
 
-    let connection_string =
-        get_zk_connection_string_from_pods(zk_cluster.spec, zk_pods, clean_chroot.as_deref())?;
+    let connection_string = get_zk_connection_string_from_pods(zk_pods, clean_chroot.as_deref())?;
 
     Ok(ZookeeperConnectionInformation { connection_string })
 }
@@ -273,11 +275,11 @@ async fn check_zookeeper_reference(
 
     zk_cluster.map_err(|err| {
         warn!(?err,
-                        "Referencing a ZooKeeper cluster that does not exist (or some other error while fetching it): [{}/{}], we will requeue and check again",
-                        zk_namespace,
-                        zk_name
-                    );
-                    OperatorFrameworkError {source: err}})
+            "Referencing a ZooKeeper cluster that does not exist (or some other error while fetching it): [{}/{}], we will requeue and check again",
+            zk_namespace,
+            zk_name
+        );
+        OperatorFrameworkError {source: err}})
 }
 
 // Builds the actual connection string after all necessary information has been retrieved.
@@ -285,7 +287,6 @@ async fn check_zookeeper_reference(
 // the cluster spec itself, from which the port per host will be retrieved (unimplemented at
 // this time)
 fn get_zk_connection_string_from_pods(
-    zookeeper_spec: ZookeeperClusterSpec,
     zk_pods: Vec<Pod>,
     chroot: Option<&str>,
 ) -> ZookeeperOperatorResult<String> {
@@ -295,7 +296,7 @@ fn get_zk_connection_string_from_pods(
     let mut server_and_port_list = Vec::new();
 
     for pod in zk_pods {
-        let pod_name = match pod.metadata.name {
+        let pod_name = match &pod.metadata.name {
             None => {
                 return Err(ObjectWithoutName {
                     reference: ErrZkPodWithoutName.to_string(),
@@ -304,28 +305,27 @@ fn get_zk_connection_string_from_pods(
             Some(pod_name) => pod_name,
         };
 
+        let port = match extract_container_port(&pod, APP_NAME, CLIENT_PORT) {
+            None => {
+                return Err(PodWithoutContainerPort {
+                    pod_name: pod_name.clone(),
+                    port_name: CLIENT_PORT.to_string(),
+                    reference: ErrZkPodWithoutContainerPort.to_string(),
+                });
+            }
+            Some(port) => port,
+        };
+
         let node_name = match pod.spec.and_then(|spec| spec.node_name) {
             None => {
-                debug!("Pod [{:?}] is does not have node_name set, might not be scheduled yet, aborting.. ",
-                       pod_name);
-                return Err(PodWithoutHostname { pod: pod_name });
+                return Err(PodWithoutHostname {
+                    pod_name: pod_name.clone(),
+                });
             }
             Some(node_name) => node_name,
         };
 
-        if let Some(labels) = &pod.metadata.labels {
-            let role_group = match labels.get(APP_ROLE_GROUP_LABEL) {
-                None => {
-                    return Err(PodMissingLabels {
-                        labels: vec![String::from(APP_ROLE_GROUP_LABEL)],
-                        pod: pod_name,
-                    })
-                }
-                Some(role_group) => role_group.to_owned(),
-            };
-
-            server_and_port_list.push((node_name, get_zk_port(&zookeeper_spec, &role_group)?));
-        }
+        server_and_port_list.push((node_name, port));
     }
 
     // Sort list by hostname to make resulting connection strings predictable
@@ -346,15 +346,33 @@ fn get_zk_connection_string_from_pods(
     }
 }
 
-// Retrieve the port for the specified rolegroup from the cluster spec
-// TODO: Currently hard coded to 2181 as we do not support this setting yet.
-//  Depends on https://github.com/stackabletech/zookeeper-operator/pull/71
-//  Depends on https://github.com/stackabletech/zookeeper-operator/issues/85
-fn get_zk_port(
-    _zk_cluster: &ZookeeperClusterSpec,
-    _role_group: &str,
-) -> ZookeeperOperatorResult<u16> {
-    Ok(2181)
+/// Extract the container port `port_name` from a container with name `container_name`.
+/// Returns None if not the port or container are not available.
+///
+/// # Arguments
+///
+/// * `pod` - The pod to extract the container port from
+/// * `container_name` - The name of the container to search for.
+/// * `port_name` - The name of the container port.
+///
+fn extract_container_port(pod: &Pod, container_name: &str, port_name: &str) -> Option<String> {
+    if let Some(spec) = &pod.spec {
+        for container in &spec.containers {
+            if container.name != container_name {
+                continue;
+            }
+
+            if let Some(port) = container.ports.as_ref().and_then(|ports| {
+                ports
+                    .iter()
+                    .find(|port| port.name == Some(port_name.to_string()))
+            }) {
+                return Some(port.container_port.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -476,16 +494,6 @@ mod tests {
     #[rstest]
     #[case::single_pod_no_chroot(
       indoc! {"
-        version: 3.4.14
-        servers:
-          roleGroups:
-            default:
-              selector:
-                matchLabels:
-                  kubernetes.io/hostname: debian
-              replicas: 1
-      "},
-      indoc! {"
         - apiVersion: v1
           kind: Pod
           metadata:
@@ -496,22 +504,16 @@ mod tests {
               app.kubernetes.io/instance: test
           spec:
             nodeName: debian
-            containers: []
+            containers:
+              - name: zookeeper
+                ports:
+                  - containerPort: 1234
+                    name: client
       "},
       None,
-      "debian:2181"
+      "debian:1234"
     )]
     #[case::single_pod_with_chroot(
-      indoc! {"
-        version: 3.4.14
-        servers:
-          roleGroups:
-            default:
-              selector:
-                matchLabels:
-                  kubernetes.io/hostname: worker-1.stackable.tech
-              replicas: 1
-      "},
       indoc! {"
         - apiVersion: v1
           kind: Pod
@@ -523,22 +525,16 @@ mod tests {
               app.kubernetes.io/instance: test
           spec:
             nodeName: worker-1.stackable.tech
-            containers: []
+            containers:
+              - name: zookeeper
+                ports:
+                  - containerPort: 1234
+                    name: client
       "},
       Some("/dev"),
-      "worker-1.stackable.tech:2181/dev"
+      "worker-1.stackable.tech:1234/dev"
     )]
     #[case::multiple_pods_wrong_order(
-      indoc! {"
-        version: 3.4.14
-        servers:
-          roleGroups:
-            default:
-              selector:
-                matchLabels:
-                  kubernetes.io/hostname: debian
-              replicas: 1
-      "},
       indoc! {"
         - apiVersion: v1
           kind: Pod
@@ -550,7 +546,11 @@ mod tests {
               app.kubernetes.io/instance: test
           spec:
             nodeName: worker-2.stackable.demo
-            containers: []
+            containers:
+              - name: zookeeper
+                ports:
+                  - containerPort: 5678
+                    name: client
         - apiVersion: v1
           kind: Pod
           metadata:
@@ -561,22 +561,23 @@ mod tests {
               app.kubernetes.io/instance: test
           spec:
             nodeName: worker-1.stackable.demo
-            containers: []
+            containers:
+              - name: zookeeper
+                ports:
+                  - containerPort: 1234
+                    name: client
       "},
       Some("/prod"),
-      "worker-1.stackable.demo:2181,worker-2.stackable.demo:2181/prod"
+      "worker-1.stackable.demo:1234,worker-2.stackable.demo:5678/prod"
     )]
     fn get_connection_string(
-        #[case] zookeeper_spec: &str,
         #[case] zk_pods: &str,
         #[case] chroot: Option<&str>,
         #[case] expected_result: &str,
     ) {
         let pods = parse_pod_list_from_yaml(zk_pods);
-        let zk = parse_zk_from_yaml(zookeeper_spec);
-
         let conn_string =
-            get_zk_connection_string_from_pods(zk, pods, chroot).expect("should not fail");
+            get_zk_connection_string_from_pods(pods, chroot).expect("should not fail");
         assert_eq!(expected_result, conn_string);
     }
 
@@ -597,16 +598,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case::missing_mandatory_label(
-      indoc! {"
-        version: 3.4.14
-        servers:
-          roleGroups:
-            default:
-              selector:
-                kubernetes.io/hostname: debian
-              replicas: 1
-      "},
+    #[case::missing_container_port(
       indoc! {"
         - apiVersion: v1
           kind: Pod
@@ -617,7 +609,8 @@ mod tests {
               app.kubernetes.io/instance: test
           spec:
             nodeName: worker-1.stackable.demo
-            containers: []
+            containers:
+              - name: zookeeper
           status:
             phase: Running
             conditions:
@@ -628,15 +621,6 @@ mod tests {
     )]
     #[case::missing_hostname(
       indoc! {"
-        version: 3.4.14
-        servers:
-          roleGroups:
-            default:
-              selector:
-                  kubernetes.io/hostname: debian
-              replicas: 1
-      "},
-      indoc! {"
         - apiVersion: v1
           kind: Pod
           metadata:
@@ -646,7 +630,11 @@ mod tests {
               app.kubernetes.io/role-group: default
               app.kubernetes.io/instance: test
           spec:
-            containers: []
+            containers:
+              - name: zookeeper
+                ports:
+                  - containerPort: 1234
+                    name: client
           status:
             phase: Running
             conditions:
@@ -655,16 +643,9 @@ mod tests {
       "},
       Some("/prod"),
     )]
-    fn get_connection_string_should_fail(
-        #[case] zookeeper_spec: &str,
-        #[case] zk_pods: &str,
-        #[case] chroot: Option<&str>,
-    ) {
+    fn get_connection_string_should_fail(#[case] zk_pods: &str, #[case] chroot: Option<&str>) {
         let pods = parse_pod_list_from_yaml(zk_pods);
-        let zk = parse_zk_from_yaml(zookeeper_spec);
-
-        let conn_string = get_zk_connection_string_from_pods(zk, pods, chroot);
-
+        let conn_string = get_zk_connection_string_from_pods(pods, chroot);
         assert!(conn_string.is_err())
     }
 
@@ -672,9 +653,5 @@ mod tests {
         let kube_pods: Vec<k8s_openapi::api::core::v1::Pod> =
             serde_yaml::from_str(pod_config).unwrap();
         kube_pods.iter().map(|pod| pod.to_owned()).collect()
-    }
-
-    fn parse_zk_from_yaml(zk_config: &str) -> ZookeeperClusterSpec {
-        serde_yaml::from_str(zk_config).unwrap()
     }
 }
