@@ -1,5 +1,6 @@
 mod error;
 use crate::error::Error;
+use stackable_zookeeper_crd::commands::{Restart, Start, Stop};
 
 use async_trait::async_trait;
 use k8s_openapi::api::core::v1::{ConfigMap, EnvVar, Pod};
@@ -12,10 +13,12 @@ use stackable_operator::builder::{
     ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
 };
 use stackable_operator::client::Client;
+use stackable_operator::command::materialize_command;
 use stackable_operator::configmap;
 use stackable_operator::controller::Controller;
 use stackable_operator::controller::{ControllerStrategy, ReconciliationState};
 use stackable_operator::error::OperatorResult;
+use stackable_operator::identity::{LabeledPodIdentityFactory, PodIdentity, PodToNodeMapping};
 use stackable_operator::labels;
 use stackable_operator::labels::{
     build_common_labels_for_all_managed_resources, get_recommended_labels,
@@ -32,16 +35,15 @@ use stackable_operator::role_utils;
 use stackable_operator::role_utils::{
     get_role_and_group_labels, list_eligible_nodes_for_role_and_group, EligibleNodesForRoleAndGroup,
 };
-use stackable_operator::scheduler;
 use stackable_operator::scheduler::{
-    K8SUnboundedHistory, PodIdentity, PodToNodeMapping, RoleGroupEligibleNodes, ScheduleStrategy,
-    Scheduler, StickyScheduler,
+    K8SUnboundedHistory, RoleGroupEligibleNodes, ScheduleStrategy, Scheduler, StickyScheduler,
 };
-use stackable_operator::status::init_status;
+use stackable_operator::status::HasClusterExecutionStatus;
+use stackable_operator::status::{init_status, ClusterExecutionStatus};
 use stackable_operator::versioning::{finalize_versioning, init_versioning};
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperVersion, ADMIN_PORT, APP_NAME, CLIENT_PORT,
-    CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
+    ZookeeperCluster, ZookeeperClusterSpec, ZookeeperRole, ZookeeperVersion, ADMIN_PORT, APP_NAME,
+    CLIENT_PORT, CONFIG_MAP_TYPE_DATA, CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -49,8 +51,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use strum::IntoEnumIterator;
-use strum_macros::Display;
-use strum_macros::EnumIter;
 use tracing::error;
 use tracing::{debug, info, trace, warn};
 
@@ -61,12 +61,6 @@ const PROPERTIES_FILE: &str = "zoo.cfg";
 const CONFIG_DIR_NAME: &str = "conf";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
-
-#[derive(EnumIter, Debug, Display, PartialEq, Eq, Hash)]
-pub enum ZookeeperRole {
-    #[strum(serialize = "server")]
-    Server,
-}
 
 struct ZookeeperState {
     context: ReconciliationContext<ZookeeperCluster>,
@@ -106,6 +100,20 @@ impl ZookeeperState {
 
         self.context.resource =
             init_versioning(&self.context.client, &self.context.resource, spec_version).await?;
+
+        // set the cluster status to running
+        if self.context.resource.cluster_execution_status().is_none() {
+            self.context
+                .client
+                .merge_patch_status(
+                    &self.context.resource,
+                    &self
+                        .context
+                        .resource
+                        .cluster_execution_status_patch(&ClusterExecutionStatus::Running),
+                )
+                .await?;
+        }
 
         Ok(ReconcileFunctionAction::Continue)
     }
@@ -171,20 +179,26 @@ impl ZookeeperState {
                     let mut scheduler =
                         StickyScheduler::new(&mut history, ScheduleStrategy::GroupAntiAffinity);
 
+                    let pod_id_factory = LabeledPodIdentityFactory::new(
+                        APP_NAME,
+                        &self.context.name(),
+                        &self.eligible_nodes,
+                        ID_LABEL,
+                        1,
+                    );
+
                     let state = scheduler.schedule(
-                        scheduler::generate_ids(
-                            APP_NAME,
-                            &self.context.name(),
-                            &self.eligible_nodes,
-                        )
-                        .as_slice(),
+                        &pod_id_factory,
                         &RoleGroupEligibleNodes::from(&self.eligible_nodes),
-                        &PodToNodeMapping::from(&self.existing_pods, Some(ID_LABEL)),
+                        &self.existing_pods,
                     )?;
 
-                    let mapping = state
-                        .remaining_mapping()
-                        .get_filtered(&zookeeper_role.to_string(), role_group);
+                    let mapping = state.remaining_mapping().filter(
+                        APP_NAME,
+                        &self.context.name(),
+                        &zookeeper_role.to_string(),
+                        role_group,
+                    );
 
                     if let Some((pod_id, node_id)) = mapping.iter().next() {
                         // now we have a node that needs a pod -> get validated config
@@ -213,7 +227,6 @@ impl ZookeeperState {
         // We can now set current_version to target_version (if target_version was set) and
         // target_version to None
         finalize_versioning(&self.context.client, &self.context.resource).await?;
-
         Ok(ReconcileFunctionAction::Continue)
     }
 
@@ -265,7 +278,7 @@ impl ZookeeperState {
                 .collect();
 
             // add dynamic config map requirement for server ids
-            for (pod_id, node_id) in id_mapping.iter() {
+            for (pod_id, node_id) in id_mapping.mapping.iter() {
                 transformed_config.insert(
                     format!("server.{}", pod_id.id()),
                     Some(format!("{}:2888:3888", node_id.name)),
@@ -531,6 +544,44 @@ impl ZookeeperState {
         }
         Ok(ReconcileFunctionAction::Done)
     }
+
+    pub async fn process_command(&mut self) -> ZookeeperReconcileResult {
+        match self.context.retrieve_current_command().await? {
+            // if there is no new command and the execution status is stopped we stop the
+            // reconcile loop here.
+            None => match self.context.resource.cluster_execution_status() {
+                Some(execution_status) if execution_status == ClusterExecutionStatus::Stopped => {
+                    Ok(ReconcileFunctionAction::Done)
+                }
+                _ => Ok(ReconcileFunctionAction::Continue),
+            },
+            Some(command_ref) => match command_ref.kind.as_str() {
+                "Restart" => {
+                    info!("Restarting cluster [{:?}]", command_ref);
+                    let mut restart_command: Restart =
+                        materialize_command(&self.context.client, &command_ref).await?;
+                    Ok(self.context.default_restart(&mut restart_command).await?)
+                }
+                "Start" => {
+                    info!("Starting cluster [{:?}]", command_ref);
+                    let mut start_command: Start =
+                        materialize_command(&self.context.client, &command_ref).await?;
+                    Ok(self.context.default_start(&mut start_command).await?)
+                }
+                "Stop" => {
+                    info!("Stopping cluster [{:?}]", command_ref);
+                    let mut stop_command: Stop =
+                        materialize_command(&self.context.client, &command_ref).await?;
+
+                    Ok(self.context.default_stop(&mut stop_command).await?)
+                }
+                _ => {
+                    error!("Got unknown type of command: [{:?}]", command_ref);
+                    Ok(ReconcileFunctionAction::Done)
+                }
+            },
+        }
+    }
 }
 
 impl ReconciliationState for ZookeeperState {
@@ -566,6 +617,8 @@ impl ReconciliationState for ZookeeperState {
                     self.context
                         .wait_for_running_and_ready_pods(&self.existing_pods),
                 )
+                .await?
+                .then(self.process_command())
                 .await?
                 .then(self.context.delete_excess_pods(
                     list_eligible_nodes_for_role_and_group(&self.eligible_nodes).as_slice(),
@@ -662,7 +715,12 @@ impl ControllerStrategy for ZookeeperStrategy {
 pub async fn create_controller(client: Client, product_config_path: &str) -> OperatorResult<()> {
     if let Err(error) = stackable_operator::crd::wait_until_crds_present(
         &client,
-        vec![ZookeeperCluster::crd_name()],
+        vec![
+            ZookeeperCluster::crd_name(),
+            Restart::crd_name(),
+            Start::crd_name(),
+            Stop::crd_name(),
+        ],
         None,
     )
     .await
@@ -674,10 +732,16 @@ pub async fn create_controller(client: Client, product_config_path: &str) -> Ope
     let zk_api: Api<ZookeeperCluster> = client.get_all_api();
     let pods_api: Api<Pod> = client.get_all_api();
     let config_maps_api: Api<ConfigMap> = client.get_all_api();
+    let cmd_restart_api: Api<Restart> = client.get_all_api();
+    let cmd_start_api: Api<Start> = client.get_all_api();
+    let cmd_stop_api: Api<Stop> = client.get_all_api();
 
     let controller = Controller::new(zk_api)
         .owns(pods_api, ListParams::default())
-        .owns(config_maps_api, ListParams::default());
+        .owns(config_maps_api, ListParams::default())
+        .owns(cmd_restart_api, ListParams::default())
+        .owns(cmd_start_api, ListParams::default())
+        .owns(cmd_stop_api, ListParams::default());
 
     let product_config = ProductConfigManager::from_yaml_file(product_config_path).unwrap();
 
