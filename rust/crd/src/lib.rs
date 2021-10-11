@@ -2,6 +2,9 @@ pub mod commands;
 pub mod discovery;
 pub mod error;
 
+#[deprecated(note = "The util module has been renamed to discovery, please use this instead.")]
+pub use discovery as util;
+
 use crate::commands::{Restart, Start, Stop};
 
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
