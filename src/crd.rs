@@ -1,10 +1,15 @@
+use std::collections::BTreeMap;
+
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
 use kube::CustomResource;
 // use kube::{api::ApiResource, CustomResource, CustomResourceExt};
 use schemars::JsonSchema;
 // use semver::Version;
 use serde::{Deserialize, Serialize};
-use stackable_operator::role_utils::Role;
+use stackable_operator::{
+    product_config_utils::{ConfigError, Configuration},
+    role_utils::Role,
+};
 // use serde_json::{json, Value};
 // use stackable_operator::{
 //     command::{CommandRef, HasCommands, HasRoleRestartOrder},
@@ -25,13 +30,13 @@ use strum_macros::{Display, EnumIter};
 // pub const APP_NAME: &str = "zookeeper";
 // pub const MANAGED_BY: &str = "zookeeper-operator";
 
-// pub const CLIENT_PORT_PROPERTY: &str = "clientPort";
-// pub const DATA_DIR: &str = "dataDir";
-// pub const INIT_LIMIT: &str = "initLimit";
-// pub const SYNC_LIMIT: &str = "syncLimit";
-// pub const TICK_TIME: &str = "tickTime";
-// pub const METRICS_PORT_PROPERTY: &str = "metricsPort";
-// pub const ADMIN_PORT_PROPERTY: &str = "admin.serverPort";
+pub const CLIENT_PORT_PROPERTY: &str = "clientPort";
+pub const DATA_DIR: &str = "dataDir";
+pub const INIT_LIMIT: &str = "initLimit";
+pub const SYNC_LIMIT: &str = "syncLimit";
+pub const TICK_TIME: &str = "tickTime";
+pub const METRICS_PORT_PROPERTY: &str = "metricsPort";
+pub const ADMIN_PORT_PROPERTY: &str = "admin.serverPort";
 
 // pub const CONFIG_MAP_TYPE_DATA: &str = "data";
 // pub const CONFIG_MAP_TYPE_ID: &str = "id";
@@ -109,66 +114,66 @@ pub struct ZookeeperConfig {
     pub admin_port: Option<u16>,
 }
 
-// impl Configuration for ZookeeperConfig {
-//     type Configurable = ZookeeperCluster;
+impl Configuration for ZookeeperConfig {
+    type Configurable = ZookeeperCluster;
 
-//     fn compute_env(
-//         &self,
-//         _resource: &Self::Configurable,
-//         _role_name: &str,
-//     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-//         let mut result = BTreeMap::new();
-//         if let Some(metrics_port) = self.metrics_port {
-//             result.insert(
-//                 METRICS_PORT_PROPERTY.to_string(),
-//                 Some(metrics_port.to_string()),
-//             );
-//         }
-//         Ok(result)
-//     }
+    fn compute_env(
+        &self,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        let mut result = BTreeMap::new();
+        if let Some(metrics_port) = self.metrics_port {
+            result.insert(
+                METRICS_PORT_PROPERTY.to_string(),
+                Some(metrics_port.to_string()),
+            );
+        }
+        Ok(result)
+    }
 
-//     fn compute_cli(
-//         &self,
-//         _resource: &Self::Configurable,
-//         _role_name: &str,
-//     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-//         Ok(BTreeMap::new())
-//     }
+    fn compute_cli(
+        &self,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        Ok(BTreeMap::new())
+    }
 
-//     fn compute_files(
-//         &self,
-//         _resource: &Self::Configurable,
-//         _role_name: &str,
-//         _file: &str,
-//     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-//         let mut result = BTreeMap::new();
-//         if let Some(client_port) = &self.client_port {
-//             result.insert(
-//                 CLIENT_PORT_PROPERTY.to_string(),
-//                 Some(client_port.to_string()),
-//             );
-//         }
-//         if let Some(data_dir) = &self.data_dir {
-//             result.insert(DATA_DIR.to_string(), Some(data_dir.clone()));
-//         }
-//         if let Some(init_limit) = self.init_limit {
-//             result.insert(INIT_LIMIT.to_string(), Some(init_limit.to_string()));
-//         }
-//         if let Some(sync_limit) = self.sync_limit {
-//             result.insert(SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
-//         }
-//         if let Some(tick_time) = self.tick_time {
-//             result.insert(TICK_TIME.to_string(), Some(tick_time.to_string()));
-//         }
-//         if let Some(admin_port) = self.admin_port {
-//             result.insert(
-//                 ADMIN_PORT_PROPERTY.to_string(),
-//                 Some(admin_port.to_string()),
-//             );
-//         }
-//         Ok(result)
-//     }
-// }
+    fn compute_files(
+        &self,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+        _file: &str,
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        let mut result = BTreeMap::new();
+        if let Some(client_port) = &self.client_port {
+            result.insert(
+                CLIENT_PORT_PROPERTY.to_string(),
+                Some(client_port.to_string()),
+            );
+        }
+        if let Some(data_dir) = &self.data_dir {
+            result.insert(DATA_DIR.to_string(), Some(data_dir.clone()));
+        }
+        if let Some(init_limit) = self.init_limit {
+            result.insert(INIT_LIMIT.to_string(), Some(init_limit.to_string()));
+        }
+        if let Some(sync_limit) = self.sync_limit {
+            result.insert(SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
+        }
+        if let Some(tick_time) = self.tick_time {
+            result.insert(TICK_TIME.to_string(), Some(tick_time.to_string()));
+        }
+        if let Some(admin_port) = self.admin_port {
+            result.insert(
+                ADMIN_PORT_PROPERTY.to_string(),
+                Some(admin_port.to_string()),
+            );
+        }
+        Ok(result)
+    }
+}
 
 #[allow(non_camel_case_types)]
 #[derive(
