@@ -8,11 +8,8 @@ spec:
     roleGroups:
       default:
         selector:
-          matchExpressions:
-            - operator: In
-              key: kubernetes.io/hostname
-              values:
-                - mdesktop
+          matchLabels:
+            kubernetes.io/arch: stackable-linux
         config:
           adminPort: 12000
           metricsPort: 9505

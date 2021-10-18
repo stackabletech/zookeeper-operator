@@ -15,7 +15,7 @@ stackable-zookeeper-operator = { path = "../operator" }
 
 clap = "2.33"
 k8s-openapi = { version = "0.13", default-features = false, features = ["v1_22"] }
-tokio = { version = "1.10", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.12", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1"
 
 [build-dependencies]
@@ -30,6 +30,9 @@ systemd-units = { enable = false, unit-name = "stackable-zookeeper-operator" }
 assets = [
     ["../../target/release/stackable-zookeeper-operator", "opt/stackable/zookeeper-operator/", "755"],
     ["../../deploy/crd/zookeepercluster.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
+    ["../../deploy/crd/restart.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
+    ["../../deploy/crd/start.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
+    ["../../deploy/crd/stop.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
     ["../../deploy/config-spec/properties.yaml", "etc/stackable/zookeeper-operator/config-spec/", "644"],
 ]
 
