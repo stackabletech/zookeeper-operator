@@ -17,6 +17,8 @@ env:
   RUSTFLAGS: "-D warnings -W rust-2021-compatibility"
   REPO_APT_RELEASE_URL: https://repo.stackable.tech/repository/deb-release
   REPO_RPM_RELEASE_URL: https://repo.stackable.tech/repository/rpm-release
+  REPO_HELM_STABLE_URL: https://repo.stackable.tech/repository/stable
+
 
 jobs:
   debian10:
@@ -76,3 +78,28 @@ jobs:
           "${{ env.REPO_RPM_RELEASE_URL }}/el${{ matrix.node }}/"
       - name: Clean
         run: ~/.cargo/bin/cargo clean
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Set up Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: v3.6.2
+      - name: Compile chart
+        run: make compile-chart
+      - name: Package Chart
+        run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/zookeeper-operator
+      - name: Publish Chart
+        env:
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: >-
+         /usr/bin/curl
+         --fail
+         -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+         --upload-file "./$(find  target/helm/ -name *.tgz)"
+         "${{ env.REPO_HELM_STABLE_URL }}/"

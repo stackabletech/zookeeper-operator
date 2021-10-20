@@ -1,0 +1,3 @@
+*.tgz
+zookeeper-operator/configs
+zookeeper-operator/templates/crds.yaml
