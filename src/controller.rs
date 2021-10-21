@@ -5,8 +5,8 @@ use k8s_openapi::{
     api::{
         apps::v1::{StatefulSet, StatefulSetSpec},
         core::v1::{
-            Container, ContainerPort, EnvVar, EnvVarSource, ObjectFieldSelector,
-            PersistentVolumeClaim, PersistentVolumeClaimSpec, PodSpec, PodTemplateSpec,
+            Container, ContainerPort, EnvVar, EnvVarSource, ExecAction, ObjectFieldSelector,
+            PersistentVolumeClaim, PersistentVolumeClaimSpec, PodSpec, PodTemplateSpec, Probe,
             ResourceRequirements, Service, ServicePort, ServiceSpec, VolumeMount,
         },
     },
@@ -27,8 +27,10 @@ pub struct Ctx {
 }
 
 #[derive(Snafu, Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum Error {
-    ApplyService { source: kube::Error },
+    ApplyExternalService { source: kube::Error },
+    ApplyPeerService { source: kube::Error },
     ApplyStatefulSet { source: kube::Error },
 }
 
@@ -52,6 +54,7 @@ pub async fn reconcile_zk(
     let svcs = kube::Api::<Service>::namespaced(ctx.get_ref().kube.clone(), ns);
 
     let name = zk.metadata.name.clone().unwrap();
+    let svc_peers_name = format!("{}-peers", name);
     let zk_owner_ref = controller_reference_to_obj(&zk);
     let pod_labels = {
         let mut map = BTreeMap::new();
@@ -86,7 +89,36 @@ pub async fn reconcile_zk(
         }),
     )
     .await
-    .unwrap();
+    .context(ApplyExternalService)?;
+    svcs.patch(
+        &svc_peers_name,
+        &PatchParams {
+            force: true,
+            field_manager: Some("zookeeper.stackable.tech/zookeepercluster".to_string()),
+            ..PatchParams::default()
+        },
+        &Patch::Apply(Service {
+            metadata: ObjectMeta {
+                name: Some(svc_peers_name.clone()),
+                owner_references: Some(vec![zk_owner_ref.clone()]),
+                ..ObjectMeta::default()
+            },
+            spec: Some(ServiceSpec {
+                ports: Some(vec![ServicePort {
+                    name: Some("zk".to_string()),
+                    port: 2181,
+                    protocol: Some("TCP".to_string()),
+                    ..ServicePort::default()
+                }]),
+                selector: Some(pod_labels.clone()),
+                publish_not_ready_addresses: Some(true),
+                ..ServiceSpec::default()
+            }),
+            status: None,
+        }),
+    )
+    .await
+    .context(ApplyPeerService)?;
     let pod_template = PodTemplateSpec {
         metadata: Some(ObjectMeta {
             labels: Some(pod_labels.clone()),
@@ -132,7 +164,7 @@ pub async fn reconcile_zk(
                                     i,
                                     name,
                                     i - 1,
-                                    name,
+                                    svc_peers_name,
                                     ns
                                 )
                             })
@@ -166,6 +198,17 @@ pub async fn reconcile_zk(
                     name: "data".to_string(),
                     ..VolumeMount::default()
                 }]),
+                readiness_probe: Some(Probe {
+                    exec: Some(ExecAction {
+                        command: Some(vec![
+                            "sh".to_string(),
+                            "-c".to_string(),
+                            "echo srvr | nc localhost 2181 | grep '^Mode: '".to_string(),
+                        ]),
+                    }),
+                    period_seconds: Some(1),
+                    ..Probe::default()
+                }),
                 ..Container::default()
             }],
             ..PodSpec::default()
@@ -192,7 +235,7 @@ pub async fn reconcile_zk(
                         match_labels: Some(pod_labels.clone()),
                         ..LabelSelector::default()
                     },
-                    service_name: name.clone(),
+                    service_name: svc_peers_name.clone(),
                     template: pod_template,
                     volume_claim_templates: Some(vec![PersistentVolumeClaim {
                         metadata: ObjectMeta {

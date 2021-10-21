@@ -3,6 +3,7 @@ mod crd;
 
 use crd::ZookeeperCluster;
 use futures::StreamExt;
+use k8s_openapi::api::{apps::v1::StatefulSet, core::v1::Service};
 use kube::{api::ListParams, CustomResourceExt};
 use kube_runtime::{controller::Context, Controller};
 use structopt::StructOpt;
@@ -31,6 +32,14 @@ async fn main() -> eyre::Result<()> {
             let kube = kube::Client::try_default().await?;
             let zks = kube::Api::<ZookeeperCluster>::all(kube.clone());
             Controller::new(zks, ListParams::default())
+                .owns(
+                    kube::Api::<Service>::all(kube.clone()),
+                    ListParams::default(),
+                )
+                .owns(
+                    kube::Api::<StatefulSet>::all(kube.clone()),
+                    ListParams::default(),
+                )
                 .run(
                     controller::reconcile_zk,
                     controller::error_policy,
