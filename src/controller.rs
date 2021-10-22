@@ -16,11 +16,14 @@ use k8s_openapi::{
     },
 };
 use kube::{
-    api::{ObjectMeta, Patch, PatchParams},
+    api::{DynamicObject, ObjectMeta, Patch, PatchParams},
     Resource,
 };
-use kube_runtime::controller::{Context, ReconcilerAction};
-use snafu::{ResultExt, Snafu};
+use kube_runtime::{
+    controller::{Context, ReconcilerAction},
+    reflector::ObjectRef,
+};
+use snafu::{OptionExt, ResultExt, Snafu};
 
 pub struct Ctx {
     pub kube: kube::Client,
@@ -29,6 +32,7 @@ pub struct Ctx {
 #[derive(Snafu, Debug)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    ObjectHasNoNamespace { obj_ref: ObjectRef<DynamicObject> },
     ApplyExternalService { source: kube::Error },
     ApplyPeerService { source: kube::Error },
     ApplyStatefulSet { source: kube::Error },
@@ -49,7 +53,13 @@ pub async fn reconcile_zk(
     zk: ZookeeperCluster,
     ctx: Context<Ctx>,
 ) -> Result<ReconcilerAction, Error> {
-    let ns = zk.metadata.namespace.as_deref().unwrap();
+    let ns = zk
+        .metadata
+        .namespace
+        .as_deref()
+        .with_context(|| ObjectHasNoNamespace {
+            obj_ref: ObjectRef::from_obj(&zk).erase(),
+        })?;
     let stses = kube::Api::<StatefulSet>::namespaced(ctx.get_ref().kube.clone(), ns);
     let svcs = kube::Api::<Service>::namespaced(ctx.get_ref().kube.clone(), ns);
 
@@ -104,6 +114,7 @@ pub async fn reconcile_zk(
                 ..ObjectMeta::default()
             },
             spec: Some(ServiceSpec {
+                cluster_ip: Some("None".to_string()),
                 ports: Some(vec![ServicePort {
                     name: Some("zk".to_string()),
                     port: 2181,
