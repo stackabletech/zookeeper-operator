@@ -1,7 +1,7 @@
 [package]
 name = "zookeeper-operator"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,11 +17,9 @@ serde = "1.0.130"
 serde_json = "1.0.68"
 serde_yaml = "0.8.21"
 snafu = "0.6.10"
-# stackable-operator = { git = "https://github.com/stackabletech/operator-rs" }
 structopt = "0.3.23"
 strum = "0.22.0"
 strum_macros = "0.22.0"
 tokio = { version = "1.12.0", features = ["full"] }
-product-config = { git = "https://github.com/stackabletech/product-config" }
 tracing = "0.1.29"
 tracing-subscriber = "0.2.25"
