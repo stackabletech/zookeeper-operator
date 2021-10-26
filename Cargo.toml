@@ -1,8 +1,4 @@
 [workspace]
-
 members = [
     "rust/crd", "rust/operator", "rust/operator-binary"
 ]
-
-[patch."git+https://github.com/stackabletech/operator-rs.git"]
-stackable-operator = { git = "https://github.com/stackabletech//operator-rs.git", branch = "feature/reexport-kube" }
