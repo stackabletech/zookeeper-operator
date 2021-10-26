@@ -1,3 +1,5 @@
+use stackable_operator::kube;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Illegal ZooKeeper path [{path}]: {errors:?}")]

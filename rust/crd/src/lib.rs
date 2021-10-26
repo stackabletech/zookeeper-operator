@@ -7,12 +7,6 @@ pub use discovery as util;
 
 use crate::commands::{Restart, Start, Stop};
 
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
-use k8s_openapi::schemars::_serde_json::Value;
-use kube::api::ApiResource;
-use kube::CustomResource;
-use kube::CustomResourceExt;
-use schemars::JsonSchema;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -20,8 +14,14 @@ use stackable_operator::command::{CommandRef, HasCommands, HasRoleRestartOrder};
 use stackable_operator::controller::HasOwned;
 use stackable_operator::crd::HasApplication;
 use stackable_operator::identity::PodToNodeMapping;
+use stackable_operator::k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
+use stackable_operator::k8s_openapi::schemars::_serde_json::Value;
+use stackable_operator::kube::api::ApiResource;
+use stackable_operator::kube::CustomResource;
+use stackable_operator::kube::CustomResourceExt;
 use stackable_operator::product_config_utils::{ConfigError, Configuration};
 use stackable_operator::role_utils::Role;
+use stackable_operator::schemars::{self, JsonSchema};
 use stackable_operator::status::{
     ClusterExecutionStatus, Conditions, HasClusterExecutionStatus, HasCurrentCommand, Status,
     Versioned,
@@ -57,7 +57,10 @@ pub const METRICS_PORT: &str = "metrics";
     kind = "ZookeeperCluster",
     plural = "zookeeperclusters",
     shortname = "zk",
-    namespaced
+    namespaced,
+    kube_core = "stackable_operator::kube::core",
+    k8s_openapi = "stackable_operator::k8s_openapi",
+    schemars = "stackable_operator::schemars"
 )]
 #[kube(status = "ZookeeperClusterStatus")]
 pub struct ZookeeperClusterSpec {
