@@ -18,8 +18,9 @@ All notable changes to this project will be documented in this file.
 - Example custom resources for Restart, Start, Stop ([#223]).
 
 ### Changed
+- Use `identity::LabeledPodIdentityFactory` to generate pod ids. ([#217])
+- Fix `ZookeeperCluster` conditions overwriting each other ([#228])
 - BREAKING: renamed crd/util.rs to crd/discovery.rs ([#230]).
-- Use `identity::LabeledPodIdentityFactory` to generate pod ids. ([#217]).
 
 ### Fixed
 - The ZooKeeper discovery now correctly uses the "client" container port from the pod instead of defaulting to 2181 which will only work if the default port is used ([#230]).
@@ -27,6 +28,7 @@ All notable changes to this project will be documented in this file.
 [#230]: https://github.com/stackabletech/zookeeper-operator/pull/230
 [#223]: https://github.com/stackabletech/zookeeper-operator/pull/223
 [#217]: https://github.com/stackabletech/zookeeper-operator/pull/217
+[#228]: https://github.com/stackabletech/zookeeper-operator/pull/228
 
 ## [0.4.0] - 2021-09-21
 
