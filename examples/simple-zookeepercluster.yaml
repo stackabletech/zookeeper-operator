@@ -9,12 +9,8 @@ spec:
       default:
         selector:
           matchLabels:
-            kubernetes.io/arch: stackable-linux
+            kubernetes.io/os: linux
         config:
           adminPort: 12000
           metricsPort: 9505
-
-
-
-
-
+          dataDir: /stackable/zookeeper/data

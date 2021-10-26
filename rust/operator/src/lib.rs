@@ -381,7 +381,7 @@ impl ZookeeperState {
         let mut admin_port: Option<String> = None;
         let mut data_dir: Option<String> = None;
 
-        let version: &ZookeeperVersion = &self.context.resource.spec.version;
+        let _version: &ZookeeperVersion = &self.context.resource.spec.version;
 
         for (property_name_kind, config) in validated_config {
             match property_name_kind {
@@ -406,8 +406,8 @@ impl ZookeeperState {
                             metrics_port = Some(property_value.to_string());
                             env_vars.push(EnvVar {
                                 name: "SERVER_JVMFLAGS".to_string(),
-                                value: Some(format!("-javaagent:{{{{packageroot}}}}/{}/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:{{{{packageroot}}}}/{}/stackable/conf/jmx_exporter.yaml",
-                                                    version.package_name(), property_value, version.package_name())),
+                                value: Some(format!("-javaagent:/opt/stackable/packages/apache-zookeeper-3.5.8-bin/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:/opt/stackable/packages/apache-zookeeper-3.5.8-bin/stackable/conf/jmx_exporter.yaml",
+                                                    property_value)),
                                 ..EnvVar::default()
                             });
                             continue;
@@ -434,21 +434,17 @@ impl ZookeeperState {
         )?;
 
         let mut container_builder = ContainerBuilder::new(APP_NAME);
-        container_builder.image(format!("stackable/zookeeper:{}", version.to_string()));
-        container_builder.command(vec![
-            format!(
-                "{}/bin/zkServer.sh",
-                self.context.resource.spec.version.package_name()
-            ),
-            "start-foreground".to_string(),
-            // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
-            format!("{{{{configroot}}}}/{}/zoo.cfg", CONFIG_DIR_NAME),
-        ]);
+        container_builder.image("zookeeper-test:latest");
+
+        let mut init_container_builder = ContainerBuilder::new("init-container-test");
+        init_container_builder.image("zookeeper-test:latest");
+        init_container_builder.command(vec!["./stackable/script/myid.sh".to_string(), pod_id.id()]);
 
         // One mount for the config directory
         if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_DATA) {
             if let Some(name) = config_map_data.metadata.name.as_ref() {
-                container_builder.add_configmapvolume(name, CONFIG_DIR_NAME.to_string());
+                container_builder
+                    .add_configmapvolume(name, "/stackable/zookeeper/conf".to_string());
             } else {
                 return Err(error::Error::MissingConfigMapNameError {
                     cm_type: CONFIG_MAP_TYPE_DATA,
@@ -457,26 +453,6 @@ impl ZookeeperState {
         } else {
             return Err(error::Error::MissingConfigMapError {
                 cm_type: CONFIG_MAP_TYPE_DATA,
-                pod_name,
-            });
-        }
-
-        // We need a second mount for the data directory
-        // because we need to write the 'myid' file into the data directory
-        if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_ID) {
-            if let Some(name) = config_map_data.metadata.name.as_ref() {
-                container_builder.add_configmapvolume(
-                    name,
-                    data_dir.unwrap_or_else(|| "/tmp/zookeeper".to_string()),
-                );
-            } else {
-                return Err(error::Error::MissingConfigMapNameError {
-                    cm_type: CONFIG_MAP_TYPE_ID,
-                });
-            }
-        } else {
-            return Err(error::Error::MissingConfigMapError {
-                cm_type: CONFIG_MAP_TYPE_ID,
                 pod_name,
             });
         }
@@ -521,6 +497,11 @@ impl ZookeeperState {
         // we need to add the zookeeper id to the labels
         pod_labels.insert(ID_LABEL.to_string(), pod_id.id().to_string());
 
+        let mut container = container_builder.build();
+        container.image_pull_policy = Some("IfNotPresent".to_string());
+        let mut init_container = init_container_builder.build();
+        init_container.image_pull_policy = Some("IfNotPresent".to_string());
+
         let pod = PodBuilder::new()
             .metadata(
                 ObjectMetaBuilder::new()
@@ -532,7 +513,8 @@ impl ZookeeperState {
                     .build()?,
             )
             .add_stackable_agent_tolerations()
-            .add_container(container_builder.build())
+            .add_container(container)
+            .add_init_container(init_container)
             .node_name(node_name)
             .build()?;
 
