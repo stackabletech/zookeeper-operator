@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.1] - 2021-10-27
+
+
 ### Added
 - `process_command` to reconcile loop for command handling ([#223]).
 - `rust/crd/lib/command.rs` for command CRDs
