@@ -13,4 +13,4 @@ spec:
         config:
           adminPort: 12000
           metricsPort: 9505
-          dataDir: /stackable/zookeeper/data
+          dataDir: /stackable/data

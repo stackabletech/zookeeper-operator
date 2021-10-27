@@ -59,7 +59,6 @@ const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
 const SHOULD_BE_SCRAPED: &str = "monitoring.stackable.tech/should_be_scraped";
 const PROPERTIES_FILE: &str = "zoo.cfg";
-const CONFIG_DIR_NAME: &str = "conf";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
@@ -406,7 +405,7 @@ impl ZookeeperState {
                             metrics_port = Some(property_value.to_string());
                             env_vars.push(EnvVar {
                                 name: "SERVER_JVMFLAGS".to_string(),
-                                value: Some(format!("-javaagent:/opt/stackable/packages/apache-zookeeper-3.5.8-bin/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:/opt/stackable/packages/apache-zookeeper-3.5.8-bin/stackable/conf/jmx_exporter.yaml",
+                                value: Some(format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={}:/stackable/jmx/jmx_exporter.yaml",
                                                     property_value)),
                                 ..EnvVar::default()
                             });
@@ -438,13 +437,16 @@ impl ZookeeperState {
 
         let mut init_container_builder = ContainerBuilder::new("init-container-test");
         init_container_builder.image("zookeeper-test:latest");
-        init_container_builder.command(vec!["./stackable/script/myid.sh".to_string(), pod_id.id()]);
+        init_container_builder.command(vec![
+            "/stackable/script/myid.sh".to_string(),
+            data_dir.unwrap_or("tmp/zookeeper".to_string()),
+            pod_id.id().to_string(),
+        ]);
 
         // One mount for the config directory
         if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_DATA) {
             if let Some(name) = config_map_data.metadata.name.as_ref() {
-                container_builder
-                    .add_configmapvolume(name, "/stackable/zookeeper/conf".to_string());
+                container_builder.add_configmapvolume(name, "/stackable/conf".to_string());
             } else {
                 return Err(error::Error::MissingConfigMapNameError {
                     cm_type: CONFIG_MAP_TYPE_DATA,
