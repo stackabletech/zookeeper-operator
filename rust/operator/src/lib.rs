@@ -4,7 +4,8 @@ use stackable_zookeeper_crd::commands::{Restart, Start, Stop};
 
 use async_trait::async_trait;
 use stackable_operator::builder::{
-    ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
+    ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder, VolumeBuilder,
+    VolumeMountBuilder,
 };
 use stackable_operator::client::Client;
 use stackable_operator::command::materialize_command;
@@ -431,21 +432,35 @@ impl ZookeeperState {
             None,
         )?;
 
-        let mut container_builder = ContainerBuilder::new(APP_NAME);
-        container_builder.image("zookeeper-test:latest");
+        let data_folder = match data_dir {
+            None => "/stackable/data".to_string(),
+            Some(dir) => dir,
+        };
 
-        let mut init_container_builder = ContainerBuilder::new("init-container-test");
-        init_container_builder.image("zookeeper-test:latest");
-        init_container_builder.command(vec![
-            "/stackable/script/myid.sh".to_string(),
-            data_dir.unwrap_or("tmp/zookeeper".to_string()),
-            pod_id.id().to_string(),
-        ]);
+        let mut pod_builder = PodBuilder::new();
+
+        let mut container_builder = ContainerBuilder::new(APP_NAME);
+        container_builder
+            .image("zookeeper-test:latest")
+            .add_env_vars(env_vars)
+            .command(vec!["/bin/bash".to_string(), "-c".to_string()])
+            // first we execute the myid script and then start zookeeper
+            .args(vec![format!(
+                "{} {} {}; {} {} {}",
+                "/stackable/script/myid.sh",
+                data_folder,
+                pod_id.id(),
+                "bin/zkServer.sh".to_string(),
+                "start-foreground".to_string(),
+                "/stackable/conf/zoo.cfg".to_string()
+            )]);
 
         // One mount for the config directory
         if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_DATA) {
             if let Some(name) = config_map_data.metadata.name.as_ref() {
-                container_builder.add_configmapvolume(name, "/stackable/conf".to_string());
+                container_builder
+                    .add_volume_mount(VolumeMountBuilder::new("config", "/stackable/conf").build());
+                pod_builder.add_volume(VolumeBuilder::new("config").with_config_map(name).build());
             } else {
                 return Err(error::Error::MissingConfigMapNameError {
                     cm_type: CONFIG_MAP_TYPE_DATA,
@@ -458,7 +473,12 @@ impl ZookeeperState {
             });
         }
 
-        container_builder.add_env_vars(env_vars);
+        container_builder.add_volume_mount(VolumeMountBuilder::new("data", &data_folder).build());
+        pod_builder.add_volume(
+            VolumeBuilder::new("data")
+                .with_empty_dir(Some(""), None)
+                .build(),
+        );
 
         let mut annotations = BTreeMap::new();
         // only add metrics container port and annotation if available
@@ -500,10 +520,8 @@ impl ZookeeperState {
 
         let mut container = container_builder.build();
         container.image_pull_policy = Some("IfNotPresent".to_string());
-        let mut init_container = init_container_builder.build();
-        init_container.image_pull_policy = Some("IfNotPresent".to_string());
 
-        let pod = PodBuilder::new()
+        let pod = pod_builder
             .metadata(
                 ObjectMetaBuilder::new()
                     .generate_name(pod_name)
@@ -515,7 +533,6 @@ impl ZookeeperState {
             )
             .add_stackable_agent_tolerations()
             .add_container(container)
-            .add_init_container(init_container)
             .node_name(node_name)
             .build()?;
 
