@@ -22,7 +22,7 @@ deploy/helm/zookeeper-operator/configs:
 crds: deploy/helm/zookeeper-operator/templates/crds.yaml
 
 deploy/helm/zookeeper-operator/templates/crds.yaml:
-	cat deploy/crd/*.yaml | yq '.metadata.annotations["helm.sh/resource-policy"]="keep"' > ${@}
+	cat deploy/crd/*.yaml | yq e '.metadata.annotations["helm.sh/resource-policy"]="keep"' - > ${@}
 
 chart-lint: compile-chart
 	docker run -it -v $(shell pwd):/build/helm-charts -w /build/helm-charts quay.io/helmpack/chart-testing:v3.4.0  ct lint --config deploy/helm/ct.yaml
