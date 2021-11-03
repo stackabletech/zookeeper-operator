@@ -19,6 +19,7 @@ env:
   REPO_APT_DEV_URL: https://repo.stackable.tech/repository/deb-dev
   REPO_RPM_DEV_URL: https://repo.stackable.tech/repository/rpm-dev
   REPO_HELM_DEV_URL: https://repo.stackable.tech/repository/dev
+  CT_CONFIG: deploy/helm/ct.yaml
 
 jobs:
   debian10:

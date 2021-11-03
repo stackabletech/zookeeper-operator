@@ -18,7 +18,7 @@ env:
   REPO_APT_RELEASE_URL: https://repo.stackable.tech/repository/deb-release
   REPO_RPM_RELEASE_URL: https://repo.stackable.tech/repository/rpm-release
   REPO_HELM_STABLE_URL: https://repo.stackable.tech/repository/stable
-
+  CT_CONFIG: deploy/helm/ct.yaml
 
 jobs:
   debian10:
