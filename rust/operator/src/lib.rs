@@ -3,10 +3,7 @@ use crate::error::Error;
 use stackable_zookeeper_crd::commands::{Restart, Start, Stop};
 
 use async_trait::async_trait;
-use stackable_operator::builder::{
-    ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder, VolumeBuilder,
-    VolumeMountBuilder,
-};
+use stackable_operator::builder::{ContainerBuilder, ObjectMetaBuilder, PodBuilder, VolumeBuilder};
 use stackable_operator::client::Client;
 use stackable_operator::command::materialize_command;
 use stackable_operator::controller::Controller;
@@ -380,7 +377,7 @@ impl ZookeeperState {
         let mut admin_port: Option<String> = None;
         let mut data_dir: Option<String> = None;
 
-        let _version: &ZookeeperVersion = &self.context.resource.spec.version;
+        let version: &ZookeeperVersion = &self.context.resource.spec.version;
 
         for (property_name_kind, config) in validated_config {
             match property_name_kind {
@@ -432,16 +429,13 @@ impl ZookeeperState {
             None,
         )?;
 
-        let data_folder = match data_dir {
-            None => "/stackable/data".to_string(),
-            Some(dir) => dir,
-        };
+        let data_folder = data_dir.unwrap_or("/stackable/data".to_string());
 
         let mut pod_builder = PodBuilder::new();
 
         let mut container_builder = ContainerBuilder::new(APP_NAME);
         container_builder
-            .image("zookeeper-test:latest")
+            .image(format!("zookeeper:{}", version.to_string()))
             .add_env_vars(env_vars)
             .command(vec!["/bin/bash".to_string(), "-c".to_string()])
             // first we execute the myid script and then start zookeeper
@@ -458,8 +452,7 @@ impl ZookeeperState {
         // One mount for the config directory
         if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_DATA) {
             if let Some(name) = config_map_data.metadata.name.as_ref() {
-                container_builder
-                    .add_volume_mount(VolumeMountBuilder::new("config", "/stackable/conf").build());
+                container_builder.add_volume_mount("config", "/stackable/conf");
                 pod_builder.add_volume(VolumeBuilder::new("config").with_config_map(name).build());
             } else {
                 return Err(error::Error::MissingConfigMapNameError {
@@ -473,7 +466,7 @@ impl ZookeeperState {
             });
         }
 
-        container_builder.add_volume_mount(VolumeMountBuilder::new("data", &data_folder).build());
+        container_builder.add_volume_mount("data", &data_folder);
         pod_builder.add_volume(
             VolumeBuilder::new("data")
                 .with_empty_dir(Some(""), None)
@@ -484,28 +477,16 @@ impl ZookeeperState {
         // only add metrics container port and annotation if available
         if let Some(metrics_port) = metrics_port {
             annotations.insert(SHOULD_BE_SCRAPED.to_string(), "true".to_string());
-            container_builder.add_container_port(
-                ContainerPortBuilder::new(metrics_port.parse()?)
-                    .name(METRICS_PORT)
-                    .build(),
-            );
+            container_builder.add_container_port(METRICS_PORT, metrics_port.parse()?);
         }
         // add client port if available
         if let Some(client_port) = client_port {
-            container_builder.add_container_port(
-                ContainerPortBuilder::new(client_port.parse()?)
-                    .name(CLIENT_PORT)
-                    .build(),
-            );
+            container_builder.add_container_port(CLIENT_PORT, client_port.parse()?);
         }
 
         // add admin port if available
         if let Some(admin_port) = admin_port {
-            container_builder.add_container_port(
-                ContainerPortBuilder::new(admin_port.parse()?)
-                    .name(ADMIN_PORT)
-                    .build(),
-            );
+            container_builder.add_container_port(ADMIN_PORT, admin_port.parse()?);
         }
 
         let mut pod_labels = get_recommended_labels(
@@ -518,8 +499,8 @@ impl ZookeeperState {
         // we need to add the zookeeper id to the labels
         pod_labels.insert(ID_LABEL.to_string(), pod_id.id().to_string());
 
-        let mut container = container_builder.build();
-        container.image_pull_policy = Some("IfNotPresent".to_string());
+        // TODO: remove if not testing locally
+        container_builder.image_pull_policy("IfNotPresent");
 
         let pod = pod_builder
             .metadata(
@@ -532,8 +513,10 @@ impl ZookeeperState {
                     .build()?,
             )
             .add_stackable_agent_tolerations()
-            .add_container(container)
+            .add_container(container_builder.build())
             .node_name(node_name)
+            // TODO: first iteration we are using host network
+            .host_network(true)
             .build()?;
 
         Ok(self.context.client.create(&pod).await?)
