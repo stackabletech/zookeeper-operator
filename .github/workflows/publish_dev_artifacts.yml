@@ -18,7 +18,7 @@ env:
   RUSTFLAGS: "-D warnings -W rust-2021-compatibility"
   REPO_APT_DEV_URL: https://repo.stackable.tech/repository/deb-dev
   REPO_RPM_DEV_URL: https://repo.stackable.tech/repository/rpm-dev
-  REPO_HELM_DEV_URL: https://repo.stackable.tech/repository/dev
+  REPO_HELM_DEV_URL: https://repo.stackable.tech/repository/helm-dev
   CT_CONFIG: deploy/helm/ct.yaml
 
 jobs:
