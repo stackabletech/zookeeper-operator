@@ -8,7 +8,6 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  namespace: default
   name: "{{ include "operator.fullname" . }}-test-role"
   labels:
     {{- include "operator.testLabels" . | nindent 4 }}
@@ -24,7 +23,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: "{{ include "operator.fullname" . }}-test-role-binding"
-  namespace: default
   labels:
     {{- include "operator.testLabels" . | nindent 4 }}
 subjects:
