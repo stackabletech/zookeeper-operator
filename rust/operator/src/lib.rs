@@ -402,7 +402,7 @@ impl ZookeeperState {
                             metrics_port = Some(property_value.to_string());
                             env_vars.push(EnvVar {
                                 name: "SERVER_JVMFLAGS".to_string(),
-                                value: Some(format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={}:/stackable/jmx/jmx_exporter.yaml",
+                                value: Some(format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={}:/stackable/jmx/server.yaml",
                                                     property_value)),
                                 ..EnvVar::default()
                             });
@@ -429,13 +429,14 @@ impl ZookeeperState {
             None,
         )?;
 
-        let data_folder = data_dir.unwrap_or("/stackable/data".to_string());
+        let data_folder = data_dir.unwrap_or_else(|| "/stackable/data".to_string());
 
         let mut pod_builder = PodBuilder::new();
 
         let mut container_builder = ContainerBuilder::new(APP_NAME);
         container_builder
             .image(format!(
+                // TODO: how to handle the platform version?
                 "docker.stackable.tech/stackable/zookeeper:{}-0.1",
                 version.to_string()
             ))
@@ -501,9 +502,6 @@ impl ZookeeperState {
         );
         // we need to add the zookeeper id to the labels
         pod_labels.insert(ID_LABEL.to_string(), pod_id.id().to_string());
-
-        // TODO: remove if not testing locally
-        //container_builder.image_pull_policy("IfNotPresent");
 
         let pod = pod_builder
             .metadata(
