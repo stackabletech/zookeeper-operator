@@ -435,18 +435,21 @@ impl ZookeeperState {
 
         let mut container_builder = ContainerBuilder::new(APP_NAME);
         container_builder
-            .image(format!("zookeeper:{}", version.to_string()))
+            .image(format!(
+                "docker.stackable.tech/stackable/zookeeper:{}-0.1",
+                version.to_string()
+            ))
             .add_env_vars(env_vars)
             .command(vec!["/bin/bash".to_string(), "-c".to_string()])
             // first we execute the myid script and then start zookeeper
             .args(vec![format!(
                 "{} {} {}; {} {} {}",
-                "/stackable/script/myid.sh",
+                "/stackable/bin/write-myid",
                 data_folder,
                 pod_id.id(),
-                "bin/zkServer.sh".to_string(),
-                "start-foreground".to_string(),
-                "/stackable/conf/zoo.cfg".to_string()
+                "bin/zkServer.sh",
+                "start-foreground",
+                "/stackable/conf/zoo.cfg"
             )]);
 
         // One mount for the config directory
@@ -500,7 +503,7 @@ impl ZookeeperState {
         pod_labels.insert(ID_LABEL.to_string(), pod_id.id().to_string());
 
         // TODO: remove if not testing locally
-        container_builder.image_pull_policy("IfNotPresent");
+        //container_builder.image_pull_policy("IfNotPresent");
 
         let pod = pod_builder
             .metadata(
