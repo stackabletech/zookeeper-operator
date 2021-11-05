@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+- moved to `operator-rs` `0.4.0`
+
 ## [0.4.1] - 2021-10-27
 
 
