@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, time::Duration};
 
-use crate::{crd::ZookeeperCluster, utils::controller_reference_to_obj};
+use crate::{
+    crd::ZookeeperCluster,
+    utils::{apply_owned, controller_reference_to_obj},
+};
 use k8s_openapi::{
     api::{
         apps::v1::{StatefulSet, StatefulSetSpec},
@@ -12,7 +15,7 @@ use k8s_openapi::{
     },
     apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
 };
-use kube::api::{DynamicObject, ObjectMeta, Patch, PatchParams};
+use kube::api::{DynamicObject, ObjectMeta};
 use kube_runtime::{
     controller::{Context, ReconcilerAction},
     reflector::ObjectRef,
@@ -43,8 +46,7 @@ pub async fn reconcile_zk(
         .with_context(|| ObjectHasNoNamespace {
             obj_ref: ObjectRef::from_obj(&zk).erase(),
         })?;
-    let stses = kube::Api::<StatefulSet>::namespaced(ctx.get_ref().kube.clone(), ns);
-    let svcs = kube::Api::<Service>::namespaced(ctx.get_ref().kube.clone(), ns);
+    let kube = ctx.get_ref().kube.clone();
 
     let name = zk.metadata.name.clone().unwrap();
     let svc_peers_name = format!("{}-peers", name);
@@ -54,16 +56,12 @@ pub async fn reconcile_zk(
         map.insert("app".to_string(), "zookeeper".to_string());
         map
     };
-    svcs.patch(
-        &name,
-        &PatchParams {
-            force: true,
-            field_manager: Some("zookeeper.stackable.tech/zookeepercluster".to_string()),
-            ..PatchParams::default()
-        },
-        &Patch::Apply(Service {
+    apply_owned(
+        &kube,
+        &Service {
             metadata: ObjectMeta {
                 name: Some(name.clone()),
+                namespace: Some(ns.to_string()),
                 owner_references: Some(vec![zk_owner_ref.clone()]),
                 ..ObjectMeta::default()
             },
@@ -79,20 +77,16 @@ pub async fn reconcile_zk(
                 ..ServiceSpec::default()
             }),
             status: None,
-        }),
+        },
     )
     .await
     .context(ApplyExternalService)?;
-    svcs.patch(
-        &svc_peers_name,
-        &PatchParams {
-            force: true,
-            field_manager: Some("zookeeper.stackable.tech/zookeepercluster".to_string()),
-            ..PatchParams::default()
-        },
-        &Patch::Apply(Service {
+    apply_owned(
+        &kube,
+        &Service {
             metadata: ObjectMeta {
                 name: Some(svc_peers_name.clone()),
+                namespace: Some(ns.to_string()),
                 owner_references: Some(vec![zk_owner_ref.clone()]),
                 ..ObjectMeta::default()
             },
@@ -109,7 +103,7 @@ pub async fn reconcile_zk(
                 ..ServiceSpec::default()
             }),
             status: None,
-        }),
+        },
     )
     .await
     .context(ApplyPeerService)?;
@@ -208,56 +202,51 @@ pub async fn reconcile_zk(
             ..PodSpec::default()
         }),
     };
-    stses
-        .patch(
-            &name,
-            &PatchParams {
-                force: true,
-                field_manager: Some("zookeeper.stackable.tech/zookeepercluster".to_string()),
-                ..PatchParams::default()
+    apply_owned(
+        &kube,
+        &StatefulSet {
+            metadata: ObjectMeta {
+                name: Some(name.clone()),
+                namespace: Some(ns.to_string()),
+                owner_references: Some(vec![zk_owner_ref.clone()]),
+                ..ObjectMeta::default()
             },
-            &Patch::Apply(StatefulSet {
-                metadata: ObjectMeta {
-                    name: Some(name.clone()),
-                    owner_references: Some(vec![zk_owner_ref.clone()]),
-                    ..ObjectMeta::default()
+            spec: Some(StatefulSetSpec {
+                pod_management_policy: Some("Parallel".to_string()),
+                replicas: zk.spec.replicas,
+                selector: LabelSelector {
+                    match_labels: Some(pod_labels.clone()),
+                    ..LabelSelector::default()
                 },
-                spec: Some(StatefulSetSpec {
-                    pod_management_policy: Some("Parallel".to_string()),
-                    replicas: zk.spec.replicas,
-                    selector: LabelSelector {
-                        match_labels: Some(pod_labels.clone()),
-                        ..LabelSelector::default()
+                service_name: svc_peers_name.clone(),
+                template: pod_template,
+                volume_claim_templates: Some(vec![PersistentVolumeClaim {
+                    metadata: ObjectMeta {
+                        name: Some("data".to_string()),
+                        ..ObjectMeta::default()
                     },
-                    service_name: svc_peers_name.clone(),
-                    template: pod_template,
-                    volume_claim_templates: Some(vec![PersistentVolumeClaim {
-                        metadata: ObjectMeta {
-                            name: Some("data".to_string()),
-                            ..ObjectMeta::default()
-                        },
-                        spec: Some(PersistentVolumeClaimSpec {
-                            access_modes: Some(vec!["ReadWriteOnce".to_string()]),
-                            resources: Some(ResourceRequirements {
-                                requests: Some({
-                                    let mut map = BTreeMap::new();
-                                    map.insert("storage".to_string(), Quantity("1Gi".to_string()));
-                                    map
-                                }),
-                                ..ResourceRequirements::default()
+                    spec: Some(PersistentVolumeClaimSpec {
+                        access_modes: Some(vec!["ReadWriteOnce".to_string()]),
+                        resources: Some(ResourceRequirements {
+                            requests: Some({
+                                let mut map = BTreeMap::new();
+                                map.insert("storage".to_string(), Quantity("1Gi".to_string()));
+                                map
                             }),
-                            ..PersistentVolumeClaimSpec::default()
+                            ..ResourceRequirements::default()
                         }),
-                        ..PersistentVolumeClaim::default()
-                    }]),
-                    // volume_claim_templates: todo!(),
-                    ..StatefulSetSpec::default()
-                }),
-                status: None,
+                        ..PersistentVolumeClaimSpec::default()
+                    }),
+                    ..PersistentVolumeClaim::default()
+                }]),
+                // volume_claim_templates: todo!(),
+                ..StatefulSetSpec::default()
             }),
-        )
-        .await
-        .context(ApplyStatefulSet)?;
+            status: None,
+        },
+    )
+    .await
+    .context(ApplyStatefulSet)?;
 
     Ok(ReconcilerAction {
         requeue_after: None,
