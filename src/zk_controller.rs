@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, time::Duration};
 
-use crate::crd::ZookeeperCluster;
+use crate::{crd::ZookeeperCluster, utils::controller_reference_to_obj};
 use k8s_openapi::{
     api::{
         apps::v1::{StatefulSet, StatefulSetSpec},
@@ -10,15 +10,9 @@ use k8s_openapi::{
             ResourceRequirements, Service, ServicePort, ServiceSpec, VolumeMount,
         },
     },
-    apimachinery::pkg::{
-        api::resource::Quantity,
-        apis::meta::v1::{LabelSelector, OwnerReference},
-    },
+    apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
 };
-use kube::{
-    api::{DynamicObject, ObjectMeta, Patch, PatchParams},
-    Resource,
-};
+use kube::api::{DynamicObject, ObjectMeta, Patch, PatchParams};
 use kube_runtime::{
     controller::{Context, ReconcilerAction},
     reflector::ObjectRef,
@@ -36,17 +30,6 @@ pub enum Error {
     ApplyExternalService { source: kube::Error },
     ApplyPeerService { source: kube::Error },
     ApplyStatefulSet { source: kube::Error },
-}
-
-fn controller_reference_to_obj<K: Resource<DynamicType = ()>>(obj: &K) -> OwnerReference {
-    OwnerReference {
-        api_version: K::api_version(&()).into_owned(),
-        kind: K::kind(&()).into_owned(),
-        controller: Some(true),
-        name: obj.meta().name.clone().unwrap(),
-        uid: obj.meta().uid.clone().unwrap(),
-        ..OwnerReference::default()
-    }
 }
 
 pub async fn reconcile_zk(
