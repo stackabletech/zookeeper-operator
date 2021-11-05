@@ -513,7 +513,6 @@ impl ZookeeperState {
                     .ownerreference_from_resource(&self.context.resource, Some(true), Some(true))?
                     .build()?,
             )
-            .add_stackable_agent_tolerations()
             .add_container(container_builder.build())
             .node_name(node_name)
             // TODO: first iteration we are using host network
