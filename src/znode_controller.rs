@@ -1,10 +1,10 @@
 use std::{convert::Infallible, time::Duration};
 
 use crate::{
-    crd::{ZookeeperCluster, ZookeeperClusterRef, ZookeeperClusterSpec, ZookeeperZnode},
+    crd::{ZookeeperCluster, ZookeeperClusterRef, ZookeeperZnode},
     utils::{apply_owned, controller_reference_to_obj},
 };
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     k8s_openapi::api::core::v1::ConfigMap,
     kube::{
@@ -37,10 +37,8 @@ pub enum Error {
         source: kube::Error,
         obj_ref: ObjectRef<ZookeeperCluster>,
     },
-    #[snafu(display("object {} failed validation", obj_ref))]
-    InvalidZk {
-        obj_ref: ObjectRef<ZookeeperCluster>,
-    },
+    #[snafu(display("failed to calculate FQDN for {}", zk))]
+    NoZkFqdn { zk: ObjectRef<ZookeeperCluster> },
     #[snafu(display("failed to ensure that ZNode {} exists in {}", znode_path, zk))]
     EnsureZnode {
         source: znode_mgmt::Error,
@@ -103,30 +101,15 @@ pub async fn reconcile_znode(
     let znodes = kube::Api::<ZookeeperZnode>::namespaced(kube.clone(), &ns);
 
     let zk = find_zk_of_znode(&kube, &znode).await?;
-    let (zk_name, zk_ns, zk_replicas, zk_port) = if let ZookeeperCluster {
-        metadata:
-            ObjectMeta {
-                name: Some(zk_name),
-                namespace: Some(zk_ns),
-                ..
-            },
-        spec:
-            ZookeeperClusterSpec {
-                replicas: Some(zk_replicas),
-                ..
-            },
-        ..
-    } = &zk
-    {
-        (zk_name, zk_ns, *zk_replicas, 2181)
-    } else {
-        return InvalidZk {
-            obj_ref: ObjectRef::from_obj(&zk),
-        }
-        .fail();
-    };
+    let zk_port = 2181;
     let znode_path = format!("/znode-{}", uid);
-    let zk_mgmt_addr = format!("{}.{}.svc.cluster.local:{}", zk_name, zk_ns, zk_port);
+    let zk_mgmt_addr = format!(
+        "{}:{}",
+        zk.global_service_fqdn().with_context(|| NoZkFqdn {
+            zk: ObjectRef::from_obj(&zk),
+        })?,
+        zk_port,
+    );
 
     finalizer(
         &znodes,
@@ -142,13 +125,10 @@ pub async fn reconcile_znode(
                             znode_path: &znode_path,
                         })?;
 
-                    let mut znode_conn_str = (0..zk_replicas)
-                        .map(|i| {
-                            format!(
-                                "{}-{}.{}-peers.{}.svc.cluster.local:{}",
-                                zk_name, i, zk_name, zk_ns, zk_port
-                            )
-                        })
+                    let mut znode_conn_str = zk
+                        .pods()
+                        .unwrap()
+                        .map(|pod| format!("{}:{}", pod.fqdn(), zk_port))
                         .collect::<Vec<_>>()
                         .join(",");
                     znode_conn_str.push_str(&znode_path);

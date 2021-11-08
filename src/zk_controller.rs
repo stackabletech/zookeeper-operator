@@ -6,13 +6,14 @@ use crate::{
 };
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
+    builder::ContainerBuilder,
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
-                Container, ContainerPort, EnvVar, EnvVarSource, ExecAction, ObjectFieldSelector,
-                PersistentVolumeClaim, PersistentVolumeClaimSpec, PodSpec, PodTemplateSpec, Probe,
-                ResourceRequirements, Service, ServicePort, ServiceSpec, VolumeMount,
+                EnvVar, EnvVarSource, ExecAction, ObjectFieldSelector, PersistentVolumeClaim,
+                PersistentVolumeClaimSpec, PodSpec, PodTemplateSpec, Probe, ResourceRequirements,
+                Service, ServicePort, ServiceSpec,
             },
         },
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
@@ -25,6 +26,7 @@ use stackable_operator::{
             reflector::ObjectRef,
         },
     },
+    labels::get_recommended_labels,
 };
 
 pub struct Ctx {
@@ -34,10 +36,27 @@ pub struct Ctx {
 #[derive(Snafu, Debug)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
-    ObjectHasNoNamespace { obj_ref: ObjectRef<DynamicObject> },
-    ApplyExternalService { source: kube::Error },
-    ApplyPeerService { source: kube::Error },
-    ApplyStatefulSet { source: kube::Error },
+    ObjectHasNoNamespace {
+        obj_ref: ObjectRef<ZookeeperCluster>,
+    },
+    GlobalServiceNameNotFound {
+        obj_ref: ObjectRef<ZookeeperCluster>,
+    },
+    RoleServiceNameNotFound {
+        obj_ref: ObjectRef<ZookeeperCluster>,
+        role: String,
+    },
+    ApplyGlobalService {
+        source: kube::Error,
+    },
+    ApplyRoleService {
+        source: kube::Error,
+        role: String,
+    },
+    ApplyStatefulSet {
+        source: kube::Error,
+        role: String,
+    },
 }
 
 pub async fn reconcile_zk(
@@ -49,23 +68,29 @@ pub async fn reconcile_zk(
         .namespace
         .as_deref()
         .with_context(|| ObjectHasNoNamespace {
-            obj_ref: ObjectRef::from_obj(&zk).erase(),
+            obj_ref: ObjectRef::from_obj(&zk),
         })?;
     let kube = ctx.get_ref().kube.clone();
 
-    let name = zk.metadata.name.clone().unwrap();
-    let svc_peers_name = format!("{}-peers", name);
+    let global_svc_name = zk
+        .global_service_name()
+        .with_context(|| RoleServiceNameNotFound {
+            obj_ref: ObjectRef::from_obj(&zk),
+            role: "servers",
+        })?;
+    let role_svc_servers_name =
+        zk.server_role_service_name()
+            .with_context(|| RoleServiceNameNotFound {
+                obj_ref: ObjectRef::from_obj(&zk),
+                role: "servers",
+            })?;
     let zk_owner_ref = controller_reference_to_obj(&zk);
-    let pod_labels = {
-        let mut map = BTreeMap::new();
-        map.insert("app".to_string(), "zookeeper".to_string());
-        map
-    };
+    let pod_labels = get_recommended_labels(&zk, "zookeeper", "3.7.0", "servers", "servers");
     apply_owned(
         &kube,
         &Service {
             metadata: ObjectMeta {
-                name: Some(name.clone()),
+                name: Some(global_svc_name.clone()),
                 namespace: Some(ns.to_string()),
                 owner_references: Some(vec![zk_owner_ref.clone()]),
                 ..ObjectMeta::default()
@@ -85,12 +110,12 @@ pub async fn reconcile_zk(
         },
     )
     .await
-    .context(ApplyExternalService)?;
+    .context(ApplyGlobalService)?;
     apply_owned(
         &kube,
         &Service {
             metadata: ObjectMeta {
-                name: Some(svc_peers_name.clone()),
+                name: Some(role_svc_servers_name.clone()),
                 namespace: Some(ns.to_string()),
                 owner_references: Some(vec![zk_owner_ref.clone()]),
                 ..ObjectMeta::default()
@@ -111,107 +136,59 @@ pub async fn reconcile_zk(
         },
     )
     .await
-    .context(ApplyPeerService)?;
-    let pod_template = PodTemplateSpec {
-        metadata: Some(ObjectMeta {
-            labels: Some(pod_labels.clone()),
-            ..ObjectMeta::default()
-        }),
-        spec: Some(PodSpec {
-            init_containers: Some(vec![Container {
-                name: "decide-myid".to_string(),
-                image: Some("alpine".to_string()),
-                args: Some(vec![
-                    "sh".to_string(),
-                    "-c".to_string(),
-                    "expr 1 + $(echo $POD_NAME | sed 's/.*-//') > /data/myid".to_string(),
-                ]),
-                env: Some(vec![EnvVar {
-                    name: "POD_NAME".to_string(),
-                    value_from: Some(EnvVarSource {
-                        field_ref: Some(ObjectFieldSelector {
-                            api_version: Some("v1".to_string()),
-                            field_path: "metadata.name".to_string(),
-                        }),
-                        ..EnvVarSource::default()
-                    }),
-                    ..EnvVar::default()
-                }]),
-                volume_mounts: Some(vec![VolumeMount {
-                    mount_path: "/data".to_string(),
-                    name: "data".to_string(),
-                    ..VolumeMount::default()
-                }]),
-                ..Container::default()
-            }]),
-            containers: vec![Container {
-                name: "zookeeper".to_string(),
-                image: Some("zookeeper:3.7.0".to_string()),
-                env: Some(vec![EnvVar {
-                    name: "ZOO_SERVERS".to_string(),
-                    value: Some(
-                        (1..=zk.spec.replicas.unwrap())
-                            .map(|i| {
-                                format!(
-                                    "server.{}={}-{}.{}.{}.svc.cluster.local:2888:3888;2181",
-                                    i,
-                                    name,
-                                    i - 1,
-                                    svc_peers_name,
-                                    ns
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    ),
-                    ..EnvVar::default()
-                }]),
-                ports: Some(vec![
-                    ContainerPort {
-                        container_port: 2181,
-                        name: Some("zk".to_string()),
-                        protocol: Some("TCP".to_string()),
-                        ..ContainerPort::default()
-                    },
-                    ContainerPort {
-                        container_port: 2888,
-                        name: Some("zk-leader".to_string()),
-                        protocol: Some("TCP".to_string()),
-                        ..ContainerPort::default()
-                    },
-                    ContainerPort {
-                        container_port: 3888,
-                        name: Some("zk-election".to_string()),
-                        protocol: Some("TCP".to_string()),
-                        ..ContainerPort::default()
-                    },
-                ]),
-                volume_mounts: Some(vec![VolumeMount {
-                    mount_path: "/data".to_string(),
-                    name: "data".to_string(),
-                    ..VolumeMount::default()
-                }]),
-                readiness_probe: Some(Probe {
-                    exec: Some(ExecAction {
-                        command: Some(vec![
-                            "sh".to_string(),
-                            "-c".to_string(),
-                            "echo srvr | nc localhost 2181 | grep '^Mode: '".to_string(),
-                        ]),
-                    }),
-                    period_seconds: Some(1),
-                    ..Probe::default()
+    .context(ApplyRoleService { role: "servers" })?;
+    let container_decide_myid = ContainerBuilder::new("decide-myid")
+        .image("alpine")
+        .args(vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            "expr 1 + $(echo $POD_NAME | sed 's/.*-//') > /data/myid".to_string(),
+        ])
+        .add_env_vars(vec![EnvVar {
+            name: "POD_NAME".to_string(),
+            value_from: Some(EnvVarSource {
+                field_ref: Some(ObjectFieldSelector {
+                    api_version: Some("v1".to_string()),
+                    field_path: "metadata.name".to_string(),
                 }),
-                ..Container::default()
-            }],
-            ..PodSpec::default()
+                ..EnvVarSource::default()
+            }),
+            ..EnvVar::default()
+        }])
+        .add_volume_mount("data", "/data")
+        .build();
+    let mut container_zk = ContainerBuilder::new("zookeeper")
+        .image("zookeeper:3.7.0")
+        .add_env_var(
+            "ZOO_SERVERS",
+            zk.pods()
+                .unwrap()
+                .into_iter()
+                .map(|pod| format!("server.{}={}:2888:3888;2181", pod.zookeeper_id, pod.fqdn()))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+        .add_container_port("zk", 2181)
+        .add_container_port("zk-leader", 2888)
+        .add_container_port("zk-election", 3888)
+        .add_volume_mount("data", "/data")
+        .build();
+    container_zk.readiness_probe = Some(Probe {
+        exec: Some(ExecAction {
+            command: Some(vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                "echo srvr | nc localhost 2181 | grep '^Mode: '".to_string(),
+            ]),
         }),
-    };
+        period_seconds: Some(1),
+        ..Probe::default()
+    });
     apply_owned(
         &kube,
         &StatefulSet {
             metadata: ObjectMeta {
-                name: Some(name.clone()),
+                name: Some(role_svc_servers_name.clone()),
                 namespace: Some(ns.to_string()),
                 owner_references: Some(vec![zk_owner_ref.clone()]),
                 ..ObjectMeta::default()
@@ -227,8 +204,18 @@ pub async fn reconcile_zk(
                     match_labels: Some(pod_labels.clone()),
                     ..LabelSelector::default()
                 },
-                service_name: svc_peers_name.clone(),
-                template: pod_template,
+                service_name: role_svc_servers_name.clone(),
+                template: PodTemplateSpec {
+                    metadata: Some(ObjectMeta {
+                        labels: Some(pod_labels.clone()),
+                        ..ObjectMeta::default()
+                    }),
+                    spec: Some(PodSpec {
+                        init_containers: Some(vec![container_decide_myid]),
+                        containers: vec![container_zk],
+                        ..PodSpec::default()
+                    }),
+                },
                 volume_claim_templates: Some(vec![PersistentVolumeClaim {
                     metadata: ObjectMeta {
                         name: Some("data".to_string()),
@@ -248,14 +235,13 @@ pub async fn reconcile_zk(
                     }),
                     ..PersistentVolumeClaim::default()
                 }]),
-                // volume_claim_templates: todo!(),
                 ..StatefulSetSpec::default()
             }),
             status: None,
         },
     )
     .await
-    .context(ApplyStatefulSet)?;
+    .context(ApplyStatefulSet { role: "servers" })?;
 
     Ok(ReconcilerAction {
         requeue_after: None,
