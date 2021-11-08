@@ -213,7 +213,11 @@ pub async fn reconcile_zk(
             },
             spec: Some(StatefulSetSpec {
                 pod_management_policy: Some("Parallel".to_string()),
-                replicas: zk.spec.replicas,
+                replicas: if zk.spec.stopped.unwrap_or(false) {
+                    Some(0)
+                } else {
+                    zk.spec.replicas
+                },
                 selector: LabelSelector {
                     match_labels: Some(pod_labels.clone()),
                     ..LabelSelector::default()
