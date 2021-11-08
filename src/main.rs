@@ -47,7 +47,7 @@ fn erase_controller_result<K: Resource, E: std::error::Error + Send + Sync + 'st
 
 #[tokio::main]
 async fn main() -> eyre::Result<()> {
-    tracing_subscriber::fmt().pretty().init();
+    stackable_operator::logging::initialize_logging("ZOOKEEPER_OPERATOR_LOG");
     // tokio-zookeeper depends on Tokio 0.1
     let tokio01_runtime = tokio01::runtime::Runtime::new()?;
 

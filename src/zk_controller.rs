@@ -20,7 +20,7 @@ use stackable_operator::{
     },
     kube::{
         self,
-        api::{DynamicObject, ObjectMeta},
+        api::ObjectMeta,
         runtime::{
             controller::{Context, ReconcilerAction},
             reflector::ObjectRef,
