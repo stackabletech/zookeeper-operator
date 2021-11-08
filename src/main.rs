@@ -3,6 +3,7 @@ mod utils;
 mod zk_controller;
 mod znode_controller;
 
+use crate::utils::Tokio01ExecutorExt;
 use crd::{ZookeeperCluster, ZookeeperZnode};
 use futures::{compat::Future01CompatExt, StreamExt};
 use stackable_operator::{
@@ -23,9 +24,12 @@ use stackable_operator::{
 };
 use structopt::StructOpt;
 
-use crate::utils::Tokio01ExecutorExt;
+mod built_info {
+    include!(concat!(env!("OUT_DIR"), "/built.rs"));
+}
 
 #[derive(StructOpt)]
+#[structopt(about = built_info::PKG_DESCRIPTION, author = "Stackable GmbH - info@stackable.de")]
 struct Opts {
     #[structopt(subcommand)]
     cmd: Cmd,
@@ -35,6 +39,7 @@ struct Opts {
 enum Cmd {
     /// Print CRD objects
     Crd,
+    /// Run operator
     Run,
 }
 
@@ -59,6 +64,14 @@ async fn main() -> eyre::Result<()> {
             serde_yaml::to_string(&ZookeeperZnode::crd())?
         ),
         Cmd::Run => {
+            stackable_operator::utils::print_startup_string(
+                built_info::PKG_DESCRIPTION,
+                built_info::PKG_VERSION,
+                built_info::GIT_VERSION,
+                built_info::TARGET,
+                built_info::BUILT_TIME_UTC,
+                built_info::RUSTC_VERSION,
+            );
             let kube = kube::Client::try_default().await?;
             let zks = kube::Api::<ZookeeperCluster>::all(kube.clone());
             let znodes = kube::Api::<ZookeeperZnode>::all(kube.clone());

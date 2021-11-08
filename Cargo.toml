@@ -1,7 +1,10 @@
 [package]
 name = "zookeeper-operator"
+description = "Stackable Operator for Apache ZooKeeper"
+license = "OSL-3.0"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/stackabletech/zookeeper-operator"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -25,4 +28,5 @@ tracing = "0.1.29"
 pin-project = "1.0.8"
 stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git" }
 
-[features]
+[build-dependencies]
+built = { version =  "0.5", features = ["chrono", "git2"] }
