@@ -1,11 +1,14 @@
 use futures::Future;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
-use kube::{
-    api::{Patch, PatchParams},
-    Resource,
-};
 use pin_project::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
+use stackable_operator::{
+    k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference,
+    kube::{
+        self,
+        api::{Patch, PatchParams},
+        Resource,
+    },
+};
 use std::fmt::Debug;
 
 pub async fn apply_owned<K>(kube: &kube::Client, obj: &K) -> kube::Result<K>

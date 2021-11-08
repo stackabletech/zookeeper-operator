@@ -5,18 +5,21 @@ mod znode_controller;
 
 use crd::{ZookeeperCluster, ZookeeperZnode};
 use futures::{compat::Future01CompatExt, StreamExt};
-use k8s_openapi::api::{
-    apps::v1::StatefulSet,
-    core::v1::{ConfigMap, Service},
-};
-use kube::{
-    api::{DynamicObject, ListParams},
-    CustomResourceExt, Resource,
-};
-use kube_runtime::{
-    controller::{Context, ReconcilerAction},
-    reflector::ObjectRef,
-    Controller,
+use stackable_operator::{
+    k8s_openapi::api::{
+        apps::v1::StatefulSet,
+        core::v1::{ConfigMap, Service},
+    },
+    kube::{
+        self,
+        api::{DynamicObject, ListParams},
+        runtime::{
+            controller::{Context, ReconcilerAction},
+            reflector::ObjectRef,
+            Controller,
+        },
+        CustomResourceExt, Resource,
+    },
 };
 use structopt::StructOpt;
 

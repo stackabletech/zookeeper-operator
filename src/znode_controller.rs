@@ -4,14 +4,19 @@ use crate::{
     crd::{ZookeeperCluster, ZookeeperClusterRef, ZookeeperClusterSpec, ZookeeperZnode},
     utils::{apply_owned, controller_reference_to_obj},
 };
-use k8s_openapi::api::core::v1::ConfigMap;
-use kube::api::ObjectMeta;
-use kube_runtime::{
-    controller::{Context, ReconcilerAction},
-    finalizer,
-    reflector::ObjectRef,
-};
 use snafu::{ResultExt, Snafu};
+use stackable_operator::{
+    k8s_openapi::api::core::v1::ConfigMap,
+    kube::{
+        self,
+        api::ObjectMeta,
+        runtime::{
+            controller::{Context, ReconcilerAction},
+            finalizer,
+            reflector::ObjectRef,
+        },
+    },
+};
 
 pub struct Ctx {
     pub kube: kube::Client,

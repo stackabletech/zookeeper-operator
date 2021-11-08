@@ -4,23 +4,28 @@ use crate::{
     crd::ZookeeperCluster,
     utils::{apply_owned, controller_reference_to_obj},
 };
-use k8s_openapi::{
-    api::{
-        apps::v1::{StatefulSet, StatefulSetSpec},
-        core::v1::{
-            Container, ContainerPort, EnvVar, EnvVarSource, ExecAction, ObjectFieldSelector,
-            PersistentVolumeClaim, PersistentVolumeClaimSpec, PodSpec, PodTemplateSpec, Probe,
-            ResourceRequirements, Service, ServicePort, ServiceSpec, VolumeMount,
+use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::{
+    k8s_openapi::{
+        api::{
+            apps::v1::{StatefulSet, StatefulSetSpec},
+            core::v1::{
+                Container, ContainerPort, EnvVar, EnvVarSource, ExecAction, ObjectFieldSelector,
+                PersistentVolumeClaim, PersistentVolumeClaimSpec, PodSpec, PodTemplateSpec, Probe,
+                ResourceRequirements, Service, ServicePort, ServiceSpec, VolumeMount,
+            },
+        },
+        apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
+    },
+    kube::{
+        self,
+        api::{DynamicObject, ObjectMeta},
+        runtime::{
+            controller::{Context, ReconcilerAction},
+            reflector::ObjectRef,
         },
     },
-    apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
 };
-use kube::api::{DynamicObject, ObjectMeta};
-use kube_runtime::{
-    controller::{Context, ReconcilerAction},
-    reflector::ObjectRef,
-};
-use snafu::{OptionExt, ResultExt, Snafu};
 
 pub struct Ctx {
     pub kube: kube::Client,
