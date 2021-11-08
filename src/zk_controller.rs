@@ -36,25 +36,34 @@ pub struct Ctx {
 #[derive(Snafu, Debug)]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    #[snafu(display("object {} has no namespace", obj_ref))]
     ObjectHasNoNamespace {
         obj_ref: ObjectRef<ZookeeperCluster>,
     },
+    #[snafu(display("failed to calculate global service name for {}", obj_ref))]
     GlobalServiceNameNotFound {
         obj_ref: ObjectRef<ZookeeperCluster>,
     },
+    #[snafu(display("failed to calculate service name for role {} of {}", role, obj_ref))]
     RoleServiceNameNotFound {
         obj_ref: ObjectRef<ZookeeperCluster>,
         role: String,
     },
+    #[snafu(display("failed to apply global Service for {}", zk))]
     ApplyGlobalService {
         source: kube::Error,
+        zk: ObjectRef<ZookeeperCluster>,
     },
+    #[snafu(display("failed to apply Service for role {} of {}", role, zk))]
     ApplyRoleService {
         source: kube::Error,
+        zk: ObjectRef<ZookeeperCluster>,
         role: String,
     },
+    #[snafu(display("failed to apply StatefulSet for role {} of {}", role, zk))]
     ApplyStatefulSet {
         source: kube::Error,
+        zk: ObjectRef<ZookeeperCluster>,
         role: String,
     },
 }
@@ -63,25 +72,26 @@ pub async fn reconcile_zk(
     zk: ZookeeperCluster,
     ctx: Context<Ctx>,
 ) -> Result<ReconcilerAction, Error> {
+    let zk_ref = ObjectRef::from_obj(&zk);
     let ns = zk
         .metadata
         .namespace
         .as_deref()
         .with_context(|| ObjectHasNoNamespace {
-            obj_ref: ObjectRef::from_obj(&zk),
+            obj_ref: zk_ref.clone(),
         })?;
     let kube = ctx.get_ref().kube.clone();
 
     let global_svc_name = zk
         .global_service_name()
         .with_context(|| RoleServiceNameNotFound {
-            obj_ref: ObjectRef::from_obj(&zk),
+            obj_ref: zk_ref.clone(),
             role: "servers",
         })?;
     let role_svc_servers_name =
         zk.server_role_service_name()
             .with_context(|| RoleServiceNameNotFound {
-                obj_ref: ObjectRef::from_obj(&zk),
+                obj_ref: zk_ref.clone(),
                 role: "servers",
             })?;
     let zk_owner_ref = controller_reference_to_obj(&zk);
@@ -110,7 +120,7 @@ pub async fn reconcile_zk(
         },
     )
     .await
-    .context(ApplyGlobalService)?;
+    .with_context(|| ApplyGlobalService { zk: zk_ref.clone() })?;
     apply_owned(
         &kube,
         &Service {
@@ -136,7 +146,10 @@ pub async fn reconcile_zk(
         },
     )
     .await
-    .context(ApplyRoleService { role: "servers" })?;
+    .with_context(|| ApplyRoleService {
+        role: "servers",
+        zk: zk_ref.clone(),
+    })?;
     let container_decide_myid = ContainerBuilder::new("decide-myid")
         .image("alpine")
         .args(vec![
@@ -241,7 +254,10 @@ pub async fn reconcile_zk(
         },
     )
     .await
-    .context(ApplyStatefulSet { role: "servers" })?;
+    .with_context(|| ApplyStatefulSet {
+        role: "servers",
+        zk: zk_ref.clone(),
+    })?;
 
     Ok(ReconcilerAction {
         requeue_after: None,
