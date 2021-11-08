@@ -2,7 +2,7 @@
 
 After installation, the CRD for this operator must be created:
 
-    kubectl apply -f /etc/stackable/zookeeper-operator/crd/zookeepercluster.crd.yaml
+    kubectl apply -f /etc/stackable/zookeeper-operator/crd/simple-zookeepercluster.yaml
 
 To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metrics exposed on port 9505:
 
@@ -19,7 +19,7 @@ To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metric
           default:
             selector:
               matchLabels:
-                kubernetes.io/arch: stackable-linux
+                kubernetes.io/os: linux
             replicas: 1
             config:
               metricsPort: 9505
