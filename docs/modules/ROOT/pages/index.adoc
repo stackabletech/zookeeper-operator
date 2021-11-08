@@ -6,5 +6,5 @@ WARNING: This operator only works with images from the https://repo.stackable.te
 
 [source]
 ----
-docker.stackable.tech/stackable/zookeeper
+docker pull docker.stackable.tech/stackable/zookeeper:<version>
 ----
