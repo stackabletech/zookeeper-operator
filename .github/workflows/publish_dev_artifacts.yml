@@ -113,6 +113,6 @@ jobs:
         run: >-
          /usr/bin/curl
          --fail
-          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+         -u 'github:${{ secrets.NEXUS_PASSWORD }}'
          --upload-file "./$(find  target/helm/ -name *.tgz)"
          "${{ env.REPO_HELM_DEV_URL }}/"
