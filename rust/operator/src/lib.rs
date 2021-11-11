@@ -41,7 +41,7 @@ use stackable_operator::{configmap, product_config};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperRole, ZookeeperVersion, ADMIN_PORT,
     ADMIN_PORT_PROPERTY, APP_NAME, CLIENT_PORT, CLIENT_PORT_PROPERTY, CONFIG_MAP_TYPE_DATA,
-    CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT, METRICS_PORT_PROPERTY,
+    DATA_DIR, METRICS_PORT, METRICS_PORT_PROPERTY,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -51,6 +51,10 @@ use std::time::Duration;
 use strum::IntoEnumIterator;
 use tracing::error;
 use tracing::{debug, info, trace, warn};
+
+/// The docker image we default to. This needs to be adapted if the operator does not work
+/// with images 0.0.1, 0.1.0 etc. anymore and requires e.g. a new major version like 1(.0.0).
+const DEFAULT_IMAGE_VERSION: &str = "0";
 
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
@@ -318,40 +322,6 @@ impl ZookeeperState {
             );
         }
 
-        // config map for the data directory (which only contains the 'myid' file)
-        let cm_config_id_name = name_utils::build_resource_name(
-            pod_id.app(),
-            pod_id.instance(),
-            pod_id.role(),
-            Some(pod_id.group()),
-            None,
-            Some(CONFIG_MAP_TYPE_ID),
-        )?;
-
-        // enhance with config map type label and the id for differentiation
-        let mut cm_config_id_labels = recommended_labels.clone();
-        cm_config_id_labels.insert(
-            configmap::CONFIGMAP_TYPE_LABEL.to_string(),
-            CONFIG_MAP_TYPE_ID.to_string(),
-        );
-        cm_config_id_labels.insert(ID_LABEL.to_string(), pod_id.id().to_string());
-
-        let mut cm_id_data = BTreeMap::new();
-        cm_id_data.insert("myid".to_string(), pod_id.id().to_string());
-
-        let cm_id = configmap::build_config_map(
-            &self.context.resource,
-            &cm_config_id_name,
-            &self.context.namespace(),
-            cm_config_id_labels,
-            cm_id_data,
-        )?;
-
-        config_maps.insert(
-            CONFIG_MAP_TYPE_ID,
-            configmap::create_config_map(&self.context.client, cm_id).await?,
-        );
-
         Ok(config_maps)
     }
 
@@ -436,9 +406,15 @@ impl ZookeeperState {
         let mut container_builder = ContainerBuilder::new(APP_NAME);
         container_builder
             .image(format!(
-                // TODO: how to handle the platform version?
-                "docker.stackable.tech/stackable/zookeeper:{}-0.1",
-                version.to_string()
+                // For now we hardcode the stackable image version via DEFAULT_IMAGE_VERSION
+                // which represents the major image version and will fallback to the newest
+                // available image e.g. if DEFAULT_IMAGE_VERSION = 0 and versions 0.0.1 and
+                // 0.0.2 are available, the latter one will be selected. This may change the
+                // image during restarts depending on the imagePullPolicy.
+                // TODO: should be made configurable
+                "docker.stackable.tech/stackable/zookeeper:{}-stackable{}",
+                version.to_string(),
+                DEFAULT_IMAGE_VERSION
             ))
             .add_env_vars(env_vars)
             .command(vec!["/bin/bash".to_string(), "-c".to_string()])
