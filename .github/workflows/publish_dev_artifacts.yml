@@ -18,6 +18,8 @@ env:
   RUSTFLAGS: "-D warnings -W rust-2021-compatibility"
   REPO_APT_DEV_URL: https://repo.stackable.tech/repository/deb-dev
   REPO_RPM_DEV_URL: https://repo.stackable.tech/repository/rpm-dev
+  REPO_HELM_DEV_URL: https://repo.stackable.tech/repository/helm-dev
+  CT_CONFIG: deploy/helm/ct.yaml
 
 jobs:
   debian10:
@@ -77,3 +79,40 @@ jobs:
           "${{ env.REPO_RPM_DEV_URL }}/el${{ matrix.node }}/"
       - name: Clean
         run: ~/.cargo/bin/cargo clean
+
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - name: Set up Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: v3.6.2
+      - name: Compile chart
+        run: make compile-chart
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.1.0
+      - name: Run chart-testing (lint)
+        run: ct lint --config ${CT_CONFIG}
+      - name: Change version if is PR
+        if: ${{ github.event_name == 'pull_request' }}
+        # We use "mr" instead of "pr" to denote pull request builds, as this prefix comes before "nightly" when lexically
+        # sorting packages by version. This means that when installing the package without specifying a version the
+        # nighly version is considered more current than mr versions and installed by default
+        run: |
+          sed -i -e 's/^version: \([0-9]\+\.[0-9]\+\.[0-9]\+\).*/version: \1+mr${{ github.event.number }}/' deploy/helm/zookeeper-operator/Chart.yaml
+      - name: Package Chart
+        run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/zookeeper-operator
+      - name: Publish Chart
+        env:
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        if: env.NEXUS_PASSWORD != null
+        run: >-
+         /usr/bin/curl
+         --fail
+          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+         --upload-file "./$(find  target/helm/ -name *.tgz)"
+         "${{ env.REPO_HELM_DEV_URL }}/"
