@@ -60,8 +60,10 @@ properties:
       datatype:
         type: "string"
         unit: *unitDirectory
-      recommendedValues:
+      defaultValues:
         - value: "/tmp/zookeeper"
+      recommendedValues:
+        - value: "/stackable/data"
       roles:
         - name: "server"
           required: true

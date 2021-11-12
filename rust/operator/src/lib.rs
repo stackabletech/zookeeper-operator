@@ -3,9 +3,7 @@ use crate::error::Error;
 use stackable_zookeeper_crd::commands::{Restart, Start, Stop};
 
 use async_trait::async_trait;
-use stackable_operator::builder::{
-    ContainerBuilder, ContainerPortBuilder, ObjectMetaBuilder, PodBuilder,
-};
+use stackable_operator::builder::{ContainerBuilder, ObjectMetaBuilder, PodBuilder, VolumeBuilder};
 use stackable_operator::client::Client;
 use stackable_operator::command::materialize_command;
 use stackable_operator::controller::Controller;
@@ -43,7 +41,7 @@ use stackable_operator::{configmap, product_config};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterSpec, ZookeeperRole, ZookeeperVersion, ADMIN_PORT,
     ADMIN_PORT_PROPERTY, APP_NAME, CLIENT_PORT, CLIENT_PORT_PROPERTY, CONFIG_MAP_TYPE_DATA,
-    CONFIG_MAP_TYPE_ID, DATA_DIR, METRICS_PORT, METRICS_PORT_PROPERTY,
+    DATA_DIR, METRICS_PORT, METRICS_PORT_PROPERTY,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -54,11 +52,14 @@ use strum::IntoEnumIterator;
 use tracing::error;
 use tracing::{debug, info, trace, warn};
 
+/// The docker image we default to. This needs to be adapted if the operator does not work
+/// with images 0.0.1, 0.1.0 etc. anymore and requires e.g. a new major version like 1(.0.0).
+const DEFAULT_IMAGE_VERSION: &str = "0";
+
 const FINALIZER_NAME: &str = "zookeeper.stackable.tech/cleanup";
 const ID_LABEL: &str = "zookeeper.stackable.tech/id";
 const SHOULD_BE_SCRAPED: &str = "monitoring.stackable.tech/should_be_scraped";
 const PROPERTIES_FILE: &str = "zoo.cfg";
-const CONFIG_DIR_NAME: &str = "conf";
 
 type ZookeeperReconcileResult = ReconcileResult<error::Error>;
 
@@ -321,40 +322,6 @@ impl ZookeeperState {
             );
         }
 
-        // config map for the data directory (which only contains the 'myid' file)
-        let cm_config_id_name = name_utils::build_resource_name(
-            pod_id.app(),
-            pod_id.instance(),
-            pod_id.role(),
-            Some(pod_id.group()),
-            None,
-            Some(CONFIG_MAP_TYPE_ID),
-        )?;
-
-        // enhance with config map type label and the id for differentiation
-        let mut cm_config_id_labels = recommended_labels.clone();
-        cm_config_id_labels.insert(
-            configmap::CONFIGMAP_TYPE_LABEL.to_string(),
-            CONFIG_MAP_TYPE_ID.to_string(),
-        );
-        cm_config_id_labels.insert(ID_LABEL.to_string(), pod_id.id().to_string());
-
-        let mut cm_id_data = BTreeMap::new();
-        cm_id_data.insert("myid".to_string(), pod_id.id().to_string());
-
-        let cm_id = configmap::build_config_map(
-            &self.context.resource,
-            &cm_config_id_name,
-            &self.context.namespace(),
-            cm_config_id_labels,
-            cm_id_data,
-        )?;
-
-        config_maps.insert(
-            CONFIG_MAP_TYPE_ID,
-            configmap::create_config_map(&self.context.client, cm_id).await?,
-        );
-
         Ok(config_maps)
     }
 
@@ -405,8 +372,8 @@ impl ZookeeperState {
                             metrics_port = Some(property_value.to_string());
                             env_vars.push(EnvVar {
                                 name: "SERVER_JVMFLAGS".to_string(),
-                                value: Some(format!("-javaagent:{{{{packageroot}}}}/{}/stackable/lib/jmx_prometheus_javaagent-0.16.1.jar={}:{{{{packageroot}}}}/{}/stackable/conf/jmx_exporter.yaml",
-                                                    version.package_name(), property_value, version.package_name())),
+                                value: Some(format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={}:/stackable/jmx/server.yaml",
+                                                    property_value)),
                                 ..EnvVar::default()
                             });
                             continue;
@@ -432,22 +399,41 @@ impl ZookeeperState {
             None,
         )?;
 
+        let data_folder = data_dir.unwrap_or_else(|| "/stackable/data".to_string());
+
+        let mut pod_builder = PodBuilder::new();
+
         let mut container_builder = ContainerBuilder::new(APP_NAME);
-        container_builder.image(format!("stackable/zookeeper:{}", version.to_string()));
-        container_builder.command(vec![
-            format!(
-                "{}/bin/zkServer.sh",
-                self.context.resource.spec.version.package_name()
-            ),
-            "start-foreground".to_string(),
-            // "--config".to_string(), TODO: Version 3.4 does not support --config but later versions do
-            format!("{{{{configroot}}}}/{}/zoo.cfg", CONFIG_DIR_NAME),
-        ]);
+        container_builder
+            .image(format!(
+                // For now we hardcode the stackable image version via DEFAULT_IMAGE_VERSION
+                // which represents the major image version and will fallback to the newest
+                // available image e.g. if DEFAULT_IMAGE_VERSION = 0 and versions 0.0.1 and
+                // 0.0.2 are available, the latter one will be selected. This may change the
+                // image during restarts depending on the imagePullPolicy.
+                // TODO: should be made configurable
+                "docker.stackable.tech/stackable/zookeeper:{}-stackable{}",
+                version.to_string(),
+                DEFAULT_IMAGE_VERSION
+            ))
+            .add_env_vars(env_vars)
+            .command(vec!["/bin/bash".to_string(), "-c".to_string()])
+            // first we execute the myid script and then start zookeeper
+            .args(vec![format!(
+                "{} {} {}; {} {} {}",
+                "/stackable/bin/write-myid",
+                data_folder,
+                pod_id.id(),
+                "bin/zkServer.sh",
+                "start-foreground",
+                "/stackable/conf/zoo.cfg"
+            )]);
 
         // One mount for the config directory
         if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_DATA) {
             if let Some(name) = config_map_data.metadata.name.as_ref() {
-                container_builder.add_configmapvolume(name, CONFIG_DIR_NAME.to_string());
+                container_builder.add_volume_mount("config", "/stackable/conf");
+                pod_builder.add_volume(VolumeBuilder::new("config").with_config_map(name).build());
             } else {
                 return Err(error::Error::MissingConfigMapNameError {
                     cm_type: CONFIG_MAP_TYPE_DATA,
@@ -460,54 +446,27 @@ impl ZookeeperState {
             });
         }
 
-        // We need a second mount for the data directory
-        // because we need to write the 'myid' file into the data directory
-        if let Some(config_map_data) = config_maps.get(CONFIG_MAP_TYPE_ID) {
-            if let Some(name) = config_map_data.metadata.name.as_ref() {
-                container_builder.add_configmapvolume(
-                    name,
-                    data_dir.unwrap_or_else(|| "/tmp/zookeeper".to_string()),
-                );
-            } else {
-                return Err(error::Error::MissingConfigMapNameError {
-                    cm_type: CONFIG_MAP_TYPE_ID,
-                });
-            }
-        } else {
-            return Err(error::Error::MissingConfigMapError {
-                cm_type: CONFIG_MAP_TYPE_ID,
-                pod_name,
-            });
-        }
-
-        container_builder.add_env_vars(env_vars);
+        container_builder.add_volume_mount("data", &data_folder);
+        pod_builder.add_volume(
+            VolumeBuilder::new("data")
+                .with_empty_dir(Some(""), None)
+                .build(),
+        );
 
         let mut annotations = BTreeMap::new();
         // only add metrics container port and annotation if available
         if let Some(metrics_port) = metrics_port {
             annotations.insert(SHOULD_BE_SCRAPED.to_string(), "true".to_string());
-            container_builder.add_container_port(
-                ContainerPortBuilder::new(metrics_port.parse()?)
-                    .name(METRICS_PORT)
-                    .build(),
-            );
+            container_builder.add_container_port(METRICS_PORT, metrics_port.parse()?);
         }
         // add client port if available
         if let Some(client_port) = client_port {
-            container_builder.add_container_port(
-                ContainerPortBuilder::new(client_port.parse()?)
-                    .name(CLIENT_PORT)
-                    .build(),
-            );
+            container_builder.add_container_port(CLIENT_PORT, client_port.parse()?);
         }
 
         // add admin port if available
         if let Some(admin_port) = admin_port {
-            container_builder.add_container_port(
-                ContainerPortBuilder::new(admin_port.parse()?)
-                    .name(ADMIN_PORT)
-                    .build(),
-            );
+            container_builder.add_container_port(ADMIN_PORT, admin_port.parse()?);
         }
 
         let mut pod_labels = get_recommended_labels(
@@ -520,7 +479,7 @@ impl ZookeeperState {
         // we need to add the zookeeper id to the labels
         pod_labels.insert(ID_LABEL.to_string(), pod_id.id().to_string());
 
-        let pod = PodBuilder::new()
+        let pod = pod_builder
             .metadata(
                 ObjectMetaBuilder::new()
                     .generate_name(pod_name)
@@ -530,9 +489,10 @@ impl ZookeeperState {
                     .ownerreference_from_resource(&self.context.resource, Some(true), Some(true))?
                     .build()?,
             )
-            .add_stackable_agent_tolerations()
             .add_container(container_builder.build())
             .node_name(node_name)
+            // TODO: first iteration we are using host network
+            .host_network(true)
             .build()?;
 
         Ok(self.context.client.create(&pod).await?)

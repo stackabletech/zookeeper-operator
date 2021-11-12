@@ -19,7 +19,7 @@ To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metric
           default:
             selector:
               matchLabels:
-                kubernetes.io/arch: stackable-linux
+                kubernetes.io/os: linux
             replicas: 1
             config:
               metricsPort: 9505

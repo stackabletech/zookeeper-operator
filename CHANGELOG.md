@@ -4,8 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [0.4.1] - 2021-10-27
+### Changed
 
+- `operator-rs` `0.3.0` → `0.4.0` ([#255]).
+- Adapted pod image and container command to docker image ([#255]).
+- Adapted documentation to represent new workflow with docker images ([#255]).
+
+[#255]: https://github.com/stackabletech/zookeeper-operator/pull/255
+
+## [0.4.1] - 2021-10-27
 
 ### Added
 - `process_command` to reconcile loop for command handling ([#223]).
