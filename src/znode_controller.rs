@@ -1,3 +1,5 @@
+//! Ensures that ZooKeeper ZNodes (filesystem nodes) exist for each [`ZookeeperZnode`], and creates discovery [`ConfigMap`]s for them
+
 use std::{convert::Infallible, time::Duration};
 
 use crate::{

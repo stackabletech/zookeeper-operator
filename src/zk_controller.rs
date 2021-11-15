@@ -1,3 +1,5 @@
+//! Ensures that `Pod`s are configured and running for each [`ZookeeperCluster`]
+
 use std::{collections::BTreeMap, time::Duration};
 
 use crate::{
