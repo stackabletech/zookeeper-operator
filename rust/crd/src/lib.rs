@@ -210,25 +210,22 @@ impl Configuration for ZookeeperConfig {
     strum_macros::EnumString,
 )]
 pub enum ZookeeperVersion {
-    #[serde(rename = "3.4.14")]
-    #[strum(serialize = "3.4.14")]
-    v3_4_14,
-
     #[serde(rename = "3.5.8")]
     #[strum(serialize = "3.5.8")]
     v3_5_8,
+
+    #[serde(rename = "3.6.2")]
+    #[strum(serialize = "3.6.2")]
+    v3_6_2,
+
+    #[serde(rename = "3.7.0")]
+    #[strum(serialize = "3.7.0")]
+    v3_7_0,
 }
 
 impl ZookeeperVersion {
     pub fn package_name(&self) -> String {
-        match self {
-            ZookeeperVersion::v3_4_14 => {
-                format!("zookeeper-{}", self.to_string())
-            }
-            ZookeeperVersion::v3_5_8 => {
-                format!("apache-zookeeper-{}-bin", self.to_string())
-            }
-        }
+        format!("apache-zookeeper-{}-bin", self.to_string())
     }
 }
 
@@ -322,37 +319,41 @@ mod tests {
     #[test]
     fn test_zookeeper_version_versioning() {
         assert_eq!(
-            ZookeeperVersion::v3_4_14.versioning_state(&ZookeeperVersion::v3_5_8),
+            ZookeeperVersion::v3_5_8.versioning_state(&ZookeeperVersion::v3_7_0),
             VersioningState::ValidUpgrade
         );
         assert_eq!(
-            ZookeeperVersion::v3_5_8.versioning_state(&ZookeeperVersion::v3_4_14),
+            ZookeeperVersion::v3_7_0.versioning_state(&ZookeeperVersion::v3_5_8),
             VersioningState::ValidDowngrade
         );
         assert_eq!(
-            ZookeeperVersion::v3_4_14.versioning_state(&ZookeeperVersion::v3_4_14),
+            ZookeeperVersion::v3_5_8.versioning_state(&ZookeeperVersion::v3_5_8),
             VersioningState::NoOp
         );
     }
 
     #[test]
     fn test_version_conversion() {
-        ZookeeperVersion::from_str("3.4.14").unwrap();
         ZookeeperVersion::from_str("3.5.8").unwrap();
+        ZookeeperVersion::from_str("3.6.2").unwrap();
+        ZookeeperVersion::from_str("3.7.0").unwrap();
         ZookeeperVersion::from_str("1.2.3").unwrap_err();
     }
 
     #[test]
     fn test_package_name() {
         assert_eq!(
-            ZookeeperVersion::v3_4_14.package_name(),
-            format!("zookeeper-{}", ZookeeperVersion::v3_4_14.to_string())
-        );
-        assert_eq!(
             ZookeeperVersion::v3_5_8.package_name(),
             format!(
                 "apache-zookeeper-{}-bin",
                 ZookeeperVersion::v3_5_8.to_string()
+            )
+        );
+        assert_eq!(
+            ZookeeperVersion::v3_7_0.package_name(),
+            format!(
+                "apache-zookeeper-{}-bin",
+                ZookeeperVersion::v3_7_0.to_string()
             )
         );
     }

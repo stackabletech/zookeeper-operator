@@ -178,8 +178,9 @@ spec:
                   type: object
                 version:
                   enum:
-                    - 3.4.14
                     - 3.5.8
+                    - 3.6.2
+                    - 3.7.0
                   type: string
               required:
                 - servers
@@ -268,14 +269,16 @@ spec:
                   properties:
                     current:
                       enum:
-                        - 3.4.14
                         - 3.5.8
+                        - 3.6.2
+                        - 3.7.0
                       nullable: true
                       type: string
                     target:
                       enum:
-                        - 3.4.14
                         - 3.5.8
+                        - 3.6.2
+                        - 3.7.0
                       nullable: true
                       type: string
                   type: object
