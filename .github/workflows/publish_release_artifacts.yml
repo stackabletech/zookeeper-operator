@@ -24,7 +24,7 @@ jobs:
   debian10:
     runs-on: debian10
     steps:
-      - uses: actions/checkout@v2.3.5
+      - uses: actions/checkout@v2.4.0
       - name: Change version if is PR
         if: ${{ github.event_name == 'pull_request' }}
         # We use "mr" instead of "pr" to denote pull request builds, as this prefix comes before "nightly" when lexically
@@ -55,7 +55,7 @@ jobs:
       matrix:
         node: [ 7, 8 ]
     steps:
-      - uses: actions/checkout@v2.3.5
+      - uses: actions/checkout@v2.4.0
       - name: Change version if is PR
         if: ${{ github.event_name == 'pull_request' }}
         # We use "mr" instead of "pr" to denote pull request builds, as this prefix comes before "nightly" when lexically
@@ -83,7 +83,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v2.4.0
         with:
           fetch-depth: 0
       - name: Set up Helm
