@@ -214,9 +214,9 @@ pub enum ZookeeperVersion {
     #[strum(serialize = "3.5.8")]
     v3_5_8,
 
-    #[serde(rename = "3.6.2")]
-    #[strum(serialize = "3.6.2")]
-    v3_6_2,
+    #[serde(rename = "3.6.3")]
+    #[strum(serialize = "3.6.3")]
+    v3_6_3,
 
     #[serde(rename = "3.7.0")]
     #[strum(serialize = "3.7.0")]
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn test_version_conversion() {
         ZookeeperVersion::from_str("3.5.8").unwrap();
-        ZookeeperVersion::from_str("3.6.2").unwrap();
+        ZookeeperVersion::from_str("3.6.3").unwrap();
         ZookeeperVersion::from_str("3.7.0").unwrap();
         ZookeeperVersion::from_str("1.2.3").unwrap_err();
     }
