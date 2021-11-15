@@ -11,7 +11,7 @@ use stackable_operator::{
 };
 use std::fmt::Debug;
 
-pub async fn apply_owned<K>(kube: &kube::Client, obj: &K) -> kube::Result<K>
+pub async fn apply_owned<K>(kube: &kube::Client, field_manager: &str, obj: &K) -> kube::Result<K>
 where
     K: Resource<DynamicType = ()> + Serialize + DeserializeOwned + Clone + Debug,
 {
@@ -24,7 +24,7 @@ where
         &obj.meta().name.clone().unwrap(),
         &PatchParams {
             force: true,
-            field_manager: Some("hdfs.stackable.tech/hdfscluster".to_string()),
+            field_manager: Some(field_manager.to_string()),
             ..PatchParams::default()
         },
         &Patch::Apply(obj),

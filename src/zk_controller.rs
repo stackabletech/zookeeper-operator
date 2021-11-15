@@ -29,6 +29,8 @@ use stackable_operator::{
     labels::get_recommended_labels,
 };
 
+const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeepercluster";
+
 pub struct Ctx {
     pub kube: kube::Client,
 }
@@ -104,6 +106,7 @@ pub async fn reconcile_zk(
     let pod_labels = get_recommended_labels(&zk, "zookeeper", "3.7.0", "servers", "servers");
     apply_owned(
         &kube,
+        FIELD_MANAGER,
         &Service {
             metadata: ObjectMeta {
                 name: Some(global_svc_name.clone()),
@@ -129,6 +132,7 @@ pub async fn reconcile_zk(
     .with_context(|| ApplyGlobalService { zk: zk_ref.clone() })?;
     apply_owned(
         &kube,
+        FIELD_MANAGER,
         &Service {
             metadata: ObjectMeta {
                 name: Some(role_svc_servers_name.clone()),
@@ -158,6 +162,7 @@ pub async fn reconcile_zk(
     })?;
     apply_owned(
         &kube,
+        FIELD_MANAGER,
         &ConfigMapBuilder::new()
             .metadata(ObjectMeta {
                 name: Some(role_svc_servers_name.clone()),
@@ -243,6 +248,7 @@ clientPort=2181
     });
     apply_owned(
         &kube,
+        FIELD_MANAGER,
         &StatefulSet {
             metadata: ObjectMeta {
                 name: Some(role_svc_servers_name.clone()),

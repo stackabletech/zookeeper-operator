@@ -18,6 +18,8 @@ use stackable_operator::{
     },
 };
 
+const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeeperznode";
+
 pub struct Ctx {
     pub kube: kube::Client,
 }
@@ -143,7 +145,7 @@ pub async fn reconcile_znode(
                         data: Some([("ZOOKEEPER_BROKERS".to_string(), znode_conn_str)].into()),
                         ..ConfigMap::default()
                     };
-                    apply_owned(&kube, &discovery_cm)
+                    apply_owned(&kube, FIELD_MANAGER, &discovery_cm)
                         .await
                         .context(ApplyConfigMap {
                             obj_ref: ObjectRef::from_obj(&discovery_cm),
