@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Migrated to StatefulSet rather than direct Pod management ([#263]).
+- Migrated to PersistentVolumeClaim rather than manual sticky scheduling ([#263]).
+
+### Removed
+
+- Temporarily removed support for product config and label management ([#263]).
+
+[#263]: https://github.com/stackabletech/zookeeper-operator/pull/263
+
 ## [0.5.0] - 2021-11-12
 
 
