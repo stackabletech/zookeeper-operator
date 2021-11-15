@@ -1,4 +1,2 @@
 [workspace]
-members = [
-    "rust/crd", "rust/operator", "rust/operator-binary"
-]
+members = []
