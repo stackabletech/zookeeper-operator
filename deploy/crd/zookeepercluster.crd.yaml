@@ -89,6 +89,10 @@ spec:
                   description: "Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)"
                   nullable: true
                   type: boolean
+                version:
+                  description: Desired ZooKeeper version
+                  nullable: true
+                  type: string
               type: object
           required:
             - spec

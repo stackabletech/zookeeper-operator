@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, time::Duration};
 use crate::utils::{apply_owned, controller_reference_to_obj};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::{ConfigMapBuilder, ContainerBuilder, PodBuilder},
+    builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
@@ -25,11 +25,14 @@ use stackable_operator::{
             reflector::ObjectRef,
         },
     },
-    labels::get_recommended_labels,
+    labels::role_group_selector_labels,
 };
 use stackable_zookeeper_crd::ZookeeperCluster;
 
 const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeepercluster";
+const APP_NAME: &str = "zookeeper";
+const APP_ROLE_SERVERS: &str = "servers";
+const APP_ROLEGROUP_SERVERS: &str = "servers";
 
 pub struct Ctx {
     pub kube: kube::Client,
@@ -40,6 +43,10 @@ pub struct Ctx {
 pub enum Error {
     #[snafu(display("object {} has no namespace", obj_ref))]
     ObjectHasNoNamespace {
+        obj_ref: ObjectRef<ZookeeperCluster>,
+    },
+    #[snafu(display("object {} defines no version", obj_ref))]
+    ObjectHasNoVersion {
         obj_ref: ObjectRef<ZookeeperCluster>,
     },
     #[snafu(display("failed to calculate global service name for {}", obj_ref))]
@@ -69,7 +76,7 @@ pub enum Error {
         role: String,
     },
     #[snafu(display("failed to apply StatefulSet for role {} of {}", role, zk))]
-    ApplyStatefulSet {
+    ApplyRoleStatefulSet {
         source: kube::Error,
         zk: ObjectRef<ZookeeperCluster>,
         role: String,
@@ -90,11 +97,17 @@ pub async fn reconcile_zk(
         })?;
     let kube = ctx.get_ref().kube.clone();
 
+    let zk_version = zk
+        .spec
+        .version
+        .as_deref()
+        .with_context(|| ObjectHasNoVersion {
+            obj_ref: zk_ref.clone(),
+        })?;
     let global_svc_name = zk
         .global_service_name()
-        .with_context(|| RoleServiceNameNotFound {
+        .with_context(|| GlobalServiceNameNotFound {
             obj_ref: zk_ref.clone(),
-            role: "servers",
         })?;
     let role_svc_servers_name =
         zk.server_role_service_name()
@@ -103,17 +116,22 @@ pub async fn reconcile_zk(
                 role: "servers",
             })?;
     let zk_owner_ref = controller_reference_to_obj(&zk);
-    let pod_labels = get_recommended_labels(&zk, "zookeeper", "", "servers", "servers");
     apply_owned(
         &kube,
         FIELD_MANAGER,
         &Service {
-            metadata: ObjectMeta {
-                name: Some(global_svc_name.clone()),
-                namespace: Some(ns.to_string()),
-                owner_references: Some(vec![zk_owner_ref.clone()]),
-                ..ObjectMeta::default()
-            },
+            metadata: ObjectMetaBuilder::new()
+                .name(&global_svc_name)
+                .namespace(ns)
+                .ownerreference(zk_owner_ref.clone())
+                .with_recommended_labels(
+                    &zk,
+                    APP_NAME,
+                    zk_version,
+                    APP_ROLE_SERVERS,
+                    APP_ROLEGROUP_SERVERS,
+                )
+                .build(),
             spec: Some(ServiceSpec {
                 ports: Some(vec![ServicePort {
                     name: Some("zk".to_string()),
@@ -121,7 +139,12 @@ pub async fn reconcile_zk(
                     protocol: Some("TCP".to_string()),
                     ..ServicePort::default()
                 }]),
-                selector: Some(pod_labels.clone()),
+                selector: Some(role_group_selector_labels(
+                    &zk,
+                    APP_NAME,
+                    APP_ROLE_SERVERS,
+                    APP_ROLEGROUP_SERVERS,
+                )),
                 type_: Some("NodePort".to_string()),
                 ..ServiceSpec::default()
             }),
@@ -134,12 +157,18 @@ pub async fn reconcile_zk(
         &kube,
         FIELD_MANAGER,
         &Service {
-            metadata: ObjectMeta {
-                name: Some(role_svc_servers_name.clone()),
-                namespace: Some(ns.to_string()),
-                owner_references: Some(vec![zk_owner_ref.clone()]),
-                ..ObjectMeta::default()
-            },
+            metadata: ObjectMetaBuilder::new()
+                .name(&role_svc_servers_name)
+                .namespace(ns)
+                .ownerreference(zk_owner_ref.clone())
+                .with_recommended_labels(
+                    &zk,
+                    APP_NAME,
+                    zk_version,
+                    APP_ROLE_SERVERS,
+                    APP_ROLEGROUP_SERVERS,
+                )
+                .build(),
             spec: Some(ServiceSpec {
                 cluster_ip: Some("None".to_string()),
                 ports: Some(vec![ServicePort {
@@ -148,7 +177,12 @@ pub async fn reconcile_zk(
                     protocol: Some("TCP".to_string()),
                     ..ServicePort::default()
                 }]),
-                selector: Some(pod_labels.clone()),
+                selector: Some(role_group_selector_labels(
+                    &zk,
+                    APP_NAME,
+                    APP_ROLE_SERVERS,
+                    APP_ROLEGROUP_SERVERS,
+                )),
                 publish_not_ready_addresses: Some(true),
                 ..ServiceSpec::default()
             }),
@@ -164,12 +198,20 @@ pub async fn reconcile_zk(
         &kube,
         FIELD_MANAGER,
         &ConfigMapBuilder::new()
-            .metadata(ObjectMeta {
-                name: Some(role_svc_servers_name.clone()),
-                namespace: Some(ns.to_string()),
-                owner_references: Some(vec![zk_owner_ref.clone()]),
-                ..ObjectMeta::default()
-            })
+            .metadata(
+                ObjectMetaBuilder::new()
+                    .name(&role_svc_servers_name)
+                    .namespace(ns)
+                    .ownerreference(zk_owner_ref.clone())
+                    .with_recommended_labels(
+                        &zk,
+                        APP_NAME,
+                        zk_version,
+                        APP_ROLE_SERVERS,
+                        APP_ROLEGROUP_SERVERS,
+                    )
+                    .build(),
+            )
             .add_data(
                 "zoo.cfg",
                 format!(
@@ -222,7 +264,10 @@ clientPort=2181
         .add_volume_mount("data", "/data")
         .build();
     let container_zk = ContainerBuilder::new("zookeeper")
-        .image("docker.stackable.tech/stackable/zookeeper:3.5.8-stackable0")
+        .image(format!(
+            "docker.stackable.tech/stackable/zookeeper:{}-stackable0",
+            zk_version
+        ))
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
@@ -250,12 +295,18 @@ clientPort=2181
         &kube,
         FIELD_MANAGER,
         &StatefulSet {
-            metadata: ObjectMeta {
-                name: Some(role_svc_servers_name.clone()),
-                namespace: Some(ns.to_string()),
-                owner_references: Some(vec![zk_owner_ref.clone()]),
-                ..ObjectMeta::default()
-            },
+            metadata: ObjectMetaBuilder::new()
+                .name(&role_svc_servers_name)
+                .namespace(ns)
+                .ownerreference(zk_owner_ref.clone())
+                .with_recommended_labels(
+                    &zk,
+                    APP_NAME,
+                    zk_version,
+                    APP_ROLE_SERVERS,
+                    APP_ROLEGROUP_SERVERS,
+                )
+                .build(),
             spec: Some(StatefulSetSpec {
                 pod_management_policy: Some("Parallel".to_string()),
                 replicas: if zk.spec.stopped.unwrap_or(false) {
@@ -264,12 +315,25 @@ clientPort=2181
                     zk.spec.servers.replicas.map(i32::from)
                 },
                 selector: LabelSelector {
-                    match_labels: Some(pod_labels.clone()),
+                    match_labels: Some(role_group_selector_labels(
+                        &zk,
+                        APP_NAME,
+                        APP_ROLE_SERVERS,
+                        APP_ROLEGROUP_SERVERS,
+                    )),
                     ..LabelSelector::default()
                 },
                 service_name: role_svc_servers_name.clone(),
                 template: PodBuilder::new()
-                    .metadata_builder(|m| m.labels(pod_labels.clone()))
+                    .metadata_builder(|m| {
+                        m.with_recommended_labels(
+                            &zk,
+                            APP_NAME,
+                            zk_version,
+                            APP_ROLE_SERVERS,
+                            APP_ROLEGROUP_SERVERS,
+                        )
+                    })
                     .add_init_container(container_decide_myid)
                     .add_container(container_zk)
                     .add_volume(Volume {
@@ -306,7 +370,7 @@ clientPort=2181
         },
     )
     .await
-    .with_context(|| ApplyStatefulSet {
+    .with_context(|| ApplyRoleStatefulSet {
         role: "servers",
         zk: zk_ref.clone(),
     })?;

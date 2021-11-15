@@ -5,4 +5,5 @@ metadata:
 spec:
   servers:
     replicas: 3
+  version: 3.5.8
   stopped: false
