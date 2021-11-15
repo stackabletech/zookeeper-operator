@@ -1,16 +1,7 @@
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperCluster
 metadata:
-  name: simple
+  name: simple-zk
 spec:
-  version: 3.5.8
-  servers:
-    roleGroups:
-      default:
-        selector:
-          matchLabels:
-            kubernetes.io/os: linux
-        config:
-          adminPort: 12000
-          metricsPort: 9505
-          dataDir: /stackable/data
+  replicas: 3
+  stopped: false
