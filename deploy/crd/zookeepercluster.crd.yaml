@@ -179,7 +179,7 @@ spec:
                 version:
                   enum:
                     - 3.5.8
-                    - 3.6.2
+                    - 3.6.3
                     - 3.7.0
                   type: string
               required:
@@ -270,14 +270,14 @@ spec:
                     current:
                       enum:
                         - 3.5.8
-                        - 3.6.2
+                        - 3.6.3
                         - 3.7.0
                       nullable: true
                       type: string
                     target:
                       enum:
                         - 3.5.8
-                        - 3.6.2
+                        - 3.6.3
                         - 3.7.0
                       nullable: true
                       type: string
