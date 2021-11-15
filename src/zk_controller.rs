@@ -6,14 +6,14 @@ use crate::{
 };
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::ContainerBuilder,
+    builder::{ConfigMapBuilder, ContainerBuilder},
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
-                EnvVar, EnvVarSource, ExecAction, ObjectFieldSelector, PersistentVolumeClaim,
-                PersistentVolumeClaimSpec, PodSpec, PodTemplateSpec, Probe, ResourceRequirements,
-                Service, ServicePort, ServiceSpec,
+                ConfigMapVolumeSource, EnvVar, EnvVarSource, ExecAction, ObjectFieldSelector,
+                PersistentVolumeClaim, PersistentVolumeClaimSpec, PodSpec, PodTemplateSpec, Probe,
+                ResourceRequirements, Service, ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
@@ -56,6 +56,12 @@ pub enum Error {
     },
     #[snafu(display("failed to apply Service for role {} of {}", role, zk))]
     ApplyRoleService {
+        source: kube::Error,
+        zk: ObjectRef<ZookeeperCluster>,
+        role: String,
+    },
+    #[snafu(display("failed to apply ConfigMap for role {} of {}", role, zk))]
+    ApplyRoleConfig {
         source: kube::Error,
         zk: ObjectRef<ZookeeperCluster>,
         role: String,
@@ -150,6 +156,46 @@ pub async fn reconcile_zk(
         role: "servers",
         zk: zk_ref.clone(),
     })?;
+    apply_owned(
+        &kube,
+        &ConfigMapBuilder::new()
+            .metadata(ObjectMeta {
+                name: Some(role_svc_servers_name.clone()),
+                namespace: Some(ns.to_string()),
+                owner_references: Some(vec![zk_owner_ref.clone()]),
+                ..ObjectMeta::default()
+            })
+            .add_data(
+                "zoo.cfg",
+                format!(
+                    "
+tickTime=2000
+initLimit=10
+syncLimit=5
+dataDir=/data
+clientPort=2181
+{}
+",
+                    zk.pods()
+                        .unwrap()
+                        .into_iter()
+                        .map(|pod| format!(
+                            "server.{}={}:2888:3888;2181",
+                            pod.zookeeper_id,
+                            pod.fqdn()
+                        ))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                ),
+            )
+            .build()
+            .unwrap(),
+    )
+    .await
+    .with_context(|| ApplyRoleConfig {
+        role: "servers",
+        zk: zk_ref.clone(),
+    })?;
     let container_decide_myid = ContainerBuilder::new("decide-myid")
         .image("alpine")
         .args(vec![
@@ -171,27 +217,25 @@ pub async fn reconcile_zk(
         .add_volume_mount("data", "/data")
         .build();
     let mut container_zk = ContainerBuilder::new("zookeeper")
-        .image("zookeeper:3.7.0")
-        .add_env_var(
-            "ZOO_SERVERS",
-            zk.pods()
-                .unwrap()
-                .into_iter()
-                .map(|pod| format!("server.{}={}:2888:3888;2181", pod.zookeeper_id, pod.fqdn()))
-                .collect::<Vec<_>>()
-                .join(" "),
-        )
+        .image("docker.stackable.tech/stackable/zookeeper:3.5.8-stackable0")
+        .args(vec![
+            "bin/zkServer.sh".to_string(),
+            "start-foreground".to_string(),
+            "/config/zoo.cfg".to_string(),
+        ])
         .add_container_port("zk", 2181)
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
         .add_volume_mount("data", "/data")
+        .add_volume_mount("config", "/config")
         .build();
     container_zk.readiness_probe = Some(Probe {
         exec: Some(ExecAction {
             command: Some(vec![
                 "sh".to_string(),
                 "-c".to_string(),
-                "echo srvr | nc localhost 2181 | grep '^Mode: '".to_string(),
+                "exec 3<>/dev/tcp/localhost/2181 && echo srvr >&3 && grep '^Mode: ' <&3"
+                    .to_string(),
             ]),
         }),
         period_seconds: Some(1),
@@ -226,6 +270,14 @@ pub async fn reconcile_zk(
                     spec: Some(PodSpec {
                         init_containers: Some(vec![container_decide_myid]),
                         containers: vec![container_zk],
+                        volumes: Some(vec![Volume {
+                            name: "config".to_string(),
+                            config_map: Some(ConfigMapVolumeSource {
+                                name: Some(role_svc_servers_name.clone()),
+                                ..ConfigMapVolumeSource::default()
+                            }),
+                            ..Volume::default()
+                        }]),
                         ..PodSpec::default()
                     }),
                 },
