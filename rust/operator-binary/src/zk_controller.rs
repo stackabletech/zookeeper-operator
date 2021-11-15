@@ -5,14 +5,14 @@ use std::{collections::BTreeMap, time::Duration};
 use crate::utils::{apply_owned, controller_reference_to_obj};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::{ConfigMapBuilder, ContainerBuilder},
+    builder::{ConfigMapBuilder, ContainerBuilder, PodBuilder},
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMapVolumeSource, EnvVar, EnvVarSource, ExecAction, ObjectFieldSelector,
-                PersistentVolumeClaim, PersistentVolumeClaimSpec, PodSpec, PodTemplateSpec, Probe,
-                ResourceRequirements, Service, ServicePort, ServiceSpec, Volume,
+                PersistentVolumeClaim, PersistentVolumeClaimSpec, Probe, ResourceRequirements,
+                Service, ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
@@ -221,31 +221,31 @@ clientPort=2181
         }])
         .add_volume_mount("data", "/data")
         .build();
-    let mut container_zk = ContainerBuilder::new("zookeeper")
+    let container_zk = ContainerBuilder::new("zookeeper")
         .image("docker.stackable.tech/stackable/zookeeper:3.5.8-stackable0")
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
             "/config/zoo.cfg".to_string(),
         ])
+        .readiness_probe(Probe {
+            exec: Some(ExecAction {
+                command: Some(vec![
+                    "sh".to_string(),
+                    "-c".to_string(),
+                    "exec 3<>/dev/tcp/localhost/2181 && echo srvr >&3 && grep '^Mode: ' <&3"
+                        .to_string(),
+                ]),
+            }),
+            period_seconds: Some(1),
+            ..Probe::default()
+        })
         .add_container_port("zk", 2181)
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
         .add_volume_mount("data", "/data")
         .add_volume_mount("config", "/config")
         .build();
-    container_zk.readiness_probe = Some(Probe {
-        exec: Some(ExecAction {
-            command: Some(vec![
-                "sh".to_string(),
-                "-c".to_string(),
-                "exec 3<>/dev/tcp/localhost/2181 && echo srvr >&3 && grep '^Mode: ' <&3"
-                    .to_string(),
-            ]),
-        }),
-        period_seconds: Some(1),
-        ..Probe::default()
-    });
     apply_owned(
         &kube,
         FIELD_MANAGER,
@@ -268,25 +268,19 @@ clientPort=2181
                     ..LabelSelector::default()
                 },
                 service_name: role_svc_servers_name.clone(),
-                template: PodTemplateSpec {
-                    metadata: Some(ObjectMeta {
-                        labels: Some(pod_labels.clone()),
-                        ..ObjectMeta::default()
-                    }),
-                    spec: Some(PodSpec {
-                        init_containers: Some(vec![container_decide_myid]),
-                        containers: vec![container_zk],
-                        volumes: Some(vec![Volume {
-                            name: "config".to_string(),
-                            config_map: Some(ConfigMapVolumeSource {
-                                name: Some(role_svc_servers_name.clone()),
-                                ..ConfigMapVolumeSource::default()
-                            }),
-                            ..Volume::default()
-                        }]),
-                        ..PodSpec::default()
-                    }),
-                },
+                template: PodBuilder::new()
+                    .metadata_builder(|m| m.labels(pod_labels.clone()))
+                    .add_init_container(container_decide_myid)
+                    .add_container(container_zk)
+                    .add_volume(Volume {
+                        name: "config".to_string(),
+                        config_map: Some(ConfigMapVolumeSource {
+                            name: Some(role_svc_servers_name.clone()),
+                            ..ConfigMapVolumeSource::default()
+                        }),
+                        ..Volume::default()
+                    })
+                    .build_template(),
                 volume_claim_templates: Some(vec![PersistentVolumeClaim {
                     metadata: ObjectMeta {
                         name: Some("data".to_string()),
