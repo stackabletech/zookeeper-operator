@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use stackable_operator::{
     kube::CustomResource,
+    role_utils::RoleGroup,
     schemars::{self, JsonSchema},
 };
 
@@ -19,15 +20,26 @@ use stackable_operator::{
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterSpec {
-    /// The desired number of nodes in the cluster
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub replicas: Option<i32>,
     /// Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stopped: Option<bool>,
+    #[serde(default = "ZookeeperCluster::default_role_group")]
+    pub servers: RoleGroup<ZookeeperConfig>,
 }
 
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperConfig {}
+
 impl ZookeeperCluster {
+    fn default_role_group() -> RoleGroup<ZookeeperConfig> {
+        RoleGroup {
+            config: None,
+            replicas: None,
+            selector: None,
+        }
+    }
+
     /// The name of the "global" load-balanced Kubernetes `Service`
     pub fn global_service_name(&self) -> Option<String> {
         self.metadata.name.clone()
@@ -52,7 +64,7 @@ impl ZookeeperCluster {
         let ns = self.metadata.namespace.clone()?;
         let role_svc_name = self.server_role_service_name()?;
         Some(
-            (0..self.spec.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
+            (0..self.spec.servers.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
                 namespace: ns.clone(),
                 role_service_name: role_svc_name.clone(),
                 pod_name: format!("{}-{}", role_svc_name, i),
@@ -69,7 +81,7 @@ pub struct ZookeeperPodRef {
     pub namespace: String,
     pub role_service_name: String,
     pub pod_name: String,
-    pub zookeeper_id: i32,
+    pub zookeeper_id: u16,
 }
 
 impl ZookeeperPodRef {

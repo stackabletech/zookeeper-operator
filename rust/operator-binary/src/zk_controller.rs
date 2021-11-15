@@ -103,7 +103,7 @@ pub async fn reconcile_zk(
                 role: "servers",
             })?;
     let zk_owner_ref = controller_reference_to_obj(&zk);
-    let pod_labels = get_recommended_labels(&zk, "zookeeper", "3.7.0", "servers", "servers");
+    let pod_labels = get_recommended_labels(&zk, "zookeeper", "", "servers", "servers");
     apply_owned(
         &kube,
         FIELD_MANAGER,
@@ -261,7 +261,7 @@ clientPort=2181
                 replicas: if zk.spec.stopped.unwrap_or(false) {
                     Some(0)
                 } else {
-                    zk.spec.replicas
+                    zk.spec.servers.replicas.map(i32::from)
                 },
                 selector: LabelSelector {
                     match_labels: Some(pod_labels.clone()),

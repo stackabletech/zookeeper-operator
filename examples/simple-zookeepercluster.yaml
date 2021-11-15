@@ -3,5 +3,6 @@ kind: ZookeeperCluster
 metadata:
   name: simple-zk
 spec:
-  replicas: 3
+  servers:
+    replicas: 3
   stopped: false
