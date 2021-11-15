@@ -1,2 +1,2 @@
 [workspace]
-members = ["rust/operator"]
+members = ["rust/crd", "rust/operator"]

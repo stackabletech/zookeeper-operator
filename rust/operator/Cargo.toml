@@ -1,5 +1,5 @@
 [package]
-name = "zookeeper-operator"
+name = "stackable-zookeeper-operator"
 description = "Stackable Operator for Apache ZooKeeper"
 license = "OSL-3.0"
 version = "0.1.0"
@@ -27,6 +27,10 @@ tokio-zookeeper = "0.1.3"
 tracing = "0.1.29"
 pin-project = "1.0.8"
 stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git" }
+stackable-zookeeper-crd = { version = "0.1.0", path = "../crd" }
 
 [build-dependencies]
 built = { version =  "0.5", features = ["chrono", "git2"] }
+eyre = "0.6.5"
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git" }
+stackable-zookeeper-crd = { version = "0.1.0", path = "../crd" }

@@ -2,10 +2,7 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use crate::{
-    crd::ZookeeperCluster,
-    utils::{apply_owned, controller_reference_to_obj},
-};
+use crate::utils::{apply_owned, controller_reference_to_obj};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder},
@@ -30,6 +27,7 @@ use stackable_operator::{
     },
     labels::get_recommended_labels,
 };
+use stackable_zookeeper_crd::ZookeeperCluster;
 
 const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeepercluster";
 

@@ -1,10 +1,8 @@
-mod crd;
 mod utils;
 mod zk_controller;
 mod znode_controller;
 
 use crate::utils::Tokio01ExecutorExt;
-use crd::{ZookeeperCluster, ZookeeperZnode};
 use futures::{compat::Future01CompatExt, StreamExt};
 use stackable_operator::{
     k8s_openapi::api::{
@@ -22,6 +20,7 @@ use stackable_operator::{
         CustomResourceExt, Resource,
     },
 };
+use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
 use structopt::StructOpt;
 
 mod built_info {

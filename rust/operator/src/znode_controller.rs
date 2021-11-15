@@ -2,10 +2,7 @@
 
 use std::{convert::Infallible, time::Duration};
 
-use crate::{
-    crd::{ZookeeperCluster, ZookeeperClusterRef, ZookeeperZnode},
-    utils::{apply_owned, controller_reference_to_obj},
-};
+use crate::utils::{apply_owned, controller_reference_to_obj};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     k8s_openapi::api::core::v1::ConfigMap,
@@ -19,6 +16,7 @@ use stackable_operator::{
         },
     },
 };
+use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperClusterRef, ZookeeperZnode};
 
 const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeeperznode";
 
