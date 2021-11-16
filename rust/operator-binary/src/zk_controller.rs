@@ -92,8 +92,10 @@ pub enum Error {
         source: stackable_operator::error::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
+    #[snafu(display("failed to serialize zoo.cfg for {}", zk))]
     SerializeZooCfg {
         source: stackable_operator::product_config::writer::PropertiesWriterError,
+        zk: ObjectRef<ZookeeperCluster>,
     },
 }
 
@@ -274,7 +276,7 @@ pub async fn reconcile_zk(
             .add_data(
                 "zoo.cfg",
                 to_java_properties_string(zoo_cfg.iter().map(|(k, v)| (k, v)))
-                    .context(SerializeZooCfg)?,
+                    .with_context(|| SerializeZooCfg { zk: zk_ref.clone() })?,
             )
             .build()
             .unwrap(),
