@@ -26,8 +26,13 @@ use stackable_operator::{
         },
     },
     labels::role_group_selector_labels,
+    product_config::{
+        types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
+    },
+    product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
+    role_utils::Role,
 };
-use stackable_zookeeper_crd::ZookeeperCluster;
+use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
 
 const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeepercluster";
 const APP_NAME: &str = "zookeeper";
@@ -36,6 +41,7 @@ const APP_ROLEGROUP_SERVERS: &str = "servers";
 
 pub struct Ctx {
     pub kube: kube::Client,
+    pub product_config: ProductConfigManager,
 }
 
 #[derive(Snafu, Debug)]
@@ -81,7 +87,17 @@ pub enum Error {
         zk: ObjectRef<ZookeeperCluster>,
         role: String,
     },
+    #[snafu(display("invalid product config for {}", zk))]
+    InvalidProductConfig {
+        source: stackable_operator::error::Error,
+        zk: ObjectRef<ZookeeperCluster>,
+    },
+    SerializeZooCfg {
+        source: stackable_operator::product_config::writer::PropertiesWriterError,
+    },
 }
+
+const PROPERTIES_FILE: &str = "zoo.cfg";
 
 pub async fn reconcile_zk(
     zk: ZookeeperCluster,
@@ -104,6 +120,34 @@ pub async fn reconcile_zk(
         .with_context(|| ObjectHasNoVersion {
             obj_ref: zk_ref.clone(),
         })?;
+    let mut validated_config = validate_all_roles_and_groups_config(
+        zk_version,
+        &transform_all_roles_to_config(
+            &zk,
+            [(
+                ZookeeperRole::Server.to_string(),
+                (
+                    vec![PropertyNameKind::File(PROPERTIES_FILE.to_string())],
+                    Role {
+                        config: None,
+                        role_groups: [(APP_ROLEGROUP_SERVERS.to_string(), zk.spec.servers.clone())]
+                            .into(),
+                    }
+                    .into(),
+                ),
+            )]
+            .into(),
+        ),
+        &ctx.get_ref().product_config,
+        false,
+        false,
+    )
+    .with_context(|| InvalidProductConfig { zk: zk_ref.clone() })?;
+    let mut server_config = validated_config
+        .remove(&ZookeeperRole::Server.to_string())
+        .and_then(|mut role_cfg| role_cfg.remove(APP_ROLE_SERVERS))
+        .unwrap_or_default();
+
     let global_svc_name = zk
         .global_service_name()
         .with_context(|| GlobalServiceNameNotFound {
@@ -194,6 +238,21 @@ pub async fn reconcile_zk(
         role: "servers",
         zk: zk_ref.clone(),
     })?;
+    let mut zoo_cfg = server_config
+        .remove(&PropertyNameKind::File(PROPERTIES_FILE.to_string()))
+        .unwrap_or_default();
+    zoo_cfg.insert("dataDir".to_string(), "/stackable/data".to_string());
+    zoo_cfg.insert("clientPort".to_string(), "2181".to_string());
+    zoo_cfg.extend(zk.pods().into_iter().flatten().map(|pod| {
+        (
+            format!("server.{}", pod.zookeeper_id),
+            format!("{}:2888:3888;2181", pod.fqdn()),
+        )
+    }));
+    let zoo_cfg = zoo_cfg
+        .into_iter()
+        .map(|(k, v)| (k, Some(v)))
+        .collect::<Vec<_>>();
     apply_owned(
         &kube,
         FIELD_MANAGER,
@@ -214,26 +273,8 @@ pub async fn reconcile_zk(
             )
             .add_data(
                 "zoo.cfg",
-                format!(
-                    "
-tickTime=2000
-initLimit=10
-syncLimit=5
-dataDir=/data
-clientPort=2181
-{}
-",
-                    zk.pods()
-                        .unwrap()
-                        .into_iter()
-                        .map(|pod| format!(
-                            "server.{}={}:2888:3888;2181",
-                            pod.zookeeper_id,
-                            pod.fqdn()
-                        ))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                ),
+                to_java_properties_string(zoo_cfg.iter().map(|(k, v)| (k, v)))
+                    .context(SerializeZooCfg)?,
             )
             .build()
             .unwrap(),
@@ -248,7 +289,7 @@ clientPort=2181
         .args(vec![
             "sh".to_string(),
             "-c".to_string(),
-            "expr 1 + $(echo $POD_NAME | sed 's/.*-//') > /data/myid".to_string(),
+            "expr 1 + $(echo $POD_NAME | sed 's/.*-//') > /stackable/data/myid".to_string(),
         ])
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
@@ -261,7 +302,7 @@ clientPort=2181
             }),
             ..EnvVar::default()
         }])
-        .add_volume_mount("data", "/data")
+        .add_volume_mount("data", "/stackable/data")
         .build();
     let container_zk = ContainerBuilder::new("zookeeper")
         .image(format!(
@@ -271,7 +312,7 @@ clientPort=2181
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
-            "/config/zoo.cfg".to_string(),
+            "/stackable/config/zoo.cfg".to_string(),
         ])
         .readiness_probe(Probe {
             exec: Some(ExecAction {
@@ -288,8 +329,8 @@ clientPort=2181
         .add_container_port("zk", 2181)
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
-        .add_volume_mount("data", "/data")
-        .add_volume_mount("config", "/config")
+        .add_volume_mount("data", "/stackable/data")
+        .add_volume_mount("config", "/stackable/config")
         .build();
     apply_owned(
         &kube,

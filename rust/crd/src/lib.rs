@@ -1,6 +1,9 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use stackable_operator::{
     kube::CustomResource,
+    product_config_utils::{ConfigError, Configuration},
     role_utils::RoleGroup,
     schemars::{self, JsonSchema},
 };
@@ -32,7 +35,62 @@ pub struct ZookeeperClusterSpec {
 
 #[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ZookeeperConfig {}
+pub struct ZookeeperConfig {
+    pub init_limit: Option<u32>,
+    pub sync_limit: Option<u32>,
+    pub tick_time: Option<u32>,
+}
+
+impl ZookeeperConfig {
+    pub const INIT_LIMIT: &'static str = "initLimit";
+    pub const SYNC_LIMIT: &'static str = "syncLimit";
+    pub const TICK_TIME: &'static str = "tickTime";
+}
+
+impl Configuration for ZookeeperConfig {
+    type Configurable = ZookeeperCluster;
+
+    fn compute_env(
+        &self,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        Ok(BTreeMap::new())
+    }
+
+    fn compute_cli(
+        &self,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        Ok(BTreeMap::new())
+    }
+
+    fn compute_files(
+        &self,
+        _resource: &Self::Configurable,
+        _role_name: &str,
+        _file: &str,
+    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        let mut result = BTreeMap::new();
+        if let Some(init_limit) = self.init_limit {
+            result.insert(Self::INIT_LIMIT.to_string(), Some(init_limit.to_string()));
+        }
+        if let Some(sync_limit) = self.sync_limit {
+            result.insert(Self::SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
+        }
+        if let Some(tick_time) = self.tick_time {
+            result.insert(Self::TICK_TIME.to_string(), Some(tick_time.to_string()));
+        }
+        Ok(result)
+    }
+}
+
+#[derive(strum::Display)]
+#[strum(serialize_all = "camelCase")]
+pub enum ZookeeperRole {
+    Server,
+}
 
 impl ZookeeperCluster {
     fn default_role_group() -> RoleGroup<ZookeeperConfig> {

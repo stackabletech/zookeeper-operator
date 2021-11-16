@@ -1899,6 +1899,7 @@ dependencies = [
  "serde",
  "serde_json",
  "stackable-operator",
+ "strum",
 ]
 
 [[package]]
@@ -1968,6 +1969,9 @@ name = "strum"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7ac893c7d471c8a21f31cfe213ec4f6d9afeed25537c772e08ef3f005f8729e"
+dependencies = [
+ "strum_macros",
+]
 
 [[package]]
 name = "strum_macros"

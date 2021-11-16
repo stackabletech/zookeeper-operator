@@ -35,6 +35,22 @@ spec:
                       type: object
                     config:
                       nullable: true
+                      properties:
+                        initLimit:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        syncLimit:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
+                        tickTime:
+                          format: uint32
+                          minimum: 0.0
+                          nullable: true
+                          type: integer
                       type: object
                     configOverrides:
                       additionalProperties:

@@ -2,6 +2,8 @@ mod utils;
 mod zk_controller;
 mod znode_controller;
 
+use std::str::FromStr;
+
 use crate::utils::Tokio01ExecutorExt;
 use futures::{compat::Future01CompatExt, StreamExt};
 use stackable_operator::{
@@ -19,6 +21,7 @@ use stackable_operator::{
         },
         CustomResourceExt, Resource,
     },
+    product_config::ProductConfigManager,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
 use structopt::StructOpt;
@@ -71,6 +74,9 @@ async fn main() -> eyre::Result<()> {
                 built_info::BUILT_TIME_UTC,
                 built_info::RUSTC_VERSION,
             );
+            let product_config = ProductConfigManager::from_str(include_str!(
+                "../../../deploy/config-spec/properties.yaml"
+            ))?;
             let kube = kube::Client::try_default().await?;
             let zks = kube::Api::<ZookeeperCluster>::all(kube.clone());
             let znodes = kube::Api::<ZookeeperZnode>::all(kube.clone());
@@ -86,7 +92,10 @@ async fn main() -> eyre::Result<()> {
                 .run(
                     zk_controller::reconcile_zk,
                     zk_controller::error_policy,
-                    Context::new(zk_controller::Ctx { kube: kube.clone() }),
+                    Context::new(zk_controller::Ctx {
+                        kube: kube.clone(),
+                        product_config,
+                    }),
                 );
             let znode_controller = Controller::new(znodes, ListParams::default())
                 .owns(
