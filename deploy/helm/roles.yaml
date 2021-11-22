@@ -1,0 +1,15 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: "{{ include "operator.fullname" . }}-test-role"
+  labels:
+    {{- include "operator.testLabels" . | nindent 4 }}
+rules:
+- apiGroups: ["{{- include "operator.name" . }}.stackable.tech"]
+  resources: ["{{- include "operator.name" . }}clusters"]
+  verbs: ["get", "list", "delete", "create"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["list"]
+
