@@ -54,7 +54,11 @@ enum Cmd {
     Run,
 }
 
-fn erase_controller_result<K: Resource, E: std::error::Error + Send + Sync + 'static>(
+/// Erases the concrete types of the controller result, so that we can merge the streams of multiple controllers for different resources.
+///
+/// In particular, we convert `ObjectRef<K>` into `ObjectRef<DynamicObject>` (which carries `K`'s metadata at runtime instead), and
+/// `E` into the trait object `anyhow::Error`.
+fn erase_controller_result_type<K: Resource, E: std::error::Error + Send + Sync + 'static>(
     res: Result<(ObjectRef<K>, ReconcilerAction), E>,
 ) -> anyhow::Result<(ObjectRef<DynamicObject>, ReconcilerAction)> {
     let (obj_ref, action) = res?;
@@ -125,8 +129,8 @@ async fn main() -> anyhow::Result<()> {
                     Context::new(znode_controller::Ctx { kube }),
                 );
             futures::stream::select(
-                zk_controller.map(erase_controller_result),
-                znode_controller.map(erase_controller_result),
+                zk_controller.map(erase_controller_result_type),
+                znode_controller.map(erase_controller_result_type),
             )
             .for_each(|res| async {
                 match res {
