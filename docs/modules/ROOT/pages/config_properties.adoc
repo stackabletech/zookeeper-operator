@@ -32,7 +32,7 @@
 | metricsPort
 | 9505
 | 9505
-| env
+|
 
 | syncLimit
 | syncLimit

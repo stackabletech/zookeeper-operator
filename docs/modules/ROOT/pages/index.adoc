@@ -2,7 +2,11 @@
 
 This is an operator for Kubernetes that can manage https://zookeeper.apache.org/[Apache ZooKeeper] ensembles.
 
-WARNING: This operator only works with images from the https://repo.stackable.tech/#browse/browse:docker:v2%2Fstackable%2Fzookeeper[Stackable] repository
+WARNING: This operator is part of Stackable Data Platform
+and only works with images from the https://repo.stackable.tech/#browse/browse:docker:v2%2Fstackable%2Fzookeeper[Stackable] repository
+
+
+== Getting the Docker image
 
 [source]
 ----
