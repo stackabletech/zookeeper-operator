@@ -47,13 +47,13 @@ enum Cmd {
 
 fn erase_controller_result<K: Resource, E: std::error::Error + Send + Sync + 'static>(
     res: Result<(ObjectRef<K>, ReconcilerAction), E>,
-) -> eyre::Result<(ObjectRef<DynamicObject>, ReconcilerAction)> {
+) -> anyhow::Result<(ObjectRef<DynamicObject>, ReconcilerAction)> {
     let (obj_ref, action) = res?;
     Ok((obj_ref.erase(), action))
 }
 
 #[tokio::main]
-async fn main() -> eyre::Result<()> {
+async fn main() -> anyhow::Result<()> {
     stackable_operator::logging::initialize_logging("ZOOKEEPER_OPERATOR_LOG");
     // tokio-zookeeper depends on Tokio 0.1
     let tokio01_runtime = tokio01::runtime::Runtime::new()?;
