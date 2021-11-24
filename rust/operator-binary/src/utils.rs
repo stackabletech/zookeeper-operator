@@ -11,6 +11,10 @@ use stackable_operator::{
 };
 use std::fmt::Debug;
 
+/// Server-side applies an object that our controller "owns" (is the primary controller for)
+///
+/// Compared to [`Api::patch`], this automatically reads the kind, namespace, and name from the `object` rather than
+/// requiring them to be duplicated manually.
 pub async fn apply_owned<K>(kube: &kube::Client, field_manager: &str, obj: &K) -> kube::Result<K>
 where
     K: Resource<DynamicType = ()> + Serialize + DeserializeOwned + Clone + Debug,
@@ -21,7 +25,8 @@ where
         kube::Api::<K>::all(kube.clone())
     };
     api.patch(
-        &obj.meta().name.clone().unwrap(),
+        // Name is required, but K8s API will fail if this is not provided
+        obj.meta().name.as_deref().unwrap_or(""),
         &PatchParams {
             force: true,
             field_manager: Some(field_manager.to_string()),
