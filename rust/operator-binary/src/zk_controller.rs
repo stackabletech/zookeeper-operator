@@ -377,11 +377,15 @@ fn build_rolegroup_statefulset(
             "start-foreground".to_string(),
             "/stackable/config/zoo.cfg".to_string(),
         ])
+        // Only allow the global load balancing service to send traffic to pods that are members of the quorum
+        // This also acts as a hint to the StatefulSet controller to wait for each pod to enter quorum before taking down the next
         .readiness_probe(Probe {
             exec: Some(ExecAction {
                 command: Some(vec![
-                    "sh".to_string(),
+                    "bash".to_string(),
                     "-c".to_string(),
+                    // We don't have telnet or netcat in the container images, but
+                    // we can use Bash's virtual /dev/tcp filesystem to accomplish the same thing
                     "exec 3<>/dev/tcp/localhost/2181 && echo srvr >&3 && grep '^Mode: ' <&3"
                         .to_string(),
                 ]),
