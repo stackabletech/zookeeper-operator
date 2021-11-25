@@ -1,6 +1,39 @@
-== Configuration Properties
+== Kubernetes custom resource options
+The cluster can be configured via a YAML file. This custom resource specifies the amount of replicas for each role group or role specific configuration like port definitions etc.
 
-[cols="2,2,2,2,1"]
+[source,yaml]
+----
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: simple
+spec:
+  version: 3.5.8
+  servers:
+    roleGroups:
+      default:
+        selector:
+          matchLabels:
+            kubernetes.io/os: linux
+        # Here you can set the Stackable supported configuration parameters
+        # See the documentation for a full list of the exposed configuration parameters
+        config:
+          adminPort: 12000
+          metricsPort: 9505
+          dataDir: /stackable/data
+          tickTime: 3000
+          clientPort: 2181
+        # You can also override properties in a configuration file here
+        configOverrides:
+          zoo.cfg:
+            4lw.commands.whitelist: 'srvr,ruok,isro'
+        # Set environment variables here
+        envOverrides:
+          MY_ENV_VAR: "foobar"
+----
+
+
+[cols="1,1,1,1,1"]
 |===
 | config-spec Property | Actual Property | Default Value | Recommended Value | Location
 
@@ -30,9 +63,9 @@
 
 | metricsPort
 | metricsPort
-| 9505
-| 9505
 |
+| 9505
+| JMX Exporter/ CLI
 
 | syncLimit
 | syncLimit
