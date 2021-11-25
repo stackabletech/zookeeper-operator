@@ -46,7 +46,7 @@ jobs:
           --upload-file "./$(find  target/helm/ -name *.tgz)"
           "${{ env.REPO_HELM_DEV_URL }}/"
       - name: Clean old manifests
-        run: rm -r deploy/manifests && mkdir deploy/manifests
+        run: rm -rf deploy/manifests && mkdir deploy/manifests
       - name: Generate Manifests
         run: mkdir -p target/manifests && helm template --output-dir target/manifests target/helm/*.tgz
       - name: Copy manifests to repo
