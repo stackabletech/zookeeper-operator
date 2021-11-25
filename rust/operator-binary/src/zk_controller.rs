@@ -192,8 +192,8 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
 /// The "global service" is the primary endpoint that should be used by clients that do not perform internal load balancing,
 /// including targets outside of the cluster.
 ///
-/// Note that you should generally *not* hard-code clients to use these services; instead, create a [`ZookeeperZnode`] and use the
-/// connection string that it gives you.
+/// Note that you should generally *not* hard-code clients to use these services; instead, create a [`ZookeeperZnode`](`stackable_zookeeper_crd::ZookeeperZnode`)
+/// and use the connection string that it gives you.
 pub fn build_global_service(zk: &ZookeeperCluster) -> Result<Service> {
     let global_svc_name = zk
         .global_service_name()
@@ -333,7 +333,7 @@ fn build_rolegroup_service(rolegroup: &RoleGroupRef, zk: &ZookeeperCluster) -> R
 
 /// The rolegroup [`StatefulSet`] runs the rolegroup, as configured by the administrator.
 ///
-/// Each [`Pod`] is accessible through the corresponding [`Service`] (from [`build_rolegroup_service`]).
+/// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_rolegroup_service`]).
 fn build_rolegroup_statefulset(
     rolegroup: &RoleGroupRef,
     zk: &ZookeeperCluster,

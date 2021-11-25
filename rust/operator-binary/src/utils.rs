@@ -10,7 +10,7 @@ use std::fmt::Debug;
 
 /// Server-side applies an object that our controller "owns" (is the primary controller for)
 ///
-/// Compared to [`Api::patch`], this automatically reads the kind, namespace, and name from the `object` rather than
+/// Compared to [`kube::Api::patch`], this automatically reads the kind, namespace, and name from the `object` rather than
 /// requiring them to be duplicated manually.
 pub async fn apply_owned<K>(kube: &kube::Client, field_manager: &str, obj: &K) -> kube::Result<K>
 where
