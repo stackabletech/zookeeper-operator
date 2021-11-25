@@ -10,5 +10,5 @@ and only works with images from the https://repo.stackable.tech/#browse/browse:d
 
 [source]
 ----
-docker pull https://xxx[docker].stackable.tech/stackable/zookeeper:<version>
+docker pull https://docker.stackable.tech/stackable/zookeeper:<version>
 ----
