@@ -37,7 +37,7 @@ data:
           asOfVersion: "0.0.0"
           comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
           description: "The basic time unit in milliseconds used by ZooKeeper. It is used to do heartbeats and the minimum session timeout will be twice the tickTime."
-  
+
       - property: &clientPort
           propertyNames:
             - name: "clientPort"
@@ -59,7 +59,7 @@ data:
           asOfVersion: "0.0.0"
           comment: "See QuorumPeerConfig.java, I'm unsure what happens when this is set to 0, it might work, it might not"
           description: "The port to listen for client connections; that is, the port that clients attempt to connect to."
-  
+
       - property: &dataDir
           propertyNames:
             - name: "dataDir"
@@ -79,7 +79,7 @@ data:
           asOfVersion: "0.0.0"
           comment: "See QuorumPeerConfig.java"
           description: "The location where ZooKeeper will store the in-memory database snapshots and, unless specified otherwise, the transaction log of updates to the database. Note: Be careful where you put the transaction log. A dedicated transaction log device is key to consistent good performance. Putting the log on a busy device will adversely affect performance."
-  
+
       # Role required "true" is only correct if more than one zookeeper instances is used.
       - property: &initLimit
           propertyNames:
@@ -98,7 +98,7 @@ data:
           asOfVersion: "0.0.0"
           comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
           description: "Amount of time, in ticks (see `tickTime`), to allow followers to connect and sync to a leader. Increased this value as needed, if the amount of data managed by ZooKeeper is large."
-  
+
       # Role required "true" is only correct if more than one zookeeper instances is used.
       - property: &syncLimit
           propertyNames:
@@ -117,7 +117,7 @@ data:
           asOfVersion: "0.0.0"
           comment: "ZK only checks whether the value is 0, all other values (including negative ones) are considered valid, we disallow negative values here, see QuorumPeerConfig.java"
           description: "Amount of time, in ticks (see `tickTime`), to allow followers to sync with ZooKeeper. If followers fall too far behind a leader, they will be dropped. In other words: The number of ticks that can pass between sending a request and getting an acknowledgment before a follower is dropped."
-  
+
       - property: &metricsPort
           propertyNames:
             - name: "metricsPort"
@@ -133,7 +133,7 @@ data:
               required: false
           asOfVersion: "0.0.0"
           description: "The port where ZooKeeper metrics are exposed as a Prometheus endpoint."
-  
+
       - property: &admin_serverPort
           propertyNames:
             - name: "admin.serverPort"
@@ -156,8 +156,6 @@ kind: ConfigMap
 metadata:
   name: RELEASE-NAME-configmap
   labels:
-    helm.sh/chart: zookeeper-operator-0.6.0-nightly
     app.kubernetes.io/name: zookeeper-operator
     app.kubernetes.io/instance: RELEASE-NAME
     app.kubernetes.io/version: "0.6.0-nightly"
-    app.kubernetes.io/managed-by: Helm

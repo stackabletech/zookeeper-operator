@@ -9,11 +9,9 @@ kind: Deployment
 metadata:
   name: RELEASE-NAME-deployment
   labels:
-    helm.sh/chart: zookeeper-operator-0.6.0-nightly
     app.kubernetes.io/name: zookeeper-operator
     app.kubernetes.io/instance: RELEASE-NAME
     app.kubernetes.io/version: "0.6.0-nightly"
-    app.kubernetes.io/managed-by: Helm
 spec:
   replicas: 1
   strategy:
@@ -29,16 +27,13 @@ spec:
         app.kubernetes.io/instance: RELEASE-NAME
     spec:
       serviceAccountName: RELEASE-NAME-serviceaccount
-      securityContext:
-        {}
+      securityContext: {}
       containers:
         - name: zookeeper-operator
-          securityContext:
-            {}
+          securityContext: {}
           image: "docker.stackable.tech/stackable/zookeeper-operator:0.6.0-nightly"
           imagePullPolicy: IfNotPresent
-          resources:
-            {}
+          resources: {}
           volumeMounts:
             - mountPath: /etc/stackable/zookeeper-operator/config-spec
               name: config-spec
