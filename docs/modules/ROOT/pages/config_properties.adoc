@@ -33,7 +33,10 @@ spec:
 ----
 
 
-[cols="1,1,1,1,1"]
+== Configuration Properties
+
+[cols="2,2,2,2,1"]
+>>>>>>> e52f09c4daf8f3a604a7b95e45dbad1fef09789c
 |===
 | config-spec Property | Actual Property | Default Value | Recommended Value | Location
 
@@ -78,6 +81,5 @@ spec:
 | 3000
 | 3000
 | file:zoo.cfg
-
 
 |===
