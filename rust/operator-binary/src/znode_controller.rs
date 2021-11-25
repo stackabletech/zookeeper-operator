@@ -149,7 +149,7 @@ pub async fn reconcile_znode(
                                 znode: ObjectRef::from_obj(&znode),
                             })?
                             .build(),
-                        data: Some([("ZOOKEEPER_BROKERS".to_string(), znode_conn_str)].into()),
+                        data: Some([("ZOOKEEPER".to_string(), znode_conn_str)].into()),
                         ..ConfigMap::default()
                     };
                     apply_owned(&kube, FIELD_MANAGER, &discovery_cm)

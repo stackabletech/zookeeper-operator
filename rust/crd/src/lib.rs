@@ -156,8 +156,8 @@ impl ZookeeperPodRef {
 
 /// A claim for a single ZooKeeper ZNode tree (filesystem node)
 ///
-/// A `ConfigMap` will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER_BROKERS`.
-/// Each `ZookeeperZnode` gets an isolated ZNode chroot, which the `ZOOKEEPER_BROKERS` automatically contains.
+/// A `ConfigMap` will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`.
+/// Each `ZookeeperZnode` gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains.
 /// All data inside of this chroot will be deleted when the corresponding `ZookeeperZnode` is.
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[kube(
