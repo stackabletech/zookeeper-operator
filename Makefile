@@ -22,6 +22,7 @@ chart-clean:
 	rm -rf deploy/helm/zookeeper-operator/templates/crds.yaml
 
 version:
+	echo "----------------- ${NEXUS_PASSWORD} ------------------- "
 	yq eval -i '.version = ${VERSION} | .appVersion = ${VERSION}' deploy/helm/zookeeper-operator/Chart.yaml
 
 
