@@ -112,7 +112,11 @@ pub async fn reconcile_znode(
 
     let zk = find_zk_of_znode(&kube, &znode).await?;
     let zk_port = 2181;
+    // Use the uid (managed by k8s itself) rather than the object name, to ensure that malicious users can't trick the controller
+    // into letting them take over a znode owned by someone else
     let znode_path = format!("/znode-{}", uid);
+    // Rust ZooKeeper client does not support client-side load-balancing, so use
+    // (load-balanced) global service instead.
     let zk_mgmt_addr = format!(
         "{}:{}",
         zk.global_service_fqdn().with_context(|| NoZkFqdn {
@@ -135,6 +139,9 @@ pub async fn reconcile_znode(
                             znode_path: &znode_path,
                         })?;
 
+                    // Write a connection string of the format that Java ZooKeeper client expects:
+                    // "{host1}:{port1},{host2:port2},.../{chroot}"
+                    // See https://zookeeper.apache.org/doc/current/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-
                     let mut znode_conn_str = zk
                         .pods()
                         .unwrap()
@@ -143,6 +150,7 @@ pub async fn reconcile_znode(
                         .join(",");
                     znode_conn_str.push_str(&znode_path);
 
+                    // Save connection string (and any other properties that we end up setting eventually) for clients to use
                     let discovery_cm = ConfigMap {
                         metadata: ObjectMetaBuilder::new()
                             .name_and_namespace(&znode)
@@ -164,12 +172,14 @@ pub async fn reconcile_znode(
                     })
                 }
                 finalizer::Event::Cleanup(_znode) => {
+                    // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
                     znode_mgmt::ensure_znode_missing(&zk_mgmt_addr, &znode_path)
                         .await
                         .with_context(|| EnsureZnodeMissing {
                             zk: ObjectRef::from_obj(&zk),
                             znode_path: &znode_path,
                         })?;
+                    // No need to delete the ConfigMap, since that has an OwnerReference on the ZookeeperZnode object
                     Ok(ReconcilerAction {
                         requeue_after: None,
                     })
@@ -277,6 +287,7 @@ mod znode_mgmt {
     }
 
     #[tracing::instrument]
+    /// Creates a znode, and ensure that any metadata (such as ACLs) match the desired state
     pub async fn ensure_znode_exists(addr: &str, path: &str) -> Result<(), Error> {
         let zk = connect(addr).await?;
         let (_zk, create_res) = zk
@@ -307,6 +318,9 @@ mod znode_mgmt {
     }
 
     #[tracing::instrument]
+    /// Deletes a znode recursively
+    ///
+    /// Returns `Ok` if the znode could not be found (for idempotence).
     pub async fn ensure_znode_missing(addr: &str, path: &str) -> Result<(), Error> {
         let mut zk = connect(addr).await?;
         let mut queue = VecDeque::new();
