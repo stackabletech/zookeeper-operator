@@ -1,4 +1,6 @@
-//! Ensures that ZooKeeper ZNodes (filesystem nodes) exist for each [`ZookeeperZnode`], and creates discovery [`ConfigMap`]s for them
+//! Reconciles state for ZooKeeper znodes between Kubernetes [`ZookeeperZnode`] objects and the ZooKeeper cluster
+//!
+//! See [`ZookeeperZnode`] for more details.
 
 use std::{convert::Infallible, time::Duration};
 
