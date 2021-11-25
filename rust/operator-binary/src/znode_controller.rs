@@ -2,9 +2,10 @@
 
 use std::{convert::Infallible, time::Duration};
 
-use crate::utils::{apply_owned, controller_reference_to_obj};
+use crate::utils::apply_owned;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
+    builder::ObjectMetaBuilder,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::{
         self,
@@ -58,8 +59,14 @@ pub enum Error {
         source: kube::Error,
         obj_ref: ObjectRef<ConfigMap>,
     },
+    #[snafu(display("error managing finalizer"))]
     Finalizer {
         source: finalizer::Error<Infallible>,
+    },
+    #[snafu(display("object {} is missing metadata to build owner reference", znode))]
+    ObjectMissingMetadataForOwnerRef {
+        source: stackable_operator::error::Error,
+        znode: ObjectRef<ZookeeperZnode>,
     },
 }
 
@@ -85,14 +92,13 @@ pub async fn reconcile_znode(
     znode: ZookeeperZnode,
     ctx: Context<Ctx>,
 ) -> Result<ReconcilerAction, Error> {
-    let (ns, name, uid) = if let ObjectMeta {
+    let (ns, uid) = if let ObjectMeta {
         namespace: Some(ns),
-        name: Some(name),
         uid: Some(uid),
         ..
     } = &znode.metadata
     {
-        (ns.clone(), name.clone(), uid)
+        (ns.clone(), uid)
     } else {
         return ObjectMissingMetadata {
             obj_ref: ObjectRef::from_obj(&znode),
@@ -136,12 +142,13 @@ pub async fn reconcile_znode(
                     znode_conn_str.push_str(&znode_path);
 
                     let discovery_cm = ConfigMap {
-                        metadata: ObjectMeta {
-                            namespace: Some(ns.to_string()),
-                            name: Some(name.to_string()),
-                            owner_references: Some(vec![controller_reference_to_obj(&znode)]),
-                            ..ObjectMeta::default()
-                        },
+                        metadata: ObjectMetaBuilder::new()
+                            .name_and_namespace(&znode)
+                            .ownerreference_from_resource(&znode, None, Some(true))
+                            .with_context(|| ObjectMissingMetadataForOwnerRef {
+                                znode: ObjectRef::from_obj(&znode),
+                            })?
+                            .build(),
                         data: Some([("ZOOKEEPER_BROKERS".to_string(), znode_conn_str)].into()),
                         ..ConfigMap::default()
                     };

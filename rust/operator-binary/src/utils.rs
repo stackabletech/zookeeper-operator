@@ -1,13 +1,10 @@
 use futures::Future;
 use pin_project::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
-use stackable_operator::{
-    k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference,
-    kube::{
-        self,
-        api::{Patch, PatchParams},
-        Resource,
-    },
+use stackable_operator::kube::{
+    self,
+    api::{Patch, PatchParams},
+    Resource,
 };
 use std::fmt::Debug;
 
@@ -35,17 +32,6 @@ where
         &Patch::Apply(obj),
     )
     .await
-}
-
-pub fn controller_reference_to_obj<K: Resource<DynamicType = ()>>(obj: &K) -> OwnerReference {
-    OwnerReference {
-        api_version: K::api_version(&()).into_owned(),
-        kind: K::kind(&()).into_owned(),
-        controller: Some(true),
-        name: obj.meta().name.clone().unwrap(),
-        uid: obj.meta().uid.clone().unwrap(),
-        ..OwnerReference::default()
-    }
 }
 
 #[pin_project]

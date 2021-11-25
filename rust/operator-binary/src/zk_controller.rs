@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use crate::utils::{apply_owned, controller_reference_to_obj};
+use crate::utils::apply_owned;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
@@ -19,10 +19,7 @@ use stackable_operator::{
                 ResourceRequirements, Service, ServicePort, ServiceSpec, Volume,
             },
         },
-        apimachinery::pkg::{
-            api::resource::Quantity,
-            apis::meta::v1::{LabelSelector, OwnerReference},
-        },
+        apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
     },
     kube::{
         self,
@@ -103,6 +100,11 @@ pub enum Error {
         source: stackable_operator::product_config::writer::PropertiesWriterError,
         rolegroup: RoleGroupRef,
     },
+    #[snafu(display("object {} is missing metadata to build owner reference", zk))]
+    ObjectMissingMetadataForOwnerRef {
+        source: stackable_operator::error::Error,
+        zk: ObjectRef<ZookeeperCluster>,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -151,18 +153,13 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         .and_then(|mut role_cfg| role_cfg.remove(APP_ROLE_SERVERS))
         .unwrap_or_default();
 
-    let zk_owner_ref = controller_reference_to_obj(&zk);
+    apply_owned(&kube, FIELD_MANAGER, &build_global_service(&zk)?)
+        .await
+        .with_context(|| ApplyGlobalService { zk: zk_ref.clone() })?;
     apply_owned(
         &kube,
         FIELD_MANAGER,
-        &build_global_service(&zk, &zk_owner_ref)?,
-    )
-    .await
-    .with_context(|| ApplyGlobalService { zk: zk_ref.clone() })?;
-    apply_owned(
-        &kube,
-        FIELD_MANAGER,
-        &build_rolegroup_service(&rolegroup_server, &zk, &zk_owner_ref)?,
+        &build_rolegroup_service(&rolegroup_server, &zk)?,
     )
     .await
     .with_context(|| ApplyRoleGroupService {
@@ -171,12 +168,7 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
     apply_owned(
         &kube,
         FIELD_MANAGER,
-        &build_rolegroup_config_map(
-            &rolegroup_server,
-            &zk,
-            &zk_owner_ref,
-            &rolegroup_server_config,
-        )?,
+        &build_rolegroup_config_map(&rolegroup_server, &zk, &rolegroup_server_config)?,
     )
     .await
     .with_context(|| ApplyRoleGroupConfig {
@@ -185,7 +177,7 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
     apply_owned(
         &kube,
         FIELD_MANAGER,
-        &build_rolegroup_statefulset(&rolegroup_server, &zk, &zk_owner_ref)?,
+        &build_rolegroup_statefulset(&rolegroup_server, &zk)?,
     )
     .await
     .with_context(|| ApplyRoleGroupStatefulSet {
@@ -202,10 +194,7 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
 ///
 /// Note that you should generally *not* hard-code clients to use these services; instead, create a [`ZookeeperZnode`] and use the
 /// connection string that it gives you.
-pub fn build_global_service(
-    zk: &ZookeeperCluster,
-    zk_owner_ref: &OwnerReference,
-) -> Result<Service> {
+pub fn build_global_service(zk: &ZookeeperCluster) -> Result<Service> {
     let global_svc_name = zk
         .global_service_name()
         .with_context(|| GlobalServiceNameNotFound {
@@ -215,7 +204,10 @@ pub fn build_global_service(
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
             .name(&global_svc_name)
-            .ownerreference(zk_owner_ref.clone())
+            .ownerreference_from_resource(zk, None, Some(true))
+            .with_context(|| ObjectMissingMetadataForOwnerRef {
+                zk: ObjectRef::from_obj(zk),
+            })?
             .with_recommended_labels(
                 zk,
                 APP_NAME,
@@ -248,7 +240,6 @@ pub fn build_global_service(
 fn build_rolegroup_config_map(
     rolegroup: &RoleGroupRef,
     zk: &ZookeeperCluster,
-    zk_owner_ref: &OwnerReference,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
 ) -> Result<ConfigMap> {
     let mut zoo_cfg = server_config
@@ -272,7 +263,10 @@ fn build_rolegroup_config_map(
             ObjectMetaBuilder::new()
                 .name_and_namespace(zk)
                 .name(rolegroup.object_name())
-                .ownerreference(zk_owner_ref.clone())
+                .ownerreference_from_resource(zk, None, Some(true))
+                .with_context(|| ObjectMissingMetadataForOwnerRef {
+                    zk: ObjectRef::from_obj(zk),
+                })?
                 .with_recommended_labels(
                     zk,
                     APP_NAME,
@@ -299,16 +293,15 @@ fn build_rolegroup_config_map(
 /// The rolegroup [`Service`] is a headless service that allows direct access to the instances of a certain rolegroup
 ///
 /// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
-fn build_rolegroup_service(
-    rolegroup: &RoleGroupRef,
-    zk: &ZookeeperCluster,
-    zk_owner_ref: &OwnerReference,
-) -> Result<Service> {
+fn build_rolegroup_service(rolegroup: &RoleGroupRef, zk: &ZookeeperCluster) -> Result<Service> {
     Ok(Service {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
             .name(&rolegroup.object_name())
-            .ownerreference(zk_owner_ref.clone())
+            .ownerreference_from_resource(zk, None, Some(true))
+            .with_context(|| ObjectMissingMetadataForOwnerRef {
+                zk: ObjectRef::from_obj(zk),
+            })?
             .with_recommended_labels(
                 zk,
                 APP_NAME,
@@ -344,7 +337,6 @@ fn build_rolegroup_service(
 fn build_rolegroup_statefulset(
     rolegroup: &RoleGroupRef,
     zk: &ZookeeperCluster,
-    zk_owner_ref: &OwnerReference,
 ) -> Result<StatefulSet> {
     let zk_version = zk_version(zk)?;
     let container_decide_myid = ContainerBuilder::new("decide-myid")
@@ -403,7 +395,10 @@ fn build_rolegroup_statefulset(
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
             .name(&rolegroup.object_name())
-            .ownerreference(zk_owner_ref.clone())
+            .ownerreference_from_resource(zk, None, Some(true))
+            .with_context(|| ObjectMissingMetadataForOwnerRef {
+                zk: ObjectRef::from_obj(zk),
+            })?
             .with_recommended_labels(
                 zk,
                 APP_NAME,
