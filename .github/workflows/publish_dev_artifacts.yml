@@ -26,6 +26,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
         with:
+          token: ${{ secrets.STACKY_MC_STACKFACE_TOKEN }}
           fetch-depth: 0
       - name: Set up Helm
         uses: azure/setup-helm@v1
@@ -55,14 +56,18 @@ jobs:
          find target/manifests -type f |xargs -L 1 yq eval -i 'del(.. | select(has("helm.sh/chart")) | ."helm.sh/chart")'
       - name: Copy manifests to repo
         run: cp -r target/manifests/${{ env.PRODUCT_NAME }}-operator/*/* deploy/manifests/
+      - name: Add Changes
+        run: git add deploy
+      - name: Check for changes
+        run: echo "REPO_CHANGED=$(git diff-index --quiet HEAD deploy; echo $?)" >> $GITHUB_ENV
       - name: Add & Commit
-        if: ! git diff-index --quiet HEAD deploy
+        if: env.REPO_CHANGED
         uses: EndBug/add-and-commit@v7
         with:
-          default_author: github_actions
+          default_author: user_info
           pathspec_error_handling: exitImmediately
           pull: NO-PULL
-          add: 'deploy/manifests'
+          add: 'deploy'
           message: 'Github Actions: Generated k8s manifest files'
 
 
