@@ -46,7 +46,7 @@ jobs:
           --upload-file "./$(find  target/helm/ -name *.tgz)"
           "${{ env.REPO_HELM_DEV_URL }}/"
       - name: Clean old manifests
-        run: rm -rf deploy/manifests && mkdir deploy/manifests
+        run: mkdir -p deploy/manifests && rm -r (ls | grep -v "kustomization.yaml")
       - name: Generate Manifests
         run: mkdir -p target/manifests && helm template --output-dir target/manifests --include-crds target/helm/*.tgz
       - name: Cleanup Helm Labels
@@ -54,8 +54,9 @@ jobs:
          find target/manifests -type f |xargs -L 1 yq eval -i 'del(.. | select(has("app.kubernetes.io/managed-by")) | ."app.kubernetes.io/managed-by")'
          find target/manifests -type f |xargs -L 1 yq eval -i 'del(.. | select(has("helm.sh/chart")) | ."helm.sh/chart")'
       - name: Copy manifests to repo
-        run: cp -r target/manifests/${{ env.PRODUCT_NAME }}-operator/* deploy/manifests/
+        run: cp -r target/manifests/${{ env.PRODUCT_NAME }}-operator/*/* deploy/manifests/
       - name: Add & Commit
+        if: ! git diff-index --quiet HEAD deploy
         uses: EndBug/add-and-commit@v7
         with:
           default_author: github_actions
