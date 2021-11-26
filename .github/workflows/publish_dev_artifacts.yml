@@ -56,15 +56,12 @@ jobs:
          find target/manifests -type f |xargs -L 1 yq eval -i 'del(.. | select(has("helm.sh/chart")) | ."helm.sh/chart")'
       - name: Copy manifests to repo
         run: cp -r target/manifests/${{ env.PRODUCT_NAME }}-operator/*/* deploy/manifests/
-      - name: Add Changes
-        run: git add deploy
-      - name: Check for changes
-        run: echo "REPO_CHANGED=$(git diff-index --quiet HEAD deploy; echo $?)" >> $GITHUB_ENV
       - name: Add & Commit
-        if: env.REPO_CHANGED
         uses: EndBug/add-and-commit@v7
         with:
           default_author: user_info
+          author_name: Stacky McStackface
+          author_email: stackable-bot@users.noreply.github.com
           pathspec_error_handling: exitImmediately
           pull: NO-PULL
           add: 'deploy'
