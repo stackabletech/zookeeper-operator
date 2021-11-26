@@ -47,7 +47,7 @@ jobs:
           --upload-file "./$(find  target/helm/ -name *.tgz)"
           "${{ env.REPO_HELM_DEV_URL }}/"
       - name: Clean old manifests
-        run: mkdir -p deploy/manifests && rm -r (ls | grep -v "kustomization.yaml")
+        run: mkdir -p deploy/manifests && rm -r $(ls | grep -v "kustomization.yaml")
       - name: Generate Manifests
         run: mkdir -p target/manifests && helm template --output-dir target/manifests --include-crds target/helm/*.tgz
       - name: Cleanup Helm Labels
