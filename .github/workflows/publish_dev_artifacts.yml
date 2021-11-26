@@ -49,7 +49,7 @@ jobs:
       - name: Clean old manifests
         run: mkdir -p deploy/manifests && rm -r $(ls | grep -v "kustomization.yaml")
       - name: Generate Manifests
-        run: mkdir -p target/manifests && helm template --output-dir target/manifests --include-crds target/helm/*.tgz
+        run: mkdir -p target/manifests && helm template --output-dir target/manifests --include-crds "./$(find  target/helm/ -name *.tgz)"
       - name: Cleanup Helm Labels
         run: |
          find target/manifests -type f |xargs -L 1 yq eval -i 'del(.. | select(has("app.kubernetes.io/managed-by")) | ."app.kubernetes.io/managed-by")'
