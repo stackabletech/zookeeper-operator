@@ -2,7 +2,6 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::Display,
     time::Duration,
 };
 
@@ -36,12 +35,12 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     role_utils::Role,
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
+use stackable_zookeeper_crd::{
+    RoleGroupRef, ZookeeperCluster, ZookeeperRole, APP_ROLEGROUP_SERVERS,
+};
 
 const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeepercluster";
 const APP_NAME: &str = "zookeeper";
-const APP_ROLE_SERVERS: &str = "servers";
-const APP_ROLEGROUP_SERVERS: &str = "servers";
 
 pub struct Ctx {
     pub kube: kube::Client,
@@ -143,14 +142,10 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         false,
     )
     .with_context(|| InvalidProductConfig { zk: zk_ref.clone() })?;
-    let rolegroup_server = RoleGroupRef {
-        cluster: ObjectRef::from_obj(&zk),
-        role: APP_ROLE_SERVERS.to_string(),
-        role_group: APP_ROLEGROUP_SERVERS.to_string(),
-    };
+    let rolegroup_server = zk.server_rolegroup_ref();
     let rolegroup_server_config = validated_config
-        .remove(&ZookeeperRole::Server.to_string())
-        .and_then(|mut role_cfg| role_cfg.remove(APP_ROLE_SERVERS))
+        .remove(&rolegroup_server.role)
+        .and_then(|mut role_cfg| role_cfg.remove(&rolegroup_server.role_group))
         .unwrap_or_default();
 
     apply_owned(&kube, FIELD_MANAGER, &build_global_service(&zk)?)
@@ -200,6 +195,7 @@ pub fn build_global_service(zk: &ZookeeperCluster) -> Result<Service> {
         .with_context(|| GlobalServiceNameNotFound {
             obj_ref: ObjectRef::from_obj(zk),
         })?;
+    let server_rolegroup_ref = zk.server_rolegroup_ref();
     Ok(Service {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
@@ -212,8 +208,8 @@ pub fn build_global_service(zk: &ZookeeperCluster) -> Result<Service> {
                 zk,
                 APP_NAME,
                 zk_version(zk)?,
-                APP_ROLE_SERVERS,
-                APP_ROLEGROUP_SERVERS,
+                &server_rolegroup_ref.role,
+                &server_rolegroup_ref.role_group,
             )
             .build(),
         spec: Some(ServiceSpec {
@@ -226,8 +222,8 @@ pub fn build_global_service(zk: &ZookeeperCluster) -> Result<Service> {
             selector: Some(role_group_selector_labels(
                 zk,
                 APP_NAME,
-                APP_ROLE_SERVERS,
-                APP_ROLEGROUP_SERVERS,
+                &server_rolegroup_ref.role,
+                &server_rolegroup_ref.role_group,
             )),
             type_: Some("NodePort".to_string()),
             ..ServiceSpec::default()
@@ -271,8 +267,8 @@ fn build_rolegroup_config_map(
                     zk,
                     APP_NAME,
                     zk_version(zk)?,
-                    APP_ROLE_SERVERS,
-                    APP_ROLEGROUP_SERVERS,
+                    &rolegroup.role,
+                    &rolegroup.role_group,
                 )
                 .build(),
         )
@@ -306,8 +302,8 @@ fn build_rolegroup_service(rolegroup: &RoleGroupRef, zk: &ZookeeperCluster) -> R
                 zk,
                 APP_NAME,
                 zk_version(zk)?,
-                APP_ROLE_SERVERS,
-                APP_ROLEGROUP_SERVERS,
+                &rolegroup.role,
+                &rolegroup.role_group,
             )
             .build(),
         spec: Some(ServiceSpec {
@@ -321,8 +317,8 @@ fn build_rolegroup_service(rolegroup: &RoleGroupRef, zk: &ZookeeperCluster) -> R
             selector: Some(role_group_selector_labels(
                 zk,
                 APP_NAME,
-                APP_ROLE_SERVERS,
-                APP_ROLEGROUP_SERVERS,
+                &rolegroup.role,
+                &rolegroup.role_group,
             )),
             publish_not_ready_addresses: Some(true),
             ..ServiceSpec::default()
@@ -339,8 +335,12 @@ fn build_rolegroup_statefulset(
     zk: &ZookeeperCluster,
 ) -> Result<StatefulSet> {
     let zk_version = zk_version(zk)?;
+    let image = format!(
+        "docker.stackable.tech/stackable/zookeeper:{}-stackable0",
+        zk_version
+    );
     let container_decide_myid = ContainerBuilder::new("decide-myid")
-        .image("alpine")
+        .image(&image)
         .args(vec![
             "sh".to_string(),
             "-c".to_string(),
@@ -360,10 +360,7 @@ fn build_rolegroup_statefulset(
         .add_volume_mount("data", "/stackable/data")
         .build();
     let container_zk = ContainerBuilder::new("zookeeper")
-        .image(format!(
-            "docker.stackable.tech/stackable/zookeeper:{}-stackable0",
-            zk_version
-        ))
+        .image(image)
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
@@ -403,8 +400,8 @@ fn build_rolegroup_statefulset(
                 zk,
                 APP_NAME,
                 zk_version,
-                APP_ROLE_SERVERS,
-                APP_ROLEGROUP_SERVERS,
+                &rolegroup.role,
+                &rolegroup.role_group,
             )
             .build(),
         spec: Some(StatefulSetSpec {
@@ -418,8 +415,8 @@ fn build_rolegroup_statefulset(
                 match_labels: Some(role_group_selector_labels(
                     zk,
                     APP_NAME,
-                    APP_ROLE_SERVERS,
-                    APP_ROLEGROUP_SERVERS,
+                    &rolegroup.role,
+                    &rolegroup.role_group,
                 )),
                 ..LabelSelector::default()
             },
@@ -430,8 +427,8 @@ fn build_rolegroup_statefulset(
                         zk,
                         APP_NAME,
                         zk_version,
-                        APP_ROLE_SERVERS,
-                        APP_ROLEGROUP_SERVERS,
+                        &rolegroup.role,
+                        &rolegroup.role_group,
                     )
                 })
                 .add_init_container(container_decide_myid)
@@ -482,27 +479,5 @@ fn zk_version(zk: &ZookeeperCluster) -> Result<&str> {
 pub fn error_policy(_error: &Error, _ctx: Context<Ctx>) -> ReconcilerAction {
     ReconcilerAction {
         requeue_after: Some(Duration::from_secs(5)),
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RoleGroupRef {
-    cluster: ObjectRef<ZookeeperCluster>,
-    role: String,
-    role_group: String,
-}
-
-impl RoleGroupRef {
-    fn object_name(&self) -> String {
-        format!("{}-{}-{}", self.cluster.name, self.role, self.role_group)
-    }
-}
-
-impl Display for RoleGroupRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "rolegroup {}.{} of {}",
-            self.role, self.role_group, self.cluster
-        ))
     }
 }

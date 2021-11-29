@@ -1,12 +1,14 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 use stackable_operator::{
-    kube::CustomResource,
+    kube::{runtime::reflector::ObjectRef, CustomResource},
     product_config_utils::{ConfigError, Configuration},
     role_utils::RoleGroup,
     schemars::{self, JsonSchema},
 };
+
+pub const APP_ROLEGROUP_SERVERS: &str = "servers";
 
 /// A cluster of ZooKeeper nodes
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -115,23 +117,49 @@ impl ZookeeperCluster {
         ))
     }
 
-    /// Base name for Kubernetes objects used to fulfil the server role
-    pub fn server_role_service_name(&self) -> Option<String> {
-        Some(format!("{}-servers", self.metadata.name.as_ref()?))
+    /// Metadata about the server role
+    pub fn server_rolegroup_ref(&self) -> RoleGroupRef {
+        RoleGroupRef {
+            cluster: ObjectRef::from_obj(self),
+            role: ZookeeperRole::Server.to_string(),
+            role_group: APP_ROLEGROUP_SERVERS.to_string(),
+        }
     }
 
     /// References to all pods forming the cluster
     pub fn pods(&self) -> Option<impl Iterator<Item = ZookeeperPodRef>> {
         let ns = self.metadata.namespace.clone()?;
-        let role_svc_name = self.server_role_service_name()?;
+        let server_rolegroup_ref = self.server_rolegroup_ref();
         Some(
             (0..self.spec.servers.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
                 namespace: ns.clone(),
-                role_service_name: role_svc_name.clone(),
-                pod_name: format!("{}-{}", role_svc_name, i),
+                role_service_name: server_rolegroup_ref.object_name(),
+                pod_name: format!("{}-{}", server_rolegroup_ref.object_name(), i),
                 zookeeper_id: i + 1,
             }),
         )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct RoleGroupRef {
+    pub cluster: ObjectRef<ZookeeperCluster>,
+    pub role: String,
+    pub role_group: String,
+}
+
+impl RoleGroupRef {
+    pub fn object_name(&self) -> String {
+        format!("{}-{}-{}", self.cluster.name, self.role, self.role_group)
+    }
+}
+
+impl Display for RoleGroupRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "rolegroup {}.{} of {}",
+            self.role, self.role_group, self.cluster
+        ))
     }
 }
 
