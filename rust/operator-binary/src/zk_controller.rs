@@ -236,7 +236,7 @@ pub fn build_global_service(zk: &ZookeeperCluster) -> Result<Service> {
     })
 }
 
-/// The rolegroup [`ConfigMap`].. configures the rolegroup based on the configuration given by the administrator
+/// The rolegroup [`ConfigMap`] configures the rolegroup based on the configuration given by the administrator
 fn build_rolegroup_config_map(
     rolegroup: &RoleGroupRef,
     zk: &ZookeeperCluster,
