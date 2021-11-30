@@ -25,9 +25,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        with:
-          token: ${{ secrets.STACKY_MC_STACKFACE_TOKEN }}
-          fetch-depth: 0
       - name: Set up Helm
         uses: azure/setup-helm@v1
         with:
@@ -46,16 +43,19 @@ jobs:
           -u 'github:${{ secrets.NEXUS_PASSWORD }}'
           --upload-file "./$(find  target/helm/ -name *.tgz)"
           "${{ env.REPO_HELM_DEV_URL }}/"
-      - name: Clean old manifests
-        run: mkdir -p deploy/manifests && rm -r $(find deploy/manifests -maxdepth 1 -mindepth 1 -not -name kustomization.yaml)
-      - name: Generate Manifests
-        run: mkdir -p target/manifests && helm template --output-dir target/manifests --include-crds "./$(find  target/helm/ -name *.tgz)"
-      - name: Cleanup Helm Labels
-        run: |
-         find target/manifests -type f |xargs -L 1 yq eval -i 'del(.. | select(has("app.kubernetes.io/managed-by")) | ."app.kubernetes.io/managed-by")'
-         find target/manifests -type f |xargs -L 1 yq eval -i 'del(.. | select(has("helm.sh/chart")) | ."helm.sh/chart")'
-      - name: Copy manifests to repo
-        run: cp -r target/manifests/${{ env.PRODUCT_NAME }}-operator/*/* deploy/manifests/
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.STACKY_MC_STACKFACE_TOKEN }}
+      - name: Set up Helm
+        uses: azure/setup-helm@v1
+        with:
+          version: v3.6.2
+      - name: update manifests
+        run: make generate-manifests
       - name: Add & Commit
         uses: EndBug/add-and-commit@v7
         with:
@@ -66,6 +66,3 @@ jobs:
           pull: NO-PULL
           add: 'deploy'
           message: 'Github Actions: Generated k8s manifest files'
-
-
-

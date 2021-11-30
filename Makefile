@@ -38,3 +38,17 @@ deploy/helm/zookeeper-operator/crds/crds.yaml:
 
 chart-lint: compile-chart
 	docker run -it -v $(shell pwd):/build/helm-charts -w /build/helm-charts quay.io/helmpack/chart-testing:v3.4.0  ct lint --config deploy/helm/chart_testing.yaml
+
+## Manifest related targets
+clean-manifests:
+	mkdir -p deploy/manifests
+	rm -rf $$(find deploy/manifests -maxdepth 1 -mindepth 1 -not -name kustomization.yaml)
+
+generate-manifests: clean-manifests compile-chart
+	set -e ;\
+	TMP=$$(mkdir -d -t manifests) ;\
+	helm template --output-dir $$TMP --include-crds deploy/helm/zookeeper-operator ;\
+	find $$TMP -type f |xargs -L 1 yq eval -i 'del(.. | select(has("app.kubernetes.io/managed-by")) | ."app.kubernetes.io/managed-by")' ;\
+	find $$TMP -type f |xargs -L 1 yq eval -i 'del(.. | select(has("helm.sh/chart")) | ."helm.sh/chart")' ;\
+	cp -r $$TMP/zookeeper-operator/*/* deploy/manifests/ ;\
+	rm -rf $$TMP ;\
