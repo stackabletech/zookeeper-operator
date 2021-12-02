@@ -1,13 +1,14 @@
 = Usage
 
-After installation, the CRD for this operator must be created:
+If you are not installing the operator using Helm then after installation the CRD for this operator must be created:
 
     kubectl apply -f /etc/stackable/zookeeper-operator/crd/zookeepercluster.crd.yaml
 
 To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metrics exposed on port 9505:
 
 
-    cat <<EOF | kubectl apply -f -
+    $ cat zookeeper.yaml
+    ---
     apiVersion: zookeeper.stackable.tech/v1alpha1
     kind: ZookeeperCluster
     metadata:
@@ -20,7 +21,7 @@ To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metric
             selector:
               matchLabels:
                 kubernetes.io/os: linux
-            replicas: 1
             config:
               metricsPort: 9505
-    EOF
+              dataDir: /stackable/data
+    $ sudo kubectl apply -f zookeeper.yaml

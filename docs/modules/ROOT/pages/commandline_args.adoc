@@ -1,7 +1,7 @@
 
 === product-config
 
-*Default value*: `/etc/stackable/stackable-zookeeper/config-spec/properties.yaml`
+*Default value*: `/etc/stackable/zookeeper-operator/config-spec/properties.yaml`
 
 *Required*: false
 
