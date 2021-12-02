@@ -1,6 +1,7 @@
 //! Ensures that `Pod`s are configured and running for each [`ZookeeperCluster`]
 
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashMap},
     time::Duration,
 };
@@ -28,16 +29,13 @@ use stackable_operator::{
             reflector::ObjectRef,
         },
     },
-    labels::role_group_selector_labels,
+    labels::{role_group_selector_labels, role_selector_labels},
     product_config::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
     },
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
-    role_utils::Role,
 };
-use stackable_zookeeper_crd::{
-    RoleGroupRef, ZookeeperCluster, ZookeeperRole, APP_ROLEGROUP_SERVERS,
-};
+use stackable_zookeeper_crd::{RoleGroupRef, ZookeeperCluster, ZookeeperRole};
 
 const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeepercluster";
 const APP_NAME: &str = "zookeeper";
@@ -110,6 +108,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 const PROPERTIES_FILE: &str = "zoo.cfg";
 
 pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<ReconcilerAction> {
+    tracing::info!("Starting reconcile");
     let zk_ref = ObjectRef::from_obj(&zk);
     let kube = ctx.get_ref().kube.clone();
 
@@ -120,19 +119,18 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         .with_context(|| ObjectHasNoVersion {
             obj_ref: zk_ref.clone(),
         })?;
-    let mut validated_config = validate_all_roles_and_groups_config(
+    let validated_config = validate_all_roles_and_groups_config(
         zk_version,
         &transform_all_roles_to_config(
             &zk,
             [(
                 ZookeeperRole::Server.to_string(),
                 (
-                    vec![PropertyNameKind::File(PROPERTIES_FILE.to_string())],
-                    Role {
-                        config: None,
-                        role_groups: [(APP_ROLEGROUP_SERVERS.to_string(), zk.spec.servers.clone())]
-                            .into(),
-                    },
+                    vec![
+                        PropertyNameKind::Env,
+                        PropertyNameKind::File(PROPERTIES_FILE.to_string()),
+                    ],
+                    zk.spec.servers.clone(),
                 ),
             )]
             .into(),
@@ -142,75 +140,72 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         false,
     )
     .with_context(|| InvalidProductConfig { zk: zk_ref.clone() })?;
-    let rolegroup_server = zk.server_rolegroup_ref();
-    let rolegroup_server_config = validated_config
-        .remove(&rolegroup_server.role)
-        .and_then(|mut role_cfg| role_cfg.remove(&rolegroup_server.role_group))
+    let role_server_config = validated_config
+        .get(&ZookeeperRole::Server.to_string())
+        .map(Cow::Borrowed)
         .unwrap_or_default();
 
-    apply_owned(&kube, FIELD_MANAGER, &build_global_service(&zk)?)
+    apply_owned(&kube, FIELD_MANAGER, &build_server_role_service(&zk)?)
         .await
         .with_context(|| ApplyGlobalService { zk: zk_ref.clone() })?;
-    apply_owned(
-        &kube,
-        FIELD_MANAGER,
-        &build_rolegroup_service(&rolegroup_server, &zk)?,
-    )
-    .await
-    .with_context(|| ApplyRoleGroupService {
-        rolegroup: rolegroup_server.clone(),
-    })?;
-    apply_owned(
-        &kube,
-        FIELD_MANAGER,
-        &build_rolegroup_config_map(&rolegroup_server, &zk, &rolegroup_server_config)?,
-    )
-    .await
-    .with_context(|| ApplyRoleGroupConfig {
-        rolegroup: rolegroup_server.clone(),
-    })?;
-    apply_owned(
-        &kube,
-        FIELD_MANAGER,
-        &build_rolegroup_statefulset(&rolegroup_server, &zk)?,
-    )
-    .await
-    .with_context(|| ApplyRoleGroupStatefulSet {
-        rolegroup: rolegroup_server.clone(),
-    })?;
+    for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
+        let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
+
+        apply_owned(
+            &kube,
+            FIELD_MANAGER,
+            &build_server_rolegroup_service(&rolegroup, &zk)?,
+        )
+        .await
+        .with_context(|| ApplyRoleGroupService {
+            rolegroup: rolegroup.clone(),
+        })?;
+        apply_owned(
+            &kube,
+            FIELD_MANAGER,
+            &build_server_rolegroup_config_map(&rolegroup, &zk, rolegroup_config)?,
+        )
+        .await
+        .with_context(|| ApplyRoleGroupConfig {
+            rolegroup: rolegroup.clone(),
+        })?;
+        apply_owned(
+            &kube,
+            FIELD_MANAGER,
+            &build_server_rolegroup_statefulset(&rolegroup, &zk, rolegroup_config)?,
+        )
+        .await
+        .with_context(|| ApplyRoleGroupStatefulSet {
+            rolegroup: rolegroup.clone(),
+        })?;
+    }
 
     Ok(ReconcilerAction {
         requeue_after: None,
     })
 }
 
-/// The "global service" is the primary endpoint that should be used by clients that do not perform internal load balancing,
+/// The server-role service is the primary endpoint that should be used by clients that do not perform internal load balancing,
 /// including targets outside of the cluster.
 ///
 /// Note that you should generally *not* hard-code clients to use these services; instead, create a [`ZookeeperZnode`](`stackable_zookeeper_crd::ZookeeperZnode`)
 /// and use the connection string that it gives you.
-pub fn build_global_service(zk: &ZookeeperCluster) -> Result<Service> {
-    let global_svc_name = zk
-        .global_service_name()
-        .with_context(|| GlobalServiceNameNotFound {
-            obj_ref: ObjectRef::from_obj(zk),
-        })?;
-    let server_rolegroup_ref = zk.server_rolegroup_ref();
+pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
+    let role_name = ZookeeperRole::Server.to_string();
+    let role_svc_name =
+        zk.server_role_service_name()
+            .with_context(|| GlobalServiceNameNotFound {
+                obj_ref: ObjectRef::from_obj(zk),
+            })?;
     Ok(Service {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
-            .name(&global_svc_name)
+            .name(&role_svc_name)
             .ownerreference_from_resource(zk, None, Some(true))
             .with_context(|| ObjectMissingMetadataForOwnerRef {
                 zk: ObjectRef::from_obj(zk),
             })?
-            .with_recommended_labels(
-                zk,
-                APP_NAME,
-                zk_version(zk)?,
-                &server_rolegroup_ref.role,
-                &server_rolegroup_ref.role_group,
-            )
+            .with_recommended_labels(zk, APP_NAME, zk_version(zk)?, &role_name, "global")
             .build(),
         spec: Some(ServiceSpec {
             ports: Some(vec![ServicePort {
@@ -219,12 +214,7 @@ pub fn build_global_service(zk: &ZookeeperCluster) -> Result<Service> {
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
             }]),
-            selector: Some(role_group_selector_labels(
-                zk,
-                APP_NAME,
-                &server_rolegroup_ref.role,
-                &server_rolegroup_ref.role_group,
-            )),
+            selector: Some(role_selector_labels(zk, APP_NAME, &role_name)),
             type_: Some("NodePort".to_string()),
             ..ServiceSpec::default()
         }),
@@ -233,7 +223,7 @@ pub fn build_global_service(zk: &ZookeeperCluster) -> Result<Service> {
 }
 
 /// The rolegroup [`ConfigMap`] configures the rolegroup based on the configuration given by the administrator
-fn build_rolegroup_config_map(
+fn build_server_rolegroup_config_map(
     rolegroup: &RoleGroupRef,
     zk: &ZookeeperCluster,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
@@ -289,7 +279,10 @@ fn build_rolegroup_config_map(
 /// The rolegroup [`Service`] is a headless service that allows direct access to the instances of a certain rolegroup
 ///
 /// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
-fn build_rolegroup_service(rolegroup: &RoleGroupRef, zk: &ZookeeperCluster) -> Result<Service> {
+fn build_server_rolegroup_service(
+    rolegroup: &RoleGroupRef,
+    zk: &ZookeeperCluster,
+) -> Result<Service> {
     Ok(Service {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
@@ -330,22 +323,36 @@ fn build_rolegroup_service(rolegroup: &RoleGroupRef, zk: &ZookeeperCluster) -> R
 /// The rolegroup [`StatefulSet`] runs the rolegroup, as configured by the administrator.
 ///
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_rolegroup_service`]).
-fn build_rolegroup_statefulset(
-    rolegroup: &RoleGroupRef,
+fn build_server_rolegroup_statefulset(
+    rolegroup_ref: &RoleGroupRef,
     zk: &ZookeeperCluster,
+    server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
 ) -> Result<StatefulSet> {
+    let rolegroup = zk.spec.servers.role_groups.get(&rolegroup_ref.role_group);
     let zk_version = zk_version(zk)?;
     let image = format!(
         "docker.stackable.tech/stackable/zookeeper:{}-stackable0",
         zk_version
     );
+    let env = server_config
+        .get(&PropertyNameKind::Env)
+        .iter()
+        .flat_map(|env_vars| env_vars.iter())
+        .map(|(k, v)| EnvVar {
+            name: k.clone(),
+            value: Some(v.clone()),
+            ..EnvVar::default()
+        })
+        .collect::<Vec<_>>();
     let container_decide_myid = ContainerBuilder::new("decide-myid")
         .image(&image)
         .args(vec![
             "sh".to_string(),
             "-c".to_string(),
-            "expr 1 + $(echo $POD_NAME | sed 's/.*-//') > /stackable/data/myid".to_string(),
+            "expr $MYID_OFFSET + $(echo $POD_NAME | sed 's/.*-//') > /stackable/data/myid"
+                .to_string(),
         ])
+        .add_env_vars(env.clone())
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
             value_from: Some(EnvVarSource {
@@ -366,6 +373,7 @@ fn build_rolegroup_statefulset(
             "start-foreground".to_string(),
             "/stackable/config/zoo.cfg".to_string(),
         ])
+        .add_env_vars(env)
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
         // This also acts as a hint to the StatefulSet controller to wait for each pod to enter quorum before taking down the next
         .readiness_probe(Probe {
@@ -391,7 +399,7 @@ fn build_rolegroup_statefulset(
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
-            .name(&rolegroup.object_name())
+            .name(&rolegroup_ref.object_name())
             .ownerreference_from_resource(zk, None, Some(true))
             .with_context(|| ObjectMissingMetadataForOwnerRef {
                 zk: ObjectRef::from_obj(zk),
@@ -400,8 +408,8 @@ fn build_rolegroup_statefulset(
                 zk,
                 APP_NAME,
                 zk_version,
-                &rolegroup.role,
-                &rolegroup.role_group,
+                &rolegroup_ref.role,
+                &rolegroup_ref.role_group,
             )
             .build(),
         spec: Some(StatefulSetSpec {
@@ -409,26 +417,26 @@ fn build_rolegroup_statefulset(
             replicas: if zk.spec.stopped.unwrap_or(false) {
                 Some(0)
             } else {
-                zk.spec.servers.replicas.map(i32::from)
+                rolegroup.and_then(|rg| rg.replicas).map(i32::from)
             },
             selector: LabelSelector {
                 match_labels: Some(role_group_selector_labels(
                     zk,
                     APP_NAME,
-                    &rolegroup.role,
-                    &rolegroup.role_group,
+                    &rolegroup_ref.role,
+                    &rolegroup_ref.role_group,
                 )),
                 ..LabelSelector::default()
             },
-            service_name: rolegroup.object_name(),
+            service_name: rolegroup_ref.object_name(),
             template: PodBuilder::new()
                 .metadata_builder(|m| {
                     m.with_recommended_labels(
                         zk,
                         APP_NAME,
                         zk_version,
-                        &rolegroup.role,
-                        &rolegroup.role_group,
+                        &rolegroup_ref.role,
+                        &rolegroup_ref.role_group,
                     )
                 })
                 .add_init_container(container_decide_myid)
@@ -436,7 +444,7 @@ fn build_rolegroup_statefulset(
                 .add_volume(Volume {
                     name: "config".to_string(),
                     config_map: Some(ConfigMapVolumeSource {
-                        name: Some(rolegroup.object_name()),
+                        name: Some(rolegroup_ref.object_name()),
                         ..ConfigMapVolumeSource::default()
                     }),
                     ..Volume::default()

@@ -1,14 +1,12 @@
-use std::{collections::BTreeMap, fmt::Display};
+use std::{borrow::Cow, collections::BTreeMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 use stackable_operator::{
     kube::{runtime::reflector::ObjectRef, CustomResource},
     product_config_utils::{ConfigError, Configuration},
-    role_utils::RoleGroup,
+    role_utils::Role,
     schemars::{self, JsonSchema},
 };
-
-pub const APP_ROLEGROUP_SERVERS: &str = "servers";
 
 /// A cluster of ZooKeeper nodes
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -31,8 +29,7 @@ pub struct ZookeeperClusterSpec {
     /// Desired ZooKeeper version
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    #[serde(default = "ZookeeperCluster::default_role_group")]
-    pub servers: RoleGroup<ZookeeperConfig>,
+    pub servers: Role<ZookeeperConfig>,
 }
 
 #[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -41,12 +38,19 @@ pub struct ZookeeperConfig {
     pub init_limit: Option<u32>,
     pub sync_limit: Option<u32>,
     pub tick_time: Option<u32>,
+    pub myid_offset: Option<u16>,
 }
 
 impl ZookeeperConfig {
     pub const INIT_LIMIT: &'static str = "initLimit";
     pub const SYNC_LIMIT: &'static str = "syncLimit";
     pub const TICK_TIME: &'static str = "tickTime";
+
+    pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
+
+    fn myid_offset(&self) -> u16 {
+        self.myid_offset.unwrap_or(1)
+    }
 }
 
 impl Configuration for ZookeeperConfig {
@@ -57,7 +61,11 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        Ok(BTreeMap::new())
+        Ok([(
+            Self::MYID_OFFSET.to_string(),
+            Some(self.myid_offset().to_string()),
+        )]
+        .into())
     }
 
     fn compute_cli(
@@ -95,48 +103,53 @@ pub enum ZookeeperRole {
 }
 
 impl ZookeeperCluster {
-    fn default_role_group() -> RoleGroup<ZookeeperConfig> {
-        RoleGroup {
-            config: None,
-            replicas: None,
-            selector: None,
-        }
-    }
-
-    /// The name of the "global" load-balanced Kubernetes `Service`
-    pub fn global_service_name(&self) -> Option<String> {
+    /// The name of the role-level load-balanced Kubernetes `Service`
+    pub fn server_role_service_name(&self) -> Option<String> {
         self.metadata.name.clone()
     }
 
-    /// The fully-qualified domain name of the "global" load-balanced Kubernetes `Service`
-    pub fn global_service_fqdn(&self) -> Option<String> {
+    /// The fully-qualified domain name of the role-level load-balanced Kubernetes `Service`
+    pub fn server_role_service_fqdn(&self) -> Option<String> {
         Some(format!(
             "{}.{}.svc.cluster.local",
-            self.global_service_name()?,
+            self.server_role_service_name()?,
             self.metadata.namespace.as_ref()?
         ))
     }
 
-    /// Metadata about the server role
-    pub fn server_rolegroup_ref(&self) -> RoleGroupRef {
+    /// Metadata about a server rolegroup
+    pub fn server_rolegroup_ref(&self, group_name: impl Into<String>) -> RoleGroupRef {
         RoleGroupRef {
             cluster: ObjectRef::from_obj(self),
             role: ZookeeperRole::Server.to_string(),
-            role_group: APP_ROLEGROUP_SERVERS.to_string(),
+            role_group: group_name.into(),
         }
     }
 
     /// References to all pods forming the cluster
-    pub fn pods(&self) -> Option<impl Iterator<Item = ZookeeperPodRef>> {
+    pub fn pods(&self) -> Option<impl Iterator<Item = ZookeeperPodRef> + '_> {
         let ns = self.metadata.namespace.clone()?;
-        let server_rolegroup_ref = self.server_rolegroup_ref();
         Some(
-            (0..self.spec.servers.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
-                namespace: ns.clone(),
-                role_service_name: server_rolegroup_ref.object_name(),
-                pod_name: format!("{}-{}", server_rolegroup_ref.object_name(), i),
-                zookeeper_id: i + 1,
-            }),
+            self.spec
+                .servers
+                .role_groups
+                .iter()
+                .flat_map(move |(rolegroup_name, rolegroup)| {
+                    let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
+                    let ns = ns.clone();
+                    (0..rolegroup.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
+                        namespace: ns.clone(),
+                        role_service_name: rolegroup_ref.object_name(),
+                        pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
+                        zookeeper_id: i + rolegroup
+                            .config
+                            .as_ref()
+                            .and_then(|cfg| cfg.config.as_ref())
+                            .map(Cow::Borrowed)
+                            .unwrap_or_default()
+                            .myid_offset(),
+                    })
+                }),
         )
     }
 }

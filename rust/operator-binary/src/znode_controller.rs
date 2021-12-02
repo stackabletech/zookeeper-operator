@@ -94,6 +94,7 @@ pub async fn reconcile_znode(
     znode: ZookeeperZnode,
     ctx: Context<Ctx>,
 ) -> Result<ReconcilerAction, Error> {
+    tracing::info!("Starting reconcile");
     let (ns, uid) = if let ObjectMeta {
         namespace: Some(ns),
         uid: Some(uid),
@@ -119,7 +120,7 @@ pub async fn reconcile_znode(
     // (load-balanced) global service instead.
     let zk_mgmt_addr = format!(
         "{}:{}",
-        zk.global_service_fqdn().with_context(|| NoZkFqdn {
+        zk.server_role_service_fqdn().with_context(|| NoZkFqdn {
             zk: ObjectRef::from_obj(&zk),
         })?,
         zk_port,
@@ -273,6 +274,7 @@ mod znode_mgmt {
     }
 
     async fn connect(addr: &str) -> Result<ZooKeeper, Error> {
+        tracing::debug!(addr, "Connecting to ZooKeeper");
         // TODO: Happy eyeballs?
         let addr = lookup_host(addr)
             .await
@@ -283,12 +285,14 @@ mod znode_mgmt {
             .compat()
             .await
             .context(Connect { addr })?;
+        tracing::debug!("Connected to ZooKeeper");
         Ok(zk)
     }
 
     #[tracing::instrument]
     /// Creates a znode, and ensure that any metadata (such as ACLs) match the desired state
     pub async fn ensure_znode_exists(addr: &str, path: &str) -> Result<(), Error> {
+        tracing::info!(znode = path, "Creating ZNode");
         let zk = connect(addr).await?;
         let (_zk, create_res) = zk
             .create(
@@ -306,11 +310,11 @@ mod znode_mgmt {
             .context(CreateZnodeProtocol { path })?;
         match create_res {
             Ok(_) => {
-                tracing::info!("Created ZNode");
+                tracing::info!(znode = "Created ZNode");
                 Ok(())
             }
             Err(tokio_zookeeper::error::Create::NodeExists) => {
-                tracing::info!("ZNode already exists, ignoring...");
+                tracing::info!(znode = "ZNode already exists, ignoring...");
                 Ok(())
             }
             Err(err) => Err(err).context(CreateZnode { path }),
@@ -322,12 +326,13 @@ mod znode_mgmt {
     ///
     /// Returns `Ok` if the znode could not be found (for idempotence).
     pub async fn ensure_znode_missing(addr: &str, path: &str) -> Result<(), Error> {
+        tracing::info!(znode = path, "Deleting ZNode");
         let mut zk = connect(addr).await?;
         let mut queue = VecDeque::new();
         queue.push_front(path.to_string());
         while let Some(curr_path) = queue.pop_front() {
             tracing::info!(
-                path = curr_path.as_str(),
+                znode = curr_path.as_str(),
                 ?queue,
                 "Deleting ZNode from queue"
             );
@@ -340,13 +345,13 @@ mod znode_mgmt {
             match children {
                 None => {
                     tracing::warn!(
-                        path = curr_path.as_str(),
+                        znode = curr_path.as_str(),
                         "ZNode could not be found, assuming it has already been deleted..."
                     );
                 }
                 Some(children) if children.is_empty() => {
                     tracing::info!(
-                        path = curr_path.as_str(),
+                        znode = curr_path.as_str(),
                         "ZNode has no children, deleting..."
                     );
                     let (zk2, delete_res) = zk
@@ -356,9 +361,9 @@ mod znode_mgmt {
                         .context(DeleteZnodeProtocol { path: &curr_path })?;
                     zk = zk2;
                     match delete_res {
-                        Ok(_) => tracing::info!(path = curr_path.as_str(), "Deleted ZNode"),
+                        Ok(_) => tracing::info!(znode = curr_path.as_str(), "Deleted ZNode"),
                         Err(tokio_zookeeper::error::Delete::NoNode) => tracing::info!(
-                            path = curr_path.as_str(),
+                            znode = curr_path.as_str(),
                             "ZNode couldn't be found, assuming it has already been deleted..."
                         ),
                         Err(err) => return Err(err).context(DeleteZnode { path }),
@@ -366,7 +371,7 @@ mod znode_mgmt {
                 }
                 Some(children) => {
                     tracing::info!(
-                        path = curr_path.as_str(),
+                        znode = curr_path.as_str(),
                         ?children,
                         "ZNode has children, scheduling them for deletion..."
                     );

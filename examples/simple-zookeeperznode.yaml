@@ -4,5 +4,5 @@ metadata:
   name: simple-znode
 spec:
   clusterRef:
-    name: simple-zkc
+    name: simple-zk
     namespace: default
