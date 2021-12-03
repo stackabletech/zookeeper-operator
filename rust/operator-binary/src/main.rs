@@ -10,7 +10,7 @@ use futures::{compat::Future01CompatExt, StreamExt};
 use stackable_operator::{
     k8s_openapi::api::{
         apps::v1::StatefulSet,
-        core::v1::{ConfigMap, Service},
+        core::v1::{ConfigMap, Endpoints, Service},
     },
     kube::{
         self,
@@ -101,10 +101,26 @@ async fn main() -> anyhow::Result<()> {
             let kube = kube::Client::try_default().await?;
             let zks = kube::Api::<ZookeeperCluster>::all(kube.clone());
             let znodes = kube::Api::<ZookeeperZnode>::all(kube.clone());
-            let zk_controller = Controller::new(zks.clone(), ListParams::default())
+            let zk_controller_builder = Controller::new(zks.clone(), ListParams::default());
+            let zk_store = zk_controller_builder.store();
+            let zk_controller = zk_controller_builder
                 .owns(
                     kube::Api::<Service>::all(kube.clone()),
                     ListParams::default(),
+                )
+                .watches(
+                    kube::Api::<Endpoints>::all(kube.clone()),
+                    ListParams::default(),
+                    move |endpoints| {
+                        zk_store
+                            .state()
+                            .into_iter()
+                            .filter(move |zk| {
+                                zk.metadata.namespace == endpoints.metadata.namespace
+                                    && zk.server_role_service_name() == endpoints.metadata.name
+                            })
+                            .map(|zk| ObjectRef::from_obj(&zk))
+                    },
                 )
                 .owns(
                     kube::Api::<StatefulSet>::all(kube.clone()),
