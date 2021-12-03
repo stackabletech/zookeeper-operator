@@ -10,7 +10,7 @@ use std::{
 use crate::{
     discovery::{self, build_discovery_configmaps},
     utils::{apply_owned, apply_status},
-    APP_NAME,
+    APP_NAME, APP_PORT,
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
@@ -268,7 +268,7 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
         spec: Some(ServiceSpec {
             ports: Some(vec![ServicePort {
                 name: Some("zk".to_string()),
-                port: 2181,
+                port: APP_PORT.into(),
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
             }]),
@@ -291,11 +291,11 @@ fn build_server_rolegroup_config_map(
         .cloned()
         .unwrap_or_default();
     zoo_cfg.insert("dataDir".to_string(), "/stackable/data".to_string());
-    zoo_cfg.insert("clientPort".to_string(), "2181".to_string());
+    zoo_cfg.insert("clientPort".to_string(), APP_PORT.to_string());
     zoo_cfg.extend(zk.pods().into_iter().flatten().map(|pod| {
         (
             format!("server.{}", pod.zookeeper_id),
-            format!("{}:2888:3888;2181", pod.fqdn()),
+            format!("{}:2888:3888;{}", pod.fqdn(), APP_PORT),
         )
     }));
     let zoo_cfg = zoo_cfg
@@ -361,7 +361,7 @@ fn build_server_rolegroup_service(
             cluster_ip: Some("None".to_string()),
             ports: Some(vec![ServicePort {
                 name: Some("zk".to_string()),
-                port: 2181,
+                port: APP_PORT.into(),
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
             }]),
@@ -449,14 +449,16 @@ fn build_server_rolegroup_statefulset(
                     "-c".to_string(),
                     // We don't have telnet or netcat in the container images, but
                     // we can use Bash's virtual /dev/tcp filesystem to accomplish the same thing
-                    "exec 3<>/dev/tcp/localhost/2181 && echo srvr >&3 && grep '^Mode: ' <&3"
-                        .to_string(),
+                    format!(
+                        "exec 3<>/dev/tcp/localhost/{} && echo srvr >&3 && grep '^Mode: ' <&3",
+                        APP_PORT
+                    ),
                 ]),
             }),
             period_seconds: Some(1),
             ..Probe::default()
         })
-        .add_container_port("zk", 2181)
+        .add_container_port("zk", APP_PORT.into())
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
         .add_volume_mount("data", "/stackable/data")

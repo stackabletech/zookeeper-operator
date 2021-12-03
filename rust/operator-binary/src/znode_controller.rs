@@ -7,6 +7,7 @@ use std::{convert::Infallible, time::Duration};
 use crate::{
     discovery::{self, build_discovery_configmaps},
     utils::apply_owned,
+    APP_PORT,
 };
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -128,7 +129,6 @@ pub async fn reconcile_znode(
     let svcs = kube::Api::<Service>::namespaced(kube.clone(), &ns);
 
     let zk = find_zk_of_znode(&kube, &znode).await?;
-    let zk_port = 2181;
     // Use the uid (managed by k8s itself) rather than the object name, to ensure that malicious users can't trick the controller
     // into letting them take over a znode owned by someone else
     let znode_path = format!("/znode-{}", uid);
@@ -139,7 +139,7 @@ pub async fn reconcile_znode(
         zk.server_role_service_fqdn().with_context(|| NoZkFqdn {
             zk: ObjectRef::from_obj(&zk),
         })?,
-        zk_port,
+        APP_PORT,
     );
 
     finalizer(
