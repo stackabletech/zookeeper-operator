@@ -3,14 +3,16 @@
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
+    hash::Hasher,
     time::Duration,
 };
 
 use crate::{
     discovery::{self, build_discovery_configmaps},
-    utils::apply_owned,
+    utils::{apply_owned, apply_status},
     APP_NAME,
 };
+use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
@@ -39,7 +41,9 @@ use stackable_operator::{
     },
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
 };
-use stackable_zookeeper_crd::{RoleGroupRef, ZookeeperCluster, ZookeeperRole};
+use stackable_zookeeper_crd::{
+    RoleGroupRef, ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperRole,
+};
 
 const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeepercluster";
 
@@ -57,6 +61,10 @@ pub enum Error {
     },
     #[snafu(display("object {} defines no version", obj_ref))]
     ObjectHasNoVersion {
+        obj_ref: ObjectRef<ZookeeperCluster>,
+    },
+    #[snafu(display("{} has no server role", obj_ref))]
+    NoServerRole {
         obj_ref: ObjectRef<ZookeeperCluster>,
     },
     #[snafu(display("failed to calculate global service name for {}", obj_ref))]
@@ -115,6 +123,11 @@ pub enum Error {
         source: kube::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
+    #[snafu(display("failed to update status of {}", zk))]
+    ApplyStatus {
+        source: kube::Error,
+        zk: ObjectRef<ZookeeperCluster>,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -143,7 +156,9 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
                         PropertyNameKind::Env,
                         PropertyNameKind::File(PROPERTIES_FILE.to_string()),
                     ],
-                    zk.spec.servers.clone(),
+                    zk.spec.servers.clone().with_context(|| NoServerRole {
+                        obj_ref: zk_ref.clone(),
+                    })?,
                 ),
             )]
             .into(),
@@ -192,14 +207,36 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
             rolegroup: rolegroup.clone(),
         })?;
     }
+
+    // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
+    // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
+    let mut discovery_hash = FnvHasher::with_key(0);
     for discovery_cm in build_discovery_configmaps(&kube, &zk, &zk, &server_role_service, None)
         .await
         .with_context(|| BuildDiscoveryConfig { zk: zk_ref.clone() })?
     {
-        apply_owned(&kube, FIELD_MANAGER, &discovery_cm)
+        let discovery_cm = apply_owned(&kube, FIELD_MANAGER, &discovery_cm)
             .await
             .with_context(|| ApplyDiscoveryConfig { zk: zk_ref.clone() })?;
+        if let Some(generation) = discovery_cm.metadata.resource_version {
+            discovery_hash.write(generation.as_bytes())
+        }
     }
+
+    let status = ZookeeperClusterStatus {
+        // Serialize as a string to discourage users from trying to parse the value,
+        // and to keep things flexible if we end up changing the hasher at some point.
+        discovery_hash: Some(discovery_hash.finish().to_string()),
+    };
+    apply_status(&kube, FIELD_MANAGER, &{
+        let mut zk_with_status =
+            ZookeeperCluster::new(&zk_ref.name, ZookeeperClusterSpec::default());
+        zk_with_status.metadata.namespace = zk.metadata.namespace.clone();
+        zk_with_status.status = Some(status);
+        zk_with_status
+    })
+    .await
+    .context(ApplyStatus { zk: zk_ref.clone() })?;
 
     Ok(ReconcilerAction {
         requeue_after: None,
@@ -349,7 +386,15 @@ fn build_server_rolegroup_statefulset(
     zk: &ZookeeperCluster,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
 ) -> Result<StatefulSet> {
-    let rolegroup = zk.spec.servers.role_groups.get(&rolegroup_ref.role_group);
+    let rolegroup = zk
+        .spec
+        .servers
+        .as_ref()
+        .with_context(|| NoServerRole {
+            obj_ref: ObjectRef::from_obj(zk),
+        })?
+        .role_groups
+        .get(&rolegroup_ref.role_group);
     let zk_version = zk_version(zk)?;
     let image = format!(
         "docker.stackable.tech/stackable/zookeeper:{}-stackable0",

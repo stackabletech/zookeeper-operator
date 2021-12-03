@@ -1,4 +1,4 @@
-use std::{collections::HashSet, num::TryFromIntError};
+use std::{collections::BTreeSet, num::TryFromIntError};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -153,6 +153,6 @@ async fn nodeport_hosts(
         .flat_map(|addr| addr.node_name);
     let addrs = nodes
         .map(|node| Ok((node, node_port.try_into().context(InvalidNodePort)?)))
-        .collect::<Result<HashSet<_>, _>>()?;
+        .collect::<Result<BTreeSet<_>, _>>()?;
     Ok(addrs)
 }

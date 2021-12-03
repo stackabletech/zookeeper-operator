@@ -24,6 +24,7 @@ spec:
               description: A cluster of ZooKeeper nodes
               properties:
                 servers:
+                  nullable: true
                   properties:
                     cliOverrides:
                       additionalProperties:
@@ -159,8 +160,14 @@ spec:
                   description: Desired ZooKeeper version
                   nullable: true
                   type: string
-              required:
-                - servers
+              type: object
+            status:
+              nullable: true
+              properties:
+                discoveryHash:
+                  description: An opaque value that changes every time a discovery detail does
+                  nullable: true
+                  type: string
               type: object
           required:
             - spec
@@ -168,4 +175,5 @@ spec:
           type: object
       served: true
       storage: true
-      subresources: {}
+      subresources:
+        status: {}

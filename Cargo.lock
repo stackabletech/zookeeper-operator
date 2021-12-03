@@ -1900,6 +1900,7 @@ dependencies = [
  "anyhow",
  "built",
  "failure",
+ "fnv",
  "futures 0.3.17",
  "pin-project 1.0.8",
  "semver 1.0.4",

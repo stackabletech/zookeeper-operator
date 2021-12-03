@@ -10,13 +10,14 @@ use stackable_operator::{
 };
 
 /// A cluster of ZooKeeper nodes
-#[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, CustomResource, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[kube(
     group = "zookeeper.stackable.tech",
     version = "v1alpha1",
     kind = "ZookeeperCluster",
     plural = "zookeeperclusters",
     shortname = "zk",
+    status = "ZookeeperClusterStatus",
     namespaced,
     kube_core = "stackable_operator::kube::core",
     k8s_openapi = "stackable_operator::k8s_openapi",
@@ -30,7 +31,8 @@ pub struct ZookeeperClusterSpec {
     /// Desired ZooKeeper version
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    pub servers: Role<ZookeeperConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub servers: Option<Role<ZookeeperConfig>>,
 }
 
 #[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -103,6 +105,14 @@ pub enum ZookeeperRole {
     Server,
 }
 
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperClusterStatus {
+    /// An opaque value that changes every time a discovery detail does
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discovery_hash: Option<String>,
+}
+
 #[derive(Debug, Snafu)]
 #[snafu(display("object has no namespace associated"))]
 pub struct NoNamespaceError;
@@ -141,8 +151,11 @@ impl ZookeeperCluster {
         Ok(self
             .spec
             .servers
-            .role_groups
             .iter()
+            .flat_map(|role| &role.role_groups)
+            // Order rolegroups consistently, to avoid spurious downstream rewrites
+            .collect::<BTreeMap<_, _>>()
+            .into_iter()
             .flat_map(move |(rolegroup_name, rolegroup)| {
                 let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
                 let ns = ns.clone();
