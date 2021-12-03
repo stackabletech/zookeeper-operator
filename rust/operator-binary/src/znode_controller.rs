@@ -4,11 +4,13 @@
 
 use std::{convert::Infallible, time::Duration};
 
-use crate::utils::apply_owned;
+use crate::{
+    discovery::{self, build_discovery_configmaps},
+    utils::apply_owned,
+};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::ObjectMetaBuilder,
-    k8s_openapi::api::core::v1::ConfigMap,
+    k8s_openapi::api::core::v1::{ConfigMap, Service},
     kube::{
         self,
         api::ObjectMeta,
@@ -37,10 +39,17 @@ pub enum Error {
     ObjectMissingMetadata { obj_ref: ObjectRef<ZookeeperZnode> },
     #[snafu(display("object {} does not refer to ZookeeperCluster", znode))]
     InvalidZkReference { znode: ObjectRef<ZookeeperZnode> },
-    #[snafu(display("could not find {}", obj_ref))]
+    #[snafu(display("could not find {}", zk))]
     FindZk {
         source: kube::Error,
-        obj_ref: ObjectRef<ZookeeperCluster>,
+        zk: ObjectRef<ZookeeperCluster>,
+    },
+    #[snafu(display("could not find server role service name for {}", zk))]
+    NoZkSvcName { zk: ObjectRef<ZookeeperCluster> },
+    #[snafu(display("could not find server role service for {}", zk))]
+    FindZkSvc {
+        source: kube::Error,
+        zk: ObjectRef<ZookeeperCluster>,
     },
     #[snafu(display("failed to calculate FQDN for {}", zk))]
     NoZkFqdn { zk: ObjectRef<ZookeeperCluster> },
@@ -56,9 +65,15 @@ pub enum Error {
         zk: ObjectRef<ZookeeperCluster>,
         znode_path: String,
     },
-    #[snafu(display("failed to save discovery information to {}", obj_ref))]
-    ApplyConfigMap {
+    #[snafu(display("failed to build discovery information for {}", znode))]
+    BuildDiscoveryConfigMap {
+        source: discovery::Error,
+        znode: ObjectRef<ZookeeperZnode>,
+    },
+    #[snafu(display("failed to save discovery information for {} to {}", znode, obj_ref))]
+    ApplyDiscoveryConfigMap {
         source: kube::Error,
+        znode: ObjectRef<ZookeeperZnode>,
         obj_ref: ObjectRef<ConfigMap>,
     },
     #[snafu(display("error managing finalizer"))]
@@ -110,6 +125,7 @@ pub async fn reconcile_znode(
     };
     let kube = ctx.get_ref().kube.clone();
     let znodes = kube::Api::<ZookeeperZnode>::namespaced(kube.clone(), &ns);
+    let svcs = kube::Api::<Service>::namespaced(kube.clone(), &ns);
 
     let zk = find_zk_of_znode(&kube, &znode).await?;
     let zk_port = 2181;
@@ -140,34 +156,33 @@ pub async fn reconcile_znode(
                             znode_path: &znode_path,
                         })?;
 
-                    // Write a connection string of the format that Java ZooKeeper client expects:
-                    // "{host1}:{port1},{host2:port2},.../{chroot}"
-                    // See https://zookeeper.apache.org/doc/current/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-
-                    let mut znode_conn_str = zk
-                        .pods()
-                        .unwrap()
-                        .map(|pod| format!("{}:{}", pod.fqdn(), zk_port))
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    znode_conn_str.push_str(&znode_path);
-
-                    // Save connection string (and any other properties that we end up setting eventually) for clients to use
-                    let discovery_cm = ConfigMap {
-                        metadata: ObjectMetaBuilder::new()
-                            .name_and_namespace(&znode)
-                            .ownerreference_from_resource(&znode, None, Some(true))
-                            .with_context(|| ObjectMissingMetadataForOwnerRef {
-                                znode: ObjectRef::from_obj(&znode),
-                            })?
-                            .build(),
-                        data: Some([("ZOOKEEPER".to_string(), znode_conn_str)].into()),
-                        ..ConfigMap::default()
-                    };
-                    apply_owned(&kube, FIELD_MANAGER, &discovery_cm)
+                    let server_role_service = svcs
+                        .get(&zk.server_role_service_name().with_context(|| NoZkSvcName {
+                            zk: ObjectRef::from_obj(&zk),
+                        })?)
                         .await
-                        .context(ApplyConfigMap {
-                            obj_ref: ObjectRef::from_obj(&discovery_cm),
+                        .context(FindZkSvc {
+                            zk: ObjectRef::from_obj(&zk),
                         })?;
+                    for discovery_cm in build_discovery_configmaps(
+                        &kube,
+                        &znode,
+                        &zk,
+                        &server_role_service,
+                        Some(&znode_path),
+                    )
+                    .await
+                    .with_context(|| BuildDiscoveryConfigMap {
+                        znode: ObjectRef::from_obj(&znode),
+                    })? {
+                        apply_owned(&kube, FIELD_MANAGER, &discovery_cm)
+                            .await
+                            .with_context(|| ApplyDiscoveryConfigMap {
+                                znode: ObjectRef::from_obj(&znode),
+                                obj_ref: ObjectRef::from_obj(&discovery_cm),
+                            })?;
+                    }
+
                     Ok(ReconcilerAction {
                         requeue_after: None,
                     })
@@ -203,7 +218,7 @@ async fn find_zk_of_znode(
     {
         let zks = kube::Api::<ZookeeperCluster>::namespaced(kube.clone(), zk_ns);
         zks.get(zk_name).await.with_context(|| FindZk {
-            obj_ref: ObjectRef::new(zk_name).within(zk_ns),
+            zk: ObjectRef::new(zk_name).within(zk_ns),
         })
     } else {
         InvalidZkReference {

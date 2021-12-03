@@ -1,6 +1,7 @@
 use std::{borrow::Cow, collections::BTreeMap, fmt::Display};
 
 use serde::{Deserialize, Serialize};
+use snafu::{OptionExt, Snafu};
 use stackable_operator::{
     kube::{runtime::reflector::ObjectRef, CustomResource},
     product_config_utils::{ConfigError, Configuration},
@@ -102,6 +103,10 @@ pub enum ZookeeperRole {
     Server,
 }
 
+#[derive(Debug, Snafu)]
+#[snafu(display("object has no namespace associated"))]
+pub struct NoNamespaceError;
+
 impl ZookeeperCluster {
     /// The name of the role-level load-balanced Kubernetes `Service`
     pub fn server_role_service_name(&self) -> Option<String> {
@@ -127,30 +132,33 @@ impl ZookeeperCluster {
     }
 
     /// References to all pods forming the cluster
-    pub fn pods(&self) -> Option<impl Iterator<Item = ZookeeperPodRef> + '_> {
-        let ns = self.metadata.namespace.clone()?;
-        Some(
-            self.spec
-                .servers
-                .role_groups
-                .iter()
-                .flat_map(move |(rolegroup_name, rolegroup)| {
-                    let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
-                    let ns = ns.clone();
-                    (0..rolegroup.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
-                        namespace: ns.clone(),
-                        role_service_name: rolegroup_ref.object_name(),
-                        pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
-                        zookeeper_id: i + rolegroup
-                            .config
-                            .as_ref()
-                            .and_then(|cfg| cfg.config.as_ref())
-                            .map(Cow::Borrowed)
-                            .unwrap_or_default()
-                            .myid_offset(),
-                    })
-                }),
-        )
+    pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, NoNamespaceError> {
+        let ns = self
+            .metadata
+            .namespace
+            .clone()
+            .context(NoNamespaceContext)?;
+        Ok(self
+            .spec
+            .servers
+            .role_groups
+            .iter()
+            .flat_map(move |(rolegroup_name, rolegroup)| {
+                let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
+                let ns = ns.clone();
+                (0..rolegroup.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
+                    namespace: ns.clone(),
+                    role_service_name: rolegroup_ref.object_name(),
+                    pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
+                    zookeeper_id: i + rolegroup
+                        .config
+                        .as_ref()
+                        .and_then(|cfg| cfg.config.as_ref())
+                        .map(Cow::Borrowed)
+                        .unwrap_or_default()
+                        .myid_offset(),
+                })
+            }))
     }
 }
 

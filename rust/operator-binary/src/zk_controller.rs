@@ -6,7 +6,11 @@ use std::{
     time::Duration,
 };
 
-use crate::utils::apply_owned;
+use crate::{
+    discovery::{self, build_discovery_configmaps},
+    utils::apply_owned,
+    APP_NAME,
+};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
@@ -38,7 +42,6 @@ use stackable_operator::{
 use stackable_zookeeper_crd::{RoleGroupRef, ZookeeperCluster, ZookeeperRole};
 
 const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeepercluster";
-const APP_NAME: &str = "zookeeper";
 
 pub struct Ctx {
     pub kube: kube::Client,
@@ -63,7 +66,7 @@ pub enum Error {
     #[snafu(display("failed to calculate service name for role {}", rolegroup))]
     RoleGroupServiceNameNotFound { rolegroup: RoleGroupRef },
     #[snafu(display("failed to apply global Service for {}", zk))]
-    ApplyGlobalService {
+    ApplyRoleService {
         source: kube::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
@@ -100,6 +103,16 @@ pub enum Error {
     #[snafu(display("object {} is missing metadata to build owner reference", zk))]
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::error::Error,
+        zk: ObjectRef<ZookeeperCluster>,
+    },
+    #[snafu(display("failed to build discovery ConfigMap for {}", zk))]
+    BuildDiscoveryConfig {
+        source: discovery::Error,
+        zk: ObjectRef<ZookeeperCluster>,
+    },
+    #[snafu(display("failed to apply discovery ConfigMap for {}", zk))]
+    ApplyDiscoveryConfig {
+        source: kube::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
 }
@@ -145,9 +158,9 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
-    apply_owned(&kube, FIELD_MANAGER, &build_server_role_service(&zk)?)
+    let server_role_service = apply_owned(&kube, FIELD_MANAGER, &build_server_role_service(&zk)?)
         .await
-        .with_context(|| ApplyGlobalService { zk: zk_ref.clone() })?;
+        .with_context(|| ApplyRoleService { zk: zk_ref.clone() })?;
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
 
@@ -178,6 +191,14 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         .with_context(|| ApplyRoleGroupStatefulSet {
             rolegroup: rolegroup.clone(),
         })?;
+    }
+    for discovery_cm in build_discovery_configmaps(&kube, &zk, &zk, &server_role_service, None)
+        .await
+        .with_context(|| BuildDiscoveryConfig { zk: zk_ref.clone() })?
+    {
+        apply_owned(&kube, FIELD_MANAGER, &discovery_cm)
+            .await
+            .with_context(|| ApplyDiscoveryConfig { zk: zk_ref.clone() })?;
     }
 
     Ok(ReconcilerAction {
@@ -475,7 +496,7 @@ fn build_server_rolegroup_statefulset(
     })
 }
 
-fn zk_version(zk: &ZookeeperCluster) -> Result<&str> {
+pub fn zk_version(zk: &ZookeeperCluster) -> Result<&str> {
     zk.spec
         .version
         .as_deref()

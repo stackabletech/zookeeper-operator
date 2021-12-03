@@ -1,3 +1,4 @@
+mod discovery;
 mod utils;
 mod zk_controller;
 mod znode_controller;
@@ -29,6 +30,9 @@ use structopt::StructOpt;
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
+
+pub const APP_NAME: &str = "zookeeper";
+pub const APP_PORT: u16 = 2181;
 
 #[derive(StructOpt)]
 #[structopt(about = built_info::PKG_DESCRIPTION, author = "Stackable GmbH - info@stackable.de")]
@@ -97,13 +101,17 @@ async fn main() -> anyhow::Result<()> {
             let kube = kube::Client::try_default().await?;
             let zks = kube::Api::<ZookeeperCluster>::all(kube.clone());
             let znodes = kube::Api::<ZookeeperZnode>::all(kube.clone());
-            let zk_controller = Controller::new(zks, ListParams::default())
+            let zk_controller = Controller::new(zks.clone(), ListParams::default())
                 .owns(
                     kube::Api::<Service>::all(kube.clone()),
                     ListParams::default(),
                 )
                 .owns(
                     kube::Api::<StatefulSet>::all(kube.clone()),
+                    ListParams::default(),
+                )
+                .owns(
+                    kube::Api::<ConfigMap>::all(kube.clone()),
                     ListParams::default(),
                 )
                 .run(
@@ -114,11 +122,23 @@ async fn main() -> anyhow::Result<()> {
                         product_config,
                     }),
                 );
-            let znode_controller = Controller::new(znodes, ListParams::default())
+            let znode_controller_builder = Controller::new(znodes, ListParams::default());
+            let znode_store = znode_controller_builder.store();
+            let znode_controller = znode_controller_builder
                 .owns(
                     kube::Api::<ConfigMap>::all(kube.clone()),
                     ListParams::default(),
                 )
+                .watches(zks, ListParams::default(), move |zk| {
+                    znode_store
+                        .state()
+                        .into_iter()
+                        .filter(move |znode| {
+                            zk.metadata.namespace == znode.spec.cluster_ref.namespace
+                                && zk.metadata.name == znode.spec.cluster_ref.name
+                        })
+                        .map(|znode| ObjectRef::from_obj(&znode))
+                })
                 .run(
                     |znode, ctx| {
                         tokio01_runtime

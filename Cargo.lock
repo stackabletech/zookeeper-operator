@@ -1888,6 +1888,7 @@ version = "0.6.0-nightly"
 dependencies = [
  "serde",
  "serde_json",
+ "snafu",
  "stackable-operator",
  "strum",
 ]
