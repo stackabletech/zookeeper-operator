@@ -37,17 +37,8 @@ pub const APP_PORT: u16 = 2181;
 #[derive(StructOpt)]
 #[structopt(about = built_info::PKG_DESCRIPTION, author = "Stackable GmbH - info@stackable.de")]
 struct Opts {
-    #[structopt(flatten)]
-    framework: FrameworkOpts,
     #[structopt(subcommand)]
     cmd: Cmd,
-}
-
-#[derive(StructOpt)]
-struct FrameworkOpts {
-    /// Provides the path to a product-config file
-    #[structopt(long, short = "p", value_name = "FILE")]
-    product_config: Option<String>,
 }
 
 #[derive(StructOpt)]
@@ -55,7 +46,11 @@ enum Cmd {
     /// Print CRD objects
     Crd,
     /// Run operator
-    Run,
+    Run {
+        /// Provides the path to a product-config file
+        #[structopt(long, short = "p", value_name = "FILE")]
+        product_config: Option<String>,
+    },
 }
 
 /// Erases the concrete types of the controller result, so that we can merge the streams of multiple controllers for different resources.
@@ -82,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
             serde_yaml::to_string(&ZookeeperCluster::crd())?,
             serde_yaml::to_string(&ZookeeperZnode::crd())?
         ),
-        Cmd::Run => {
+        Cmd::Run { product_config } => {
             stackable_operator::utils::print_startup_string(
                 built_info::PKG_DESCRIPTION,
                 built_info::PKG_VERSION,
@@ -91,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
                 built_info::BUILT_TIME_UTC,
                 built_info::RUSTC_VERSION,
             );
-            let product_config = if let Some(product_config_path) = opts.framework.product_config {
+            let product_config = if let Some(product_config_path) = product_config {
                 ProductConfigManager::from_yaml_file(&product_config_path)?
             } else {
                 ProductConfigManager::from_str(include_str!(
