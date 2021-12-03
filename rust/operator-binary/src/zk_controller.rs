@@ -290,8 +290,6 @@ fn build_server_rolegroup_config_map(
         .get(&PropertyNameKind::File(PROPERTIES_FILE.to_string()))
         .cloned()
         .unwrap_or_default();
-    zoo_cfg.insert("dataDir".to_string(), "/stackable/data".to_string());
-    zoo_cfg.insert("clientPort".to_string(), APP_PORT.to_string());
     zoo_cfg.extend(zk.pods().into_iter().flatten().map(|pod| {
         (
             format!("server.{}", pod.zookeeper_id),
@@ -359,12 +357,20 @@ fn build_server_rolegroup_service(
             .build(),
         spec: Some(ServiceSpec {
             cluster_ip: Some("None".to_string()),
-            ports: Some(vec![ServicePort {
-                name: Some("zk".to_string()),
-                port: APP_PORT.into(),
-                protocol: Some("TCP".to_string()),
-                ..ServicePort::default()
-            }]),
+            ports: Some(vec![
+                ServicePort {
+                    name: Some("zk".to_string()),
+                    port: APP_PORT.into(),
+                    protocol: Some("TCP".to_string()),
+                    ..ServicePort::default()
+                },
+                ServicePort {
+                    name: Some("metrics".to_string()),
+                    port: 9505,
+                    protocol: Some("TCP".to_string()),
+                    ..ServicePort::default()
+                },
+            ]),
             selector: Some(role_group_selector_labels(
                 zk,
                 APP_NAME,
@@ -461,6 +467,7 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk", APP_PORT.into())
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
+        .add_container_port("metrics", 9505)
         .add_volume_mount("data", "/stackable/data")
         .add_volume_mount("config", "/stackable/config")
         .build();

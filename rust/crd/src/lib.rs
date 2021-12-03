@@ -50,6 +50,7 @@ impl ZookeeperConfig {
     pub const TICK_TIME: &'static str = "tickTime";
 
     pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
+    pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
 
     fn myid_offset(&self) -> u16 {
         self.myid_offset.unwrap_or(1)
@@ -64,10 +65,14 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        Ok([(
-            Self::MYID_OFFSET.to_string(),
-            Some(self.myid_offset().to_string()),
-        )]
+        let jvm_flags = "-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar=9505:/stackable/jmx/server.yaml".to_string();
+        Ok([
+            (
+                Self::MYID_OFFSET.to_string(),
+                Some(self.myid_offset().to_string()),
+            ),
+            (Self::SERVER_JVMFLAGS.to_string(), Some(jvm_flags)),
+        ]
         .into())
     }
 
