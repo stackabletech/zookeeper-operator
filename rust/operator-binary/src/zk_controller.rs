@@ -292,7 +292,7 @@ fn build_server_rolegroup_config_map(
         .unwrap_or_default();
     zoo_cfg.extend(zk.pods().into_iter().flatten().map(|pod| {
         (
-            format!("server.{}", pod.zookeeper_id),
+            format!("server.{}", pod.zookeeper_myid),
             format!("{}:2888:3888;{}", pod.fqdn(), APP_PORT),
         )
     }));

@@ -173,7 +173,7 @@ impl ZookeeperCluster {
                     namespace: ns.clone(),
                     role_service_name: rolegroup_ref.object_name(),
                     pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
-                    zookeeper_id: i + rolegroup
+                    zookeeper_myid: i + rolegroup
                         .config
                         .as_ref()
                         .and_then(|cfg| cfg.config.as_ref())
@@ -214,7 +214,7 @@ pub struct ZookeeperPodRef {
     pub namespace: String,
     pub role_service_name: String,
     pub pod_name: String,
-    pub zookeeper_id: u16,
+    pub zookeeper_myid: u16,
 }
 
 impl ZookeeperPodRef {
