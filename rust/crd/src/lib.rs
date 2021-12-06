@@ -171,7 +171,7 @@ impl ZookeeperCluster {
                 let ns = ns.clone();
                 (0..rolegroup.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
                     namespace: ns.clone(),
-                    role_service_name: rolegroup_ref.object_name(),
+                    role_group_service_name: rolegroup_ref.object_name(),
                     pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
                     zookeeper_myid: i + rolegroup
                         .config
@@ -212,7 +212,7 @@ impl Display for RoleGroupRef {
 /// Used for service discovery.
 pub struct ZookeeperPodRef {
     pub namespace: String,
-    pub role_service_name: String,
+    pub role_group_service_name: String,
     pub pod_name: String,
     pub zookeeper_myid: u16,
 }
@@ -221,7 +221,7 @@ impl ZookeeperPodRef {
     pub fn fqdn(&self) -> String {
         format!(
             "{}.{}.{}.svc.cluster.local",
-            self.pod_name, self.role_service_name, self.namespace
+            self.pod_name, self.role_group_service_name, self.namespace
         )
     }
 }
