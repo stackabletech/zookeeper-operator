@@ -18,9 +18,7 @@ pub enum Error {
         zk: ObjectRef<ZookeeperCluster>,
     },
     #[snafu(display("chroot path {} was relative (must be absolute)", chroot))]
-    RelativeChroot {
-        chroot: String,
-    },
+    RelativeChroot { chroot: String },
     #[snafu(display("object has no name associated"))]
     NoName,
     #[snafu(display("object has no namespace associated"))]
@@ -29,17 +27,20 @@ pub enum Error {
     ExpectedPods {
         source: stackable_zookeeper_crd::NoNamespaceError,
     },
-    NoServicePort {
-        port_name: String,
-    },
-    NoNodePort {
-        port_name: String,
-    },
+    #[snafu(display("could not find service port with name {}", port_name))]
+    NoServicePort { port_name: String },
+    #[snafu(display("service port with name {} does not have a nodePort", port_name))]
+    NoNodePort { port_name: String },
+    #[snafu(display("could not find Endpoints for {}", svc))]
     FindEndpoints {
         source: kube::Error,
+        svc: ObjectRef<Service>,
     },
-    InvalidNodePort {
-        source: TryFromIntError,
+    #[snafu(display("nodePort was out of range"))]
+    InvalidNodePort { source: TryFromIntError },
+    #[snafu(display("failed to build ConfigMap"))]
+    BuildConfigMap {
+        source: stackable_operator::error::Error,
     },
 }
 
@@ -100,7 +101,7 @@ fn build_discovery_configmap(
                 .with_recommended_labels(
                     zk,
                     APP_NAME,
-                    zk_version(zk).unwrap(),
+                    zk_version(zk).unwrap_or("unknown"),
                     &ZookeeperRole::Server.to_string(),
                     "discovery",
                 )
@@ -108,7 +109,7 @@ fn build_discovery_configmap(
         )
         .add_data("ZOOKEEPER", conn_str)
         .build()
-        .unwrap())
+        .context(BuildConfigMap)?)
 }
 
 /// Lists all Pods FQDNs expected to host the [`ZookeeperCluster`]
@@ -143,7 +144,9 @@ async fn nodeport_hosts(
     let endpoints = endpointses
         .get(svc.metadata.name.as_deref().context(NoName)?)
         .await
-        .context(FindEndpoints)?;
+        .with_context(|| FindEndpoints {
+            svc: ObjectRef::from_obj(svc),
+        })?;
     let nodes = endpoints
         .subsets
         .into_iter()
