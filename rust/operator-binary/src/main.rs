@@ -13,7 +13,6 @@ use stackable_operator::{
         core::v1::{ConfigMap, Endpoints, Service},
     },
     kube::{
-        self,
         api::{DynamicObject, ListParams},
         runtime::{
             controller::{Context, ReconcilerAction},
@@ -93,18 +92,19 @@ async fn main() -> anyhow::Result<()> {
                     "../../../deploy/config-spec/properties.yaml"
                 ))?
             };
-            let kube = kube::Client::try_default().await?;
-            let zks = kube::Api::<ZookeeperCluster>::all(kube.clone());
-            let znodes = kube::Api::<ZookeeperZnode>::all(kube.clone());
-            let zk_controller_builder = Controller::new(zks.clone(), ListParams::default());
+            let client = stackable_operator::client::create_client(Some(
+                "zookeeper.stackable.tech".to_string(),
+            ))
+            .await?;
+            let zk_controller_builder = Controller::new(
+                client.get_all_api::<ZookeeperCluster>(),
+                ListParams::default(),
+            );
             let zk_store = zk_controller_builder.store();
             let zk_controller = zk_controller_builder
-                .owns(
-                    kube::Api::<Service>::all(kube.clone()),
-                    ListParams::default(),
-                )
+                .owns(client.get_all_api::<Service>(), ListParams::default())
                 .watches(
-                    kube::Api::<Endpoints>::all(kube.clone()),
+                    client.get_all_api::<Endpoints>(),
                     ListParams::default(),
                     move |endpoints| {
                         zk_store
@@ -117,39 +117,37 @@ async fn main() -> anyhow::Result<()> {
                             .map(|zk| ObjectRef::from_obj(&zk))
                     },
                 )
-                .owns(
-                    kube::Api::<StatefulSet>::all(kube.clone()),
-                    ListParams::default(),
-                )
-                .owns(
-                    kube::Api::<ConfigMap>::all(kube.clone()),
-                    ListParams::default(),
-                )
+                .owns(client.get_all_api::<StatefulSet>(), ListParams::default())
+                .owns(client.get_all_api::<ConfigMap>(), ListParams::default())
                 .run(
                     zk_controller::reconcile_zk,
                     zk_controller::error_policy,
                     Context::new(zk_controller::Ctx {
-                        kube: kube.clone(),
+                        client: client.clone(),
                         product_config,
                     }),
                 );
-            let znode_controller_builder = Controller::new(znodes, ListParams::default());
+            let znode_controller_builder = Controller::new(
+                client.get_all_api::<ZookeeperZnode>(),
+                ListParams::default(),
+            );
             let znode_store = znode_controller_builder.store();
             let znode_controller = znode_controller_builder
-                .owns(
-                    kube::Api::<ConfigMap>::all(kube.clone()),
+                .owns(client.get_all_api::<ConfigMap>(), ListParams::default())
+                .watches(
+                    client.get_all_api::<ZookeeperCluster>(),
                     ListParams::default(),
+                    move |zk| {
+                        znode_store
+                            .state()
+                            .into_iter()
+                            .filter(move |znode| {
+                                zk.metadata.namespace == znode.spec.cluster_ref.namespace
+                                    && zk.metadata.name == znode.spec.cluster_ref.name
+                            })
+                            .map(|znode| ObjectRef::from_obj(&znode))
+                    },
                 )
-                .watches(zks, ListParams::default(), move |zk| {
-                    znode_store
-                        .state()
-                        .into_iter()
-                        .filter(move |znode| {
-                            zk.metadata.namespace == znode.spec.cluster_ref.namespace
-                                && zk.metadata.name == znode.spec.cluster_ref.name
-                        })
-                        .map(|znode| ObjectRef::from_obj(&znode))
-                })
                 .run(
                     |znode, ctx| {
                         tokio01_runtime
@@ -157,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
                             .run_in_ctx(znode_controller::reconcile_znode(znode, ctx))
                     },
                     znode_controller::error_policy,
-                    Context::new(znode_controller::Ctx { kube }),
+                    Context::new(znode_controller::Ctx { client }),
                 );
             futures::stream::select(
                 zk_controller.map(erase_controller_result_type),

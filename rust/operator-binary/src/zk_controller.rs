@@ -9,7 +9,6 @@ use std::{
 
 use crate::{
     discovery::{self, build_discovery_configmaps},
-    utils::{apply_owned, apply_status},
     APP_NAME, APP_PORT,
 };
 use fnv::FnvHasher;
@@ -28,7 +27,6 @@ use stackable_operator::{
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
     },
     kube::{
-        self,
         api::ObjectMeta,
         runtime::{
             controller::{Context, ReconcilerAction},
@@ -45,10 +43,10 @@ use stackable_zookeeper_crd::{
     RoleGroupRef, ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperRole,
 };
 
-const FIELD_MANAGER: &str = "zookeeper.stackable.tech/zookeepercluster";
+const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
 
 pub struct Ctx {
-    pub kube: kube::Client,
+    pub client: stackable_operator::client::Client,
     pub product_config: ProductConfigManager,
 }
 
@@ -75,12 +73,12 @@ pub enum Error {
     RoleGroupServiceNameNotFound { rolegroup: RoleGroupRef },
     #[snafu(display("failed to apply global Service for {}", zk))]
     ApplyRoleService {
-        source: kube::Error,
+        source: stackable_operator::error::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
     #[snafu(display("failed to apply Service for {}", rolegroup))]
     ApplyRoleGroupService {
-        source: kube::Error,
+        source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef,
     },
     #[snafu(display("failed to build ConfigMap for {}", rolegroup))]
@@ -90,12 +88,12 @@ pub enum Error {
     },
     #[snafu(display("failed to apply ConfigMap for {}", rolegroup))]
     ApplyRoleGroupConfig {
-        source: kube::Error,
+        source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef,
     },
     #[snafu(display("failed to apply StatefulSet for {}", rolegroup))]
     ApplyRoleGroupStatefulSet {
-        source: kube::Error,
+        source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef,
     },
     #[snafu(display("invalid product config for {}", zk))]
@@ -120,12 +118,12 @@ pub enum Error {
     },
     #[snafu(display("failed to apply discovery ConfigMap for {}", zk))]
     ApplyDiscoveryConfig {
-        source: kube::Error,
+        source: stackable_operator::error::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
     #[snafu(display("failed to update status of {}", zk))]
     ApplyStatus {
-        source: kube::Error,
+        source: stackable_operator::error::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
 }
@@ -136,7 +134,7 @@ const PROPERTIES_FILE: &str = "zoo.cfg";
 pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<ReconcilerAction> {
     tracing::info!("Starting reconcile");
     let zk_ref = ObjectRef::from_obj(&zk);
-    let kube = ctx.get_ref().kube.clone();
+    let client = &ctx.get_ref().client;
 
     let zk_version = zk
         .spec
@@ -173,49 +171,50 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
-    let server_role_service = apply_owned(&kube, FIELD_MANAGER, &build_server_role_service(&zk)?)
+    let server_role_service = build_server_role_service(&zk)?;
+    let server_role_service = client
+        .apply_patch(
+            FIELD_MANAGER_SCOPE,
+            &server_role_service,
+            &server_role_service,
+        )
         .await
         .with_context(|| ApplyRoleService { zk: zk_ref.clone() })?;
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
 
-        apply_owned(
-            &kube,
-            FIELD_MANAGER,
-            &build_server_rolegroup_service(&rolegroup, &zk)?,
-        )
-        .await
-        .with_context(|| ApplyRoleGroupService {
-            rolegroup: rolegroup.clone(),
-        })?;
-        apply_owned(
-            &kube,
-            FIELD_MANAGER,
-            &build_server_rolegroup_config_map(&rolegroup, &zk, rolegroup_config)?,
-        )
-        .await
-        .with_context(|| ApplyRoleGroupConfig {
-            rolegroup: rolegroup.clone(),
-        })?;
-        apply_owned(
-            &kube,
-            FIELD_MANAGER,
-            &build_server_rolegroup_statefulset(&rolegroup, &zk, rolegroup_config)?,
-        )
-        .await
-        .with_context(|| ApplyRoleGroupStatefulSet {
-            rolegroup: rolegroup.clone(),
-        })?;
+        let rg_service = build_server_rolegroup_service(&rolegroup, &zk)?;
+        let rg_configmap = build_server_rolegroup_config_map(&rolegroup, &zk, rolegroup_config)?;
+        let rg_statefulset = build_server_rolegroup_statefulset(&rolegroup, &zk, rolegroup_config)?;
+        client
+            .apply_patch(FIELD_MANAGER_SCOPE, &rg_service, &rg_service)
+            .await
+            .with_context(|| ApplyRoleGroupService {
+                rolegroup: rolegroup.clone(),
+            })?;
+        client
+            .apply_patch(FIELD_MANAGER_SCOPE, &rg_configmap, &rg_configmap)
+            .await
+            .with_context(|| ApplyRoleGroupConfig {
+                rolegroup: rolegroup.clone(),
+            })?;
+        client
+            .apply_patch(FIELD_MANAGER_SCOPE, &rg_statefulset, &rg_statefulset)
+            .await
+            .with_context(|| ApplyRoleGroupStatefulSet {
+                rolegroup: rolegroup.clone(),
+            })?;
     }
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
-    for discovery_cm in build_discovery_configmaps(&kube, &zk, &zk, &server_role_service, None)
+    for discovery_cm in build_discovery_configmaps(client, &zk, &zk, &server_role_service, None)
         .await
         .with_context(|| BuildDiscoveryConfig { zk: zk_ref.clone() })?
     {
-        let discovery_cm = apply_owned(&kube, FIELD_MANAGER, &discovery_cm)
+        let discovery_cm = client
+            .apply_patch(FIELD_MANAGER_SCOPE, &discovery_cm, &discovery_cm)
             .await
             .with_context(|| ApplyDiscoveryConfig { zk: zk_ref.clone() })?;
         if let Some(generation) = discovery_cm.metadata.resource_version {
@@ -228,15 +227,17 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
     };
-    apply_status(&kube, FIELD_MANAGER, &{
+    let zk_with_status = {
         let mut zk_with_status =
             ZookeeperCluster::new(&zk_ref.name, ZookeeperClusterSpec::default());
         zk_with_status.metadata.namespace = zk.metadata.namespace.clone();
         zk_with_status.status = Some(status);
         zk_with_status
-    })
-    .await
-    .context(ApplyStatus { zk: zk_ref.clone() })?;
+    };
+    client
+        .apply_patch_status(FIELD_MANAGER_SCOPE, &zk_with_status, &zk_with_status)
+        .await
+        .context(ApplyStatus { zk: zk_ref.clone() })?;
 
     Ok(ReconcilerAction {
         requeue_after: None,

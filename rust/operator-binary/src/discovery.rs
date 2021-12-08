@@ -4,7 +4,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ObjectMetaBuilder},
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
-    kube::{self, runtime::reflector::ObjectRef, Resource, ResourceExt},
+    kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
 
@@ -33,7 +33,7 @@ pub enum Error {
     NoNodePort { port_name: String },
     #[snafu(display("could not find Endpoints for {}", svc))]
     FindEndpoints {
-        source: kube::Error,
+        source: stackable_operator::error::Error,
         svc: ObjectRef<Service>,
     },
     #[snafu(display("nodePort was out of range"))]
@@ -46,7 +46,7 @@ pub enum Error {
 
 /// Builds discovery [`ConfigMap`]s for connecting to a [`ZookeeperCluster`] for all expected scenarios
 pub async fn build_discovery_configmaps(
-    kube: &kube::Client,
+    client: &stackable_operator::client::Client,
     owner: &impl Resource<DynamicType = ()>,
     zk: &ZookeeperCluster,
     svc: &Service,
@@ -60,7 +60,7 @@ pub async fn build_discovery_configmaps(
             owner,
             zk,
             chroot,
-            nodeport_hosts(kube, svc, "zk").await?,
+            nodeport_hosts(client, svc, "zk").await?,
         )?,
     ])
 }
@@ -89,7 +89,7 @@ fn build_discovery_configmap(
         }
         conn_str.push_str(chroot);
     }
-    Ok(ConfigMapBuilder::new()
+    ConfigMapBuilder::new()
         .metadata(
             ObjectMetaBuilder::new()
                 .name_and_namespace(zk)
@@ -109,7 +109,7 @@ fn build_discovery_configmap(
         )
         .add_data("ZOOKEEPER", conn_str)
         .build()
-        .context(BuildConfigMap)?)
+        .context(BuildConfigMap)
 }
 
 /// Lists all Pods FQDNs expected to host the [`ZookeeperCluster`]
@@ -123,12 +123,10 @@ fn pod_hosts(zk: &ZookeeperCluster) -> Result<impl IntoIterator<Item = (String, 
 
 /// Lists all nodes currently hosting Pods participating in the [`Service`]
 async fn nodeport_hosts(
-    kube: &kube::Client,
+    client: &stackable_operator::client::Client,
     svc: &Service,
     port_name: &str,
 ) -> Result<impl IntoIterator<Item = (String, u16)>, Error> {
-    let ns = svc.metadata.namespace.as_deref().context(NoNamespace)?;
-    let endpointses = kube::Api::<Endpoints>::namespaced(kube.clone(), ns);
     let svc_port = svc
         .spec
         .as_ref()
@@ -141,8 +139,11 @@ async fn nodeport_hosts(
         })
         .context(NoServicePort { port_name })?;
     let node_port = svc_port.node_port.context(NoNodePort { port_name })?;
-    let endpoints = endpointses
-        .get(svc.metadata.name.as_deref().context(NoName)?)
+    let endpoints = client
+        .get::<Endpoints>(
+            svc.metadata.name.as_deref().context(NoName)?,
+            svc.metadata.namespace.as_deref(),
+        )
         .await
         .with_context(|| FindEndpoints {
             svc: ObjectRef::from_obj(svc),
