@@ -32,12 +32,11 @@ pub struct Ctx {
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[snafu(display(
-        "object {} is missing metadata that should be created by the Kubernetes cluster",
-        obj_ref
+        "object is missing metadata that should be created by the Kubernetes cluster",
     ))]
-    ObjectMissingMetadata { obj_ref: ObjectRef<ZookeeperZnode> },
-    #[snafu(display("object {} does not refer to ZookeeperCluster", znode))]
-    InvalidZkReference { znode: ObjectRef<ZookeeperZnode> },
+    ObjectMissingMetadata,
+    #[snafu(display("object does not refer to ZookeeperCluster"))]
+    InvalidZkReference,
     #[snafu(display("could not find {}", zk))]
     FindZk {
         source: stackable_operator::error::Error,
@@ -64,25 +63,20 @@ pub enum Error {
         zk: ObjectRef<ZookeeperCluster>,
         znode_path: String,
     },
-    #[snafu(display("failed to build discovery information for {}", znode))]
-    BuildDiscoveryConfigMap {
-        source: discovery::Error,
-        znode: ObjectRef<ZookeeperZnode>,
-    },
-    #[snafu(display("failed to save discovery information for {} to {}", znode, obj_ref))]
+    #[snafu(display("failed to build discovery information"))]
+    BuildDiscoveryConfigMap { source: discovery::Error },
+    #[snafu(display("failed to save discovery information to {}", cm))]
     ApplyDiscoveryConfigMap {
         source: stackable_operator::error::Error,
-        znode: ObjectRef<ZookeeperZnode>,
-        obj_ref: ObjectRef<ConfigMap>,
+        cm: ObjectRef<ConfigMap>,
     },
     #[snafu(display("error managing finalizer"))]
     Finalizer {
         source: finalizer::Error<Infallible>,
     },
-    #[snafu(display("object {} is missing metadata to build owner reference", znode))]
+    #[snafu(display("object is missing metadata to build owner reference"))]
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::error::Error,
-        znode: ObjectRef<ZookeeperZnode>,
     },
 }
 
@@ -117,10 +111,7 @@ pub async fn reconcile_znode(
     {
         (ns.clone(), uid)
     } else {
-        return ObjectMissingMetadata {
-            obj_ref: ObjectRef::from_obj(&znode),
-        }
-        .fail();
+        return ObjectMissingMetadata.fail();
     };
     let client = &ctx.get_ref().client;
 
@@ -171,15 +162,13 @@ pub async fn reconcile_znode(
                         Some(&znode_path),
                     )
                     .await
-                    .with_context(|| BuildDiscoveryConfigMap {
-                        znode: ObjectRef::from_obj(&znode),
-                    })? {
+                    .context(BuildDiscoveryConfigMap)?
+                    {
                         client
                             .apply_patch(FIELD_MANAGER_SCOPE, &discovery_cm, &discovery_cm)
                             .await
                             .with_context(|| ApplyDiscoveryConfigMap {
-                                znode: ObjectRef::from_obj(&znode),
-                                obj_ref: ObjectRef::from_obj(&discovery_cm),
+                                cm: ObjectRef::from_obj(&discovery_cm),
                             })?;
                     }
 
@@ -223,10 +212,7 @@ async fn find_zk_of_znode(
                 zk: ObjectRef::new(zk_name).within(zk_ns),
             })
     } else {
-        InvalidZkReference {
-            znode: ObjectRef::from_obj(znode),
-        }
-        .fail()
+        InvalidZkReference.fail()
     }
 }
 
