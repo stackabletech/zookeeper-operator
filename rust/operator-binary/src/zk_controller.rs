@@ -28,10 +28,7 @@ use stackable_operator::{
     },
     kube::{
         api::ObjectMeta,
-        runtime::{
-            controller::{Context, ReconcilerAction},
-            reflector::ObjectRef,
-        },
+        runtime::controller::{Context, ReconcilerAction},
     },
     labels::{role_group_selector_labels, role_selector_labels},
     product_config::{
@@ -40,7 +37,7 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
 };
 use stackable_zookeeper_crd::{
-    RoleGroupRef, ZookeeperCluster, ZookeeperClusterSpec, ZookeeperClusterStatus, ZookeeperRole,
+    RoleGroupRef, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole,
 };
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
@@ -117,7 +114,6 @@ const PROPERTIES_FILE: &str = "zoo.cfg";
 
 pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<ReconcilerAction> {
     tracing::info!("Starting reconcile");
-    let zk_ref = ObjectRef::from_obj(&zk);
     let client = &ctx.get_ref().client;
 
     let zk_version = zk.spec.version.as_deref().context(ObjectHasNoVersion)?;
@@ -203,15 +199,8 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
     };
-    let zk_with_status = {
-        let mut zk_with_status =
-            ZookeeperCluster::new(&zk_ref.name, ZookeeperClusterSpec::default());
-        zk_with_status.metadata.namespace = zk.metadata.namespace.clone();
-        zk_with_status.status = Some(status);
-        zk_with_status
-    };
     client
-        .apply_patch_status(FIELD_MANAGER_SCOPE, &zk_with_status, &zk_with_status)
+        .apply_patch_status(FIELD_MANAGER_SCOPE, &zk, &status)
         .await
         .context(ApplyStatus)?;
 
