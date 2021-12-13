@@ -4,7 +4,7 @@ If you are not installing the operator using Helm then after installation the CR
 
     kubectl apply -f /etc/stackable/zookeeper-operator/crd/zookeepercluster.crd.yaml
 
-To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metrics exposed on port 9505:
+To create a three-node Apache ZooKeeper (v3.5.8) cluster:
 
 
     $ cat zookeeper.yaml
@@ -18,10 +18,5 @@ To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metric
       servers:
         roleGroups:
           default:
-            selector:
-              matchLabels:
-                kubernetes.io/os: linux
-            config:
-              metricsPort: 9505
-              dataDir: /stackable/data
+            replicas: 3
     $ sudo kubectl apply -f zookeeper.yaml
