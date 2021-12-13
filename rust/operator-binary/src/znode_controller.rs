@@ -89,13 +89,13 @@ pub enum Error {
 impl Error {
     fn extract_finalizer_err(err: finalizer::Error<Self>) -> Self {
         match err {
-            finalizer::Error::ApplyFailed { source } => source,
-            finalizer::Error::CleanupFailed { source } => source,
-            finalizer::Error::AddFinalizer { source } => Error::Finalizer {
-                source: finalizer::Error::AddFinalizer { source },
+            finalizer::Error::ApplyFailed(source) => source,
+            finalizer::Error::CleanupFailed(source) => source,
+            finalizer::Error::AddFinalizer(source) => Error::Finalizer {
+                source: finalizer::Error::AddFinalizer(source),
             },
-            finalizer::Error::RemoveFinalizer { source } => Error::Finalizer {
-                source: finalizer::Error::RemoveFinalizer { source },
+            finalizer::Error::RemoveFinalizer(source) => Error::Finalizer {
+                source: finalizer::Error::RemoveFinalizer(source),
             },
             finalizer::Error::UnnamedObject => Error::Finalizer {
                 source: finalizer::Error::UnnamedObject,
