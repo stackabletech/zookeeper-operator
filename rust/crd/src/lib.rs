@@ -1,11 +1,11 @@
-use std::{borrow::Cow, collections::BTreeMap, fmt::Display};
+use std::{borrow::Cow, collections::BTreeMap};
 
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
 use stackable_operator::{
     kube::{runtime::reflector::ObjectRef, CustomResource},
     product_config_utils::{ConfigError, Configuration},
-    role_utils::Role,
+    role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
 
@@ -140,7 +140,10 @@ impl ZookeeperCluster {
     }
 
     /// Metadata about a server rolegroup
-    pub fn server_rolegroup_ref(&self, group_name: impl Into<String>) -> RoleGroupRef {
+    pub fn server_rolegroup_ref(
+        &self,
+        group_name: impl Into<String>,
+    ) -> RoleGroupRef<ZookeeperCluster> {
         RoleGroupRef {
             cluster: ObjectRef::from_obj(self),
             role: ZookeeperRole::Server.to_string(),
@@ -184,28 +187,6 @@ impl ZookeeperCluster {
                         .myid_offset(),
                 })
             }))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RoleGroupRef {
-    pub cluster: ObjectRef<ZookeeperCluster>,
-    pub role: String,
-    pub role_group: String,
-}
-
-impl RoleGroupRef {
-    pub fn object_name(&self) -> String {
-        format!("{}-{}-{}", self.cluster.name, self.role, self.role_group)
-    }
-}
-
-impl Display for RoleGroupRef {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "rolegroup {}.{} of {}",
-            self.role, self.role_group, self.cluster
-        ))
     }
 }
 

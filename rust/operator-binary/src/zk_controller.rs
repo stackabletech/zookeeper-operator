@@ -35,10 +35,9 @@ use stackable_operator::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
     },
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
+    role_utils::RoleGroupRef,
 };
-use stackable_zookeeper_crd::{
-    RoleGroupRef, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole,
-};
+use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
 
@@ -59,7 +58,9 @@ pub enum Error {
     #[snafu(display("failed to calculate global service name"))]
     GlobalServiceNameNotFound,
     #[snafu(display("failed to calculate service name for role {}", rolegroup))]
-    RoleGroupServiceNameNotFound { rolegroup: RoleGroupRef },
+    RoleGroupServiceNameNotFound {
+        rolegroup: RoleGroupRef<ZookeeperCluster>,
+    },
     #[snafu(display("failed to apply global Service"))]
     ApplyRoleService {
         source: stackable_operator::error::Error,
@@ -67,22 +68,22 @@ pub enum Error {
     #[snafu(display("failed to apply Service for {}", rolegroup))]
     ApplyRoleGroupService {
         source: stackable_operator::error::Error,
-        rolegroup: RoleGroupRef,
+        rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
     #[snafu(display("failed to build ConfigMap for {}", rolegroup))]
     BuildRoleGroupConfig {
         source: stackable_operator::error::Error,
-        rolegroup: RoleGroupRef,
+        rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
     #[snafu(display("failed to apply ConfigMap for {}", rolegroup))]
     ApplyRoleGroupConfig {
         source: stackable_operator::error::Error,
-        rolegroup: RoleGroupRef,
+        rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
     #[snafu(display("failed to apply StatefulSet for {}", rolegroup))]
     ApplyRoleGroupStatefulSet {
         source: stackable_operator::error::Error,
-        rolegroup: RoleGroupRef,
+        rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
     #[snafu(display("invalid product config"))]
     InvalidProductConfig {
@@ -91,7 +92,7 @@ pub enum Error {
     #[snafu(display("failed to serialize zoo.cfg for {}", rolegroup))]
     SerializeZooCfg {
         source: stackable_operator::product_config::writer::PropertiesWriterError,
-        rolegroup: RoleGroupRef,
+        rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
     #[snafu(display("object is missing metadata to build owner reference"))]
     ObjectMissingMetadataForOwnerRef {
@@ -243,7 +244,7 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
 
 /// The rolegroup [`ConfigMap`] configures the rolegroup based on the configuration given by the administrator
 fn build_server_rolegroup_config_map(
-    rolegroup: &RoleGroupRef,
+    rolegroup: &RoleGroupRef<ZookeeperCluster>,
     zk: &ZookeeperCluster,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
 ) -> Result<ConfigMap> {
@@ -295,7 +296,7 @@ fn build_server_rolegroup_config_map(
 ///
 /// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
 fn build_server_rolegroup_service(
-    rolegroup: &RoleGroupRef,
+    rolegroup: &RoleGroupRef<ZookeeperCluster>,
     zk: &ZookeeperCluster,
 ) -> Result<Service> {
     Ok(Service {
@@ -345,7 +346,7 @@ fn build_server_rolegroup_service(
 ///
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_rolegroup_service`]).
 fn build_server_rolegroup_statefulset(
-    rolegroup_ref: &RoleGroupRef,
+    rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     zk: &ZookeeperCluster,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
 ) -> Result<StatefulSet> {
