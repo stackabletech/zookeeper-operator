@@ -116,9 +116,8 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
     tracing::info!("Starting reconcile");
     let client = &ctx.get_ref().client;
 
-    let zk_version = zk.spec.version.as_deref().context(ObjectHasNoVersion)?;
     let validated_config = validate_all_roles_and_groups_config(
-        zk_version,
+        zk_version(&zk)?,
         &transform_all_roles_to_config(
             &zk,
             [(
