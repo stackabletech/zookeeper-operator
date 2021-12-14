@@ -1,139 +1,62 @@
-pub mod commands;
-pub mod discovery;
-pub mod error;
+use std::{borrow::Cow, collections::BTreeMap, fmt::Display};
 
-#[deprecated(note = "The util module has been renamed to discovery, please use this instead.")]
-pub use discovery as util;
-
-use crate::commands::{Restart, Start, Stop};
-
-use semver::Version;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use stackable_operator::command::{CommandRef, HasCommands, HasRoleRestartOrder};
-use stackable_operator::controller::HasOwned;
-use stackable_operator::crd::HasApplication;
-use stackable_operator::identity::PodToNodeMapping;
-use stackable_operator::k8s_openapi::apimachinery::pkg::apis::meta::v1::Condition;
-use stackable_operator::k8s_openapi::schemars::_serde_json::Value;
-use stackable_operator::kube::api::ApiResource;
-use stackable_operator::kube::CustomResource;
-use stackable_operator::kube::CustomResourceExt;
-use stackable_operator::product_config_utils::{ConfigError, Configuration};
-use stackable_operator::role_utils::Role;
-use stackable_operator::schemars::{self, JsonSchema};
-use stackable_operator::status::{
-    ClusterExecutionStatus, Conditions, HasClusterExecutionStatus, HasCurrentCommand, Status,
-    Versioned,
+use snafu::{OptionExt, Snafu};
+use stackable_operator::{
+    kube::{runtime::reflector::ObjectRef, CustomResource},
+    product_config_utils::{ConfigError, Configuration},
+    role_utils::Role,
+    schemars::{self, JsonSchema},
 };
-use stackable_operator::versioning::{ProductVersion, Versioning, VersioningState};
-use std::cmp::Ordering;
-use std::collections::BTreeMap;
-use strum_macros::Display;
-use strum_macros::EnumIter;
 
-pub const APP_NAME: &str = "zookeeper";
-pub const MANAGED_BY: &str = "zookeeper-operator";
-
-pub const CLIENT_PORT_PROPERTY: &str = "clientPort";
-pub const DATA_DIR: &str = "dataDir";
-pub const INIT_LIMIT: &str = "initLimit";
-pub const SYNC_LIMIT: &str = "syncLimit";
-pub const TICK_TIME: &str = "tickTime";
-pub const METRICS_PORT_PROPERTY: &str = "metricsPort";
-pub const ADMIN_PORT_PROPERTY: &str = "admin.serverPort";
-
-pub const CONFIG_MAP_TYPE_DATA: &str = "data";
-
-pub const CLIENT_PORT: &str = "client";
-pub const ADMIN_PORT: &str = "admin";
-pub const METRICS_PORT: &str = "metrics";
-
-#[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+/// A cluster of ZooKeeper nodes
+#[derive(Clone, CustomResource, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[kube(
     group = "zookeeper.stackable.tech",
     version = "v1alpha1",
     kind = "ZookeeperCluster",
     plural = "zookeeperclusters",
     shortname = "zk",
+    status = "ZookeeperClusterStatus",
     namespaced,
-    kube_core = "stackable_operator::kube::core",
-    k8s_openapi = "stackable_operator::k8s_openapi",
-    schemars = "stackable_operator::schemars"
+    crates(
+        kube_core = "stackable_operator::kube::core",
+        k8s_openapi = "stackable_operator::k8s_openapi",
+        schemars = "stackable_operator::schemars"
+    )
 )]
-#[kube(status = "ZookeeperClusterStatus")]
+#[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterSpec {
-    pub version: ZookeeperVersion,
-    pub servers: Role<ZookeeperConfig>,
+    /// Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stopped: Option<bool>,
+    /// Desired ZooKeeper version
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub servers: Option<Role<ZookeeperConfig>>,
 }
 
-#[derive(
-    Clone, Debug, Deserialize, Display, EnumIter, Eq, Hash, JsonSchema, PartialEq, Serialize,
-)]
-pub enum ZookeeperRole {
-    #[strum(serialize = "server")]
-    Server,
-}
-
-impl Status<ZookeeperClusterStatus> for ZookeeperCluster {
-    fn status(&self) -> &Option<ZookeeperClusterStatus> {
-        &self.status
-    }
-    fn status_mut(&mut self) -> &mut Option<ZookeeperClusterStatus> {
-        &mut self.status
-    }
-}
-
-impl HasRoleRestartOrder for ZookeeperCluster {
-    fn get_role_restart_order() -> Vec<String> {
-        vec![ZookeeperRole::Server.to_string()]
-    }
-}
-
-impl HasCommands for ZookeeperCluster {
-    fn get_command_types() -> Vec<ApiResource> {
-        vec![
-            Start::api_resource(),
-            Stop::api_resource(),
-            Restart::api_resource(),
-        ]
-    }
-}
-
-impl HasOwned for ZookeeperCluster {
-    fn owned_objects() -> Vec<&'static str> {
-        vec![Restart::crd_name(), Start::crd_name(), Stop::crd_name()]
-    }
-}
-
-impl HasApplication for ZookeeperCluster {
-    fn get_application_name() -> &'static str {
-        APP_NAME
-    }
-}
-
-impl HasClusterExecutionStatus for ZookeeperCluster {
-    fn cluster_execution_status(&self) -> Option<ClusterExecutionStatus> {
-        self.status
-            .as_ref()
-            .and_then(|status| status.cluster_execution_status.clone())
-    }
-
-    fn cluster_execution_status_patch(&self, execution_status: &ClusterExecutionStatus) -> Value {
-        json!({ "clusterExecutionStatus": execution_status })
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperConfig {
-    pub client_port: Option<u16>,
-    pub data_dir: Option<String>,
     pub init_limit: Option<u32>,
     pub sync_limit: Option<u32>,
     pub tick_time: Option<u32>,
-    pub metrics_port: Option<u16>,
-    pub admin_port: Option<u16>,
+    pub myid_offset: Option<u16>,
+}
+
+impl ZookeeperConfig {
+    pub const INIT_LIMIT: &'static str = "initLimit";
+    pub const SYNC_LIMIT: &'static str = "syncLimit";
+    pub const TICK_TIME: &'static str = "tickTime";
+
+    pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
+    pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
+
+    fn myid_offset(&self) -> u16 {
+        self.myid_offset.unwrap_or(1)
+    }
 }
 
 impl Configuration for ZookeeperConfig {
@@ -144,14 +67,15 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let mut result = BTreeMap::new();
-        if let Some(metrics_port) = self.metrics_port {
-            result.insert(
-                METRICS_PORT_PROPERTY.to_string(),
-                Some(metrics_port.to_string()),
-            );
-        }
-        Ok(result)
+        let jvm_flags = "-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar=9505:/stackable/jmx/server.yaml".to_string();
+        Ok([
+            (
+                Self::MYID_OFFSET.to_string(),
+                Some(self.myid_offset().to_string()),
+            ),
+            (Self::SERVER_JVMFLAGS.to_string(), Some(jvm_flags)),
+        ]
+        .into())
     }
 
     fn compute_cli(
@@ -169,192 +93,176 @@ impl Configuration for ZookeeperConfig {
         _file: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         let mut result = BTreeMap::new();
-        if let Some(client_port) = &self.client_port {
-            result.insert(
-                CLIENT_PORT_PROPERTY.to_string(),
-                Some(client_port.to_string()),
-            );
-        }
-        if let Some(data_dir) = &self.data_dir {
-            result.insert(DATA_DIR.to_string(), Some(data_dir.clone()));
-        }
         if let Some(init_limit) = self.init_limit {
-            result.insert(INIT_LIMIT.to_string(), Some(init_limit.to_string()));
+            result.insert(Self::INIT_LIMIT.to_string(), Some(init_limit.to_string()));
         }
         if let Some(sync_limit) = self.sync_limit {
-            result.insert(SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
+            result.insert(Self::SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
         }
         if let Some(tick_time) = self.tick_time {
-            result.insert(TICK_TIME.to_string(), Some(tick_time.to_string()));
-        }
-        if let Some(admin_port) = self.admin_port {
-            result.insert(
-                ADMIN_PORT_PROPERTY.to_string(),
-                Some(admin_port.to_string()),
-            );
+            result.insert(Self::TICK_TIME.to_string(), Some(tick_time.to_string()));
         }
         Ok(result)
     }
 }
 
-#[allow(non_camel_case_types)]
-#[derive(
-    Clone,
-    Debug,
-    Deserialize,
-    Eq,
-    JsonSchema,
-    PartialEq,
-    Serialize,
-    strum_macros::Display,
-    strum_macros::EnumString,
-)]
-pub enum ZookeeperVersion {
-    #[serde(rename = "3.5.8")]
-    #[strum(serialize = "3.5.8")]
-    v3_5_8,
-
-    #[serde(rename = "3.6.3")]
-    #[strum(serialize = "3.6.3")]
-    v3_6_3,
-
-    #[serde(rename = "3.7.0")]
-    #[strum(serialize = "3.7.0")]
-    v3_7_0,
+#[derive(strum::Display)]
+#[strum(serialize_all = "camelCase")]
+pub enum ZookeeperRole {
+    Server,
 }
 
-impl ZookeeperVersion {
-    pub fn package_name(&self) -> String {
-        format!("apache-zookeeper-{}-bin", self.to_string())
-    }
-}
-
-impl Versioning for ZookeeperVersion {
-    fn versioning_state(&self, other: &Self) -> VersioningState {
-        let from_version = match Version::parse(&self.to_string()) {
-            Ok(v) => v,
-            Err(e) => {
-                return VersioningState::Invalid(format!(
-                    "Could not parse [{}] to SemVer: {}",
-                    self.to_string(),
-                    e.to_string()
-                ))
-            }
-        };
-
-        let to_version = match Version::parse(&other.to_string()) {
-            Ok(v) => v,
-            Err(e) => {
-                return VersioningState::Invalid(format!(
-                    "Could not parse [{}] to SemVer: {}",
-                    other.to_string(),
-                    e.to_string()
-                ))
-            }
-        };
-
-        match to_version.cmp(&from_version) {
-            Ordering::Greater => VersioningState::ValidUpgrade,
-            Ordering::Less => VersioningState::ValidDowngrade,
-            Ordering::Equal => VersioningState::NoOp,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, Serialize)]
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterStatus {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    #[schemars(schema_with = "stackable_operator::conditions::conditions_schema")]
-    pub conditions: Vec<Condition>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<ProductVersion<ZookeeperVersion>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub history: Option<PodToNodeMapping>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_command: Option<CommandRef>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cluster_execution_status: Option<ClusterExecutionStatus>,
+    /// An opaque value that changes every time a discovery detail does
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discovery_hash: Option<String>,
 }
 
-impl Versioned<ZookeeperVersion> for ZookeeperClusterStatus {
-    fn version(&self) -> &Option<ProductVersion<ZookeeperVersion>> {
-        &self.version
+#[derive(Debug, Snafu)]
+#[snafu(display("object has no namespace associated"))]
+pub struct NoNamespaceError;
+
+impl ZookeeperCluster {
+    /// The name of the role-level load-balanced Kubernetes `Service`
+    pub fn server_role_service_name(&self) -> Option<String> {
+        self.metadata.name.clone()
     }
-    fn version_mut(&mut self) -> &mut Option<ProductVersion<ZookeeperVersion>> {
-        &mut self.version
+
+    /// The fully-qualified domain name of the role-level load-balanced Kubernetes `Service`
+    pub fn server_role_service_fqdn(&self) -> Option<String> {
+        Some(format!(
+            "{}.{}.svc.cluster.local",
+            self.server_role_service_name()?,
+            self.metadata.namespace.as_ref()?
+        ))
+    }
+
+    /// Metadata about a server rolegroup
+    pub fn server_rolegroup_ref(&self, group_name: impl Into<String>) -> RoleGroupRef {
+        RoleGroupRef {
+            cluster: ObjectRef::from_obj(self),
+            role: ZookeeperRole::Server.to_string(),
+            role_group: group_name.into(),
+        }
+    }
+
+    /// List all pods expected to form the cluster
+    ///
+    /// We try to predict the pods here rather than looking at the current cluster state in order to
+    /// avoid instance churn. For example, regenerating zoo.cfg based on the cluster state would lead to
+    /// a lot of spurious restarts, as well as opening us up to dangerous split-brain conditions because
+    /// the pods have inconsistent snapshots of which servers they should expect to be in quorum.
+    pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, NoNamespaceError> {
+        let ns = self
+            .metadata
+            .namespace
+            .clone()
+            .context(NoNamespaceContext)?;
+        Ok(self
+            .spec
+            .servers
+            .iter()
+            .flat_map(|role| &role.role_groups)
+            // Order rolegroups consistently, to avoid spurious downstream rewrites
+            .collect::<BTreeMap<_, _>>()
+            .into_iter()
+            .flat_map(move |(rolegroup_name, rolegroup)| {
+                let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
+                let ns = ns.clone();
+                (0..rolegroup.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
+                    namespace: ns.clone(),
+                    role_group_service_name: rolegroup_ref.object_name(),
+                    pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
+                    zookeeper_myid: i + rolegroup
+                        .config
+                        .as_ref()
+                        .and_then(|cfg| cfg.config.as_ref())
+                        .map(Cow::Borrowed)
+                        .unwrap_or_default()
+                        .myid_offset(),
+                })
+            }))
     }
 }
 
-impl Conditions for ZookeeperClusterStatus {
-    fn conditions(&self) -> &[Condition] {
-        self.conditions.as_slice()
-    }
-    fn conditions_mut(&mut self) -> &mut Vec<Condition> {
-        &mut self.conditions
+#[derive(Debug, Clone)]
+pub struct RoleGroupRef {
+    pub cluster: ObjectRef<ZookeeperCluster>,
+    pub role: String,
+    pub role_group: String,
+}
+
+impl RoleGroupRef {
+    pub fn object_name(&self) -> String {
+        format!("{}-{}-{}", self.cluster.name, self.role, self.role_group)
     }
 }
 
-impl HasCurrentCommand for ZookeeperClusterStatus {
-    fn current_command(&self) -> Option<CommandRef> {
-        self.current_command.clone()
-    }
-    fn set_current_command(&mut self, command: CommandRef) {
-        self.current_command = Some(command);
-    }
-    fn clear_current_command(&mut self) {
-        self.current_command = None
-    }
-    fn tracking_location() -> &'static str {
-        "/status/currentCommand"
+impl Display for RoleGroupRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "rolegroup {}.{} of {}",
+            self.role, self.role_group, self.cluster
+        ))
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::ZookeeperVersion;
-    use stackable_operator::versioning::{Versioning, VersioningState};
-    use std::str::FromStr;
+/// Reference to a single `Pod` that is a component of a [`ZookeeperCluster`]
+///
+/// Used for service discovery.
+pub struct ZookeeperPodRef {
+    pub namespace: String,
+    pub role_group_service_name: String,
+    pub pod_name: String,
+    pub zookeeper_myid: u16,
+}
 
-    #[test]
-    fn test_zookeeper_version_versioning() {
-        assert_eq!(
-            ZookeeperVersion::v3_5_8.versioning_state(&ZookeeperVersion::v3_7_0),
-            VersioningState::ValidUpgrade
-        );
-        assert_eq!(
-            ZookeeperVersion::v3_7_0.versioning_state(&ZookeeperVersion::v3_5_8),
-            VersioningState::ValidDowngrade
-        );
-        assert_eq!(
-            ZookeeperVersion::v3_5_8.versioning_state(&ZookeeperVersion::v3_5_8),
-            VersioningState::NoOp
-        );
+impl ZookeeperPodRef {
+    pub fn fqdn(&self) -> String {
+        format!(
+            "{}.{}.{}.svc.cluster.local",
+            self.pod_name, self.role_group_service_name, self.namespace
+        )
     }
+}
 
-    #[test]
-    fn test_version_conversion() {
-        ZookeeperVersion::from_str("3.5.8").unwrap();
-        ZookeeperVersion::from_str("3.6.3").unwrap();
-        ZookeeperVersion::from_str("3.7.0").unwrap();
-        ZookeeperVersion::from_str("1.2.3").unwrap_err();
-    }
+/// A claim for a single ZooKeeper ZNode tree (filesystem node)
+///
+/// A `ConfigMap` will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`.
+/// Each `ZookeeperZnode` gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains.
+/// All data inside of this chroot will be deleted when the corresponding `ZookeeperZnode` is.
+///
+/// `ZookeeperZnode` is *not* designed to manage the contents of this ZNode. Instead, it should be used to create a chroot
+/// for an installation of an application to work inside. Initializing the contents is the responsibility of the application.
+#[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[kube(
+    group = "zookeeper.stackable.tech",
+    version = "v1alpha1",
+    kind = "ZookeeperZnode",
+    plural = "zookeeperznodes",
+    shortname = "zno",
+    shortname = "znode",
+    namespaced,
+    crates(
+        kube_core = "stackable_operator::kube::core",
+        k8s_openapi = "stackable_operator::k8s_openapi",
+        schemars = "stackable_operator::schemars"
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperZnodeSpec {
+    #[serde(default)]
+    pub cluster_ref: ZookeeperClusterRef,
+}
 
-    #[test]
-    fn test_package_name() {
-        assert_eq!(
-            ZookeeperVersion::v3_5_8.package_name(),
-            format!(
-                "apache-zookeeper-{}-bin",
-                ZookeeperVersion::v3_5_8.to_string()
-            )
-        );
-        assert_eq!(
-            ZookeeperVersion::v3_7_0.package_name(),
-            format!(
-                "apache-zookeeper-{}-bin",
-                ZookeeperVersion::v3_7_0.to_string()
-            )
-        );
-    }
+/// A reference to a [`ZookeeperCluster`]
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperClusterRef {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
 }

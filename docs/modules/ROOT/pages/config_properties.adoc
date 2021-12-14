@@ -18,11 +18,7 @@ spec:
         # Here you can set the Stackable supported configuration parameters
         # See the documentation for a full list of the exposed configuration parameters
         config:
-          adminPort: 12000
-          metricsPort: 9505
-          dataDir: /stackable/data
           tickTime: 3000
-          clientPort: 2181
         # You can also override properties in a configuration file here
         configOverrides:
           zoo.cfg:
@@ -39,35 +35,11 @@ spec:
 |===
 | config-spec Property | Actual Property | Default Value | Recommended Value | Location
 
-| adminPort
-| admin.serverPort
-| 8080
-| 12000
-| file:zoo.cfg
-
-| clientPort
-| clientPort
-| 2181
-| 2181
-| file:zoo.cfg
-
-| dataDir
-| dataDir
-| /tmp/zookeeper
-| /stackable/data
-| file:zoo.cfg
-
 | initLimit
 | initLimit
 | 5
 | 5
 | file:zoo.cfg
-
-| metricsPort
-| metricsPort
-|
-| 9505
-| JMX Exporter/ CLI
 
 | syncLimit
 | syncLimit
