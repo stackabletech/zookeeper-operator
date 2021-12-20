@@ -20,7 +20,5 @@ RUN groupadd -g 1000 stackable && adduser -u 1000 -g stackable -c 'Stackable Ope
 
 USER 1000:1000
 
-# Mitigate CVE-2021-44228 (Log4Shell)
-ENV LOG4J_FORMAT_MSG_NO_LOOKUPS=true
-
 ENTRYPOINT ["/stackable-zookeeper-operator"]
+CMD ["run"]
