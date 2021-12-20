@@ -6,8 +6,8 @@ metadata:
   labels:
     app.kubernetes.io/name: zookeeper-operator
     app.kubernetes.io/instance: zookeeper-operator
-    app.kubernetes.io/version: "0.7.0-nightly"
-    helm.sh/test: zookeeper-operator-0.7.0-nightly
+    app.kubernetes.io/version: "0.8.0-nightly"
+    helm.sh/test: zookeeper-operator-0.8.0-nightly
   annotations:
     "helm.sh/hook": test
     "test": "zookeeper cluster should exist"
@@ -25,7 +25,7 @@ spec:
           metadata:
             name: "zookeeper-operator-test-cluster"
             labels:
-              helm.sh/test: zookeeper-operator-0.7.0-nightly
+              helm.sh/test: zookeeper-operator-0.8.0-nightly
           spec:
             version: 3.5.8
             servers:

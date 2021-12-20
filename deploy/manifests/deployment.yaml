@@ -10,7 +10,7 @@ metadata:
   labels:
     app.kubernetes.io/name: zookeeper-operator
     app.kubernetes.io/instance: zookeeper-operator
-    app.kubernetes.io/version: "0.7.0-nightly"
+    app.kubernetes.io/version: "0.8.0-nightly"
 spec:
   replicas: 1
   strategy:
@@ -30,7 +30,7 @@ spec:
       containers:
         - name: zookeeper-operator
           securityContext: {}
-          image: "docker.stackable.tech/stackable/zookeeper-operator:0.7.0-nightly"
+          image: "docker.stackable.tech/stackable/zookeeper-operator:0.8.0-nightly"
           imagePullPolicy: IfNotPresent
           resources: {}
           volumeMounts:
