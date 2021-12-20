@@ -18,7 +18,7 @@ snafu = "0.6.10"
 structopt = "0.3.25"
 strum = "0.23.0"
 strum_macros = "0.23.1"
-tokio = { version = "1.15.0", features = ["full"], package = "tokio" }
+tokio = { version = "1.15.0", features = ["full"] }
 tokio01 = { version = "0.1.22", package = "tokio" }
 tokio-executor = "0.1.10"
 tokio-zookeeper = "0.1.3"
