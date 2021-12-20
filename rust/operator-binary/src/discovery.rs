@@ -135,7 +135,7 @@ async fn nodeport_hosts(
                 .ports
                 .as_ref()?
                 .iter()
-                .find(|port| port.name.as_deref() == Some("zk"))
+                .find(|port| port.name.as_deref() == Some(port_name))
         })
         .context(NoServicePort { port_name })?;
     let node_port = svc_port.node_port.context(NoNodePort { port_name })?;
