@@ -20,6 +20,7 @@ rules:
     verbs:
       - create
       - delete
+      - get
       - list
       - patch
       - update
@@ -74,7 +75,7 @@ rules:
       - {{ include "operator.name" . }}.stackable.tech
     resources:
       - {{ include "operator.name" . }}clusters
-      - {{ include "operator.name" . }}znode
+      - {{ include "operator.name" . }}znodes
     verbs:
       - get
       - list
