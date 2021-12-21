@@ -21,6 +21,7 @@ rules:
     verbs:
       - create
       - delete
+      - get
       - list
       - patch
       - update
@@ -75,7 +76,7 @@ rules:
       - zookeeper.stackable.tech
     resources:
       - zookeeperclusters
-      - zookeeperznode
+      - zookeeperznodes
     verbs:
       - get
       - list
