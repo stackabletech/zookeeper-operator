@@ -5,3 +5,7 @@ target/
 .idea/
 *.iws
 *.iml
+
+*.tgz
+deploy/helm/zookeeper-operator/configs
+deploy/helm/zookeeper-operator/templates/crds.yaml
