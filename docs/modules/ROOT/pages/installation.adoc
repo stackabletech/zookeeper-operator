@@ -37,15 +37,18 @@ https://github.com/stackabletech/zookeeper-operator/tree/main/deploy/crd[Stackab
 [source]
 ----
 $ sudo kubectl apply -f zookeepercluster.crd.yaml
-$ sudo kubectl apply -f start.crd.yaml
-$ sudo kubectl apply -f stop.crd.yaml
-$ sudo kubectl apply -f restart.crd.yaml
+$ sudo kubectl apply -f zookeeperznode.crd.yaml
 ----
 
 To run it straight from Docker you can use this command:
 [source,bash]
 ----
-docker run -e ZOOKEEPER_OPERATOR_LOG=trace -e KUBECONFIG=/root/.kube/k3s.yaml --mount type=bind,source="$HOME/.kube/k3s.yaml",target="/root/.kube/k3s.yaml" -it docker.stackable.tech/stackable/zookeeper-operator:latest
+docker run \
+    --name zookeeper-operator \
+    --network host \
+    --env KUBECONFIG=/home/stackable/.kube/config \
+    --mount type=bind,source="$HOME/.kube/config",target="/home/stackable/.kube/config" \
+    docker.stackable.tech/stackable/zookeeper-operator:latest
 ----
 
 == Building the operator from source

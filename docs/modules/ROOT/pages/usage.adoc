@@ -4,7 +4,7 @@ If you are not installing the operator using Helm then after installation the CR
 
     kubectl apply -f /etc/stackable/zookeeper-operator/crd/zookeepercluster.crd.yaml
 
-To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metrics exposed on port 9505:
+To create a three-node Apache ZooKeeper (v3.5.8) cluster:
 
 
     $ cat zookeeper.yaml
@@ -12,16 +12,32 @@ To create a single node Apache ZooKeeper (v3.5.8) cluster with Prometheus metric
     apiVersion: zookeeper.stackable.tech/v1alpha1
     kind: ZookeeperCluster
     metadata:
-      name: simple
+      name: simple-zk
     spec:
       version: 3.5.8
       servers:
         roleGroups:
           default:
-            selector:
-              matchLabels:
-                kubernetes.io/os: linux
-            config:
-              metricsPort: 9505
-              dataDir: /stackable/data
+            replicas: 3
+            config: {}
     $ sudo kubectl apply -f zookeeper.yaml
+
+Afterwards, a ZookeeperZnode root can be created:
+
+    $ cat znode.yaml
+    ---
+    apiVersion: zookeeper.stackable.tech/v1alpha1
+    kind: ZookeeperZnode
+    metadata:
+      name: simple-znode
+    spec:
+      clusterRef:
+        name: simple-zk
+        namespace: default
+    $ sudo kubectl apply -f znode.yaml
+
+Finally, a ConfigMap is created, containing a path that a ZooKeeper client can connect to:
+
+    $ kubectl get configmap simple-znode-nodeport -o yaml
+    $ $ZOOKEEPER_HOME/bin/zkCli.sh -server $(kubectl get configmap simple-znode-nodeport -o jsonpath='{.data.ZOOKEEPER}')
+    

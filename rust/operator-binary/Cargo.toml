@@ -1,40 +1,35 @@
 [package]
-authors = ["Lars Francke <lars.francke@stackable.de>"]
+name = "stackable-zookeeper-operator"
+authors = ["Stackable GmbH <info@stackable.de>"]
 description = "Stackable Operator for Apache ZooKeeper"
-edition = "2018"
 license = "OSL-3.0"
-name = "stackable-zookeeper-operator-binary"
+version = "0.9.0-nightly"
+edition = "2021"
 repository = "https://github.com/stackabletech/zookeeper-operator"
-version = "0.6.0-nightly"
-build = "build.rs"
 
 [dependencies]
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.4.0" }
+failure = "0.1.8"
+futures = { version = "0.3.19", features = ["compat"] }
+semver = "1.0.4"
+serde = "1.0.132"
+serde_json = "1.0.73"
+serde_yaml = "0.8.23"
+snafu = "0.6.10"
+structopt = "0.3.25"
+strum = "0.23.0"
+strum_macros = "0.23.1"
+tokio = { version = "1.15.0", features = ["full"] }
+tokio01 = { version = "0.1.22", package = "tokio" }
+tokio-executor = "0.1.10"
+tokio-zookeeper = "0.1.3"
+tracing = "0.1.29"
+pin-project = "1.0.8"
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.6.0" }
 stackable-zookeeper-crd = { path = "../crd" }
-stackable-zookeeper-operator = { path = "../operator" }
-
-clap = "2.33"
-tokio = { version = "1.13", features = ["macros", "rt-multi-thread"] }
-tracing = "0.1"
+anyhow = "1.0.51"
+fnv = "1.0.7"
 
 [build-dependencies]
-built = { version =  "0.5", features = ["chrono", "git2"] }
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.4.0" }
+built = { version = "0.5.1", features = ["chrono", "git2"] }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.6.0" }
 stackable-zookeeper-crd = { path = "../crd" }
-
-[package.metadata.deb]
-name = "stackable-zookeeper-operator"
-maintainer-scripts = "../../packaging/debian/"
-systemd-units = { enable = false, unit-name = "stackable-zookeeper-operator" }
-assets = [
-    ["../../target/release/stackable-zookeeper-operator", "opt/stackable/zookeeper-operator/", "755"],
-    ["../../deploy/crd/zookeepercluster.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
-    ["../../deploy/crd/restart.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
-    ["../../deploy/crd/start.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
-    ["../../deploy/crd/stop.crd.yaml", "etc/stackable/zookeeper-operator/crd/", "644"],
-    ["../../deploy/config-spec/properties.yaml", "etc/stackable/zookeeper-operator/config-spec/", "644"],
-]
-
-[[bin]]
-name = "stackable-zookeeper-operator"
-path = "src/stackable-zookeeper-operator.rs"
