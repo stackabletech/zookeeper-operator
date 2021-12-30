@@ -53,4 +53,28 @@ spec:
 | 3000
 | file:zoo.cfg
 
+| clientPort
+| clientPort
+| 2181
+| 2181
+| file:zoo.cfg
+
+| dataDir
+| dataDir
+| /tmp/zookeeper
+| /stackable/data
+| file:zoo.cfg
+
+| metricsPort
+| metricsPort
+|
+| 57001
+| env
+
+| admin_serverPort
+| admin.serverPort
+| 8080
+| 8080
+| file:zoo.cfg
+
 |===
