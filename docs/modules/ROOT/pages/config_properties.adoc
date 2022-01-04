@@ -28,8 +28,13 @@ spec:
           MY_ENV_VAR: "foobar"
 ----
 
+== Configuration Overrides
+ZooKeeper uses a single file named zoo.cfg to store its runtime configuration. The configOverrides block allows you to add custom parameters to zoo.cfg. A Full list of the available configuration options can be found in the official Apache ZooKeeper documentation at https://zookeeper.apache.org/doc/r3.7.0/zookeeperAdmin.html#sc_configuration.
+
+Overrides consist of a key, which must match the property name in the configuration file and a value. This allows arbitrary configuration properties to be added to ZooKeeper. In the example above the property 4lw.commands.whitelist is being explicitly set to 'srvr,ruok,isro', overriding the default value.
 
 == Configuration Properties
+Below is a list of the configuration properties exposed by the Stackable ZooKeeper operator. These properties can be added to the config block of a ZooKeeper cluster CRD.
 
 [cols="2,2,2,2,1"]
 |===
