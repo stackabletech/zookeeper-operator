@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Shut down gracefully ([#338]).
+
+[#338]: https://github.com/stackabletech/zookeeper-operator/pull/338
+
 ## [0.8.0] - 2021-12-22
 
 
