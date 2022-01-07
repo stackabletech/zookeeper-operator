@@ -21,7 +21,7 @@ use stackable_operator::{
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EnvVar, EnvVarSource, ExecAction,
                 ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec, Probe,
-                ResourceRequirements, Service, ServicePort, ServiceSpec, Volume,
+                ResourceRequirements, SecurityContext, Service, ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
@@ -372,13 +372,17 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         })
         .collect::<Vec<_>>();
-    let container_decide_myid = ContainerBuilder::new("decide-myid")
+    let mut container_prepare = ContainerBuilder::new("prepare")
         .image(&image)
         .args(vec![
             "sh".to_string(),
             "-c".to_string(),
-            "expr $MYID_OFFSET + $(echo $POD_NAME | sed 's/.*-//') > /stackable/data/myid"
-                .to_string(),
+            [
+                "chown stackable:stackable /stackable/data",
+                "chmod a=,u=rwX /stackable/data",
+                "expr $MYID_OFFSET + $(echo $POD_NAME | sed 's/.*-//') > /stackable/data/myid",
+            ]
+            .join(" && "),
         ])
         .add_env_vars(env.clone())
         .add_env_vars(vec![EnvVar {
@@ -394,6 +398,10 @@ fn build_server_rolegroup_statefulset(
         }])
         .add_volume_mount("data", "/stackable/data")
         .build();
+    container_prepare
+        .security_context
+        .get_or_insert_with(SecurityContext::default)
+        .run_as_user = Some(0);
     let container_zk = ContainerBuilder::new("zookeeper")
         .image(image)
         .args(vec![
@@ -468,7 +476,7 @@ fn build_server_rolegroup_statefulset(
                         &rolegroup_ref.role_group,
                     )
                 })
-                .add_init_container(container_decide_myid)
+                .add_init_container(container_prepare)
                 .add_container(container_zk)
                 .add_volume(Volume {
                     name: "config".to_string(),
