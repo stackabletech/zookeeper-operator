@@ -102,6 +102,7 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .owns(client.get_all_api::<StatefulSet>(), ListParams::default())
                 .owns(client.get_all_api::<ConfigMap>(), ListParams::default())
+                .shutdown_on_signal()
                 .run(
                     zk_controller::reconcile_zk,
                     zk_controller::error_policy,
@@ -131,6 +132,7 @@ async fn main() -> anyhow::Result<()> {
                             .map(|znode| ObjectRef::from_obj(&znode))
                     },
                 )
+                .shutdown_on_signal()
                 .run(
                     |znode, ctx| {
                         tokio01_runtime

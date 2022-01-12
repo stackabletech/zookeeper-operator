@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Shut down gracefully ([#338]).
+- Fixed ACL incompatibility with certain managed K8s providers ([#340]).
+
+[#338]: https://github.com/stackabletech/zookeeper-operator/pull/338
+[#340]: https://github.com/stackabletech/zookeeper-operator/pull/340
+
 ## [0.8.0] - 2021-12-22
 
 
