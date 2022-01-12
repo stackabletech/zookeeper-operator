@@ -24,12 +24,12 @@ tokio-executor = "0.1.10"
 tokio-zookeeper = "0.1.3"
 tracing = "0.1.29"
 pin-project = "1.0.10"
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.6.0" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.7.0" }
 stackable-zookeeper-crd = { path = "../crd" }
 anyhow = "1.0.52"
 fnv = "1.0.7"
 
 [build-dependencies]
 built = { version = "0.5.1", features = ["chrono", "git2"] }
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.6.0" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.7.0" }
 stackable-zookeeper-crd = { path = "../crd" }
