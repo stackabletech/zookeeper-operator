@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
@@ -178,13 +178,7 @@ impl ZookeeperCluster {
                     namespace: ns.clone(),
                     role_group_service_name: rolegroup_ref.object_name(),
                     pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
-                    zookeeper_myid: i + rolegroup
-                        .config
-                        .as_ref()
-                        .and_then(|cfg| cfg.config.as_ref())
-                        .map(Cow::Borrowed)
-                        .unwrap_or_default()
-                        .myid_offset(),
+                    zookeeper_myid: i + rolegroup.config.config.myid_offset(),
                 })
             }))
     }

@@ -85,6 +85,10 @@ pub enum Error {
         source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
+    #[snafu(display("failed to generate product config"))]
+    GenerateProductConfig {
+        source: stackable_operator::product_config_utils::ConfigError,
+    },
     #[snafu(display("invalid product config"))]
     InvalidProductConfig {
         source: stackable_operator::error::Error,
@@ -132,7 +136,8 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
                 ),
             )]
             .into(),
-        ),
+        )
+        .context(GenerateProductConfig)?,
         &ctx.get_ref().product_config,
         false,
         false,
