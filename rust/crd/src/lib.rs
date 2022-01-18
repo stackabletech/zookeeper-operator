@@ -162,7 +162,7 @@ impl ZookeeperCluster {
             .metadata
             .namespace
             .clone()
-            .context(NoNamespaceContext)?;
+            .context(NoNamespaceSnafu)?;
         Ok(self
             .spec
             .servers

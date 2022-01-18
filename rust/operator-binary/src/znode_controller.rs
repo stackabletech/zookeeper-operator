@@ -111,7 +111,7 @@ pub async fn reconcile_znode(
     {
         (ns.clone(), uid)
     } else {
-        return ObjectMissingMetadata.fail();
+        return ObjectMissingMetadataSnafu.fail();
     };
     let client = &ctx.get_ref().client;
 
@@ -123,7 +123,7 @@ pub async fn reconcile_znode(
     // (load-balanced) global service instead.
     let zk_mgmt_addr = format!(
         "{}:{}",
-        zk.server_role_service_fqdn().with_context(|| NoZkFqdn {
+        zk.server_role_service_fqdn().with_context(|| NoZkFqdnSnafu {
             zk: ObjectRef::from_obj(&zk),
         })?,
         APP_PORT,
@@ -138,20 +138,20 @@ pub async fn reconcile_znode(
                 finalizer::Event::Apply(znode) => {
                     znode_mgmt::ensure_znode_exists(&zk_mgmt_addr, &znode_path)
                         .await
-                        .with_context(|| EnsureZnode {
+                        .with_context(|_| EnsureZnodeSnafu {
                             zk: ObjectRef::from_obj(&zk),
                             znode_path: &znode_path,
                         })?;
 
                     let server_role_service = client
                         .get::<Service>(
-                            &zk.server_role_service_name().with_context(|| NoZkSvcName {
+                            &zk.server_role_service_name().with_context(|| NoZkSvcNameSnafu {
                                 zk: ObjectRef::from_obj(&zk),
                             })?,
                             zk.metadata.namespace.as_deref(),
                         )
                         .await
-                        .context(FindZkSvc {
+                        .context(FindZkSvcSnafu {
                             zk: ObjectRef::from_obj(&zk),
                         })?;
                     for discovery_cm in build_discovery_configmaps(
@@ -162,12 +162,12 @@ pub async fn reconcile_znode(
                         Some(&znode_path),
                     )
                     .await
-                    .context(BuildDiscoveryConfigMap)?
+                    .context(BuildDiscoveryConfigMapSnafu)?
                     {
                         client
                             .apply_patch(FIELD_MANAGER_SCOPE, &discovery_cm, &discovery_cm)
                             .await
-                            .with_context(|| ApplyDiscoveryConfigMap {
+                            .with_context(|_| ApplyDiscoveryConfigMapSnafu {
                                 cm: ObjectRef::from_obj(&discovery_cm),
                             })?;
                     }
@@ -180,7 +180,7 @@ pub async fn reconcile_znode(
                     // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
                     znode_mgmt::ensure_znode_missing(&zk_mgmt_addr, &znode_path)
                         .await
-                        .with_context(|| EnsureZnodeMissing {
+                        .with_context(|_| EnsureZnodeMissingSnafu {
                             zk: ObjectRef::from_obj(&zk),
                             znode_path: &znode_path,
                         })?;
@@ -208,11 +208,11 @@ async fn find_zk_of_znode(
         client
             .get::<ZookeeperCluster>(zk_name, Some(zk_ns))
             .await
-            .with_context(|| FindZk {
+            .with_context(|_| FindZkSnafu {
                 zk: ObjectRef::new(zk_name).within(zk_ns),
             })
     } else {
-        InvalidZkReference.fail()
+        InvalidZkReferenceSnafu.fail()
     }
 }
 
@@ -281,13 +281,13 @@ mod znode_mgmt {
         // TODO: Happy eyeballs?
         let addr = lookup_host(addr)
             .await
-            .context(InvalidAddr { addr })?
+            .context(InvalidAddrSnafu { addr })?
             .next()
-            .context(AddrResolution { addr })?;
+            .context(AddrResolutionSnafu { addr })?;
         let (zk, _) = ZooKeeper::connect(&addr)
             .compat()
             .await
-            .context(Connect { addr })?;
+            .context(ConnectSnafu { addr })?;
         tracing::debug!("Connected to ZooKeeper");
         Ok(zk)
     }
@@ -310,7 +310,7 @@ mod znode_mgmt {
             )
             .compat()
             .await
-            .context(CreateZnodeProtocol { path })?;
+            .context(CreateZnodeProtocolSnafu { path })?;
         match create_res {
             Ok(_) => {
                 tracing::info!(znode = "Created ZNode");
@@ -320,7 +320,7 @@ mod znode_mgmt {
                 tracing::info!(znode = "ZNode already exists, ignoring...");
                 Ok(())
             }
-            Err(err) => Err(err).context(CreateZnode { path }),
+            Err(err) => Err(err).context(CreateZnodeSnafu { path }),
         }
     }
 
@@ -343,7 +343,7 @@ mod znode_mgmt {
                 .get_children(&curr_path)
                 .compat()
                 .await
-                .context(DeleteZnodeFindChildrenProtocol { path: &curr_path })?;
+                .context(DeleteZnodeFindChildrenProtocolSnafu { path: &curr_path })?;
             zk = zk2;
             match children {
                 None => {
@@ -361,7 +361,7 @@ mod znode_mgmt {
                         .delete(&curr_path, None)
                         .compat()
                         .await
-                        .context(DeleteZnodeProtocol { path: &curr_path })?;
+                        .context(DeleteZnodeProtocolSnafu { path: &curr_path })?;
                     zk = zk2;
                     match delete_res {
                         Ok(_) => tracing::info!(znode = curr_path.as_str(), "Deleted ZNode"),
@@ -369,7 +369,7 @@ mod znode_mgmt {
                             znode = curr_path.as_str(),
                             "ZNode couldn't be found, assuming it has already been deleted..."
                         ),
-                        Err(err) => return Err(err).context(DeleteZnode { path }),
+                        Err(err) => return Err(err).context(DeleteZnodeSnafu { path }),
                     }
                 }
                 Some(children) => {
