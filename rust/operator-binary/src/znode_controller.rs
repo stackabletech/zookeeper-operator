@@ -123,9 +123,10 @@ pub async fn reconcile_znode(
     // (load-balanced) global service instead.
     let zk_mgmt_addr = format!(
         "{}:{}",
-        zk.server_role_service_fqdn().with_context(|| NoZkFqdnSnafu {
-            zk: ObjectRef::from_obj(&zk),
-        })?,
+        zk.server_role_service_fqdn()
+            .with_context(|| NoZkFqdnSnafu {
+                zk: ObjectRef::from_obj(&zk),
+            })?,
         APP_PORT,
     );
 
@@ -145,9 +146,10 @@ pub async fn reconcile_znode(
 
                     let server_role_service = client
                         .get::<Service>(
-                            &zk.server_role_service_name().with_context(|| NoZkSvcNameSnafu {
-                                zk: ObjectRef::from_obj(&zk),
-                            })?,
+                            &zk.server_role_service_name()
+                                .with_context(|| NoZkSvcNameSnafu {
+                                    zk: ObjectRef::from_obj(&zk),
+                                })?,
                             zk.metadata.namespace.as_deref(),
                         )
                         .await

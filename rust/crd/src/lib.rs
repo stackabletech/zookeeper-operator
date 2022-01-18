@@ -158,11 +158,7 @@ impl ZookeeperCluster {
     /// a lot of spurious restarts, as well as opening us up to dangerous split-brain conditions because
     /// the pods have inconsistent snapshots of which servers they should expect to be in quorum.
     pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, NoNamespaceError> {
-        let ns = self
-            .metadata
-            .namespace
-            .clone()
-            .context(NoNamespaceSnafu)?;
+        let ns = self.metadata.namespace.clone().context(NoNamespaceSnafu)?;
         Ok(self
             .spec
             .servers
