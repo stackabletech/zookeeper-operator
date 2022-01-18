@@ -8,9 +8,11 @@ All notable changes to this project will be documented in this file.
 
 - Shut down gracefully ([#338]).
 - Fixed ACL incompatibility with certain managed K8s providers ([#340]).
+- Operator-rs: 0.6.0 -> 0.8.0 ([#352]).
 
 [#338]: https://github.com/stackabletech/zookeeper-operator/pull/338
 [#340]: https://github.com/stackabletech/zookeeper-operator/pull/340
+[#352]: https://github.com/stackabletech/zookeeper-operator/pull/352
 
 ## [0.8.0] - 2021-12-22
 
