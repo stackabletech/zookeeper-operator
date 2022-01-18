@@ -4,9 +4,10 @@ mod zk_controller;
 mod znode_controller;
 
 use crate::utils::Tokio01ExecutorExt;
+use clap::Parser;
 use futures::{compat::Future01CompatExt, StreamExt};
 use stackable_operator::{
-    cli::Command,
+    cli::{Command, ProductOperatorRun},
     k8s_openapi::api::{
         apps::v1::StatefulSet,
         core::v1::{ConfigMap, Endpoints, Service},
@@ -22,7 +23,6 @@ use stackable_operator::{
     },
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
-use structopt::StructOpt;
 
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
@@ -31,10 +31,10 @@ mod built_info {
 pub const APP_NAME: &str = "zookeeper";
 pub const APP_PORT: u16 = 2181;
 
-#[derive(StructOpt)]
-#[structopt(about = built_info::PKG_DESCRIPTION, author = stackable_operator::cli::AUTHOR)]
+#[derive(clap::Parser)]
+#[clap(about = built_info::PKG_DESCRIPTION, author = stackable_operator::cli::AUTHOR)]
 struct Opts {
-    #[structopt(subcommand)]
+    #[clap(subcommand)]
     cmd: Command,
 }
 
@@ -55,14 +55,14 @@ async fn main() -> anyhow::Result<()> {
     // tokio-zookeeper depends on Tokio 0.1
     let tokio01_runtime = tokio01::runtime::Runtime::new()?;
 
-    let opts = Opts::from_args();
+    let opts = Opts::parse();
     match opts.cmd {
         Command::Crd => println!(
             "{}{}",
             serde_yaml::to_string(&ZookeeperCluster::crd())?,
             serde_yaml::to_string(&ZookeeperZnode::crd())?
         ),
-        Command::Run { product_config } => {
+        Command::Run(ProductOperatorRun { product_config }) => {
             stackable_operator::utils::print_startup_string(
                 built_info::PKG_DESCRIPTION,
                 built_info::PKG_VERSION,
