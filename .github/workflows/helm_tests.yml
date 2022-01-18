@@ -33,12 +33,12 @@ jobs:
         uses: helm/chart-testing-action@v2.2.0
 
       - name: Run chart-testing (lint)
-        run: ct lint --config ${CT_CONFIG}
+        run: ct lint --config "${CT_CONFIG}"
 
       - name: Run chart-testing (list-changed)
         id: list-changed
         run: |
-          changed=$(ct list-changed --config ${CT_CONFIG})
+          changed=$(ct list-changed --config "${CT_CONFIG}")
           if [[ -n "$changed" ]]; then
             echo "::set-output name=changed::true"
           fi
@@ -48,5 +48,5 @@ jobs:
         if: steps.list-changed.outputs.changed == 'true'
 
       - name: Run chart-testing (install)
-        run: ct install --config ${CT_CONFIG}
+        run: ct install --config "${CT_CONFIG}"
         if: steps.list-changed.outputs.changed == 'true'
