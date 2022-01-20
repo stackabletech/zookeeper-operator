@@ -23,6 +23,14 @@ jobs:
         echo "operator_version"=$(cargo metadata --format-version 1 | jq '.packages[] | select(.name=="stackable-{[ operator.product_string }]-operator") | .version')
 
       - name: Docker meta
+        id: meta
         uses: docker/metadata-action@v3
         with:
           images: name/app
+
+      - name: Debug
+        run: |
+          echo Tags
+          echo "${{ steps.meta.outputs.tags }}"
+          echo Labels
+          echo "${{ steps.meta.outputs.labels }}"
