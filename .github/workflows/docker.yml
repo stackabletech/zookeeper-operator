@@ -1,0 +1,28 @@
+---
+name: Build Docker and Helm
+
+on:
+  workflow_run:
+    workflows:
+      - Rust checks
+    types:
+      - completed
+
+jobs:
+  on-success:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Get Operator version
+        run: |
+        echo "operator_version"=$(cargo metadata --format-version 1 | jq '.packages[] | select(.name=="stackable-{[ operator.product_string }]-operator") | .version')
+
+      - name: Docker meta
+        uses: docker/metadata-action@v3
+        with:
+          images: name/app
