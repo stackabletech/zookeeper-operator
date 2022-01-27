@@ -9,7 +9,7 @@ repository = "https://github.com/stackabletech/zookeeper-operator"
 
 [dependencies]
 serde = "1.0.133"
-serde_json = "1.0.75"
+serde_json = "1.0.78"
 snafu = "0.7.0"
 stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.8.0" }
 strum = { version = "0.23.0", features = ["derive"] }
