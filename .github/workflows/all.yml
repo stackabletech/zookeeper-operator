@@ -169,9 +169,9 @@ jobs:
         id: meta
         uses: docker/metadata-action@v3
         with:
-          images: name/app
           tags: |
             type=ref,event=pr
+            type=ref,enable=true,priority=600,prefix=pr-,suffix=,event=pr
       - name: Checkout
         uses: actions/checkout@v2
       - name: placeholder
