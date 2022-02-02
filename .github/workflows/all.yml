@@ -165,6 +165,8 @@ jobs:
       - compile_charts
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v2
       - name: placeholder
         run: echo Testing to come soon
 
@@ -174,6 +176,8 @@ jobs:
       - test_charts
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v2
       - name: Package Chart
         run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
       - name: Build Docker image
