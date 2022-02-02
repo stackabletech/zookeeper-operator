@@ -23,6 +23,24 @@ env:
   STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-dev
 
 jobs:
+  version:
+    name: Build version and target repo
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.build_version.outputs.version }}
+      repository: ${{ steps.select_repo.outputs.repo }}
+    steps:
+      - uses: actions/checkout@v2.4.0
+      - uses: actions-rs/toolchain@v1.0.7
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt
+          override: true
+      - id: build_version
+        run: echo "::set-output name=version::$(cargo metadata --format-version 1 | jq '.packages[] | select(.name=="stackable-zookeeper-operator") | .version')"
+      - id: select_repo
+        run: echo "::set-output name=repo::world"
 #  run_cargodeny:
 #    name: Run Cargo Deny
 #    runs-on: ubuntu-latest
@@ -163,19 +181,13 @@ jobs:
     name: Run Chart Tests
     needs:
       - check_charts
+      - version
     runs-on: ubuntu-latest
     steps:
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v3
-        with:
-          tags: |
-            type=ref,event=pr
-            type=ref,enable=true,priority=600,prefix=pr-,suffix=,event=pr
       - name: Checkout
         uses: actions/checkout@v2
       - name: placeholder
-        run: echo ${{ steps.meta.outputs.tags }}
+        run: echo ${{ needs.version.outputs.version }}
 
   package_and_publish:
     name: Package Charts, Build Docker Image & Publish them
