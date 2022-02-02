@@ -165,10 +165,19 @@ jobs:
       - check_charts
     runs-on: ubuntu-latest
     steps:
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: name/app
+          tags: |
+            type=ref,event=pr
       - name: Checkout
         uses: actions/checkout@v2
       - name: placeholder
-        run: echo ${{ github.event_name }}
+        with:
+          tags: ${{ steps.meta.outputs.tags }}
+        run: echo ${{ tags }}
 
   package_and_publish:
     name: Package Charts, Build Docker Image & Publish them
