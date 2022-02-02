@@ -175,9 +175,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: placeholder
-        with:
-          tags: ${{ steps.meta.outputs.tags }}
-        run: echo ${{ tags }}
+        run: echo ${{ steps.meta.outputs.tags }}
 
   package_and_publish:
     name: Package Charts, Build Docker Image & Publish them
