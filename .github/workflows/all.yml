@@ -23,165 +23,156 @@ env:
   STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-dev
 
 jobs:
-  run_cargodeny:
-    name: run_cargodeny
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        checks:
-          - advisories
-          - bans licenses sources
-
-    # Prevent sudden announcement of a new advisory from failing ci:
-    continue-on-error: ${{ matrix.checks == 'advisories' }}
-
-    steps:
-      - uses: actions/checkout@v2.4.
-      - uses: EmbarkStudios/cargo-deny-action@v1.2.6
-        with:
-          command: check ${{ matrix.checks }}
-
-  run_rustfmt:
-    name: run_rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          profile: minimal
-          toolchain: stable
-          components: rustfmt
-          override: true
-      - uses: actions-rs/cargo@v1.0.3
-        with:
-          command: fmt
-          args: --all -- --check
-
-  run_clippy:
-    name: run_clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          profile: minimal
-          toolchain: stable
-          components: clippy
-          override: true
-      - uses: Swatinem/rust-cache@v1.3.0
-        with:
-          key: clippy
-      # We need this due to: https://github.com/actions-rs/clippy-check/issues/2
-      - name: Check workflow permissions
-        id: check_permissions
-        uses: scherermichael-oss/action-has-permission@1.0.6
-        with:
-          required-permission: write
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run clippy action to produce annotations
-        uses: actions-rs/clippy-check@v1.0.7
-        if: steps.check_permissions.outputs.has-permission
-        with:
-          args: --all-targets -- -D warnings
-          token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run clippy manually without annotations
-        if: ${{ !steps.check_permissions.outputs.has-permission }}
-        run: cargo clippy --all-targets -- -D warnings
-
-  run_rustdoc:
-      name: run_rustdoc
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v2.4.0
-        - uses: actions-rs/toolchain@v1.0.7
-          with:
-            profile: minimal
-            toolchain: stable
-            components: rustfmt
-            override: true
-        - uses: Swatinem/rust-cache@v1.3.0
-          with:
-            key: doc
-        - uses: actions-rs/cargo@v1.0.3
-          with:
-            command: doc
-            args: --document-private-items
-
-  run_tests:
-    name: run_tests
-    needs:
-      - run_cargodeny
-      - run_clippy
-      - run_rustfmt
-      - run_rustdoc
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          profile: minimal
-          toolchain: stable
-          override: true
-      - uses: Swatinem/rust-cache@v1.3.0
-        with:
-          key: test
-      - uses: actions-rs/cargo@v1.0.3
-        with:
-          command: test
+#  run_cargodeny:
+#    name: Run Cargo Deny
+#    runs-on: ubuntu-latest
+#    strategy:
+#      matrix:
+#        checks:
+#          - advisories
+#          - bans licenses sources
+#
+#    # Prevent sudden announcement of a new advisory from failing ci:
+#    continue-on-error: ${{ matrix.checks == 'advisories' }}
+#
+#    steps:
+#      - uses: actions/checkout@v2.4.
+#      - uses: EmbarkStudios/cargo-deny-action@v1.2.6
+#        with:
+#          command: check ${{ matrix.checks }}
+#
+#  run_rustfmt:
+#    name: Run Rustfmt
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v2.4.0
+#      - uses: actions-rs/toolchain@v1.0.7
+#        with:
+#          profile: minimal
+#          toolchain: stable
+#          components: rustfmt
+#          override: true
+#      - uses: actions-rs/cargo@v1.0.3
+#        with:
+#          command: fmt
+#          args: --all -- --check
+#
+#  run_clippy:
+#    name: Run Clippy
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v2.4.0
+#      - uses: actions-rs/toolchain@v1.0.7
+#        with:
+#          profile: minimal
+#          toolchain: stable
+#          components: clippy
+#          override: true
+#      - uses: Swatinem/rust-cache@v1.3.0
+#        with:
+#          key: clippy
+#      # We need this due to: https://github.com/actions-rs/clippy-check/issues/2
+#      - name: Check workflow permissions
+#        id: check_permissions
+#        uses: scherermichael-oss/action-has-permission@1.0.6
+#        with:
+#          required-permission: write
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Run clippy action to produce annotations
+#        uses: actions-rs/clippy-check@v1.0.7
+#        if: steps.check_permissions.outputs.has-permission
+#        with:
+#          args: --all-targets -- -D warnings
+#          token: ${{ secrets.GITHUB_TOKEN }}
+#      - name: Run clippy manually without annotations
+#        if: ${{ !steps.check_permissions.outputs.has-permission }}
+#        run: cargo clippy --all-targets -- -D warnings
+#
+#  run_rustdoc:
+#      name: Run RustDoc
+#      runs-on: ubuntu-latest
+#      steps:
+#        - uses: actions/checkout@v2.4.0
+#        - uses: actions-rs/toolchain@v1.0.7
+#          with:
+#            profile: minimal
+#            toolchain: stable
+#            components: rustfmt
+#            override: true
+#        - uses: Swatinem/rust-cache@v1.3.0
+#          with:
+#            key: doc
+#        - uses: actions-rs/cargo@v1.0.3
+#          with:
+#            command: doc
+#            args: --document-private-items
+#
+#  run_tests:
+#    name: Run Cargo Tests
+#    needs:
+#      - run_cargodeny
+#      - run_clippy
+#      - run_rustfmt
+#      - run_rustdoc
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v2.4.0
+#      - uses: actions-rs/toolchain@v1.0.7
+#        with:
+#          profile: minimal
+#          toolchain: stable
+#          override: true
+#      - uses: Swatinem/rust-cache@v1.3.0
+#        with:
+#          key: test
+#      - uses: actions-rs/cargo@v1.0.3
+#        with:
+#          command: test
 
   compile_charts:
-    name: compile_charts
-    needs:
-      - run_tests
+    name: Compile Helm & Kustomize Charts and check if they were up to date
+#    needs:
+#      - run_tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v2
         with:
           fetch-depth: 0
-
       - name: Set up Helm
         uses: azure/setup-helm@v1
         with:
           version: v3.6.2
-
-      - name: Compile chart
+      - name: Clean charts
+        run: make chart-clean clean-manifests
+      - name: Compile Helm
         run: make compile-chart
-
-      - name: Package Chart
-        run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
-
-
-  abort_on_unclean:
-    name: abort_on_unclean
-    needs:
-      - compile_charts
-    runs-on: ubuntu-latest
-    steps:
+      - name: Generate manifests
+        run: make generate-manifests
       - name: Check if committed charts were up to date
         run: git diff --exit-code
 
   test_charts:
-    name: test_charts
+    name: Run Chart Tests
     needs:
-      - abort_on_unclean
+      - compile_charts
     runs-on: ubuntu-latest
     steps:
       - name: placeholder
         run: echo Testing to come soon
 
   package_charts:
-    name: package_charts
+    name: Package Charts
     needs:
       - test_charts
     runs-on: ubuntu-latest
     steps:
-      - name: Publish Chart
-        run: echo
+      - name: Package Chart
+        run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
 
   build_docker:
-    name: build_docker
+    name: Build Docker Image
     needs:
       - test_charts
     runs-on: ubuntu-latest
@@ -194,7 +185,7 @@ jobs:
         #make docker
 
   publish:
-    name: publish_charts
+    name: Publish Charts & Docker Image
     needs:
       - build_docker
       - package_charts
