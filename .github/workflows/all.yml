@@ -40,7 +40,9 @@ jobs:
       - id: build_version
         run: |
           VERSION=$(cargo metadata --format-version 1 | jq '.packages[] | select(.name=="stackable-zookeeper-operator") | .version')
-          echo "::set-output name=version::$VERSION"
+          PR=${{ github.event.pull_request.number }}
+          NEWVERSION = $(echo -n $PR | sed s/nightly/pr-${PR}/g)
+          echo "::set-output name=version::$NEWVERSION"
       - id: select_repo
         run: echo "::set-output name=repo::world"
 #  run_cargodeny:
