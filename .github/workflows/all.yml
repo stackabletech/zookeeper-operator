@@ -38,7 +38,9 @@ jobs:
           components: rustfmt
           override: true
       - id: build_version
-        run: echo "::set-output name=version::$(cargo metadata --format-version 1 | jq '.packages[] | select(.name=="stackable-zookeeper-operator") | .version')"
+        run: |
+          VERSION=$(cargo metadata --format-version 1 | jq '.packages[] | select(.name=="stackable-zookeeper-operator") | .version')
+          echo "::set-output name=version::$VERSION"
       - id: select_repo
         run: echo "::set-output name=repo::world"
 #  run_cargodeny:
@@ -193,12 +195,13 @@ jobs:
     name: Package Charts, Build Docker Image & Publish them
     needs:
       - test_charts
+      - version
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Package Chart
-        run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
+        run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator --version ${{ needs.version.outputs.version }} --app-version ${{ needs.version.outputs.version }}
       - name: Build Docker image
         env:
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
