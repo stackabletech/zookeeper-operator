@@ -130,8 +130,8 @@ jobs:
 #        with:
 #          command: test
 
-  compile_charts:
-    name: Compile Helm & Kustomize Charts and check if they were up to date
+  check_charts:
+    name: Check if committed Helm & Kustomize Charts were up to date
 #    needs:
 #      - run_tests
     runs-on: ubuntu-latest
@@ -162,13 +162,13 @@ jobs:
   test_charts:
     name: Run Chart Tests
     needs:
-      - compile_charts
+      - check_charts
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: placeholder
-        run: echo Testing to come soon
+        run: echo ${{ github.event_name }}
 
   package_and_publish:
     name: Package Charts, Build Docker Image & Publish them
@@ -185,12 +185,21 @@ jobs:
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
         if: env.NEXUS_PASSWORD != null
         run: echo
-      - name: Publish Chart
+      - name: Publish Nightly Chart
         env:
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
         if: env.NEXUS_PASSWORD != null
         run: echo
-
+      - name: Publish PR Chart
+        env:
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        if: github.event_name == 'pull_request'
+        run: echo ${{ github.event_name }}
+      - name: Publish Stable Chart
+        env:
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        if: env.NEXUS_PASSWORD != null
+        run: echo
   #        >-
 #          /usr/bin/curl
 #          --fail
