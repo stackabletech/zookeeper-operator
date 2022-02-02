@@ -152,6 +152,12 @@ jobs:
         run: make generate-manifests
       - name: Check if committed charts were up to date
         run: git diff --exit-code
+      - name: Publish why we failed
+        if: ${{ failure() }}
+        uses: actions/github-script@v3
+        with:
+          script: |
+            core.setFailed('Committed charts were not up to date, please regenerate and re-commit!')
 
   test_charts:
     name: Run Chart Tests
