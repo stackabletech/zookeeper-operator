@@ -23,7 +23,7 @@ env:
   STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-dev
 
 jobs:
-  cargo-deny:
+  run_cargodeny:
     name: run_cargodeny
     runs-on: ubuntu-latest
     strategy:
@@ -36,12 +36,13 @@ jobs:
     continue-on-error: ${{ matrix.checks == 'advisories' }}
 
     steps:
-      - uses: actions/checkout@v2.4.0
+      - uses: actions/checkout@v2.4.
+      - 0
       - uses: EmbarkStudios/cargo-deny-action@v1.2.6
         with:
           command: check ${{ matrix.checks }}
 
-  rustfmt:
+  run_rustfmt:
     name: run_rustfmt
     runs-on: ubuntu-latest
     steps:
@@ -57,7 +58,7 @@ jobs:
           command: fmt
           args: --all -- --check
 
-  clippy:
+  run_clippy:
     name: run_clippy
     runs-on: ubuntu-latest
     steps:
@@ -89,7 +90,7 @@ jobs:
         if: ${{ !steps.check_permissions.outputs.has-permission }}
         run: cargo clippy --all-targets -- -D warnings
 
-  doc:
+  run_rustdoc:
       name: run_rustdoc
       runs-on: ubuntu-latest
       steps:
@@ -108,7 +109,7 @@ jobs:
             command: doc
             args: --document-private-items
 
-  test:
+  run_tests:
     name: run_tests
     needs:
       - run_cargodeny
