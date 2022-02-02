@@ -168,42 +168,26 @@ jobs:
       - name: placeholder
         run: echo Testing to come soon
 
-  package_charts:
-    name: Package Charts
+  package_and_publish:
+    name: Package Charts, Build Docker Image & Publish them
     needs:
       - test_charts
     runs-on: ubuntu-latest
     steps:
       - name: Package Chart
         run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
-
-  build_docker:
-    name: Build Docker Image
-    needs:
-      - test_charts
-    runs-on: ubuntu-latest
-    steps:
       - name: Build Docker image
         env:
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
         if: env.NEXUS_PASSWORD != null
         run: echo
-        #make docker
-
-  publish:
-    name: Publish Charts & Docker Image
-    needs:
-      - build_docker
-      - package_charts
-    runs-on: ubuntu-latest
-    steps:
       - name: Publish Chart
         env:
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
         if: env.NEXUS_PASSWORD != null
         run: echo
 
-#        >-
+  #        >-
 #          /usr/bin/curl
 #          --fail
 #          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
