@@ -62,10 +62,10 @@ jobs:
             if trigger == 'pull_request':
               print("exporting test: ${{ env.TEST_REPO_HELM_URL }}")
               print("::set-output name=repo::${{ env.TEST_REPO_HELM_URL }}")
-            elif trigger == 'push' & github_ref == 'refs/heads/main':
+            elif trigger == 'push' and github_ref == 'refs/heads/main':
               print("exporting dev: ${{ env.DEV_REPO_HELM_URL }}")
               print("::set-output name=repo::${{ env.DEV_REPO_HELM_URL }}")
-            elif trigger == 'create' & github_ref.startswith('refs/tags/'):
+            elif trigger == 'create' and github_ref.startswith('refs/tags/'):
               print("exporting stable: ${{ env.STABLE_REPO_HELM_URL }}")
               print("::set-output name=repo::${{ env.STABLE_REPO_HELM_URL }}")
             else:
@@ -86,7 +86,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2.4.0
-      - uses: EmbarkStudios/cargo-deny-action@v1.2.6
+      - uses: EmbarkStudios/cargo-deny-action@v1.2.10
         with:
           command: check ${{ matrix.checks }}
 

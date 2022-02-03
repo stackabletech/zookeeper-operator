@@ -18,7 +18,7 @@ spec:
       name: v1alpha1
       schema:
         openAPIV3Schema:
-          description: "Auto-generated derived type that should be removed for ZookeeperClusterSpec via `CustomResource`"
+          description: "Auto-generated derived type for ZookeeperClusterSpec via `CustomResource`"
           properties:
             spec:
               description: A cluster of ZooKeeper nodes
