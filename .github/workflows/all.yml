@@ -20,31 +20,45 @@ env:
   PRODUCT_NAME: zookeeper
   DEV_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-dev
   TEST_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-test
-  STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-dev
+  STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-stable
 
 jobs:
   version:
     name: Build version and target repo
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.build_version.outputs.version }}
       repository: ${{ steps.select_repo.outputs.repo }}
     steps:
       - uses: actions/checkout@v2.4.0
+      - uses: actions/setup-python@v2
       - uses: actions-rs/toolchain@v1.0.7
         with:
           profile: minimal
           toolchain: stable
           components: rustfmt
           override: true
-      - id: build_version
-        run: |
-          VERSION=$(cargo metadata --format-version 1 | jq '.packages[] | select(.name=="stackable-zookeeper-operator") | .version')
-          PR=${{ github.event.pull_request.number }}
-          NEWVERSION=$(echo -n $VERSION | sed s/nightly/pr${PR}/g)
-          echo "::set-output name=version::$NEWVERSION"
+      - name: Update version if PR
+        if: ${{ github.event_name == 'pull_request' }}
+        run:  python/cargo_version.py -m pr${{ github.event.pull_request.number }}
       - id: select_repo
         run: echo "::set-output name=repo::world"
+      - uses: jannekem/run-python-script-action@v1
+        env:
+          TRIGGER: $ {{ github.event_name }}
+        with:
+          script: |
+            import os
+            trigger = user = os.environ['TRIGGER']
+            print(trigger)
+            if trigger == 'pull_request':
+              print("::set-output name=repo::testrepo")
+            elif trigger == 'tag':
+              print("::set-output name=repo::stablerepo")
+            elif trigger == 'push':
+              print("::set-output name=repo::devrepo")
+            else:
+              exit(-1)
+
 #  run_cargodeny:
 #    name: Run Cargo Deny
 #    runs-on: ubuntu-latest
@@ -206,7 +220,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Package Chart
-        run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator --version ${{ needs.version.outputs.version }} --app-version ${{ needs.version.outputs.version }}
+        run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
       - name: Build Docker image
         env:
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
@@ -215,11 +229,13 @@ jobs:
       - name: Publish Chart
         env:
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+          REPO: ${{ needs.version.outputs.repository }}
         if: env.NEXUS_PASSWORD != null
-        run:
-          >-
-          /usr/bin/curl
-          --fail
-          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
-          --upload-file "./$(find  target/helm/ -name '*.tgz')"
-          "${{ env.REPO_HELM_URL }}/"
+        run: echo ${{ env.REPO }}
+
+        #>-
+        #  /usr/bin/curl
+        #  --fail
+        #  -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+        #  --upload-file "./$(find  target/helm/ -name '*.tgz')"
+        #  "${{ env.REPO }}/"
