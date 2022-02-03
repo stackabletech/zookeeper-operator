@@ -282,6 +282,11 @@ jobs:
       - name: Update version if PR
         if: ${{ github.event_name == 'pull_request' }}
         run: python/cargo_version.py -m pr${{ github.event.pull_request.number }}
+      # Recreate charts with changed version if needed
+      - name: Clean charts
+        if: ${{ github.event_name == 'pull_request' }}
+        run: make chart-clean clean-manifests compile-chart generate-manifests
+      # Package and publish charts
       - name: Package Chart
         run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
       - name: Build Docker image
