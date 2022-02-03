@@ -6,6 +6,7 @@ on:
       - main
       - staging
       - trying
+      - "renovate/**"
     tags:
       - "*"
   pull_request:
@@ -65,7 +66,7 @@ jobs:
             elif trigger == 'push' and github_ref == 'refs/heads/main':
               print("exporting dev: ${{ env.DEV_REPO_HELM_URL }}")
               print("::set-output name=repo::${{ env.DEV_REPO_HELM_URL }}")
-            elif trigger == 'create' and github_ref.startswith('refs/tags/'):
+            elif trigger in ['create','push'] and github_ref.startswith('refs/tags/'):
               print("exporting stable: ${{ env.STABLE_REPO_HELM_URL }}")
               print("::set-output name=repo::${{ env.STABLE_REPO_HELM_URL }}")
             else:
@@ -235,13 +236,11 @@ jobs:
           script: |
             core.setFailed('Committed charts were not up to date, please regenerate and re-commit!')
 
-
-
-
   test_charts:
     name: Run Chart Tests
     needs:
       - check_charts
+      - run_tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
