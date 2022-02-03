@@ -200,8 +200,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
       - name: Set up Helm
         uses: azure/setup-helm@v2.0
         with:
@@ -270,10 +268,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: placeholder
-        run: |
-          echo ${{ needs.version.outputs.version }}
-          echo ${{ github.event_name }}
-          echo ${{ github.event_path }}
+        run: echo Tests will go here
 
   package_and_publish:
     name: Package Charts, Build Docker Image & Publish them
@@ -291,13 +286,13 @@ jobs:
       - name: Package Chart
         run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
       - name: Build Docker image
-        run: echo
+        if: env.NEXUS_PASSWORD != null
+        run: make docker
       - name: Publish Chart
-        run: echo ${{ env.REPO }}
-
-        #>-
-        #  /usr/bin/curl
-        #  --fail
-        #  -u 'github:${{ secrets.NEXUS_PASSWORD }}'
-        #  --upload-file "./$(find  target/helm/ -name '*.tgz')"
-        #  "${{ env.REPO }}/"
+        if: env.NEXUS_PASSWORD != null
+        run: >-
+          /usr/bin/curl
+          --fail
+          -u 'github:${{ secrets.NEXUS_PASSWORD }}'
+          --upload-file "./$(find  target/helm/ -name '*.tgz')"
+          "${{ env.REPO }}/"
