@@ -23,8 +23,25 @@ env:
   STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-stable
 
 jobs:
-
-
+  # This job evaluates the github environment to determine why this action is running and selects the appropriate
+  # target repository for published Helm charts based on this.
+  #
+  # The following scenarios are identified:
+  #    - pull request:
+  #        condition: github.event_name == "pull_request"
+  #        repository: test
+  #
+  #    - release (aka a tag was created):
+  #         condition: github.event_name == 'create' & github.ref.startswith('refs/tags/')
+  #         repository: stable
+  #
+  #    - merge of pr to main branch:
+  #         condition: github.event_name == 'push' & github.ref == 'refs/heads/main'
+  #         repository: dev
+  #
+  # Any other scenarios will cause the publish step to be skipped, most commonly this is expected to happen for the
+  # branches that bors uses internally (staging, trying) for which the checks need to run, but we do not want artifacts
+  # to be published.
   select_repo:
     name: Select target repository based on action trigger
     runs-on: ubuntu-latest
@@ -43,13 +60,13 @@ jobs:
             github_ref = user = os.environ['GITHUB_REF']
             print(trigger)
             if trigger == 'pull_request':
-              print("exporting test repo")
+              print("exporting test: ${{ env.TEST_REPO_HELM_URL }}")
               print("::set-output name=repo::${{ env.TEST_REPO_HELM_URL }}")
             elif trigger == 'push' & github_ref == 'refs/heads/main':
-              print("exporting dev repo")
+              print("exporting dev: ${{ env.DEV_REPO_HELM_URL }}")
               print("::set-output name=repo::${{ env.DEV_REPO_HELM_URL }}")
             elif trigger == 'create' & github_ref.startswith('refs/tags/'):
-              print("exporting stable repo")
+              print("exporting stable: ${{ env.STABLE_REPO_HELM_URL }}")
               print("::set-output name=repo::${{ env.STABLE_REPO_HELM_URL }}")
             else:
               print(f"Unknown trigger encountered, skipping publish step: {trigger}") 
