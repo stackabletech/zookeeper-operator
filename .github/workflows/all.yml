@@ -234,7 +234,7 @@ jobs:
     env:
       NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
       REPO: ${{ needs.version.outputs.repository }}
-    if: needs.version.outputs.repository != 'skip' && secrets.NEXUS_PASSWORD != ''
+    if: needs.version.outputs.repository != 'skip'
     steps:
       - name: Checkout
         uses: actions/checkout@v2
