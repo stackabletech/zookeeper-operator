@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Enabled Prometheus scraping ([#380]).
+
 ### Changed
 
 - Shut down gracefully ([#338]).
@@ -13,6 +17,7 @@ All notable changes to this project will be documented in this file.
 [#338]: https://github.com/stackabletech/zookeeper-operator/pull/338
 [#340]: https://github.com/stackabletech/zookeeper-operator/pull/340
 [#352]: https://github.com/stackabletech/zookeeper-operator/pull/352
+[#380]: https://github.com/stackabletech/zookeeper-operator/pull/380
 
 ## [0.8.0] - 2021-12-22
 
