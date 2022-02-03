@@ -163,7 +163,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up Helm
-        uses: azure/setup-helm@v1
+        uses: azure/setup-helm@v2.0
         with:
           version: v3.6.2
       - name: Clean charts
@@ -191,7 +191,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
       - name: placeholder
-        run: echo ${{ needs.version.outputs.version }}
+        run: |
+          echo ${{ needs.version.outputs.version }}
+          echo ${{ github.event }}
 
   package_and_publish:
     name: Package Charts, Build Docker Image & Publish them
