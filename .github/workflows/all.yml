@@ -179,13 +179,16 @@ jobs:
         with:
           command: test
 
-  # This job cleans up the Helm charts and Kustomize manifests, followed by rebuilding them
+  # This job cleans up the CRDs, Helm charts and Kustomize manifests, followed by rebuilding them
   # It then runs a `git diff` and fails the entire workflow, if any difference is encountered.
   #
-  # The reason for this is, that developers are expected to check in up-to-date versions of charts
+  # Since CRD files are generated during the 'cargo build' process we need to run this once after
+  # removing the CRD files to ensure that the checked in versions match what the code expects.
+  #
+  # The reason for this step is, that developers are expected to check in up-to-date versions of charts
   # and manifests, as we'd otherwise have to build these in CI and commit them back to the PR, which
   # creates all kinds of problems.
-  # Therefor this fail safe simply aborts anything that has not had charts and manifests rebuilt before pushing.
+  # Therefor this failsafe simply aborts anything that has not had charts and manifests rebuilt before pushing.
   check_charts:
     name: Check if committed Helm & Kustomize Charts were up to date
     needs:
@@ -212,7 +215,7 @@ jobs:
       - name: Set up rust-cache
         uses: Swatinem/rust-cache@v1.3.0
         with:
-          key: test
+          key: charts
       - name: Clean crds
         run: rm -rf deploy/crd/*
       - name: Clean charts
