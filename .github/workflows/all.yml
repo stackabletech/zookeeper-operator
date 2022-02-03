@@ -23,24 +23,14 @@ env:
   STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-stable
 
 jobs:
-  version:
-    name: Build version and target repo
-    runs-on: ubuntu-latest
 
+
+  select_repo:
+    name: Select target repository based on action trigger
+    runs-on: ubuntu-latest
+    outputs:
+      repository: ${{ steps.selectrepo.outputs.repo }}
     steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions/setup-python@v2
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          profile: minimal
-          toolchain: stable
-          components: rustfmt
-          override: true
-      - name: Install requirements
-        run: pip install -r python/requirements.txt
-      - name: Update version if PR
-        if: ${{ github.event_name == 'pull_request' }}
-        run:  python/cargo_version.py -m pr${{ github.event.pull_request.number }}
       - id: selectrepo
         uses: jannekem/run-python-script-action@v1
         env:
@@ -61,8 +51,6 @@ jobs:
             else:
               print(f"Unknown trigger encountered, skipping publish step: {trigger}") 
               print("::set-output name=repo::skip")
-    outputs:
-      repository: ${{ steps.selectrepo.outputs.repo }}
 
 #  run_cargodeny:
 #    name: Run Cargo Deny
@@ -200,10 +188,29 @@ jobs:
           script: |
             core.setFailed('Committed charts were not up to date, please regenerate and re-commit!')
 
+  version:
+    name: Update version to include pr number if this runs for a pull request
+    runs-on: ubuntu-latest
+    needs:
+      - check_charts
+    steps:
+      - uses: actions/checkout@v2.4.0
+      - uses: actions/setup-python@v2
+      - uses: actions-rs/toolchain@v1.0.7
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt
+          override: true
+      - name: Install requirements
+        run: pip install -r python/requirements.txt
+      - name: Update version if PR
+        if: ${{ github.event_name == 'pull_request' }}
+        run:  python/cargo_version.py -m pr${{ github.event.pull_request.number }}
+
   test_charts:
     name: Run Chart Tests
     needs:
-      - check_charts
       - version
     runs-on: ubuntu-latest
     steps:
@@ -219,7 +226,7 @@ jobs:
     name: Package Charts, Build Docker Image & Publish them
     needs:
       - test_charts
-      - version
+      - select_repo
     runs-on: ubuntu-latest
     env:
       NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
