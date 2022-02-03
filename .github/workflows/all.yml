@@ -43,10 +43,13 @@ jobs:
             github_ref = user = os.environ['GITHUB_REF']
             print(trigger)
             if trigger == 'pull_request':
+              print("exporting test repo")
               print("::set-output name=repo::${{ env.TEST_REPO_HELM_URL }}")
             elif trigger == 'push' & github_ref == 'refs/heads/main':
+              print("exporting dev repo")
               print("::set-output name=repo::${{ env.DEV_REPO_HELM_URL }}")
             elif trigger == 'create' & github_ref.startswith('refs/tags/'):
+              print("exporting stable repo")
               print("::set-output name=repo::${{ env.STABLE_REPO_HELM_URL }}")
             else:
               print(f"Unknown trigger encountered, skipping publish step: {trigger}") 
@@ -231,7 +234,7 @@ jobs:
     env:
       NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
       REPO: ${{ needs.version.outputs.repository }}
-    if: ${{ needs.version.outputs.repository != 'skip' }}
+    if: needs.version.outputs.repository != 'skip' && secrets.NEXUS_PASSWORD != ''
     steps:
       - name: Checkout
         uses: actions/checkout@v2
