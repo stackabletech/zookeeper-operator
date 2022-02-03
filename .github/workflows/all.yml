@@ -235,34 +235,13 @@ jobs:
           script: |
             core.setFailed('Committed charts were not up to date, please regenerate and re-commit!')
 
-  # This job checks if the current run was triggered by a push to a pr (or a pr being created).
-  # If this is the case it changes the version of this project in all Cargo.toml files to include the suffix
-  # "-pr<prnumber>" so that the published artifacts can be linked to this PR.
-  version:
-    name: Update version to include pr number if this runs for a pull request
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' }}
-    needs:
-      - check_charts
-      - run_tests
-    steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions/setup-python@v2
-      - uses: actions-rs/toolchain@v1.0.7
-        with:
-          profile: minimal
-          toolchain: stable
-          components: rustfmt
-          override: true
-      - name: Install requirements
-        run: pip install -r python/requirements.txt
-      - name: Update version if PR
-        run:  python/cargo_version.py -m pr${{ github.event.pull_request.number }}
+
+
 
   test_charts:
     name: Run Chart Tests
     needs:
-      - version
+      - check_charts
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -283,6 +262,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        if: ${{ github.event_name == 'pull_request' }}
+      - uses: actions-rs/toolchain@v1.0.7
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt
+          override: true
+      - name: Install requirements for version tool
+        if: ${{ github.event_name == 'pull_request' }}
+        run: pip install -r python/requirements.txt
+        # This step checks if the current run was triggered by a push to a pr (or a pr being created).
+        # If this is the case it changes the version of this project in all Cargo.toml files to include the suffix
+        # "-pr<prnumber>" so that the published artifacts can be linked to this PR.
+      - name: Update version if PR
+        if: ${{ github.event_name == 'pull_request' }}
+        run: python/cargo_version.py -m pr${{ github.event.pull_request.number }}
       - name: Package Chart
         run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
       - name: Build Docker image
