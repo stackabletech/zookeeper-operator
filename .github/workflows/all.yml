@@ -37,6 +37,8 @@ jobs:
           toolchain: stable
           components: rustfmt
           override: true
+      - name: Install requirements
+        run: pip install -r python/requirements.txt
       - name: Update version if PR
         if: ${{ github.event_name == 'pull_request' }}
         run:  python/cargo_version.py -m pr${{ github.event.pull_request.number }}
