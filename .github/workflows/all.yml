@@ -52,11 +52,11 @@ jobs:
             trigger = user = os.environ['TRIGGER']
             print(trigger)
             if trigger == 'pull_request':
-              print("::set-output name=repo::testrepo")
+              print("::set-output name=repo::${{ env.TEST_REPO_HELM_URL }}")
             elif trigger == 'tag':
-              print("::set-output name=repo::stablerepo")
+              print("::set-output name=repo::${{ env.STABLE_REPO_HELM_URL }}")
             elif trigger == 'push':
-              print("::set-output name=repo::devrepo")
+              print("::set-output name=repo::${{ env.DEV_REPO_HELM_URL }}")
             else:
               exit(-1)
 
