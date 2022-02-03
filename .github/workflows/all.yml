@@ -189,7 +189,10 @@ jobs:
   check_charts:
     name: Check if committed Helm & Kustomize Charts were up to date
     needs:
-      - run_tests
+      - run_cargodeny
+      - run_clippy
+      - run_rustfmt
+      - run_rustdoc
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -200,8 +203,21 @@ jobs:
         uses: azure/setup-helm@v2.0
         with:
           version: v3.6.2
+      - name: Clean crds
+        run: rm -rf deploy/crd/*
       - name: Clean charts
         run: make chart-clean clean-manifests
+      - uses: actions-rs/toolchain@v1.0.7
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+        - uses: Swatinem/rust-cache@v1.3.0
+          with:
+            key: test
+        - uses: actions-rs/cargo@v1.0.3
+          with:
+            command: build
       - name: Compile Helm
         run: make compile-chart
       - name: Generate manifests
@@ -224,6 +240,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     needs:
       - check_charts
+      - run_tests
     steps:
       - uses: actions/checkout@v2.4.0
       - uses: actions/setup-python@v2
