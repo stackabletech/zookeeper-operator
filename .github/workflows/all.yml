@@ -43,7 +43,6 @@ jobs:
         if: ${{ github.event_name == 'pull_request' }}
         run:  python/cargo_version.py -m pr${{ github.event.pull_request.number }}
       - id: select_repo
-        run: echo "::set-output name=repo::world"
       - uses: jannekem/run-python-script-action@v1
         env:
           TRIGGER: ${{ github.event_name }}
