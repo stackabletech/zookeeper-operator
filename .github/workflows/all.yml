@@ -179,6 +179,13 @@ jobs:
 #        with:
 #          command: test
 
+  # This job cleans up the Helm charts and Kustomize manifests, followed by rebuilding them
+  # It then runs a `git diff` and fails the entire workflow, if any difference is encountered.
+  #
+  # The reason for this is, that developers are expected to check in up-to-date versions of charts
+  # and manifests, as we'd otherwise have to build these in CI and commit them back to the PR, which
+  # creates all kinds of problems.
+  # Therefor this fail safe simply aborts anything that has not had charts and manifests rebuilt before pushing.
   check_charts:
     name: Check if committed Helm & Kustomize Charts were up to date
 #    needs:
@@ -208,9 +215,13 @@ jobs:
           script: |
             core.setFailed('Committed charts were not up to date, please regenerate and re-commit!')
 
+  # This job checks if the current run was triggered by a push to a pr (or a pr being created).
+  # If this is the case it changes the version of this project in all Cargo.toml files to include the suffix
+  # "-pr<prnumber>" so that the published artifacts can be linked to this PR.
   version:
     name: Update version to include pr number if this runs for a pull request
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'pull_request' }}
     needs:
       - check_charts
     steps:
@@ -225,7 +236,6 @@ jobs:
       - name: Install requirements
         run: pip install -r python/requirements.txt
       - name: Update version if PR
-        if: ${{ github.event_name == 'pull_request' }}
         run:  python/cargo_version.py -m pr${{ github.event.pull_request.number }}
 
   test_charts:
@@ -250,7 +260,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
-      REPO: ${{ needs.version.outputs.repository }}
+      REPO: ${{ needs.select_repo.outputs.repository }}
     if: needs.version.outputs.repository != 'skip'
     steps:
       - name: Checkout
