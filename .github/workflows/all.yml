@@ -59,8 +59,8 @@ jobs:
             elif trigger == 'create' & github_ref.startswith('refs/tags/'):
               print("::set-output name=repo::${{ env.STABLE_REPO_HELM_URL }}")
             else:
-              print(f"Unknown trigger encountered: {trigger}") 
-              exit(-1)
+              print(f"Unknown trigger encountered, skipping publish step: {trigger}") 
+              print("::set-output name=repo::skip")
     outputs:
       repository: ${{ steps.selectrepo.outputs.repo }}
 
@@ -221,21 +221,18 @@ jobs:
       - test_charts
       - version
     runs-on: ubuntu-latest
+    env:
+      NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+      REPO: ${{ needs.version.outputs.repository }}
+    if: ${{ needs.version.outputs.repository != 'skip' && secrets.NEXUS_PASSWORD != null}}
     steps:
       - name: Checkout
         uses: actions/checkout@v2
       - name: Package Chart
         run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
       - name: Build Docker image
-        env:
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
-        if: env.NEXUS_PASSWORD != null
         run: echo
       - name: Publish Chart
-        env:
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
-          REPO: ${{ needs.version.outputs.repository }}
-        if: env.NEXUS_PASSWORD != null
         run: echo ${{ env.REPO }}
 
         #>-
