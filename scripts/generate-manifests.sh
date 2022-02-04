@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # This script reads a Helm chart from deploy/helm/zookeeper-operator and
 # generates manifest files into deploy/manifestss
 set -e

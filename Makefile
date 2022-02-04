@@ -39,7 +39,7 @@ version:
 	yq eval -i '.version = ${VERSION} | .appVersion = ${VERSION}' deploy/helm/zookeeper-operator/Chart.yaml
 
 config:
-	cp -r deploy/config-spec deploy/helm/zookeeper-operator/configs
+	cp -r deploy/config-spec/* deploy/helm/zookeeper-operator/configs
 
 crds:
 	mkdir -p deploy/helm/zookeeper-operator/crds

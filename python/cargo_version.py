@@ -27,7 +27,7 @@ class Crate:
     self.path = path
     self.name = name
     self.version = version
-    self.dependencies = dependencies
+    self.dependencies = dependencies0
 
   def with_dependencies(self, names):
     deps = {k: v for k, v in self.dependencies.items() if k in names}
