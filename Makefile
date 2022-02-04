@@ -55,3 +55,11 @@ clean-manifests:
 
 generate-manifests: clean-manifests compile-chart
 	./scripts/generate-manifests.sh
+
+clean-crds:
+	rm -rf deploy/crd/*
+
+generate-crds:
+	cargo build
+
+regenerate-charts: clean-crds chart-clean clean-manifests generate-crds compile-chart generate-manifests

@@ -133,23 +133,23 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
   run_rustdoc:
-      name: Run RustDoc
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v2.4.0
-        - uses: actions-rs/toolchain@v1.0.7
-          with:
-            profile: minimal
-            toolchain: stable
-            components: rustfmt
-            override: true
-        - uses: Swatinem/rust-cache@v1.3.0
-          with:
-            key: doc
-        - uses: actions-rs/cargo@v1.0.3
-          with:
-            command: doc
-            args: --document-private-items
+    name: Run RustDoc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2.4.0
+      - uses: actions-rs/toolchain@v1.0.7
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt
+          override: true
+      - uses: Swatinem/rust-cache@v1.3.0
+        with:
+          key: doc
+      - uses: actions-rs/cargo@v1.0.3
+        with:
+          command: doc
+          args: --document-private-items
 
   run_tests:
     name: Run Cargo Tests
@@ -208,18 +208,8 @@ jobs:
         uses: Swatinem/rust-cache@v1.3.0
         with:
           key: charts
-      - name: Clean crds
-        run: rm -rf deploy/crd/*
-      - name: Clean charts
-        run: make chart-clean clean-manifests
-      - name: Recreate CRDs
-        uses: actions-rs/cargo@v1.0.3
-        with:
-          command: build
-      - name: Compile Helm
-        run: make compile-chart
-      - name: Generate manifests
-        run: make generate-manifests
+      - name: Regenerate charts
+        run: make regenerate-charts
       - name: Check if committed charts were up to date
         run: git diff --exit-code
       - name: Git Diff showed uncommitted changes
