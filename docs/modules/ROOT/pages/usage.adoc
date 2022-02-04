@@ -41,3 +41,7 @@ Finally, a ConfigMap is created, containing a path that a ZooKeeper client can c
     $ kubectl get configmap simple-znode-nodeport -o yaml
     $ $ZOOKEEPER_HOME/bin/zkCli.sh -server $(kubectl get configmap simple-znode-nodeport -o jsonpath='{.data.ZOOKEEPER}')
     
+== Monitoring
+
+The managed ZooKeeper instances are automatically configured to export Prometheus metrics. See
+xref:home::monitoring.adoc[] for more details.

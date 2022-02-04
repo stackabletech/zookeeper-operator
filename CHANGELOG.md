@@ -4,13 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Enabled Prometheus scraping ([#380]).
+- ZookeeperZnode.spec.clusterRef.namespace now defaults to .metadata.namespace ([#382]).
+
 ### Changed
 
 - Shut down gracefully ([#338]).
 - Fixed ACL incompatibility with certain managed K8s providers ([#340]).
+- Operator-rs: 0.6.0 -> 0.8.0 ([#352]).
+- Cleanup for `ZookeeperZnode` now succeeds if the linked `ZookeeperCluster` was already deleted ([#384]).
 
 [#338]: https://github.com/stackabletech/zookeeper-operator/pull/338
 [#340]: https://github.com/stackabletech/zookeeper-operator/pull/340
+[#352]: https://github.com/stackabletech/zookeeper-operator/pull/352
+[#380]: https://github.com/stackabletech/zookeeper-operator/pull/380
+[#382]: https://github.com/stackabletech/zookeeper-operator/pull/382
+[#384]: https://github.com/stackabletech/zookeeper-operator/pull/384
 
 ## [0.8.0] - 2021-12-22
 

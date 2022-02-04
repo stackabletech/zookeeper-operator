@@ -16,8 +16,22 @@ rules:
     resources:
       - pods
       - configmaps
+      - secrets
       - services
       - endpoints
+      - serviceaccounts
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - rolebindings
     verbs:
       - create
       - delete

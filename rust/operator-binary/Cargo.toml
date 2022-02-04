@@ -12,10 +12,9 @@ failure = "0.1.8"
 futures = { version = "0.3.19", features = ["compat"] }
 semver = "1.0.4"
 serde = "1.0.133"
-serde_json = "1.0.73"
+serde_json = "1.0.75"
 serde_yaml = "0.8.23"
-snafu = "0.6.10"
-structopt = "0.3.25"
+snafu = "0.7.0"
 strum = "0.23.0"
 strum_macros = "0.23.1"
 tokio = { version = "1.15.0", features = ["full"] }
@@ -24,12 +23,13 @@ tokio-executor = "0.1.10"
 tokio-zookeeper = "0.1.3"
 tracing = "0.1.29"
 pin-project = "1.0.10"
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.6.0" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.8.0" }
 stackable-zookeeper-crd = { path = "../crd" }
 anyhow = "1.0.52"
 fnv = "1.0.7"
+clap = { version = "3.0.9", features = ["derive"] }
 
 [build-dependencies]
 built = { version = "0.5.1", features = ["chrono", "git2"] }
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.6.0" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.8.0" }
 stackable-zookeeper-crd = { path = "../crd" }

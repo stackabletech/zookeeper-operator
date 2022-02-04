@@ -85,6 +85,10 @@ pub enum Error {
         source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
+    #[snafu(display("failed to generate product config"))]
+    GenerateProductConfig {
+        source: stackable_operator::product_config_utils::ConfigError,
+    },
     #[snafu(display("invalid product config"))]
     InvalidProductConfig {
         source: stackable_operator::error::Error,
@@ -128,16 +132,17 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
                         PropertyNameKind::Env,
                         PropertyNameKind::File(PROPERTIES_FILE.to_string()),
                     ],
-                    zk.spec.servers.clone().context(NoServerRole)?,
+                    zk.spec.servers.clone().context(NoServerRoleSnafu)?,
                 ),
             )]
             .into(),
-        ),
+        )
+        .context(GenerateProductConfigSnafu)?,
         &ctx.get_ref().product_config,
         false,
         false,
     )
-    .context(InvalidProductConfig)?;
+    .context(InvalidProductConfigSnafu)?;
     let role_server_config = validated_config
         .get(&ZookeeperRole::Server.to_string())
         .map(Cow::Borrowed)
@@ -151,7 +156,7 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
             &server_role_service,
         )
         .await
-        .context(ApplyRoleService)?;
+        .context(ApplyRoleServiceSnafu)?;
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
 
@@ -161,19 +166,19 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         client
             .apply_patch(FIELD_MANAGER_SCOPE, &rg_service, &rg_service)
             .await
-            .with_context(|| ApplyRoleGroupService {
+            .with_context(|_| ApplyRoleGroupServiceSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
         client
             .apply_patch(FIELD_MANAGER_SCOPE, &rg_configmap, &rg_configmap)
             .await
-            .with_context(|| ApplyRoleGroupConfig {
+            .with_context(|_| ApplyRoleGroupConfigSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
         client
             .apply_patch(FIELD_MANAGER_SCOPE, &rg_statefulset, &rg_statefulset)
             .await
-            .with_context(|| ApplyRoleGroupStatefulSet {
+            .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
     }
@@ -183,12 +188,12 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
     let mut discovery_hash = FnvHasher::with_key(0);
     for discovery_cm in build_discovery_configmaps(client, &zk, &zk, &server_role_service, None)
         .await
-        .context(BuildDiscoveryConfig)?
+        .context(BuildDiscoveryConfigSnafu)?
     {
         let discovery_cm = client
             .apply_patch(FIELD_MANAGER_SCOPE, &discovery_cm, &discovery_cm)
             .await
-            .context(ApplyDiscoveryConfig)?;
+            .context(ApplyDiscoveryConfigSnafu)?;
         if let Some(generation) = discovery_cm.metadata.resource_version {
             discovery_hash.write(generation.as_bytes())
         }
@@ -202,7 +207,7 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
     client
         .apply_patch_status(FIELD_MANAGER_SCOPE, &zk, &status)
         .await
-        .context(ApplyStatus)?;
+        .context(ApplyStatusSnafu)?;
 
     Ok(ReconcilerAction {
         requeue_after: None,
@@ -218,13 +223,13 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
     let role_name = ZookeeperRole::Server.to_string();
     let role_svc_name = zk
         .server_role_service_name()
-        .context(GlobalServiceNameNotFound)?;
+        .context(GlobalServiceNameNotFoundSnafu)?;
     Ok(Service {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
             .name(&role_svc_name)
             .ownerreference_from_resource(zk, None, Some(true))
-            .context(ObjectMissingMetadataForOwnerRef)?
+            .context(ObjectMissingMetadataForOwnerRefSnafu)?
             .with_recommended_labels(zk, APP_NAME, zk_version(zk)?, &role_name, "global")
             .build(),
         spec: Some(ServiceSpec {
@@ -268,7 +273,7 @@ fn build_server_rolegroup_config_map(
                 .name_and_namespace(zk)
                 .name(rolegroup.object_name())
                 .ownerreference_from_resource(zk, None, Some(true))
-                .context(ObjectMissingMetadataForOwnerRef)?
+                .context(ObjectMissingMetadataForOwnerRefSnafu)?
                 .with_recommended_labels(
                     zk,
                     APP_NAME,
@@ -280,14 +285,14 @@ fn build_server_rolegroup_config_map(
         )
         .add_data(
             "zoo.cfg",
-            to_java_properties_string(zoo_cfg.iter().map(|(k, v)| (k, v))).with_context(|| {
-                SerializeZooCfg {
+            to_java_properties_string(zoo_cfg.iter().map(|(k, v)| (k, v))).with_context(|_| {
+                SerializeZooCfgSnafu {
                     rolegroup: rolegroup.clone(),
                 }
             })?,
         )
         .build()
-        .with_context(|| BuildRoleGroupConfig {
+        .with_context(|_| BuildRoleGroupConfigSnafu {
             rolegroup: rolegroup.clone(),
         })
 }
@@ -304,7 +309,7 @@ fn build_server_rolegroup_service(
             .name_and_namespace(zk)
             .name(&rolegroup.object_name())
             .ownerreference_from_resource(zk, None, Some(true))
-            .context(ObjectMissingMetadataForOwnerRef)?
+            .context(ObjectMissingMetadataForOwnerRefSnafu)?
             .with_recommended_labels(
                 zk,
                 APP_NAME,
@@ -312,6 +317,7 @@ fn build_server_rolegroup_service(
                 &rolegroup.role,
                 &rolegroup.role_group,
             )
+            .with_label("prometheus.io/scrape", "true")
             .build(),
         spec: Some(ServiceSpec {
             cluster_ip: Some("None".to_string()),
@@ -354,7 +360,7 @@ fn build_server_rolegroup_statefulset(
         .spec
         .servers
         .as_ref()
-        .context(NoServerRole)?
+        .context(NoServerRoleSnafu)?
         .role_groups
         .get(&rolegroup_ref.role_group);
     let zk_version = zk_version(zk)?;
@@ -440,7 +446,7 @@ fn build_server_rolegroup_statefulset(
             .name_and_namespace(zk)
             .name(&rolegroup_ref.object_name())
             .ownerreference_from_resource(zk, None, Some(true))
-            .context(ObjectMissingMetadataForOwnerRef)?
+            .context(ObjectMissingMetadataForOwnerRefSnafu)?
             .with_recommended_labels(
                 zk,
                 APP_NAME,
@@ -513,7 +519,7 @@ fn build_server_rolegroup_statefulset(
 }
 
 pub fn zk_version(zk: &ZookeeperCluster) -> Result<&str> {
-    zk.spec.version.as_deref().context(ObjectHasNoVersion)
+    zk.spec.version.as_deref().context(ObjectHasNoVersionSnafu)
 }
 
 pub fn error_policy(_error: &Error, _ctx: Context<Ctx>) -> ReconcilerAction {

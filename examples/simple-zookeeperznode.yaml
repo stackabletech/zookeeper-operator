@@ -5,4 +5,5 @@ metadata:
 spec:
   clusterRef:
     name: simple-zk
-    namespace: default
+    # Optional when ZookeeperZnode is in the same Namespace as the ZookeeperCluster
+    # namespace: default

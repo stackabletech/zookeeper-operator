@@ -85,7 +85,7 @@ fn build_discovery_configmap(
         .join(",");
     if let Some(chroot) = chroot {
         if !chroot.starts_with('/') {
-            return RelativeChroot { chroot }.fail();
+            return RelativeChrootSnafu { chroot }.fail();
         }
         conn_str.push_str(chroot);
     }
@@ -95,7 +95,7 @@ fn build_discovery_configmap(
                 .name_and_namespace(zk)
                 .name(name)
                 .ownerreference_from_resource(owner, None, Some(true))
-                .with_context(|| ObjectMissingMetadataForOwnerRef {
+                .with_context(|_| ObjectMissingMetadataForOwnerRefSnafu {
                     zk: ObjectRef::from_obj(zk),
                 })?
                 .with_recommended_labels(
@@ -109,14 +109,14 @@ fn build_discovery_configmap(
         )
         .add_data("ZOOKEEPER", conn_str)
         .build()
-        .context(BuildConfigMap)
+        .context(BuildConfigMapSnafu)
 }
 
 /// Lists all Pods FQDNs expected to host the [`ZookeeperCluster`]
 fn pod_hosts(zk: &ZookeeperCluster) -> Result<impl IntoIterator<Item = (String, u16)> + '_, Error> {
     Ok(zk
         .pods()
-        .context(ExpectedPods)?
+        .context(ExpectedPodsSnafu)?
         .into_iter()
         .map(|pod_ref| (pod_ref.fqdn(), APP_PORT)))
 }
@@ -137,15 +137,15 @@ async fn nodeport_hosts(
                 .iter()
                 .find(|port| port.name.as_deref() == Some(port_name))
         })
-        .context(NoServicePort { port_name })?;
-    let node_port = svc_port.node_port.context(NoNodePort { port_name })?;
+        .context(NoServicePortSnafu { port_name })?;
+    let node_port = svc_port.node_port.context(NoNodePortSnafu { port_name })?;
     let endpoints = client
         .get::<Endpoints>(
-            svc.metadata.name.as_deref().context(NoName)?,
+            svc.metadata.name.as_deref().context(NoNameSnafu)?,
             svc.metadata.namespace.as_deref(),
         )
         .await
-        .with_context(|| FindEndpoints {
+        .with_context(|_| FindEndpointsSnafu {
             svc: ObjectRef::from_obj(svc),
         })?;
     let nodes = endpoints
@@ -156,7 +156,7 @@ async fn nodeport_hosts(
         .flatten()
         .flat_map(|addr| addr.node_name);
     let addrs = nodes
-        .map(|node| Ok((node, node_port.try_into().context(InvalidNodePort)?)))
+        .map(|node| Ok((node, node_port.try_into().context(InvalidNodePortSnafu)?)))
         .collect::<Result<BTreeSet<_>, _>>()?;
     Ok(addrs)
 }
