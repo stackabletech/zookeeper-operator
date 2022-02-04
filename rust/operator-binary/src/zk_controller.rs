@@ -4,6 +4,7 @@ use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
     hash::Hasher,
+    sync::Arc,
     time::Duration,
 };
 
@@ -117,14 +118,17 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 const PROPERTIES_FILE: &str = "zoo.cfg";
 
-pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<ReconcilerAction> {
+pub async fn reconcile_zk(
+    zk: Arc<ZookeeperCluster>,
+    ctx: Context<Ctx>,
+) -> Result<ReconcilerAction> {
     tracing::info!("Starting reconcile");
     let client = &ctx.get_ref().client;
 
     let validated_config = validate_all_roles_and_groups_config(
         zk_version(&zk)?,
         &transform_all_roles_to_config(
-            &zk,
+            &*zk,
             [(
                 ZookeeperRole::Server.to_string(),
                 (
@@ -186,7 +190,7 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
-    for discovery_cm in build_discovery_configmaps(client, &zk, &zk, &server_role_service, None)
+    for discovery_cm in build_discovery_configmaps(client, &*zk, &zk, &server_role_service, None)
         .await
         .context(BuildDiscoveryConfigSnafu)?
     {
@@ -205,7 +209,7 @@ pub async fn reconcile_zk(zk: ZookeeperCluster, ctx: Context<Ctx>) -> Result<Rec
         discovery_hash: Some(discovery_hash.finish().to_string()),
     };
     client
-        .apply_patch_status(FIELD_MANAGER_SCOPE, &zk, &status)
+        .apply_patch_status(FIELD_MANAGER_SCOPE, &*zk, &status)
         .await
         .context(ApplyStatusSnafu)?;
 

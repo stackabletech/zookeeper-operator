@@ -97,7 +97,7 @@ async fn main() -> anyhow::Result<()> {
                                 zk.metadata.namespace == endpoints.metadata.namespace
                                     && zk.server_role_service_name() == endpoints.metadata.name
                             })
-                            .map(|zk| ObjectRef::from_obj(&zk))
+                            .map(|zk| ObjectRef::from_obj(&*zk))
                     },
                 )
                 .owns(client.get_all_api::<StatefulSet>(), ListParams::default())
@@ -129,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
                                 zk.metadata.namespace == znode.spec.cluster_ref.namespace
                                     && zk.metadata.name == znode.spec.cluster_ref.name
                             })
-                            .map(|znode| ObjectRef::from_obj(&znode))
+                            .map(|znode| ObjectRef::from_obj(&*znode))
                     },
                 )
                 .shutdown_on_signal()

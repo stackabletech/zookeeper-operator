@@ -2,7 +2,7 @@
 //!
 //! See [`ZookeeperZnode`] for more details.
 
-use std::{convert::Infallible, time::Duration};
+use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use crate::{
     discovery::{self, build_discovery_configmaps},
@@ -21,7 +21,7 @@ use stackable_operator::{
         },
     },
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperClusterRef, ZookeeperZnode};
+use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeeperznode";
 
@@ -104,7 +104,10 @@ impl Error {
     }
 }
 
-pub async fn reconcile_znode(znode: ZookeeperZnode, ctx: Context<Ctx>) -> Result<ReconcilerAction> {
+pub async fn reconcile_znode(
+    znode: Arc<ZookeeperZnode>,
+    ctx: Context<Ctx>,
+) -> Result<ReconcilerAction> {
     tracing::info!("Starting reconcile");
     let (ns, uid) = if let ObjectMeta {
         namespace: Some(ns),
@@ -227,15 +230,10 @@ async fn find_zk_of_znode(
     client: &stackable_operator::client::Client,
     znode: &ZookeeperZnode,
 ) -> Result<ZookeeperCluster> {
-    let ZookeeperClusterRef {
-        name: zk_name,
-        namespace: zk_ns,
-    } = &znode.spec.cluster_ref;
+    let zk_ref = &znode.spec.cluster_ref;
     if let (Some(zk_name), Some(zk_ns)) = (
-        zk_name,
-        zk_ns
-            .as_deref()
-            .or_else(|| znode.metadata.namespace.as_deref()),
+        zk_ref.name.as_deref(),
+        zk_ref.namespace_relative_from(znode),
     ) {
         match client.get::<ZookeeperCluster>(zk_name, Some(zk_ns)).await {
             Ok(zk) => Ok(zk),
