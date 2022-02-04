@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
 use stackable_operator::{
+    crd::ClusterRef,
     kube::{runtime::reflector::ObjectRef, CustomResource},
     product_config_utils::{ConfigError, Configuration},
     role_utils::{Role, RoleGroupRef},
@@ -225,15 +226,5 @@ impl ZookeeperPodRef {
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperZnodeSpec {
     #[serde(default)]
-    pub cluster_ref: ZookeeperClusterRef,
-}
-
-/// A reference to a [`ZookeeperCluster`]
-#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperClusterRef {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub namespace: Option<String>,
+    pub cluster_ref: ClusterRef<ZookeeperCluster>,
 }
