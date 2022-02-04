@@ -104,10 +104,7 @@ impl Error {
     }
 }
 
-pub async fn reconcile_znode(
-    znode: ZookeeperZnode,
-    ctx: Context<Ctx>,
-) -> Result<ReconcilerAction, Error> {
+pub async fn reconcile_znode(znode: ZookeeperZnode, ctx: Context<Ctx>) -> Result<ReconcilerAction> {
     tracing::info!("Starting reconcile");
     let (ns, uid) = if let ObjectMeta {
         namespace: Some(ns),
@@ -229,7 +226,7 @@ fn zk_mgmt_addr(zk: &ZookeeperCluster) -> Result<String> {
 async fn find_zk_of_znode(
     client: &stackable_operator::client::Client,
     znode: &ZookeeperZnode,
-) -> Result<ZookeeperCluster, Error> {
+) -> Result<ZookeeperCluster> {
     let ZookeeperClusterRef {
         name: zk_name,
         namespace: zk_ns,
