@@ -127,12 +127,14 @@ jobs:
 
   udeps:
     runs-on: ubuntu-latest
+    env:
+      RUSTC_BOOTSTRAP: 1
     steps:
       - uses: actions/checkout@v2.4.0
       - uses: actions-rs/toolchain@v1.0.7
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: stable
           override: true
       - uses: Swatinem/rust-cache@v1.3.0
         with:
