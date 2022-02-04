@@ -202,11 +202,16 @@ async fn find_zk_of_znode(
     client: &stackable_operator::client::Client,
     znode: &ZookeeperZnode,
 ) -> Result<ZookeeperCluster, Error> {
-    if let ZookeeperClusterRef {
-        name: Some(zk_name),
-        namespace: Some(zk_ns),
-    } = &znode.spec.cluster_ref
-    {
+    let ZookeeperClusterRef {
+        name: zk_name,
+        namespace: zk_ns,
+    } = &znode.spec.cluster_ref;
+    if let (Some(zk_name), Some(zk_ns)) = (
+        zk_name,
+        zk_ns
+            .as_deref()
+            .or_else(|| znode.metadata.namespace.as_deref()),
+    ) {
         client
             .get::<ZookeeperCluster>(zk_name, Some(zk_ns))
             .await
