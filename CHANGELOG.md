@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Enabled Prometheus scraping ([#380]).
+- ZookeeperZnode.spec.clusterRef.namespace now defaults to .metadata.namespace ([#382]).
 
 ### Changed
 
@@ -18,6 +19,7 @@ All notable changes to this project will be documented in this file.
 [#340]: https://github.com/stackabletech/zookeeper-operator/pull/340
 [#352]: https://github.com/stackabletech/zookeeper-operator/pull/352
 [#380]: https://github.com/stackabletech/zookeeper-operator/pull/380
+[#382]: https://github.com/stackabletech/zookeeper-operator/pull/382
 
 ## [0.8.0] - 2021-12-22
 
