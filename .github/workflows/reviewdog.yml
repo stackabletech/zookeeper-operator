@@ -1,5 +1,7 @@
+---
 name: reviewdog
-on: [ pull_request ]
+on:
+  pull_request
 
 permissions:
   contents: read
@@ -19,10 +21,10 @@ jobs:
   detect-secrets:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - uses: reviewdog/action-detect-secrets@master
-      with:
-        github_token: ${{ secrets.github_token }}
+      - uses: actions/checkout@v2
+      - uses: reviewdog/action-detect-secrets@master
+        with:
+          github_token: ${{ secrets.github_token }}
 
   flake8:
     runs-on: ubuntu-latest
@@ -66,4 +68,3 @@ jobs:
       - uses: reviewdog/action-yamllint@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-
