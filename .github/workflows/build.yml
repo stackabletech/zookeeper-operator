@@ -49,8 +49,8 @@ jobs:
     outputs:
       repository: ${{ steps.selectrepo.outputs.repo }}
     steps:
+      - uses: actions/setup-python@v2
       - id: selectrepo
-        uses: actions/setup-python@v2
         env:
           TRIGGER: ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
