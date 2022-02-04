@@ -12,6 +12,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     k8s_openapi::api::core::v1::{ConfigMap, Service},
     kube::{
+        self,
         api::ObjectMeta,
         runtime::{
             controller::{Context, ReconcilerAction},
@@ -39,6 +40,10 @@ pub enum Error {
     InvalidZkReference,
     #[snafu(display("could not find {}", zk))]
     FindZk {
+        source: stackable_operator::error::Error,
+        zk: ObjectRef<ZookeeperCluster>,
+    },
+    ZkDoesNotExist {
         source: stackable_operator::error::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
@@ -79,6 +84,7 @@ pub enum Error {
         source: stackable_operator::error::Error,
     },
 }
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl Error {
     fn extract_finalizer_err(err: finalizer::Error<Self>) -> Self {
@@ -115,20 +121,10 @@ pub async fn reconcile_znode(
     };
     let client = &ctx.get_ref().client;
 
-    let zk = find_zk_of_znode(client, &znode).await?;
+    let zk = find_zk_of_znode(client, &znode).await;
     // Use the uid (managed by k8s itself) rather than the object name, to ensure that malicious users can't trick the controller
     // into letting them take over a znode owned by someone else
     let znode_path = format!("/znode-{}", uid);
-    // Rust ZooKeeper client does not support client-side load-balancing, so use
-    // (load-balanced) global service instead.
-    let zk_mgmt_addr = format!(
-        "{}:{}",
-        zk.server_role_service_fqdn()
-            .with_context(|| NoZkFqdnSnafu {
-                zk: ObjectRef::from_obj(&zk),
-            })?,
-        APP_PORT,
-    );
 
     finalizer(
         &client.get_namespaced_api::<ZookeeperZnode>(&ns),
@@ -137,65 +133,97 @@ pub async fn reconcile_znode(
         |ev| async {
             match ev {
                 finalizer::Event::Apply(znode) => {
-                    znode_mgmt::ensure_znode_exists(&zk_mgmt_addr, &znode_path)
-                        .await
-                        .with_context(|_| EnsureZnodeSnafu {
-                            zk: ObjectRef::from_obj(&zk),
-                            znode_path: &znode_path,
-                        })?;
-
-                    let server_role_service = client
-                        .get::<Service>(
-                            &zk.server_role_service_name()
-                                .with_context(|| NoZkSvcNameSnafu {
-                                    zk: ObjectRef::from_obj(&zk),
-                                })?,
-                            zk.metadata.namespace.as_deref(),
-                        )
-                        .await
-                        .context(FindZkSvcSnafu {
-                            zk: ObjectRef::from_obj(&zk),
-                        })?;
-                    for discovery_cm in build_discovery_configmaps(
-                        client,
-                        &znode,
-                        &zk,
-                        &server_role_service,
-                        Some(&znode_path),
-                    )
-                    .await
-                    .context(BuildDiscoveryConfigMapSnafu)?
-                    {
-                        client
-                            .apply_patch(FIELD_MANAGER_SCOPE, &discovery_cm, &discovery_cm)
-                            .await
-                            .with_context(|_| ApplyDiscoveryConfigMapSnafu {
-                                cm: ObjectRef::from_obj(&discovery_cm),
-                            })?;
-                    }
-
-                    Ok(ReconcilerAction {
-                        requeue_after: None,
-                    })
+                    reconcile_apply(client, &znode, zk, &znode_path).await
                 }
-                finalizer::Event::Cleanup(_znode) => {
-                    // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
-                    znode_mgmt::ensure_znode_missing(&zk_mgmt_addr, &znode_path)
-                        .await
-                        .with_context(|_| EnsureZnodeMissingSnafu {
-                            zk: ObjectRef::from_obj(&zk),
-                            znode_path: &znode_path,
-                        })?;
-                    // No need to delete the ConfigMap, since that has an OwnerReference on the ZookeeperZnode object
-                    Ok(ReconcilerAction {
-                        requeue_after: None,
-                    })
-                }
+                finalizer::Event::Cleanup(_znode) => reconcile_cleanup(zk, &znode_path).await,
             }
         },
     )
     .await
     .map_err(Error::extract_finalizer_err)
+}
+
+async fn reconcile_apply(
+    client: &stackable_operator::client::Client,
+    znode: &ZookeeperZnode,
+    zk: Result<ZookeeperCluster>,
+    znode_path: &str,
+) -> Result<ReconcilerAction> {
+    let zk = zk?;
+    znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk)?, znode_path)
+        .await
+        .with_context(|_| EnsureZnodeSnafu {
+            zk: ObjectRef::from_obj(&zk),
+            znode_path,
+        })?;
+
+    let server_role_service = client
+        .get::<Service>(
+            &zk.server_role_service_name()
+                .with_context(|| NoZkSvcNameSnafu {
+                    zk: ObjectRef::from_obj(&zk),
+                })?,
+            zk.metadata.namespace.as_deref(),
+        )
+        .await
+        .context(FindZkSvcSnafu {
+            zk: ObjectRef::from_obj(&zk),
+        })?;
+    for discovery_cm in
+        build_discovery_configmaps(client, znode, &zk, &server_role_service, Some(znode_path))
+            .await
+            .context(BuildDiscoveryConfigMapSnafu)?
+    {
+        client
+            .apply_patch(FIELD_MANAGER_SCOPE, &discovery_cm, &discovery_cm)
+            .await
+            .with_context(|_| ApplyDiscoveryConfigMapSnafu {
+                cm: ObjectRef::from_obj(&discovery_cm),
+            })?;
+    }
+
+    Ok(ReconcilerAction {
+        requeue_after: None,
+    })
+}
+
+async fn reconcile_cleanup(
+    zk: Result<ZookeeperCluster>,
+    znode_path: &str,
+) -> Result<ReconcilerAction> {
+    let zk = match zk {
+        Err(Error::ZkDoesNotExist { zk, .. }) => {
+            tracing::info!(%zk, "Tried to clean up ZookeeperZnode bound to a ZookeeperCluster that does not exist, assuming it is already gone");
+            return Ok(ReconcilerAction {
+                requeue_after: None,
+            });
+        }
+        res => res?,
+    };
+    // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
+    znode_mgmt::ensure_znode_missing(&zk_mgmt_addr(&zk)?, znode_path)
+        .await
+        .with_context(|_| EnsureZnodeMissingSnafu {
+            zk: ObjectRef::from_obj(&zk),
+            znode_path,
+        })?;
+    // No need to delete the ConfigMap, since that has an OwnerReference on the ZookeeperZnode object
+    Ok(ReconcilerAction {
+        requeue_after: None,
+    })
+}
+
+fn zk_mgmt_addr(zk: &ZookeeperCluster) -> Result<String> {
+    // Rust ZooKeeper client does not support client-side load-balancing, so use
+    // (load-balanced) global service instead.
+    Ok(format!(
+        "{}:{}",
+        zk.server_role_service_fqdn()
+            .with_context(|| NoZkFqdnSnafu {
+                zk: ObjectRef::from_obj(zk),
+            })?,
+        APP_PORT,
+    ))
 }
 
 async fn find_zk_of_znode(
@@ -207,12 +235,19 @@ async fn find_zk_of_znode(
         namespace: Some(zk_ns),
     } = &znode.spec.cluster_ref
     {
-        client
-            .get::<ZookeeperCluster>(zk_name, Some(zk_ns))
-            .await
-            .with_context(|_| FindZkSnafu {
-                zk: ObjectRef::new(zk_name).within(zk_ns),
-            })
+        match client.get::<ZookeeperCluster>(zk_name, Some(zk_ns)).await {
+            Ok(zk) => Ok(zk),
+            Err(err) => match &err {
+                stackable_operator::error::Error::KubeError {
+                    source: kube::Error::Api(kube::core::ErrorResponse { ref reason, .. }),
+                } if reason == "NotFound" => Err(err).with_context(|_| ZkDoesNotExistSnafu {
+                    zk: ObjectRef::new(zk_name).within(zk_ns),
+                }),
+                _ => Err(err).with_context(|_| FindZkSnafu {
+                    zk: ObjectRef::new(zk_name).within(zk_ns),
+                }),
+            },
+        }
     } else {
         InvalidZkReferenceSnafu.fail()
     }
