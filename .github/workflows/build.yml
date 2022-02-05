@@ -37,7 +37,6 @@ jobs:
         if: steps.check.outputs.result == true
         run: echo 'no fork'
 
-
       - name: the token have no permission
         if: steps.check.outputs.result == false
         run: echo 'fork'
