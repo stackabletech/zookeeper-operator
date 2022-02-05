@@ -28,18 +28,17 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - id: check
-        uses: actions-cool/check-user-permission@v1
-        with:
-          require: write
-
       - name: the token have no permission
-        if: steps.check.outputs.result == true
+        env:
+          - TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ '${{ env.TOKEN }}' != '' }}
         run: echo 'no fork'
 
       - name: the token have no permission
-        if: steps.check.outputs.result == false
-        run: echo 'fork'
+        env:
+          - TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: ${{ '${{ env.TOKEN }}' == '' }}
+        run: echo 'no fork'
 
   # Identify unused dependencies
   udeps:
