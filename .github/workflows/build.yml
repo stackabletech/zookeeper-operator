@@ -30,13 +30,13 @@ jobs:
     steps:
       - name: the token have no permission
         env:
-          - TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         if: ${{ '${{ env.TOKEN }}' != '' }}
         run: echo 'no fork'
 
       - name: the token have no permission
         env:
-          - TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         if: ${{ '${{ env.TOKEN }}' == '' }}
         run: echo 'no fork'
 
