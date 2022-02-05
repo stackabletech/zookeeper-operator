@@ -25,6 +25,11 @@ env:
   STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-stable
 
 jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Output head ref
+        run: echo ${{ github.event.pull_request.head.ref }}
   # Identify unused dependencies
   udeps:
     runs-on: ubuntu-latest
