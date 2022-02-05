@@ -29,11 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: no fork
-        if: ${{ github.token }} != null
+        if: ${{ github.token != null }}
         run: echo 'no fork'
 
       - name: fork
-        if: ${{ github.token }} == null
+        if: ${{ github.token == null }}
         run: echo 'fork'
 
   # Identify unused dependencies
