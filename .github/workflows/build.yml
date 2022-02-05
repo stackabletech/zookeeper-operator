@@ -28,17 +28,13 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: the token have no permission
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        if: ${{ '${{ env.TOKEN }}' != '' }}
+      - name: no fork
+        if: ${{ '${{ github.token }}' != '' }}
         run: echo 'no fork'
 
-      - name: the token have no permission
-        env:
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        if: ${{ '${{ env.TOKEN }}' == '' }}
-        run: echo 'no fork'
+      - name: fork
+        if: ${{ '${{ github.token }}' == '' }}
+        run: echo 'fork'
 
   # Identify unused dependencies
   udeps:
