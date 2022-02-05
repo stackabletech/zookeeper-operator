@@ -31,11 +31,11 @@ jobs:
       TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Run if fork
-        if: env.TOKEN == ''
-        run: echo fork ${{ env.TOKEN }}
+        if: secrets.GITHUB_TOKEN == ''
+        run: echo fork
       - name: Run if not fork
-        if: env.TOKEN != ''
-        run: echo notfork ${{ env.TOKEN }}
+        if: secrets.GITHUB_TOKEN != ''
+        run: echo notfork
   # Identify unused dependencies
   udeps:
     runs-on: ubuntu-latest
