@@ -27,9 +27,15 @@ env:
 jobs:
   debug:
     runs-on: ubuntu-latest
+    env:
+      TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Output head ref
-        run: echo ${{ github.event.pull_request.head.ref }}
+      - name: Run if fork
+        if: ${{ env.TOKEN != null }}
+        run: echo fork ${{ env.TOKEN }}
+      - name: Run if not fork
+        if: ${{ env.TOKEN == null }}
+        run: echo notfork ${{ TOKEN }}
   # Identify unused dependencies
   udeps:
     runs-on: ubuntu-latest
