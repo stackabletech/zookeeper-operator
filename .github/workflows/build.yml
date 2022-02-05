@@ -35,7 +35,7 @@ jobs:
         run: echo fork ${{ env.TOKEN }}
       - name: Run if not fork
         if: ${{ env.TOKEN == null }}
-        run: echo notfork ${{ TOKEN }}
+        run: echo notfork ${{ env.TOKEN }}
   # Identify unused dependencies
   udeps:
     runs-on: ubuntu-latest
