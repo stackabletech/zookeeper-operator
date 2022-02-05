@@ -31,10 +31,10 @@ jobs:
       TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Run if fork
-        if: ${{ env.TOKEN != null }}
+        if: ${{ env.TOKEN != "" }}
         run: echo fork ${{ env.TOKEN }}
       - name: Run if not fork
-        if: ${{ env.TOKEN == null }}
+        if: ${{ env.TOKEN == "" }}
         run: echo notfork ${{ env.TOKEN }}
   # Identify unused dependencies
   udeps:
