@@ -25,26 +25,8 @@ env:
   STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-stable
 
 jobs:
-  steps:
-    - id: check
-      uses: shogo82148/actions-check-permissions@v1
-
-    - name: the token have no permission
-      if: steps.check.outputs.permission == 'none'
-      run: echo 'something to do'
-
-    - name: the token have read permission
-      if: steps.check.outputs.permission == 'read'
-      run: echo 'something to do'
-
-    - name: the token have write permission
-      if: steps.check.outputs.permission == 'write'
-      run: echo 'something to do'
-
   debug:
     runs-on: ubuntu-latest
-    env:
-      TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - id: check
         uses: actions-cool/check-user-permission@v1
