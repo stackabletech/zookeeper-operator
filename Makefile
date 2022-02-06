@@ -39,7 +39,8 @@ version:
 	yq eval -i '.version = ${VERSION} | .appVersion = ${VERSION}' deploy/helm/zookeeper-operator/Chart.yaml
 
 config:
-	cp -r deploy/config-spec deploy/helm/zookeeper-operator/configs
+	mkdir -p deploy/helm/zookeeper-operator/configs
+	cp -r deploy/config-spec/* deploy/helm/zookeeper-operator/configs
 
 crds:
 	mkdir -p deploy/helm/zookeeper-operator/crds
@@ -55,3 +56,11 @@ clean-manifests:
 
 generate-manifests: clean-manifests compile-chart
 	./scripts/generate-manifests.sh
+
+clean-crds:
+	rm -rf deploy/crd/*
+
+generate-crds:
+	cargo build
+
+regenerate-charts: clean-crds chart-clean clean-manifests generate-crds compile-chart generate-manifests
