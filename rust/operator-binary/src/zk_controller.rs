@@ -21,8 +21,9 @@ use stackable_operator::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EnvVar, EnvVarSource, ExecAction,
-                ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec, Probe,
-                ResourceRequirements, SecurityContext, Service, ServicePort, ServiceSpec, Volume,
+                ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec,
+                PodSecurityContext, Probe, ResourceRequirements, SecurityContext, Service,
+                ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
@@ -495,6 +496,10 @@ fn build_server_rolegroup_statefulset(
                         ..ConfigMapVolumeSource::default()
                     }),
                     ..Volume::default()
+                })
+                .security_context(PodSecurityContext {
+                    fs_group: Some(1000),
+                    ..PodSecurityContext::default()
                 })
                 .build_template(),
             volume_claim_templates: Some(vec![PersistentVolumeClaim {
