@@ -1931,7 +1931,6 @@ dependencies = [
  "stackable-zookeeper-crd",
  "strum",
  "strum_macros",
- "tokio 0.1.22",
  "tokio 1.16.1",
  "tokio-executor",
  "tokio-zookeeper",
