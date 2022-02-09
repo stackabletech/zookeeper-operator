@@ -5,7 +5,7 @@ mod znode_controller;
 
 use crate::utils::Tokio01ExecutorExt;
 use clap::Parser;
-use futures::{compat::Future01CompatExt, StreamExt};
+use futures::{compat::Future01CompatExt, StreamExt, TryStreamExt};
 use stackable_operator::{
     cli::{Command, ProductOperatorRun},
     k8s_openapi::api::{
@@ -15,7 +15,8 @@ use stackable_operator::{
     kube::{
         api::{DynamicObject, ListParams},
         runtime::{
-            controller::{Context, ReconcilerAction},
+            controller::{self, Context, ReconcilerAction},
+            events::{Event, EventType, Recorder, Reporter},
             reflector::ObjectRef,
             Controller,
         },
@@ -140,8 +141,33 @@ async fn main() -> anyhow::Result<()> {
                             .run_in_ctx(znode_controller::reconcile_znode(znode, ctx))
                     },
                     znode_controller::error_policy,
-                    Context::new(znode_controller::Ctx { client }),
-                );
+                    Context::new(znode_controller::Ctx {
+                        client: client.clone(),
+                    }),
+                )
+                .or_else(|err| async {
+                    if let controller::Error::ReconcilerFailed(err, znode) = &err {
+                        let recorder = Recorder::new(
+                            client.as_kube_client(),
+                            Reporter {
+                                controller: "zookeeperznode.zookeeper.stackable.tech".to_string(),
+                                instance: None,
+                            },
+                            znode.clone().into(),
+                        );
+                        let _ = recorder
+                            .publish(Event {
+                                type_: EventType::Warning,
+                                reason: "ReconcilerFailed".to_string(),
+                                note: Some(err.to_string()),
+                                action: "Reconcile".to_string(),
+                                secondary: None,
+                            })
+                            .await;
+                    }
+                    Err(err)
+                });
+
             futures::stream::select(
                 zk_controller.map(erase_controller_result_type),
                 znode_controller.map(erase_controller_result_type),

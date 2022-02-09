@@ -1,2 +1,11 @@
 [workspace]
 members = ["rust/crd", "rust/operator-binary"]
+
+[patch.crates-io]
+# Depends on https://github.com/kube-rs/kube-rs/pull/815
+kube = { git = "https://github.com/kube-rs/kube-rs.git" }
+kube-core = { git = "https://github.com/kube-rs/kube-rs.git" }
+kube-runtime = { git = "https://github.com/kube-rs/kube-rs.git" }
+# kube = { path = "../../kube-rs/kube" }
+# kube-core = { path = "../../kube-rs/kube-core" }
+# kube-runtime = { path = "../../kube-rs/kube-runtime" }
