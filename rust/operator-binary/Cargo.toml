@@ -17,7 +17,7 @@ serde_yaml = "0.8.23"
 snafu = "0.7.0"
 strum = "0.23.0"
 strum_macros = "0.23.1"
-tokio = { version = "1.15.0", features = ["full"] }
+tokio = { version = "1.16.1", features = ["full"] }
 tokio01 = { version = "0.1.22", package = "tokio" }
 tokio-executor = "0.1.10"
 tokio-zookeeper = "0.1.3"
