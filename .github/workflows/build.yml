@@ -255,10 +255,19 @@ jobs:
       - name: placeholder
         run: echo Tests will go here
 
+  tests_passed:
+    name: All tests passed
+    needs:
+      - test_charts
+    runs-on: ubuntu-latest
+    steps:
+      - name: log
+        run: echo All tests have passed!
+
   package_and_publish:
     name: Package Charts, Build Docker Image and publish them
     needs:
-      - test_charts
+      - tests_passed
       - select_repo
     runs-on: ubuntu-latest
     env:
