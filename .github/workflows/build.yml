@@ -181,7 +181,6 @@ jobs:
       - run_clippy
       - run_rustfmt
       - run_rustdoc
-      - run_udeps
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
@@ -214,7 +213,6 @@ jobs:
       - run_clippy
       - run_rustfmt
       - run_rustdoc
-      - run_udeps
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -260,6 +258,7 @@ jobs:
     name: All tests passed
     needs:
       - test_charts
+      - run_udeps
     runs-on: ubuntu-latest
     steps:
       - name: log
