@@ -214,6 +214,7 @@ jobs:
       - run_clippy
       - run_rustfmt
       - run_rustdoc
+      - run_udeps
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
