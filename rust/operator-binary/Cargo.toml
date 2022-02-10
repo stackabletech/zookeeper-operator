@@ -9,10 +9,10 @@ repository = "https://github.com/stackabletech/zookeeper-operator"
 
 [dependencies]
 failure = "0.1.8"
-futures = { version = "0.3.19", features = ["compat"] }
-semver = "1.0.4"
-serde = "1.0.133"
-serde_json = "1.0.75"
+futures = { version = "0.3.21", features = ["compat"] }
+semver = "1.0.5"
+serde = "1.0.136"
+serde_json = "1.0.78"
 serde_yaml = "0.8.23"
 snafu = "0.7.0"
 strum = "0.23.0"
@@ -21,13 +21,13 @@ tokio = { version = "1.15.0", features = ["full"] }
 tokio01 = { version = "0.1.22", package = "tokio" }
 tokio-executor = "0.1.10"
 tokio-zookeeper = "0.1.3"
-tracing = "0.1.29"
+tracing = "0.1.30"
 pin-project = "1.0.10"
 stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.10.0" }
 stackable-zookeeper-crd = { path = "../crd" }
-anyhow = "1.0.52"
+anyhow = "1.0.53"
 fnv = "1.0.7"
-clap = { version = "3.0.9", features = ["derive"] }
+clap = { version = "3.0.14", features = ["derive"] }
 
 [build-dependencies]
 built = { version = "0.5.1", features = ["chrono", "git2"] }
