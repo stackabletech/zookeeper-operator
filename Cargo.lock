@@ -1931,7 +1931,7 @@ dependencies = [
  "stackable-zookeeper-crd",
  "strum",
  "strum_macros",
- "tokio 0.1.22",
+ "tokio 0.3.7",
  "tokio 1.16.1",
  "tokio-executor",
  "tokio-zookeeper",
@@ -2095,6 +2095,16 @@ dependencies = [
  "tokio-timer",
  "tokio-udp",
  "tokio-uds",
+]
+
+[[package]]
+name = "tokio"
+version = "0.3.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46409491c9375a693ce7032101970a54f8a2010efb77e13f70788f0d84489e39"
+dependencies = [
+ "autocfg",
+ "pin-project-lite",
 ]
 
 [[package]]
