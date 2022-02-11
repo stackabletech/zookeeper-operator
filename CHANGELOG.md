@@ -8,7 +8,9 @@ All notable changes to this project will be documented in this file.
 
 - Enabled Prometheus scraping ([#380]).
 - ZookeeperZnode.spec.clusterRef.namespace now defaults to .metadata.namespace ([#382]).
-- PodSecurityContext.fsGroup to allow write access to mounted volumes ([406]).
+- PodSecurityContext.fsGroup to allow write access to mounted volumes ([#406]).
+- Added `ZOOKEEPER_HOSTS` and `ZOOKEEPER_CHROOT` to discovery config maps,
+  for clients that do not support the composite connection string ([#421]).
 
 ### Changed
 
@@ -25,6 +27,7 @@ All notable changes to this project will be documented in this file.
 [#383]: https://github.com/stackabletech/zookeeper-operator/pull/383
 [#384]: https://github.com/stackabletech/zookeeper-operator/pull/384
 [#406]: https://github.com/stackabletech/zookeeper-operator/pull/406
+[#421]: https://github.com/stackabletech/zookeeper-operator/pull/421
 
 ## [0.8.0] - 2021-12-22
 
