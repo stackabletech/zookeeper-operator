@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2022-02-14
+
 ### Added
 
 - Enabled Prometheus scraping ([#380]).
