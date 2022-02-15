@@ -1,11 +1,6 @@
 [workspace]
 members = ["rust/crd", "rust/operator-binary"]
 
-[patch.crates-io]
-# Depends on https://github.com/kube-rs/kube-rs/pull/815
-kube = { git = "https://github.com/kube-rs/kube-rs.git" }
-kube-core = { git = "https://github.com/kube-rs/kube-rs.git" }
-kube-runtime = { git = "https://github.com/kube-rs/kube-rs.git" }
-# kube = { path = "../../kube-rs/kube" }
-# kube-core = { path = "../../kube-rs/kube-core" }
-# kube-runtime = { path = "../../kube-rs/kube-runtime" }
+[patch."git+https://github.com/stackabletech/operator-rs.git"]
+# Depends on https://github.com/kube-rs/kube-rs/pull/815, https://github.com/stackabletech/operator-rs/pull/319
+stackable-operator = { git = "https://github.com/stackabletech//operator-rs.git", branch = "main" }
