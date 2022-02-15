@@ -145,27 +145,12 @@ async fn main() -> anyhow::Result<()> {
                         client: client.clone(),
                     }),
                 )
-                .or_else(|err| async {
-                    if let controller::Error::ReconcilerFailed(err, znode) = &err {
-                        let recorder = Recorder::new(
-                            client.as_kube_client(),
-                            Reporter {
-                                controller: "zookeeperznode.zookeeper.stackable.tech".to_string(),
-                                instance: None,
-                            },
-                            znode.clone().into(),
-                        );
-                        let _ = recorder
-                            .publish(Event {
-                                type_: EventType::Warning,
-                                reason: "ReconcilerFailed".to_string(),
-                                note: Some(err.to_string()),
-                                action: "Reconcile".to_string(),
-                                secondary: None,
-                            })
-                            .await;
-                    }
-                    Err(err)
+                .inspect_err(|err| {
+                    publish_error_k8s_event(
+                        &client,
+                        "zookeeperznode.zookeeper.stackable.tech",
+                        err,
+                    );
                 });
 
             futures::stream::select(
@@ -189,4 +174,56 @@ async fn main() -> anyhow::Result<()> {
 
     tokio01_runtime.shutdown_now().compat().await.unwrap();
     Ok(())
+}
+
+#[tracing::instrument(skip(client))]
+fn publish_error_k8s_event<QueueErr>(
+    client: &stackable_operator::client::Client,
+    controller: &str,
+    controller_err: &controller::Error<znode_controller::Error, QueueErr>,
+) where
+    QueueErr: std::error::Error,
+{
+    let (err, obj) = match controller_err {
+        controller::Error::ReconcilerFailed(err, obj) => (err, obj),
+        // Other error types are intended for the operator administrator, and aren't linked to a specific object
+        _ => return,
+    };
+    let full_msg = {
+        use std::fmt::Write;
+        let mut buf = err.to_string();
+        let mut err: &dyn std::error::Error = err;
+        loop {
+            err = match err.source() {
+                Some(err) => {
+                    write!(buf, ": {}", err).unwrap();
+                    err
+                }
+                None => break buf,
+            }
+        }
+    };
+    let recorder = Recorder::new(
+        client.as_kube_client(),
+        Reporter {
+            controller: controller.to_string(),
+            instance: None,
+        },
+        obj.clone().into(),
+    );
+    let event = Event {
+        type_: EventType::Warning,
+        reason: znode_controller::ErrorDiscriminants::from(err).to_string(),
+        note: Some(full_msg),
+        action: "Reconcile".to_string(),
+        secondary: err.secondary_object().map(|secondary| secondary.into()),
+    };
+    tokio::spawn(async move {
+        if let Err(err) = recorder.publish(event).await {
+            tracing::error!(
+                error = &err as &dyn std::error::Error,
+                "Failed to report error as K8s event"
+            )
+        }
+    });
 }
