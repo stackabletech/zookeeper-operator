@@ -5,7 +5,7 @@ mod znode_controller;
 
 use crate::utils::Tokio01ExecutorExt;
 use clap::Parser;
-use futures::{compat::Future01CompatExt, StreamExt, TryStreamExt};
+use futures::{compat::Future01CompatExt, StreamExt};
 use stackable_operator::{
     cli::{Command, ProductOperatorRun},
     k8s_openapi::api::{
@@ -13,14 +13,9 @@ use stackable_operator::{
         core::v1::{ConfigMap, Endpoints, Service},
     },
     kube::{
-        api::{DynamicObject, ListParams},
-        runtime::{
-            controller::{self, Context, ReconcilerAction},
-            events::{Event, EventType, Recorder, Reporter},
-            reflector::ObjectRef,
-            Controller,
-        },
-        CustomResourceExt, Resource,
+        api::ListParams,
+        runtime::{controller::Context, reflector::ObjectRef, Controller},
+        CustomResourceExt,
     },
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
@@ -37,17 +32,6 @@ pub const APP_PORT: u16 = 2181;
 struct Opts {
     #[clap(subcommand)]
     cmd: Command,
-}
-
-/// Erases the concrete types of the controller result, so that we can merge the streams of multiple controllers for different resources.
-///
-/// In particular, we convert `ObjectRef<K>` into `ObjectRef<DynamicObject>` (which carries `K`'s metadata at runtime instead), and
-/// `E` into the trait object `anyhow::Error`.
-fn erase_controller_result_type<K: Resource, E: std::error::Error + Send + Sync + 'static>(
-    res: Result<(ObjectRef<K>, ReconcilerAction), E>,
-) -> anyhow::Result<(ObjectRef<DynamicObject>, ReconcilerAction)> {
-    let (obj_ref, action) = res?;
-    Ok((obj_ref.erase(), action))
 }
 
 #[tokio::main]
@@ -111,7 +95,14 @@ async fn main() -> anyhow::Result<()> {
                         client: client.clone(),
                         product_config,
                     }),
-                );
+                )
+                .map(|res| {
+                    stackable_operator::logging::report_controller_reconciled(
+                        &client,
+                        "zookeepercluster.zookeeper.stackable.tech",
+                        &res,
+                    );
+                });
             let znode_controller_builder = Controller::new(
                 client.get_all_api::<ZookeeperZnode>(),
                 ListParams::default(),
@@ -145,85 +136,20 @@ async fn main() -> anyhow::Result<()> {
                         client: client.clone(),
                     }),
                 )
-                .inspect_err(|err| {
-                    publish_error_k8s_event(
+                .map(|res| {
+                    stackable_operator::logging::report_controller_reconciled(
                         &client,
                         "zookeeperznode.zookeeper.stackable.tech",
-                        err,
+                        &res,
                     );
                 });
 
-            futures::stream::select(
-                zk_controller.map(erase_controller_result_type),
-                znode_controller.map(erase_controller_result_type),
-            )
-            .for_each(|res| async {
-                match res {
-                    Ok((obj, _)) => tracing::info!(object = %obj, "Reconciled object"),
-                    Err(err) => {
-                        tracing::error!(
-                            error = &*err as &dyn std::error::Error,
-                            "Failed to reconcile object",
-                        )
-                    }
-                }
-            })
-            .await;
+            futures::stream::select(zk_controller, znode_controller)
+                .collect::<()>()
+                .await;
         }
     }
 
     tokio01_runtime.shutdown_now().compat().await.unwrap();
     Ok(())
-}
-
-#[tracing::instrument(skip(client))]
-fn publish_error_k8s_event<QueueErr>(
-    client: &stackable_operator::client::Client,
-    controller: &str,
-    controller_err: &controller::Error<znode_controller::Error, QueueErr>,
-) where
-    QueueErr: std::error::Error,
-{
-    let (err, obj) = match controller_err {
-        controller::Error::ReconcilerFailed(err, obj) => (err, obj),
-        // Other error types are intended for the operator administrator, and aren't linked to a specific object
-        _ => return,
-    };
-    let full_msg = {
-        use std::fmt::Write;
-        let mut buf = err.to_string();
-        let mut err: &dyn std::error::Error = err;
-        loop {
-            err = match err.source() {
-                Some(err) => {
-                    write!(buf, ": {}", err).unwrap();
-                    err
-                }
-                None => break buf,
-            }
-        }
-    };
-    let recorder = Recorder::new(
-        client.as_kube_client(),
-        Reporter {
-            controller: controller.to_string(),
-            instance: None,
-        },
-        obj.clone().into(),
-    );
-    let event = Event {
-        type_: EventType::Warning,
-        reason: znode_controller::ErrorDiscriminants::from(err).to_string(),
-        note: Some(full_msg),
-        action: "Reconcile".to_string(),
-        secondary: err.secondary_object().map(|secondary| secondary.into()),
-    };
-    tokio::spawn(async move {
-        if let Err(err) = recorder.publish(event).await {
-            tracing::error!(
-                error = &err as &dyn std::error::Error,
-                "Failed to report error as K8s event"
-            )
-        }
-    });
 }

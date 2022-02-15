@@ -21,9 +21,10 @@ use stackable_operator::{
             reflector::ObjectRef,
         },
     },
+    logging::k8s_events::PublishableError,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
-use strum::{AsRefStr, EnumDiscriminants};
+use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeeperznode";
 
@@ -32,7 +33,7 @@ pub struct Ctx {
 }
 
 #[derive(Snafu, Debug, EnumDiscriminants)]
-#[strum_discriminants(derive(AsRefStr, strum::Display))]
+#[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[snafu(display(
@@ -105,8 +106,14 @@ impl Error {
             },
         }
     }
+}
 
-    pub fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
+impl PublishableError for Error {
+    fn variant_name(&self) -> &'static str {
+        ErrorDiscriminants::from(self).into()
+    }
+
+    fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
             Error::ObjectMissingMetadata => None,
             Error::InvalidZkReference => None,
