@@ -78,11 +78,12 @@ fn build_discovery_configmap(
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"
     // See https://zookeeper.apache.org/doc/current/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-
-    let mut conn_str = hosts
+    let hosts = hosts
         .into_iter()
         .map(|(host, port)| format!("{}:{}", host.into(), port))
         .collect::<Vec<_>>()
         .join(",");
+    let mut conn_str = hosts.clone();
     if let Some(chroot) = chroot {
         if !chroot.starts_with('/') {
             return RelativeChrootSnafu { chroot }.fail();
@@ -108,6 +109,9 @@ fn build_discovery_configmap(
                 .build(),
         )
         .add_data("ZOOKEEPER", conn_str)
+        // Some clients don't support ZooKeeper's merged `hosts/chroot` format, so export them separately for these clients
+        .add_data("ZOOKEEPER_HOSTS", hosts)
+        .add_data("ZOOKEEPER_CHROOT", chroot.unwrap_or("/"))
         .build()
         .context(BuildConfigMapSnafu)
 }

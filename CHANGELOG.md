@@ -4,17 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] - 2022-02-14
+
 ### Added
 
 - Enabled Prometheus scraping ([#380]).
 - ZookeeperZnode.spec.clusterRef.namespace now defaults to .metadata.namespace ([#382]).
-- PodSecurityContext.fsGroup to allow write access to mounted volumes ([406]).
+- PodSecurityContext.fsGroup to allow write access to mounted volumes ([#406]).
+- Added `ZOOKEEPER_HOSTS` and `ZOOKEEPER_CHROOT` to discovery config maps,
+  for clients that do not support the composite connection string ([#421]).
 
 ### Changed
 
 - Shut down gracefully ([#338]).
 - Fixed ACL incompatibility with certain managed K8s providers ([#340]).
-- Operator-rs: 0.6.0 -> 0.8.0 ([#352]).
+- Operator-rs: 0.6.0 -> 0.10.0 ([#352], [#383]).
 - Cleanup for `ZookeeperZnode` now succeeds if the linked `ZookeeperCluster` was already deleted ([#384]).
 
 [#338]: https://github.com/stackabletech/zookeeper-operator/pull/338
@@ -22,8 +26,10 @@ All notable changes to this project will be documented in this file.
 [#352]: https://github.com/stackabletech/zookeeper-operator/pull/352
 [#380]: https://github.com/stackabletech/zookeeper-operator/pull/380
 [#382]: https://github.com/stackabletech/zookeeper-operator/pull/382
+[#383]: https://github.com/stackabletech/zookeeper-operator/pull/383
 [#384]: https://github.com/stackabletech/zookeeper-operator/pull/384
 [#406]: https://github.com/stackabletech/zookeeper-operator/pull/406
+[#421]: https://github.com/stackabletech/zookeeper-operator/pull/421
 
 ## [0.8.0] - 2021-12-22
 

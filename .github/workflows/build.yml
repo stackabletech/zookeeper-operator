@@ -19,7 +19,7 @@ env:
   RUSTFLAGS: "-D warnings"
   RUSTDOCFLAGS: "-D warnings"
   RUST_LOG: "info"
-  PRODUCT_NAME: zookeeper
+  PRODUCT_NAME: "zookeeper"
   DEV_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-dev
   TEST_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-test
   STABLE_REPO_HELM_URL: https://repo.stackable.tech/repository/helm-stable
@@ -32,20 +32,20 @@ jobs:
     env:
       RUSTC_BOOTSTRAP: 1
     steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions-rs/toolchain@v1.0.7
+      - uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # renovate: tag=v1.0.7
         with:
           profile: minimal
           toolchain: stable
           override: true
-      - uses: Swatinem/rust-cache@v1.3.0
+      - uses: Swatinem/rust-cache@842ef286fff290e445b90b4002cc9807c3669641 # renovate: tag=v1.3.0
         with:
           key: udeps
-      - uses: actions-rs/cargo@v1
+      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # renovate: tag=v1.0.3
         with:
           command: install
           args: cargo-udeps --locked
-      - uses: actions-rs/cargo@v1
+      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # renovate: tag=v1.0.3
         with:
           command: udeps
 
@@ -106,8 +106,8 @@ jobs:
     continue-on-error: ${{ matrix.checks == 'advisories' }}
 
     steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: EmbarkStudios/cargo-deny-action@v1.2.10
+      - uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
+      - uses: EmbarkStudios/cargo-deny-action@4340bbf5bc9e7034fae7c4857e9ab87cab35c905 # renovate: tag=v1.2.11
         with:
           command: check ${{ matrix.checks }}
 
@@ -115,14 +115,14 @@ jobs:
     name: Run Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions-rs/toolchain@v1.0.7
+      - uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # renovate: tag=v1.0.7
         with:
           profile: minimal
           toolchain: stable
           components: rustfmt
           override: true
-      - uses: actions-rs/cargo@v1.0.3
+      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # renovate: tag=v1.0.3
         with:
           command: fmt
           args: --all -- --check
@@ -131,20 +131,20 @@ jobs:
     name: Run Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions-rs/toolchain@v1.0.7
+      - uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # renovate: tag=v1.0.7
         with:
           profile: minimal
           toolchain: stable
           components: clippy
           override: true
-      - uses: Swatinem/rust-cache@v1.3.0
+      - uses: Swatinem/rust-cache@842ef286fff290e445b90b4002cc9807c3669641 # renovate: tag=v1.3.0
         with:
           key: clippy
       - name: Run clippy action to produce annotations
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        uses: actions-rs/clippy-check@v1.0.7
+        uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d # renovate: tag=v1.0.7
         if: env.GITHUB_TOKEN != null
         with:
           args: --all-targets -- -D warnings
@@ -159,17 +159,17 @@ jobs:
     name: Run RustDoc
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions-rs/toolchain@v1.0.7
+      - uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # renovate: tag=v1.0.7
         with:
           profile: minimal
           toolchain: stable
           components: rustfmt
           override: true
-      - uses: Swatinem/rust-cache@v1.3.0
+      - uses: Swatinem/rust-cache@842ef286fff290e445b90b4002cc9807c3669641 # renovate: tag=v1.3.0
         with:
           key: doc
-      - uses: actions-rs/cargo@v1.0.3
+      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # renovate: tag=v1.0.3
         with:
           command: doc
           args: --document-private-items
@@ -181,19 +181,18 @@ jobs:
       - run_clippy
       - run_rustfmt
       - run_rustdoc
-      - run_udeps
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2.4.0
-      - uses: actions-rs/toolchain@v1.0.7
+      - uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # renovate: tag=v1.0.7
         with:
           profile: minimal
           toolchain: stable
           override: true
-      - uses: Swatinem/rust-cache@v1.3.0
+      - uses: Swatinem/rust-cache@842ef286fff290e445b90b4002cc9807c3669641 # renovate: tag=v1.3.0
         with:
           key: test
-      - uses: actions-rs/cargo@v1.0.3
+      - uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # renovate: tag=v1.0.3
         with:
           command: test
 
@@ -217,19 +216,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
       - name: Set up Helm
-        uses: azure/setup-helm@v2.0
+        uses: azure/setup-helm@a517f2ff6560563a369e16ca7c7d136b6164423f # renovate: tag=v2.0
         with:
           version: v3.6.2
       - name: Set up cargo
-        uses: actions-rs/toolchain@v1.0.7
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # renovate: tag=v1.0.7
         with:
           profile: minimal
           toolchain: stable
           override: true
       - name: Set up rust-cache
-        uses: Swatinem/rust-cache@v1.3.0
+        uses: Swatinem/rust-cache@842ef286fff290e445b90b4002cc9807c3669641 # renovate: tag=v1.3.0
         with:
           key: charts
       - name: Regenerate charts
@@ -238,7 +237,7 @@ jobs:
         run: git diff --exit-code
       - name: Git Diff showed uncommitted changes
         if: ${{ failure() }}
-        uses: actions/github-script@v3
+        uses: actions/github-script@e3cbab99d3a9b271e1b79fc96d103a4a5534998c # renovate: tag=v5
         with:
           script: |
             core.setFailed('Committed charts were not up to date, please regenerate and re-commit!')
@@ -251,14 +250,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
       - name: placeholder
         run: echo Tests will go here
+
+  tests_passed:
+    name: All tests passed
+    needs:
+      - test_charts
+      - run_udeps
+    runs-on: ubuntu-latest
+    steps:
+      - name: log
+        run: echo All tests have passed!
 
   package_and_publish:
     name: Package Charts, Build Docker Image and publish them
     needs:
-      - test_charts
+      - tests_passed
       - select_repo
     runs-on: ubuntu-latest
     env:
@@ -267,10 +276,10 @@ jobs:
     if: needs.select_repo.outputs.repository != 'skip'
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
-      - uses: actions/setup-python@v2
+        uses: actions/checkout@ec3a7ce113134d7a93b817d10a8272cb61118579 # renovate: tag=v2.4.0
+      - uses: actions/setup-python@7f80679172b057fc5e90d70d197929d454754a5a # renovate: tag=v2
         if: ${{ github.event_name == 'pull_request' }}
-      - uses: actions-rs/toolchain@v1.0.7
+      - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # renovate: tag=v1.0.7
         with:
           profile: minimal
           toolchain: stable
@@ -296,10 +305,10 @@ jobs:
       - name: Package Chart
         run: mkdir -p target/helm && helm package --destination target/helm deploy/helm/${{ env.PRODUCT_NAME }}-operator
       - name: Build Docker image
-        if: env.NEXUS_PASSWORD != null
+        if: env.NEXUS_PASSWORD != null # pragma: allowlist secret
         run: make docker
       - name: Publish Chart
-        if: env.NEXUS_PASSWORD != null
+        if: env.NEXUS_PASSWORD != null # pragma: allowlist secret
         run: >-
           /usr/bin/curl
           --fail

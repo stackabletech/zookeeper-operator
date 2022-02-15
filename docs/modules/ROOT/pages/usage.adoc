@@ -45,3 +45,67 @@ Finally, a ConfigMap is created, containing a path that a ZooKeeper client can c
 
 The managed ZooKeeper instances are automatically configured to export Prometheus metrics. See
 xref:home::monitoring.adoc[] for more details.
+
+== Configuration & Environment Overrides
+
+The cluster definition also supports overriding configuration properties and environment variables, either per role or per role group, where the more specific override (role group) has precedence over the less specific one (role).
+
+IMPORTANT: Overriding certain properties which are set by operator (such as the ports) can interfere with the operator and can lead to problems.
+
+=== Configuration Properties
+
+For a role or role group, at the same level of `config`, you can specify: `configOverrides` for the `zoo.cfg`. For example, if you want to set the `4lw.commands.whitelist` to allow the `ruok` administrative command, it can be configured in the `ZookeeperCluster` resource like so:
+
+[source,yaml]
+----
+servers:
+  roleGroups:
+    default:
+      configOverrides:
+        zoo.cfg:
+          4lw.commands.whitelist: "srvr, ruok"
+      replicas: 1
+----
+
+Just as for the `config`, it is possible to specify this at role level as well:
+
+[source,yaml]
+----
+routers:
+  configOverrides:
+    zoo.cfg:
+      4lw.commands.whitelist: "srvr, ruok"
+  roleGroups:
+    default:
+      replicas: 1
+----
+
+All override property values must be strings.
+
+For a full list of configuration options we refer to the Apache ZooKeeper https://zookeeper.apache.org/doc/r3.7.0/zookeeperAdmin.html#sc_configuration[Configuration Reference].
+
+=== Environment Variables
+
+In a similar fashion, environment variables can be (over)written. For example per role group:
+
+[source,yaml]
+----
+servers:
+  roleGroups:
+    default:
+      envOverrides:
+        MY_ENV_VAR: "MY_VALUE"
+      replicas: 1
+----
+
+or per role:
+
+[source,yaml]
+----
+servers:
+  envOverrides:
+    MY_ENV_VAR: "MY_VALUE"
+  roleGroups:
+    default:
+      replicas: 1
+----
