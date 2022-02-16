@@ -1853,7 +1853,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator"
 version = "0.11.0-nightly"
-source = "git+https://github.com/stackabletech//operator-rs.git?branch=feature/error-events#ae9c48028bb92adf457a27bbdf2c011d3aaeae31"
+source = "git+https://github.com/stackabletech//operator-rs.git?branch=feature/error-events#decb1423256848fa60f0213f8c3291cc1acb3fe7"
 dependencies = [
  "async-trait",
  "backoff",

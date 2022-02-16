@@ -17,6 +17,7 @@ use stackable_operator::{
         runtime::{controller::Context, reflector::ObjectRef, Controller},
         CustomResourceExt,
     },
+    logging::controller::report_controller_reconciled,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
 
@@ -97,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
                     }),
                 )
                 .map(|res| {
-                    stackable_operator::logging::report_controller_reconciled(
+                    report_controller_reconciled(
                         &client,
                         "zookeepercluster.zookeeper.stackable.tech",
                         &res,
@@ -137,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
                     }),
                 )
                 .map(|res| {
-                    stackable_operator::logging::report_controller_reconciled(
+                    report_controller_reconciled(
                         &client,
                         "zookeeperznode.zookeeper.stackable.tech",
                         &res,

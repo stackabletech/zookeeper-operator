@@ -21,7 +21,7 @@ use stackable_operator::{
             reflector::ObjectRef,
         },
     },
-    logging::k8s_events::PublishableError,
+    logging::controller::ReconcilerError,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
 use strum::{EnumDiscriminants, IntoStaticStr};
@@ -108,8 +108,8 @@ impl Error {
     }
 }
 
-impl PublishableError for Error {
-    fn variant_name(&self) -> &'static str {
+impl ReconcilerError for Error {
+    fn category(&self) -> &'static str {
         ErrorDiscriminants::from(self).into()
     }
 

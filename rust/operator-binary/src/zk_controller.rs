@@ -33,7 +33,7 @@ use stackable_operator::{
         runtime::controller::{Context, ReconcilerAction},
     },
     labels::{role_group_selector_labels, role_selector_labels},
-    logging::k8s_events::PublishableError,
+    logging::controller::ReconcilerError,
     product_config::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
     },
@@ -120,8 +120,8 @@ pub enum Error {
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl PublishableError for Error {
-    fn variant_name(&self) -> &'static str {
+impl ReconcilerError for Error {
+    fn category(&self) -> &'static str {
         ErrorDiscriminants::from(self).into()
     }
 }
