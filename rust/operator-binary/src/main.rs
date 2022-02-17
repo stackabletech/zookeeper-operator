@@ -13,14 +13,11 @@ use stackable_operator::{
         core::v1::{ConfigMap, Endpoints, Service},
     },
     kube::{
-        api::{DynamicObject, ListParams},
-        runtime::{
-            controller::{Context, ReconcilerAction},
-            reflector::ObjectRef,
-            Controller,
-        },
-        CustomResourceExt, Resource,
+        api::ListParams,
+        runtime::{controller::Context, reflector::ObjectRef, Controller},
+        CustomResourceExt,
     },
+    logging::controller::report_controller_reconciled,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
 
@@ -36,17 +33,6 @@ pub const APP_PORT: u16 = 2181;
 struct Opts {
     #[clap(subcommand)]
     cmd: Command,
-}
-
-/// Erases the concrete types of the controller result, so that we can merge the streams of multiple controllers for different resources.
-///
-/// In particular, we convert `ObjectRef<K>` into `ObjectRef<DynamicObject>` (which carries `K`'s metadata at runtime instead), and
-/// `E` into the trait object `anyhow::Error`.
-fn erase_controller_result_type<K: Resource, E: std::error::Error + Send + Sync + 'static>(
-    res: Result<(ObjectRef<K>, ReconcilerAction), E>,
-) -> anyhow::Result<(ObjectRef<DynamicObject>, ReconcilerAction)> {
-    let (obj_ref, action) = res?;
-    Ok((obj_ref.erase(), action))
 }
 
 #[tokio::main]
@@ -110,7 +96,14 @@ async fn main() -> anyhow::Result<()> {
                         client: client.clone(),
                         product_config,
                     }),
-                );
+                )
+                .map(|res| {
+                    report_controller_reconciled(
+                        &client,
+                        "zookeepercluster.zookeeper.stackable.tech",
+                        &res,
+                    );
+                });
             let znode_controller_builder = Controller::new(
                 client.get_all_api::<ZookeeperZnode>(),
                 ListParams::default(),
@@ -140,24 +133,21 @@ async fn main() -> anyhow::Result<()> {
                             .run_in_ctx(znode_controller::reconcile_znode(znode, ctx))
                     },
                     znode_controller::error_policy,
-                    Context::new(znode_controller::Ctx { client }),
-                );
-            futures::stream::select(
-                zk_controller.map(erase_controller_result_type),
-                znode_controller.map(erase_controller_result_type),
-            )
-            .for_each(|res| async {
-                match res {
-                    Ok((obj, _)) => tracing::info!(object = %obj, "Reconciled object"),
-                    Err(err) => {
-                        tracing::error!(
-                            error = &*err as &dyn std::error::Error,
-                            "Failed to reconcile object",
-                        )
-                    }
-                }
-            })
-            .await;
+                    Context::new(znode_controller::Ctx {
+                        client: client.clone(),
+                    }),
+                )
+                .map(|res| {
+                    report_controller_reconciled(
+                        &client,
+                        "zookeeperznode.zookeeper.stackable.tech",
+                        &res,
+                    );
+                });
+
+            futures::stream::select(zk_controller, znode_controller)
+                .collect::<()>()
+                .await;
         }
     }
 

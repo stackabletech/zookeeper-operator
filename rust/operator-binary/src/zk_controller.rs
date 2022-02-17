@@ -33,6 +33,7 @@ use stackable_operator::{
         runtime::controller::{Context, ReconcilerAction},
     },
     labels::{role_group_selector_labels, role_selector_labels},
+    logging::controller::ReconcilerError,
     product_config::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
     },
@@ -40,6 +41,7 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole};
+use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
 
@@ -48,7 +50,8 @@ pub struct Ctx {
     pub product_config: ProductConfigManager,
 }
 
-#[derive(Snafu, Debug)]
+#[derive(Snafu, Debug, EnumDiscriminants)]
+#[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[snafu(display("object has no namespace"))]
@@ -116,6 +119,12 @@ pub enum Error {
     },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
+
+impl ReconcilerError for Error {
+    fn category(&self) -> &'static str {
+        ErrorDiscriminants::from(self).into()
+    }
+}
 
 const PROPERTIES_FILE: &str = "zoo.cfg";
 

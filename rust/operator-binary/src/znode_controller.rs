@@ -14,14 +14,17 @@ use stackable_operator::{
     kube::{
         self,
         api::ObjectMeta,
+        core::DynamicObject,
         runtime::{
             controller::{Context, ReconcilerAction},
             finalizer,
             reflector::ObjectRef,
         },
     },
+    logging::controller::ReconcilerError,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
+use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeeperznode";
 
@@ -29,7 +32,8 @@ pub struct Ctx {
     pub client: stackable_operator::client::Client,
 }
 
-#[derive(Snafu, Debug)]
+#[derive(Snafu, Debug, EnumDiscriminants)]
+#[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[snafu(display(
@@ -100,6 +104,30 @@ impl Error {
             finalizer::Error::UnnamedObject => Error::Finalizer {
                 source: finalizer::Error::UnnamedObject,
             },
+        }
+    }
+}
+
+impl ReconcilerError for Error {
+    fn category(&self) -> &'static str {
+        ErrorDiscriminants::from(self).into()
+    }
+
+    fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
+        match self {
+            Error::ObjectMissingMetadata => None,
+            Error::InvalidZkReference => None,
+            Error::FindZk { zk, .. } => Some(zk.clone().erase()),
+            Error::ZkDoesNotExist { zk, .. } => Some(zk.clone().erase()),
+            Error::NoZkSvcName { zk } => Some(zk.clone().erase()),
+            Error::FindZkSvc { zk, .. } => Some(zk.clone().erase()),
+            Error::NoZkFqdn { zk } => Some(zk.clone().erase()),
+            Error::EnsureZnode { zk, .. } => Some(zk.clone().erase()),
+            Error::EnsureZnodeMissing { zk, .. } => Some(zk.clone().erase()),
+            Error::BuildDiscoveryConfigMap { source: _ } => None,
+            Error::ApplyDiscoveryConfigMap { cm, .. } => Some(cm.clone().erase()),
+            Error::Finalizer { source: _ } => None,
+            Error::ObjectMissingMetadataForOwnerRef { source: _ } => None,
         }
     }
 }
