@@ -1,6 +1,2 @@
 [workspace]
 members = ["rust/crd", "rust/operator-binary"]
-
-[patch."git+https://github.com/stackabletech/operator-rs.git"]
-# Depends on https://github.com/stackabletech/operator-rs/pull/322
-stackable-operator = { git = "https://github.com/stackabletech//operator-rs.git", branch = "feature/error-events" }
