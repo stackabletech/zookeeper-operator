@@ -1,3 +1,4 @@
+---
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperCluster
 metadata:
@@ -15,3 +16,13 @@ spec:
           myidOffset: 20
   version: 3.5.8
   stopped: false
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperZnode
+metadata:
+  name: simple-znode
+spec:
+  clusterRef:
+    name: simple-zk
+    # Optional when ZookeeperZnode is in the same Namespace as the ZookeeperCluster
+    # namespace: default
