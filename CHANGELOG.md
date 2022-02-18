@@ -10,9 +10,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Operator-rs: 0.10.0 -> 0.11.0 ([#408]).
+- Operator-rs: 0.10.0 -> 0.12.0 ([#408], [#431]).
 
 [#408]: https://github.com/stackabletech/zookeeper-operator/pull/408
+[#431]: https://github.com/stackabletech/zookeeper-operator/pull/431
 
 ## [0.9.0] - 2022-02-14
 

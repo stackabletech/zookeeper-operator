@@ -53,17 +53,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94a45b455c14666b85fc40a019e8ab9eb75e3a124e05494f5397122bc9eb06e0"
 
 [[package]]
-name = "async-trait"
-version = "0.1.52"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "061a7acccaa286c011ddc30970520b98fa40e00c9d644633fb26b5fc63a265e3"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1875,10 +1864,9 @@ dependencies = [
 
 [[package]]
 name = "stackable-operator"
-version = "0.11.0"
-source = "git+https://github.com/stackabletech/operator-rs.git?tag=0.11.0#0d96d01a5d5a4c91311505ff3ebc9004f3cfa4d7"
+version = "0.12.0"
+source = "git+https://github.com/stackabletech/operator-rs.git?tag=0.12.0#ac525b91421f7b0d4c74462627bf13e59be5661b"
 dependencies = [
- "async-trait",
  "backoff",
  "chrono",
  "clap",
@@ -1898,13 +1886,10 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "strum",
- "strum_macros",
  "thiserror",
  "tokio 1.17.0",
  "tracing",
- "tracing-futures",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]
@@ -2448,16 +2433,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tracing-futures"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97d095ae15e245a057c8e8451bab9b3ee1e1f68e9ba2b4fbc18d0ac5237835f2"
-dependencies = [
- "pin-project",
- "tracing",
-]
-
-[[package]]
 name = "tracing-log"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2538,15 +2513,6 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
-]
-
-[[package]]
-name = "uuid"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
-dependencies = [
- "getrandom",
 ]
 
 [[package]]
