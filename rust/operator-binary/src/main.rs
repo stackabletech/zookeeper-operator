@@ -32,15 +32,7 @@ pub const APP_PORT: u16 = 2181;
 #[clap(about = built_info::PKG_DESCRIPTION, author = stackable_operator::cli::AUTHOR)]
 struct Opts {
     #[clap(subcommand)]
-    cmd: Command<ZookeeperRun>,
-}
-
-#[derive(clap::Parser)]
-struct ZookeeperRun {
-    #[clap(long, env)]
-    watch_namespace: Option<String>,
-    #[clap(flatten)]
-    common: ProductOperatorRun,
+    cmd: Command,
 }
 
 #[tokio::main]
@@ -56,9 +48,9 @@ async fn main() -> anyhow::Result<()> {
             serde_yaml::to_string(&ZookeeperCluster::crd())?,
             serde_yaml::to_string(&ZookeeperZnode::crd())?
         ),
-        Command::Run(ZookeeperRun {
+        Command::Run(ProductOperatorRun {
+            product_config,
             watch_namespace,
-            common: ProductOperatorRun { product_config },
         }) => {
             stackable_operator::utils::print_startup_string(
                 built_info::PKG_DESCRIPTION,

@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Reconciliation errors are now reported as Kubernetes events ([#408]).
-- CLI parameter `watch-namespace` to specify one(!) namespace to watch ([#434]).
+- Use cli parameter `watch-namespace` to specify one(!) namespace to watch ([#434]).
 
 ### Changed
 

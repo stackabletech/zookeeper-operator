@@ -1865,7 +1865,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator"
 version = "0.12.0"
-source = "git+https://github.com/stackabletech/operator-rs.git?tag=0.12.0#ac525b91421f7b0d4c74462627bf13e59be5661b"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=main#b895e632944ca98ea0e855d6782febcbba806aca"
 dependencies = [
  "backoff",
  "chrono",
