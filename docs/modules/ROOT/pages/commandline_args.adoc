@@ -12,8 +12,6 @@ This file contains property definitions for the Apache Zookeeper configuration.
 
 === watch-namespace
 
-*Default value*: none
-
 *Required*: false
 
 *Multiple values:* false
