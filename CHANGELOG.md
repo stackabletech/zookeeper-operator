@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Reconciliation errors are now reported as Kubernetes events ([#408]).
+- CLI parameter `watch-namespace` to specify one(!) namespace to watch ([#434]).
 
 ### Changed
 
@@ -14,6 +15,7 @@ All notable changes to this project will be documented in this file.
 
 [#408]: https://github.com/stackabletech/zookeeper-operator/pull/408
 [#431]: https://github.com/stackabletech/zookeeper-operator/pull/431
+[#434]: https://github.com/stackabletech/zookeeper-operator/pull/434
 
 ## [0.9.0] - 2022-02-14
 
