@@ -9,3 +9,18 @@
 
 
 This file contains property definitions for the Apache Zookeeper configuration.
+
+=== watch-namespace
+
+*Default value*: none
+
+*Required*: false
+
+*Multiple values:* false
+
+The operator will only watch for resources in the provided namespace `test`:
+
+[source]
+----
+cargo run -- run --watch-namespace=test
+----
