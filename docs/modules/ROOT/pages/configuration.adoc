@@ -12,5 +12,6 @@ This operator accepts the following environment variables:
 
 include::env_var_args.adoc[]
 
+== Kubernetes custom resource options
 
 include::config_properties.adoc[]
