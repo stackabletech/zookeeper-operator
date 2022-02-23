@@ -1,5 +1,5 @@
 
-=== product-config
+=== PRODUCT_CONFIG
 
 *Default value*: `/etc/stackable/zookeeper-operator/config-spec/properties.yaml`
 
@@ -9,10 +9,11 @@
 
 [source]
 ----
-cargo run -- run --product-config /foo/bar/properties.yaml
+export PRODUCT_CONFIG=/foo/bar/properties.yaml
+cargo run -- run
 ----
 
-=== watch-namespace
+=== WATCH_NAMESPACE
 
 *Required*: false
 
@@ -22,5 +23,6 @@ The operator will **only** watch for resources in the provided namespace `test`:
 
 [source]
 ----
-cargo run -- run --watch-namespace test
+export WATCH_NAMESPACE=test
+cargo run -- run
 ----

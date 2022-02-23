@@ -69,18 +69,18 @@ async fn main() -> anyhow::Result<()> {
             ))
             .await?;
             let zk_controller_builder = Controller::new(
-                client.get_api::<ZookeeperCluster>(watch_namespace.as_deref()),
+                watch_namespace.get_api::<ZookeeperCluster>(&client),
                 ListParams::default(),
             );
 
             let zk_store = zk_controller_builder.store();
             let zk_controller = zk_controller_builder
                 .owns(
-                    client.get_api::<Service>(watch_namespace.as_deref()),
+                    watch_namespace.get_api::<Service>(&client),
                     ListParams::default(),
                 )
                 .watches(
-                    client.get_api::<Endpoints>(watch_namespace.as_deref()),
+                    watch_namespace.get_api::<Endpoints>(&client),
                     ListParams::default(),
                     move |endpoints| {
                         zk_store
@@ -94,11 +94,11 @@ async fn main() -> anyhow::Result<()> {
                     },
                 )
                 .owns(
-                    client.get_api::<StatefulSet>(watch_namespace.as_deref()),
+                    watch_namespace.get_api::<StatefulSet>(&client),
                     ListParams::default(),
                 )
                 .owns(
-                    client.get_api::<ConfigMap>(watch_namespace.as_deref()),
+                    watch_namespace.get_api::<ConfigMap>(&client),
                     ListParams::default(),
                 )
                 .shutdown_on_signal()
@@ -118,17 +118,17 @@ async fn main() -> anyhow::Result<()> {
                     );
                 });
             let znode_controller_builder = Controller::new(
-                client.get_api::<ZookeeperZnode>(watch_namespace.as_deref()),
+                watch_namespace.get_api::<ZookeeperZnode>(&client),
                 ListParams::default(),
             );
             let znode_store = znode_controller_builder.store();
             let znode_controller = znode_controller_builder
                 .owns(
-                    client.get_api::<ConfigMap>(watch_namespace.as_deref()),
+                    watch_namespace.get_api::<ConfigMap>(&client),
                     ListParams::default(),
                 )
                 .watches(
-                    client.get_api::<ZookeeperCluster>(watch_namespace.as_deref()),
+                    watch_namespace.get_api::<ZookeeperCluster>(&client),
                     ListParams::default(),
                     move |zk| {
                         znode_store
