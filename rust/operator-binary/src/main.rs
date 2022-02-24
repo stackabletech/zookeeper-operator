@@ -48,7 +48,10 @@ async fn main() -> anyhow::Result<()> {
             serde_yaml::to_string(&ZookeeperCluster::crd())?,
             serde_yaml::to_string(&ZookeeperZnode::crd())?
         ),
-        Command::Run(ProductOperatorRun { product_config }) => {
+        Command::Run(ProductOperatorRun {
+            product_config,
+            watch_namespace,
+        }) => {
             stackable_operator::utils::print_startup_string(
                 built_info::PKG_DESCRIPTION,
                 built_info::PKG_VERSION,
@@ -66,14 +69,18 @@ async fn main() -> anyhow::Result<()> {
             ))
             .await?;
             let zk_controller_builder = Controller::new(
-                client.get_all_api::<ZookeeperCluster>(),
+                watch_namespace.get_api::<ZookeeperCluster>(&client),
                 ListParams::default(),
             );
+
             let zk_store = zk_controller_builder.store();
             let zk_controller = zk_controller_builder
-                .owns(client.get_all_api::<Service>(), ListParams::default())
+                .owns(
+                    watch_namespace.get_api::<Service>(&client),
+                    ListParams::default(),
+                )
                 .watches(
-                    client.get_all_api::<Endpoints>(),
+                    watch_namespace.get_api::<Endpoints>(&client),
                     ListParams::default(),
                     move |endpoints| {
                         zk_store
@@ -86,8 +93,14 @@ async fn main() -> anyhow::Result<()> {
                             .map(|zk| ObjectRef::from_obj(&*zk))
                     },
                 )
-                .owns(client.get_all_api::<StatefulSet>(), ListParams::default())
-                .owns(client.get_all_api::<ConfigMap>(), ListParams::default())
+                .owns(
+                    watch_namespace.get_api::<StatefulSet>(&client),
+                    ListParams::default(),
+                )
+                .owns(
+                    watch_namespace.get_api::<ConfigMap>(&client),
+                    ListParams::default(),
+                )
                 .shutdown_on_signal()
                 .run(
                     zk_controller::reconcile_zk,
@@ -100,19 +113,22 @@ async fn main() -> anyhow::Result<()> {
                 .map(|res| {
                     report_controller_reconciled(
                         &client,
-                        "zookeepercluster.zookeeper.stackable.tech",
+                        "zookeeperclusters.zookeeper.stackable.tech",
                         &res,
                     );
                 });
             let znode_controller_builder = Controller::new(
-                client.get_all_api::<ZookeeperZnode>(),
+                watch_namespace.get_api::<ZookeeperZnode>(&client),
                 ListParams::default(),
             );
             let znode_store = znode_controller_builder.store();
             let znode_controller = znode_controller_builder
-                .owns(client.get_all_api::<ConfigMap>(), ListParams::default())
+                .owns(
+                    watch_namespace.get_api::<ConfigMap>(&client),
+                    ListParams::default(),
+                )
                 .watches(
-                    client.get_all_api::<ZookeeperCluster>(),
+                    watch_namespace.get_api::<ZookeeperCluster>(&client),
                     ListParams::default(),
                     move |zk| {
                         znode_store

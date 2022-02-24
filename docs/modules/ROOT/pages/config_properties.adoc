@@ -1,4 +1,4 @@
-== Kubernetes custom resource options
+
 The cluster can be configured via a YAML file. This custom resource specifies the amount of replicas for each role group or role specific configuration like port definitions etc.
 
 [source,yaml]
