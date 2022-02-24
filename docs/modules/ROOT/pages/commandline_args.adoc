@@ -14,6 +14,8 @@ cargo run -- run --product-config /foo/bar/properties.yaml
 
 === watch-namespace
 
+*Default value*: All namespaces
+
 *Required*: false
 
 *Multiple values:* false
