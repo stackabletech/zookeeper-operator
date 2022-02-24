@@ -1,0 +1,31 @@
+= Discovery Profiles
+
+The Stackable Operator for Apache ZooKeeper creates a number of discovery profiles, which are client configuration bundles
+that allow access to the Apache ZooKeeper cluster. These are published into the Kubernetes cluster as
+https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.23/#configmap-v1-core[`ConfigMap`] objects.
+
+Discovery profiles are generated for each xref:configuration.adoc[`ZookeeperCluster`] and xref:znodes.adoc[`ZookeeperZnode`] object,
+the name of which is the "base name" of the profile.
+
+== Profiles
+
+=== Default
+
+This profile allows access to the Apache ZooKeeper cluster from inside the Kubernetes cluster, and connects directly to the `Pod`
+identity.
+
+The name of the `ConfigMap` created for this discovery profile is `$BASENAME`.
+
+=== NodePort
+
+This profile allows access to the Apache ZooKeeper cluster from anywhere, inside or outside of the Kubernetes cluster.
+
+The name of the `ConfigMap` created for this discovery profile is `$BASENAME-nodeport`.
+
+== Contents
+
+Each discovery profile contains the following fields:
+
+`ZOOKEEPER`:: A connection string, as accepted by https://zookeeper.apache.org/doc/r3.7.0/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-[the official Java client]
+`ZOOKEEPER_HOSTS`:: A comma-separated list of `node1:port1,node2:port2,...`
+`ZOOKEEPER_CHROOT`:: The name of the root ZNode associated with the discovery profile, should be used if (and only if) connecting using `ZOOKEEPER_HOSTS` (rather than `ZOOKEEPER`)

@@ -20,9 +20,9 @@ To create a three-node Apache ZooKeeper (v3.5.8) cluster:
           default:
             replicas: 3
             config: {}
-    $ sudo kubectl apply -f zookeeper.yaml
+    $ kubectl apply -f zookeeper.yaml
 
-Afterwards, a ZookeeperZnode root can be created:
+Afterwards, a xref:znodes.adoc[ZNode] can be created:
 
     $ cat znode.yaml
     ---
@@ -34,7 +34,7 @@ Afterwards, a ZookeeperZnode root can be created:
       clusterRef:
         name: simple-zk
         namespace: default
-    $ sudo kubectl apply -f znode.yaml
+    $ kubectl apply -f znode.yaml
 
 Finally, a ConfigMap is created, containing a path that a ZooKeeper client can connect to:
 
