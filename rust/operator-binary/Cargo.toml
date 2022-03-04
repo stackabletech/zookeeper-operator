@@ -9,7 +9,7 @@ repository = "https://github.com/stackabletech/zookeeper-operator"
 
 [dependencies]
 anyhow = "1.0.55"
-clap = { version = "3.1.2", features = ["derive"] }
+clap = { version = "3.1.5", features = ["derive"] }
 failure = "0.1.8"
 fnv = "1.0.7"
 futures = { version = "0.3.21", features = ["compat"] }
