@@ -20,8 +20,8 @@ use stackable_operator::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
-                ConfigMap, ConfigMapVolumeSource, EnvVar, EnvVarSource, ExecAction,
-                ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec,
+                ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
+                ExecAction, ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec,
                 PodSecurityContext, Probe, ResourceRequirements, SecurityContext, Service,
                 ServicePort, ServiceSpec, Volume,
             },
@@ -305,6 +305,186 @@ fn build_server_rolegroup_config_map(
                 }
             })?,
         )
+        .add_data(
+            "log4j.properties",
+            r#"
+# Copyright 2012 The Apache Software Foundation
+# 
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Define some default values that can be overridden by system properties
+zookeeper.root.logger=INFO, VECTOR
+#zookeeper.root.logger=INFO, CONSOLE, VECTOR
+#zookeeper.root.logger=INFO, CONSOLE
+
+zookeeper.console.threshold=INFO
+
+zookeeper.log.dir=.
+zookeeper.log.file=zookeeper.log
+zookeeper.log.threshold=INFO
+zookeeper.log.maxfilesize=256MB
+zookeeper.log.maxbackupindex=20
+
+zookeeper.tracelog.dir=${zookeeper.log.dir}
+zookeeper.tracelog.file=zookeeper_trace.log
+
+#log4j.rootLogger=${zookeeper.root.logger}
+log4j.rootLogger=INFO, VECTOR
+
+#
+# console
+# Add "console" to rootlogger above if you want to use this 
+#
+log4j.appender.CONSOLE=org.apache.log4j.ConsoleAppender
+log4j.appender.CONSOLE.Threshold=${zookeeper.console.threshold}
+log4j.appender.CONSOLE.layout=org.apache.log4j.PatternLayout
+log4j.appender.CONSOLE.layout.ConversionPattern=%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n
+
+#
+# Add ROLLINGFILE to rootLogger to get log file output
+#
+log4j.appender.ROLLINGFILE=org.apache.log4j.RollingFileAppender
+log4j.appender.ROLLINGFILE.Threshold=${zookeeper.log.threshold}
+log4j.appender.ROLLINGFILE.File=${zookeeper.log.dir}/${zookeeper.log.file}
+log4j.appender.ROLLINGFILE.MaxFileSize=${zookeeper.log.maxfilesize}
+log4j.appender.ROLLINGFILE.MaxBackupIndex=${zookeeper.log.maxbackupindex}
+log4j.appender.ROLLINGFILE.layout=org.apache.log4j.PatternLayout
+log4j.appender.ROLLINGFILE.layout.ConversionPattern=%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n
+
+#
+# Add TRACEFILE to rootLogger to get log file output
+#    Log TRACE level and above messages to a log file
+#
+log4j.appender.TRACEFILE=org.apache.log4j.FileAppender
+log4j.appender.TRACEFILE.Threshold=TRACE
+log4j.appender.TRACEFILE.File=${zookeeper.tracelog.dir}/${zookeeper.tracelog.file}
+
+log4j.appender.TRACEFILE.layout=org.apache.log4j.PatternLayout
+### Notice we are including log4j's NDC here (%x)
+log4j.appender.TRACEFILE.layout.ConversionPattern=%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L][%x] - %m%n
+
+log4j.appender.VECTOR=org.apache.log4j.RollingFileAppender
+log4j.appender.VECTOR.File=/stackable/logs/zoo.log
+log4j.appender.VECTOR.layout=org.apache.log4j.xml.XMLLayout
+# log4j.appender.VECTOR.layout=org.apache.log4j.PatternLayout
+# log4j.appender.VECTOR.layout.ConversionPattern=%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n
+# log4j.appender.VECTOR=org.apache.log4j.net.TelnetAppender
+# log4j.appender.VECTOR.host=127.0.0.1
+# log4j.appender.VECTOR.port=9997
+# log4j.appender.VECTOR.layout=org.apache.log4j.JsonLayout
+# log4j.appender.VECTOR.layout.compact=true
+# log4j.appender.VECTOR=org.apache.log4j.SocketAppender
+# log4j.appender.VECTOR.host=127.0.0.1
+# log4j.appender.VECTOR.port=9997
+# log4j.appender.VECTOR.layout=org.apache.log4j.JsonLayout
+# log4j.appender.VECTOR.layout.compact=true
+"#,
+        )
+        .add_data(
+            "vector.toml",
+            r#"
+# [sources.in]
+# type = "stdin"
+
+# [sources.in]
+# type = "socket"
+# address = "127.0.0.1:9997"
+# mode = "tcp"
+# framing = { method = "newline_delimited" }
+[sources.in]
+type = "file"
+include = ["/stackable/logs/*"]
+oldest_first = true
+[sources.in.multiline]
+mode = "halt_with"
+condition_pattern = "</log4j:event>$"
+start_pattern = "^<log4j:event"
+timeout_ms = 100
+
+[transforms.parse]
+inputs = ["in"]
+type = "remap"
+source = '''
+# Add a dummy event during parsing, to work around https://github.com/vectordotdev/vector/issues/11901
+wrapped_message = "<root xmlns:log4j=\"http://jakarta.apache.org/log4j/\">"+string!(.message)+"<log4j:event level=\"FOO\"/></root>";
+parsed = parse_xml!(wrapped_message, attr_prefix: "");
+# Delete the dummy event
+del(parsed.root.event[-1])
+.event = array(parsed.root.event) ?? [parsed.root.event];
+. = unnest(.event)
+'''
+
+[transforms.process]
+inputs = ["parse"]
+type = "remap"
+source = '''
+._file = del(.file);
+._host = del(.host);
+del(.source_type);
+event = del(.event);
+if exists(event.timestamp) {
+  event.timestamp = parse_timestamp(event.timestamp, "%s%3f") ?? event.timestamp;
+}
+. = merge(., event)
+'''
+
+[sinks.stdout]
+inputs = ["process"]
+type = "console"
+encoding.codec = "json"
+
+[sinks.opensearch]
+inputs = ["process"]
+type = "elasticsearch"
+endpoint = "https://192.168.1.147:9200"
+mode = "bulk"
+auth = { strategy = "basic", user = "admin", password = "admin" }
+tls = { verify_hostname = false, ca_file = "/stackable/config/opensearch-ca.pem" }
+"#,
+        )
+        .add_data(
+            "opensearch-ca.pem",
+            r#"
+-----BEGIN CERTIFICATE-----
+MIID/jCCAuagAwIBAgIBATANBgkqhkiG9w0BAQsFADCBjzETMBEGCgmSJomT8ixk
+ARkWA2NvbTEXMBUGCgmSJomT8ixkARkWB2V4YW1wbGUxGTAXBgNVBAoMEEV4YW1w
+bGUgQ29tIEluYy4xITAfBgNVBAsMGEV4YW1wbGUgQ29tIEluYy4gUm9vdCBDQTEh
+MB8GA1UEAwwYRXhhbXBsZSBDb20gSW5jLiBSb290IENBMB4XDTE4MDQyMjAzNDM0
+NloXDTI4MDQxOTAzNDM0NlowgY8xEzARBgoJkiaJk/IsZAEZFgNjb20xFzAVBgoJ
+kiaJk/IsZAEZFgdleGFtcGxlMRkwFwYDVQQKDBBFeGFtcGxlIENvbSBJbmMuMSEw
+HwYDVQQLDBhFeGFtcGxlIENvbSBJbmMuIFJvb3QgQ0ExITAfBgNVBAMMGEV4YW1w
+bGUgQ29tIEluYy4gUm9vdCBDQTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoC
+ggEBAK/u+GARP5innhpXK0c0q7s1Su1VTEaIgmZr8VWI6S8amf5cU3ktV7WT9SuV
+TsAm2i2A5P+Ctw7iZkfnHWlsC3HhPUcd6mvzGZ4moxnamM7r+a9otRp3owYoGStX
+ylVTQusAjbq9do8CMV4hcBTepCd+0w0v4h6UlXU8xjhj1xeUIz4DKbRgf36q0rv4
+VIX46X72rMJSETKOSxuwLkov1ZOVbfSlPaygXIxqsHVlj1iMkYRbQmaTib6XWHKf
+MibDaqDejOhukkCjzpptGZOPFQ8002UtTTNv1TiaKxkjMQJNwz6jfZ53ws3fh1I0
+RWT6WfM4oeFRFnyFRmc4uYTUgAkCAwEAAaNjMGEwDwYDVR0TAQH/BAUwAwEB/zAf
+BgNVHSMEGDAWgBSSNQzgDx4rRfZNOfN7X6LmEpdAczAdBgNVHQ4EFgQUkjUM4A8e
+K0X2TTnze1+i5hKXQHMwDgYDVR0PAQH/BAQDAgGGMA0GCSqGSIb3DQEBCwUAA4IB
+AQBoQHvwsR34hGO2m8qVR9nQ5Klo5HYPyd6ySKNcT36OZ4AQfaCGsk+SecTi35QF
+RHL3g2qffED4tKR0RBNGQSgiLavmHGCh3YpDupKq2xhhEeS9oBmQzxanFwWFod4T
+nnsG2cCejyR9WXoRzHisw0KJWeuNlwjUdJY0xnn16srm1zL/M/f0PvCyh9HU1mF1
+ivnOSqbDD2Z7JSGyckgKad1Omsg/rr5XYtCeyJeXUPcmpeX6erWJJNTUh6yWC/hY
+G/dFC4xrJhfXwz6Z0ytUygJO32bJG4Np2iGAwvvgI9EfxzEv/KP+FGrJOvQJAq4/
+BU36ZAa80W/8TBnqZTkNnqZV
+-----END CERTIFICATE-----
+"#,
+        )
         .build()
         .with_context(|_| BuildRoleGroupConfigSnafu {
             rolegroup: rolegroup.clone(),
@@ -398,8 +578,8 @@ fn build_server_rolegroup_statefulset(
             "sh".to_string(),
             "-c".to_string(),
             [
-                "chown stackable:stackable /stackable/data",
-                "chmod a=,u=rwX /stackable/data",
+                "chown stackable:stackable /stackable/data /stackable/logs",
+                "chmod a=,u=rwX /stackable/data /stackable/logs",
                 "expr $MYID_OFFSET + $(echo $POD_NAME | sed 's/.*-//') > /stackable/data/myid",
             ]
             .join(" && "),
@@ -417,6 +597,7 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         }])
         .add_volume_mount("data", "/stackable/data")
+        .add_volume_mount("logs", "/stackable/logs")
         .build();
     container_prepare
         .security_context
@@ -429,6 +610,10 @@ fn build_server_rolegroup_statefulset(
             "start-foreground".to_string(),
             "/stackable/config/zoo.cfg".to_string(),
         ])
+        // .add_env_var(
+        //     "SERVER_JVMFLAGS",
+        //     "-Dlog4j.configuration=file:/stackable/config/log4j.properties",
+        // )
         .add_env_vars(env)
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
         // This also acts as a hint to the StatefulSet controller to wait for each pod to enter quorum before taking down the next
@@ -454,6 +639,16 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", "/stackable/data")
         .add_volume_mount("config", "/stackable/config")
+        .add_volume_mount("logs", "/stackable/logs")
+        .build();
+    let container_vector = ContainerBuilder::new("vector")
+        .image("timberio/vector:0.20.0-distroless-static")
+        .args(vec![
+            "--config".to_string(),
+            "/stackable/config/vector.toml".to_string(),
+        ])
+        .add_volume_mount("config", "/stackable/config")
+        .add_volume_mount("logs", "/stackable/logs")
         .build();
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
@@ -498,12 +693,18 @@ fn build_server_rolegroup_statefulset(
                 })
                 .add_init_container(container_prepare)
                 .add_container(container_zk)
+                .add_container(container_vector)
                 .add_volume(Volume {
                     name: "config".to_string(),
                     config_map: Some(ConfigMapVolumeSource {
                         name: Some(rolegroup_ref.object_name()),
                         ..ConfigMapVolumeSource::default()
                     }),
+                    ..Volume::default()
+                })
+                .add_volume(Volume {
+                    name: "logs".to_string(),
+                    empty_dir: Some(EmptyDirVolumeSource::default()),
                     ..Volume::default()
                 })
                 .security_context(PodSecurityContext {

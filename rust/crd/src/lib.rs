@@ -68,7 +68,7 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let jvm_flags = "-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar=9505:/stackable/jmx/server.yaml".to_string();
+        let jvm_flags = "-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar=9505:/stackable/jmx/server.yaml -Dlog4j.debug=true -Dlog4j.configuration=file:/stackable/config/log4j.properties".to_string();
         Ok([
             (
                 Self::MYID_OFFSET.to_string(),
