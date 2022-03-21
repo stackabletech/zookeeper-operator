@@ -16,7 +16,7 @@ use stackable_operator::{
         api::ObjectMeta,
         core::DynamicObject,
         runtime::{
-            controller::{Context, ReconcilerAction},
+            controller::{self, Context},
             finalizer,
             reflector::ObjectRef,
         },
@@ -135,7 +135,7 @@ impl ReconcilerError for Error {
 pub async fn reconcile_znode(
     znode: Arc<ZookeeperZnode>,
     ctx: Context<Ctx>,
-) -> Result<ReconcilerAction> {
+) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
     let (ns, uid) = if let ObjectMeta {
         namespace: Some(ns),
@@ -176,7 +176,7 @@ async fn reconcile_apply(
     znode: &ZookeeperZnode,
     zk: Result<ZookeeperCluster>,
     znode_path: &str,
-) -> Result<ReconcilerAction> {
+) -> Result<controller::Action> {
     let zk = zk?;
     znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk)?, znode_path)
         .await
@@ -210,21 +210,17 @@ async fn reconcile_apply(
             })?;
     }
 
-    Ok(ReconcilerAction {
-        requeue_after: None,
-    })
+    Ok(controller::Action::await_change())
 }
 
 async fn reconcile_cleanup(
     zk: Result<ZookeeperCluster>,
     znode_path: &str,
-) -> Result<ReconcilerAction> {
+) -> Result<controller::Action> {
     let zk = match zk {
         Err(Error::ZkDoesNotExist { zk, .. }) => {
             tracing::info!(%zk, "Tried to clean up ZookeeperZnode bound to a ZookeeperCluster that does not exist, assuming it is already gone");
-            return Ok(ReconcilerAction {
-                requeue_after: None,
-            });
+            return Ok(controller::Action::await_change());
         }
         res => res?,
     };
@@ -236,9 +232,7 @@ async fn reconcile_cleanup(
             znode_path,
         })?;
     // No need to delete the ConfigMap, since that has an OwnerReference on the ZookeeperZnode object
-    Ok(ReconcilerAction {
-        requeue_after: None,
-    })
+    Ok(controller::Action::await_change())
 }
 
 fn zk_mgmt_addr(zk: &ZookeeperCluster) -> Result<String> {
@@ -281,10 +275,8 @@ async fn find_zk_of_znode(
     }
 }
 
-pub fn error_policy(_error: &Error, _ctx: Context<Ctx>) -> ReconcilerAction {
-    ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(5)),
-    }
+pub fn error_policy(_error: &Error, _ctx: Context<Ctx>) -> controller::Action {
+    controller::Action::requeue(Duration::from_secs(5))
 }
 
 mod znode_mgmt {

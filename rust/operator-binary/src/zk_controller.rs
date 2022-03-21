@@ -30,7 +30,7 @@ use stackable_operator::{
     },
     kube::{
         api::ObjectMeta,
-        runtime::controller::{Context, ReconcilerAction},
+        runtime::controller::{self, Context},
     },
     labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
@@ -131,7 +131,7 @@ const PROPERTIES_FILE: &str = "zoo.cfg";
 pub async fn reconcile_zk(
     zk: Arc<ZookeeperCluster>,
     ctx: Context<Ctx>,
-) -> Result<ReconcilerAction> {
+) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
     let client = &ctx.get_ref().client;
 
@@ -223,9 +223,7 @@ pub async fn reconcile_zk(
         .await
         .context(ApplyStatusSnafu)?;
 
-    Ok(ReconcilerAction {
-        requeue_after: None,
-    })
+    Ok(controller::Action::await_change())
 }
 
 /// The server-role service is the primary endpoint that should be used by clients that do not perform internal load balancing,
@@ -540,8 +538,6 @@ pub fn zk_version(zk: &ZookeeperCluster) -> Result<&str> {
     zk.spec.version.as_deref().context(ObjectHasNoVersionSnafu)
 }
 
-pub fn error_policy(_error: &Error, _ctx: Context<Ctx>) -> ReconcilerAction {
-    ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(5)),
-    }
+pub fn error_policy(_error: &Error, _ctx: Context<Ctx>) -> controller::Action {
+    controller::Action::requeue(Duration::from_secs(5))
 }
