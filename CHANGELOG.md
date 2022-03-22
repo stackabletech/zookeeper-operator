@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Operator-rs: 0.10.0 -> 0.13.0 ([#454]).
+
+[#454]: https://github.com/stackabletech/zookeeper-operator/pull/454
+
 ### Added
 
 - Reconciliation errors are now reported as Kubernetes events ([#408]).
