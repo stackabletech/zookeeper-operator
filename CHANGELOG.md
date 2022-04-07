@@ -9,7 +9,8 @@ All notable changes to this project will be documented in this file.
 - Reconciliation errors are now reported as Kubernetes events ([#408]).
 - Use cli argument `watch-namespace` / env var `WATCH_NAMESPACE` to specify
   a single namespace to watch ([#434]).
-- Add support for ZooKeeper 3.8.0 ([#464]).
+- Support for ZooKeeper 3.8.0 added ([#464]).
+- Integration tests for all supported ZooKeeper versions added ([#464]).
 
 ### Changed
 
