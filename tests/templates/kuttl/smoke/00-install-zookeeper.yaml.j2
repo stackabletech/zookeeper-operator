@@ -2,7 +2,7 @@
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperCluster
 metadata:
-  name: simple-zk
+  name: test-zk
 spec:
   servers:
     roleGroups:
@@ -14,15 +14,13 @@ spec:
         replicas: 1
         config:
           myidOffset: 20
-  version: 3.8.0
+  version: {{ test_scenario['values']['zookeeper'] }}
   stopped: false
 ---
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperZnode
 metadata:
-  name: simple-znode
+  name: test-znode
 spec:
   clusterRef:
-    name: simple-zk
-    # Optional when ZookeeperZnode is in the same Namespace as the ZookeeperCluster
-    # namespace: default
+    name: test-zk
