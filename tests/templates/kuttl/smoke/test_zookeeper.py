@@ -6,7 +6,7 @@ import sys
 sys.tracebacklimit = 0
 
 
-def print_request_error_and_sleep(message, err,  retry_count):
+def print_request_error_and_sleep(message, err, retry_count):
     print("[" + str(retry_count) + "] " + message, err)
     time.sleep(5)
 
