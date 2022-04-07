@@ -4,7 +4,7 @@ If you are not installing the operator using Helm then after installation the CR
 
     kubectl apply -f /etc/stackable/zookeeper-operator/crd/zookeepercluster.crd.yaml
 
-To create a three-node Apache ZooKeeper (v3.5.8) cluster:
+To create a three-node Apache ZooKeeper (v3.8.0) cluster:
 
 
     $ cat zookeeper.yaml
@@ -14,7 +14,7 @@ To create a three-node Apache ZooKeeper (v3.5.8) cluster:
     metadata:
       name: simple-zk
     spec:
-      version: 3.5.8
+      version: 3.8.0
       servers:
         roleGroups:
           default:

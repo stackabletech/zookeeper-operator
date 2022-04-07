@@ -3,3 +3,6 @@
 // Stackable Platform documentation.
 
 - 3.5.8
+- 3.6.3
+- 3.7.0
+- 3.8.0

@@ -14,7 +14,7 @@ spec:
         replicas: 1
         config:
           myidOffset: 20
-  version: 3.5.8
+  version: 3.8.0
   stopped: false
 ---
 apiVersion: zookeeper.stackable.tech/v1alpha1

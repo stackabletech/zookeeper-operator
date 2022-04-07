@@ -4,25 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-### Changed
-
-- Operator-rs: 0.10.0 -> 0.13.0 ([#454]).
-
-[#454]: https://github.com/stackabletech/zookeeper-operator/pull/454
-
 ### Added
 
 - Reconciliation errors are now reported as Kubernetes events ([#408]).
 - Use cli argument `watch-namespace` / env var `WATCH_NAMESPACE` to specify
   a single namespace to watch ([#434]).
+- Add support for ZooKeeper 3.8.0 ([#464]).
 
 ### Changed
 
-- Operator-rs: 0.10.0 -> 0.13.0 ([#408], [#431], [#434]).
+- Operator-rs: 0.10.0 -> 0.15.0 ([#408], [#431], [#434], [#454]).
 
 [#408]: https://github.com/stackabletech/zookeeper-operator/pull/408
 [#431]: https://github.com/stackabletech/zookeeper-operator/pull/431
 [#434]: https://github.com/stackabletech/zookeeper-operator/pull/434
+[#454]: https://github.com/stackabletech/zookeeper-operator/pull/454
+[#464]: https://github.com/stackabletech/zookeeper-operator/pull/464
 
 ## [0.9.0] - 2022-02-14
 
