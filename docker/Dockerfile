@@ -18,7 +18,7 @@ LABEL name="Stackable Operator for Apache ZooKeeper" \
       description="Use this operator to manage Apache Zookeeper clusters."
 
 # Update image
-RUN microdnf install yum \
+RUN microdnf install -y yum \
   && yum -y update-minimal --security --sec-severity=Important --sec-severity=Critical \
   && yum clean all \
   && microdnf clean all
