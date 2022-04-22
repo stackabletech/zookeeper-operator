@@ -5,21 +5,31 @@
 FROM docker.stackable.tech/stackable/ubi8-rust-builder AS builder
 
 FROM registry.access.redhat.com/ubi8/ubi-minimal AS operator
-LABEL maintainer="Stackable GmbH"
+
+ARG VERSION="0.10.0-prxxx"
+ARG RELEASE="1"
+
+LABEL name="Stackable Operator for Apache ZooKeeper" \
+      maintainer="info@stackable.de" \
+      vendor="Stackable GmbH" \
+      version="${VERSION}" \
+      release="${RELEASE}" \
+      summary="Stackable Operator for Apache ZooKeeper" \
+      description="Use this operator to manage Apache Zookeeper clusters."
 
 # Update image
-RUN microdnf update --disablerepo=* --enablerepo=ubi-8-baseos --enablerepo=ubi-8-baseos -y \
-  && rm -rf /var/cache/yum \
-  && microdnf install --disablerepo=* --enablerepo=ubi-8-baseos shadow-utils -y \
-  && microdnf clean all \
-  && rm -rf /var/cache/yum
+RUN microdnf install yum \
+  && yum -y update-minimal --security --sec-severity=Important --sec-severity=Critical \
+  && yum clean all \
+  && microdnf clean all
 
+COPY LICENSE /licenses
 COPY --from=builder /app/stackable-zookeeper-operator /
 COPY deploy/config-spec/properties.yaml /etc/stackable/zookeeper-operator/config-spec/properties.yaml
 
 RUN groupadd -g 1000 stackable && adduser -u 1000 -g stackable -c 'Stackable Operator' stackable
 
-USER 1000:1000
+USER stackable:stackable
 
 ENTRYPOINT ["/stackable-zookeeper-operator"]
 CMD ["run"]
