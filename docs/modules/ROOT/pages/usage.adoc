@@ -44,7 +44,7 @@ Finally, a ConfigMap is created, containing a path that a ZooKeeper client can c
 == Monitoring
 
 The managed ZooKeeper instances are automatically configured to export Prometheus metrics. See
-xref:home::monitoring.adoc[] for more details.
+xref:home:operators:monitoring.adoc[] for more details.
 
 == Configuration & Environment Overrides
 
