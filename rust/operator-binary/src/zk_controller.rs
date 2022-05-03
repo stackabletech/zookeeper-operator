@@ -8,12 +8,15 @@ use std::{
     time::Duration,
 };
 
+use crate::config::build_init_container_args;
 use crate::{
+    auth_config::{self, create_key_and_trust_store_cmd},
     discovery::{self, build_discovery_configmaps},
-    APP_NAME, APP_PORT,
+    APP_NAME,
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::k8s_openapi::api::core::v1::CSIVolumeSource;
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
     k8s_openapi::{
@@ -44,6 +47,11 @@ use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperClusterStatus, Zookeepe
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
+const QUORUM_TLS_DIR: &str = "/stackable/tls/quorum";
+const CLIENT_TLS_DIR: &str = "/stackable/tls/client";
+// TODO: Generate? Currently this is written in the ConfigMap.
+//  It probably makes sense to add that after mounting the CM?
+const TLS_STORE_SECRET: &str = "MyS3cr4T";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -157,6 +165,7 @@ pub async fn reconcile_zk(
         false,
     )
     .context(InvalidProductConfigSnafu)?;
+
     let role_server_config = validated_config
         .get(&ZookeeperRole::Server.to_string())
         .map(Cow::Borrowed)
@@ -247,7 +256,7 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
         spec: Some(ServiceSpec {
             ports: Some(vec![ServicePort {
                 name: Some("zk".to_string()),
-                port: APP_PORT.into(),
+                port: zk.client_port().into(),
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
             }]),
@@ -272,9 +281,12 @@ fn build_server_rolegroup_config_map(
     zoo_cfg.extend(zk.pods().into_iter().flatten().map(|pod| {
         (
             format!("server.{}", pod.zookeeper_myid),
-            format!("{}:2888:3888;{}", pod.fqdn(), APP_PORT),
+            format!("{}:2888:3888;{}", pod.fqdn(), zk.client_port()),
         )
     }));
+
+    // TLS
+
     let zoo_cfg = zoo_cfg
         .into_iter()
         .map(|(k, v)| (k, Some(v)))
@@ -336,7 +348,7 @@ fn build_server_rolegroup_service(
             ports: Some(vec![
                 ServicePort {
                     name: Some("zk".to_string()),
-                    port: APP_PORT.into(),
+                    port: zk.client_port().into(),
                     protocol: Some("TCP".to_string()),
                     ..ServicePort::default()
                 },
@@ -390,18 +402,11 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         })
         .collect::<Vec<_>>();
+
     let mut container_prepare = ContainerBuilder::new("prepare")
         .image(&image)
-        .args(vec![
-            "sh".to_string(),
-            "-c".to_string(),
-            [
-                "chown stackable:stackable /stackable/data",
-                "chmod a=,u=rwX /stackable/data",
-                "expr $MYID_OFFSET + $(echo $POD_NAME | sed 's/.*-//') > /stackable/data/myid",
-            ]
-            .join(" && "),
-        ])
+        .command(vec!["sh".to_string(), "-c".to_string()])
+        .args(build_init_container_args(zk))
         .add_env_vars(env.clone())
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
@@ -415,6 +420,7 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         }])
         .add_volume_mount("data", "/stackable/data")
+        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
         .build();
     container_prepare
         .security_context
@@ -439,19 +445,20 @@ fn build_server_rolegroup_statefulset(
                     // we can use Bash's virtual /dev/tcp filesystem to accomplish the same thing
                     format!(
                         "exec 3<>/dev/tcp/localhost/{} && echo srvr >&3 && grep '^Mode: ' <&3",
-                        APP_PORT
+                        zk.client_port()
                     ),
                 ]),
             }),
             period_seconds: Some(1),
             ..Probe::default()
         })
-        .add_container_port("zk", APP_PORT.into())
+        .add_container_port("zk", zk.client_port().into())
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", "/stackable/data")
         .add_volume_mount("config", "/stackable/config")
+        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
         .build();
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
@@ -501,6 +508,28 @@ fn build_server_rolegroup_statefulset(
                     config_map: Some(ConfigMapVolumeSource {
                         name: Some(rolegroup_ref.object_name()),
                         ..ConfigMapVolumeSource::default()
+                    }),
+                    ..Volume::default()
+                })
+                .add_volume(Volume {
+                    name: "quorum-tls".to_string(),
+                    csi: Some(CSIVolumeSource {
+                        driver: "secrets.stackable.tech".to_string(),
+                        volume_attributes: Some(
+                            vec![
+                                (
+                                    "secrets.stackable.tech/class".to_string(),
+                                    "tls".to_string(),
+                                ),
+                                (
+                                    "secrets.stackable.tech/scope".to_string(),
+                                    "node,pod".to_string(),
+                                ),
+                            ]
+                            .into_iter()
+                            .collect::<BTreeMap<_, _>>(),
+                        ),
+                        ..CSIVolumeSource::default()
                     }),
                     ..Volume::default()
                 })

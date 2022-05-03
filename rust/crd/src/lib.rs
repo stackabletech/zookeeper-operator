@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
 use stackable_operator::{
@@ -9,6 +7,10 @@ use stackable_operator::{
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
+use std::collections::BTreeMap;
+
+pub const APP_PORT: u16 = 2181;
+pub const SECURE_APP_PORT: u16 = 2281;
 
 /// A cluster of ZooKeeper nodes
 #[derive(Clone, CustomResource, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -36,6 +38,43 @@ pub struct ZookeeperClusterSpec {
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub servers: Option<Role<ZookeeperConfig>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<GlobalZookeeperConfig>,
+}
+
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalZookeeperConfig {
+    #[serde(flatten)]
+    pub tls_config: Option<TlsConfig>,
+}
+
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TlsConfig {
+    pub tls: Option<TlsSecretClass>,
+    pub client_authentication: Option<ClientAuthenticationClass>,
+    pub quorum_tls_secret_class: String,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TlsSecretClass {
+    pub secret_class: String,
+}
+
+impl Default for TlsSecretClass {
+    fn default() -> Self {
+        Self {
+            secret_class: "tls".to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientAuthenticationClass {
+    pub authentication_class: String,
 }
 
 #[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -178,6 +217,38 @@ impl ZookeeperCluster {
                     zookeeper_myid: i + rolegroup.config.config.myid_offset(),
                 })
             }))
+    }
+
+    pub fn client_port(&self) -> u16 {
+        if self.client_auth().is_some() {
+            SECURE_APP_PORT
+        } else {
+            APP_PORT
+        }
+    }
+
+    pub fn tls_secret_class(&self) -> Option<&TlsSecretClass> {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.config
+            .as_ref()
+            .and_then(|c| c.tls_config.as_ref())
+            .and_then(|tls| tls.tls.as_ref())
+    }
+
+    pub fn client_auth(&self) -> Option<&ClientAuthenticationClass> {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.config
+            .as_ref()
+            .and_then(|c| c.tls_config.as_ref())
+            .and_then(|tls| tls.client_authentication.as_ref())
+    }
+
+    pub fn quorum_tls_secret_class(&self) -> Option<&String> {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.config
+            .as_ref()
+            .and_then(|c| c.tls_config.as_ref())
+            .map(|tls| &tls.quorum_tls_secret_class)
     }
 }
 
