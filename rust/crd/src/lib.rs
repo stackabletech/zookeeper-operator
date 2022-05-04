@@ -9,8 +9,17 @@ use stackable_operator::{
 };
 use std::collections::BTreeMap;
 
-pub const APP_PORT: u16 = 2181;
-pub const SECURE_APP_PORT: u16 = 2281;
+pub const CLIENT_PORT: u16 = 2181;
+pub const SECURE_CLIENT_PORT: u16 = 2282;
+
+pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
+pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
+
+pub const QUORUM_TLS_DIR: &str = "/stackable/tls/quorum";
+pub const CLIENT_TLS_DIR: &str = "/stackable/tls/client";
+// TODO: Generate? Currently this is written in the ConfigMap.
+//  It probably makes sense to add that after mounting the CM?
+pub const TLS_STORE_SECRET: &str = "My_5t4ck4ble_53cr4T";
 
 /// A cluster of ZooKeeper nodes
 #[derive(Clone, CustomResource, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -90,9 +99,27 @@ impl ZookeeperConfig {
     pub const INIT_LIMIT: &'static str = "initLimit";
     pub const SYNC_LIMIT: &'static str = "syncLimit";
     pub const TICK_TIME: &'static str = "tickTime";
+    pub const DATA_DIR: &'static str = "dataDir";
 
     pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
+    pub const CLIENT_PORT: &'static str = "clientPort";
+
+    // Quorum TLS
+    pub const SSL_QUORUM: &'static str = "sslQuorum";
+    pub const SSL_QUORUM_KEY_STORE_LOCATION: &'static str = "ssl.quorum.keyStore.location";
+    pub const SSL_QUORUM_KEY_STORE_PASSWORD: &'static str = "ssl.quorum.keyStore.password";
+    pub const SSL_QUORUM_TRUST_STORE_LOCATION: &'static str = "ssl.quorum.trustStore.location";
+    pub const SSL_QUORUM_TRUST_STORE_PASSWORD: &'static str = "ssl.quorum.trustStore.password";
+    // Client TLS
+    pub const SECURE_CLIENT_PORT: &'static str = "secureClientPort";
+    pub const SSL_KEY_STORE_LOCATION: &'static str = "ssl.keyStore.location";
+    pub const SSL_KEY_STORE_PASSWORD: &'static str = "ssl.keyStore.password";
+    pub const SSL_TRUST_STORE_LOCATION: &'static str = "ssl.trustStore.location";
+    pub const SSL_TRUST_STORE_PASSWORD: &'static str = "ssl.trustStore.password";
+    pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
+    // Common TLS
+    pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
 
     fn myid_offset(&self) -> u16 {
         self.myid_offset.unwrap_or(1)
@@ -128,7 +155,7 @@ impl Configuration for ZookeeperConfig {
 
     fn compute_files(
         &self,
-        _resource: &Self::Configurable,
+        resource: &Self::Configurable,
         _role_name: &str,
         _file: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
@@ -142,6 +169,102 @@ impl Configuration for ZookeeperConfig {
         if let Some(tick_time) = self.tick_time {
             result.insert(Self::TICK_TIME.to_string(), Some(tick_time.to_string()));
         }
+        result.insert(
+            Self::DATA_DIR.to_string(),
+            Some(STACKABLE_DATA_DIR.to_string()),
+        );
+
+        // Quorum TLS
+        if resource.is_quorum_secure() {
+            result.insert(Self::SSL_QUORUM.to_string(), Some("true".to_string()));
+            result.insert(
+                Self::SERVER_CNXN_FACTORY.to_string(),
+                Some("org.apache.zookeeper.server.NettyServerCnxnFactory".to_string()),
+            );
+            result.insert(
+                Self::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
+                Some(format!("{dir}/keystore.p12", dir = QUORUM_TLS_DIR)),
+            );
+            result.insert(
+                Self::SSL_QUORUM_KEY_STORE_PASSWORD.to_string(),
+                Some(TLS_STORE_SECRET.to_string()),
+            );
+            result.insert(
+                Self::SSL_QUORUM_TRUST_STORE_LOCATION.to_string(),
+                Some(format!("{dir}/truststore.p12", dir = QUORUM_TLS_DIR)),
+            );
+            result.insert(
+                Self::SSL_QUORUM_TRUST_STORE_PASSWORD.to_string(),
+                Some(TLS_STORE_SECRET.to_string()),
+            );
+        }
+        // Client TLS
+        if resource.is_client_secure() {
+            // We set only the clientPort and portUnification here because otherwise there is a port bind exception
+            // See: https://issues.apache.org/jira/browse/ZOOKEEPER-4276
+            // --> Normally we would like to only set the secureClientPort (check out commented code below)
+            // What we tried:
+            // 1) Set clientPort and secureClientPort will fail with
+            // "static.config different from dynamic config .. "
+            // result.insert(
+            //     Self::CLIENT_PORT.to_string(),
+            //     Some(CLIENT_PORT.to_string()),
+            // );
+            // result.insert(
+            //     Self::SECURE_CLIENT_PORT.to_string(),
+            //     Some(SECURE_CLIENT_PORT.to_string()),
+            // );
+
+            // 2) Setting only secureClientPort will result in the above mentioned bind exception
+            // The NettyFactory tries to bind multiple times on the secureClientPort.
+            // result.insert(
+            //     Self::SECURE_CLIENT_PORT.to_string(),
+            //     Some(resource.client_port().to_string()),
+            // );
+
+            // 3) Using the clientPort and portUnification still allows plaintext connection without
+            // authentication, but at least TLS and authentication works when connecting securely.
+            result.insert(
+                Self::CLIENT_PORT.to_string(),
+                Some(resource.client_port().to_string()),
+            );
+            result.insert(
+                "client.portUnification".to_string(),
+                Some("true".to_string()),
+            );
+            // END TICKET
+
+            result.insert(
+                Self::SERVER_CNXN_FACTORY.to_string(),
+                Some("org.apache.zookeeper.server.NettyServerCnxnFactory".to_string()),
+            );
+            result.insert(
+                Self::SSL_KEY_STORE_LOCATION.to_string(),
+                Some(format!("{dir}/keystore.p12", dir = CLIENT_TLS_DIR)),
+            );
+            result.insert(
+                Self::SSL_KEY_STORE_PASSWORD.to_string(),
+                Some(TLS_STORE_SECRET.to_string()),
+            );
+            result.insert(
+                Self::SSL_TRUST_STORE_LOCATION.to_string(),
+                Some(format!("{dir}/truststore.p12", dir = CLIENT_TLS_DIR)),
+            );
+            result.insert(
+                Self::SSL_TRUST_STORE_PASSWORD.to_string(),
+                Some(TLS_STORE_SECRET.to_string()),
+            );
+            result.insert(
+                Self::SSL_AUTH_PROVIDER_X509.to_string(),
+                Some("org.apache.zookeeper.server.auth.X509AuthenticationProvider".to_string()),
+            );
+        } else {
+            result.insert(
+                Self::CLIENT_PORT.to_string(),
+                Some(resource.client_port().to_string()),
+            );
+        }
+
         Ok(result)
     }
 }
@@ -221,10 +344,27 @@ impl ZookeeperCluster {
 
     pub fn client_port(&self) -> u16 {
         if self.client_auth().is_some() {
-            SECURE_APP_PORT
+            SECURE_CLIENT_PORT
         } else {
-            APP_PORT
+            CLIENT_PORT
         }
+    }
+
+    pub fn is_quorum_secure(&self) -> bool {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.config
+            .as_ref()
+            .and_then(|c| c.tls_config.as_ref())
+            .is_some()
+    }
+
+    pub fn is_client_secure(&self) -> bool {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.config
+            .as_ref()
+            .and_then(|c| c.tls_config.as_ref())
+            .and_then(|tls| tls.client_authentication.as_ref())
+            .is_some()
     }
 
     pub fn tls_secret_class(&self) -> Option<&TlsSecretClass> {

@@ -1,5 +1,4 @@
 mod auth_config;
-mod config;
 mod discovery;
 mod utils;
 mod zk_controller;

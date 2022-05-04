@@ -8,9 +8,8 @@ use std::{
     time::Duration,
 };
 
-use crate::config::build_init_container_args;
 use crate::{
-    auth_config::{self, create_key_and_trust_store_cmd},
+    auth_config::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
     APP_NAME,
 };
@@ -43,15 +42,13 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     role_utils::RoleGroupRef,
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole};
+use stackable_zookeeper_crd::{
+    ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole, CLIENT_TLS_DIR, QUORUM_TLS_DIR,
+    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+};
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
-const QUORUM_TLS_DIR: &str = "/stackable/tls/quorum";
-const CLIENT_TLS_DIR: &str = "/stackable/tls/client";
-// TODO: Generate? Currently this is written in the ConfigMap.
-//  It probably makes sense to add that after mounting the CM?
-const TLS_STORE_SECRET: &str = "MyS3cr4T";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -403,10 +400,11 @@ fn build_server_rolegroup_statefulset(
         })
         .collect::<Vec<_>>();
 
-    let mut container_prepare = ContainerBuilder::new("prepare")
+    let mut container_prepare = ContainerBuilder::new("prepare");
+    container_prepare
         .image(&image)
         .command(vec!["sh".to_string(), "-c".to_string()])
-        .args(build_init_container_args(zk))
+        .args(vec![create_init_container_command_args(zk)])
         .add_env_vars(env.clone())
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
@@ -419,19 +417,28 @@ fn build_server_rolegroup_statefulset(
             }),
             ..EnvVar::default()
         }])
-        .add_volume_mount("data", "/stackable/data")
-        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
-        .build();
+        .add_volume_mount("data", STACKABLE_DATA_DIR);
+
+    if zk.is_quorum_secure() {
+        container_prepare.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
+    }
+    if zk.is_client_secure() {
+        container_prepare.add_volume_mount("client-tls", CLIENT_TLS_DIR);
+    }
+
+    let mut container_prepare = container_prepare.build();
     container_prepare
         .security_context
         .get_or_insert_with(SecurityContext::default)
         .run_as_user = Some(0);
-    let container_zk = ContainerBuilder::new("zookeeper")
+
+    let mut container_zk = ContainerBuilder::new("zookeeper");
+    container_zk
         .image(image)
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
-            "/stackable/config/zoo.cfg".to_string(),
+            format!("{dir}/zoo.cfg", dir = STACKABLE_CONFIG_DIR),
         ])
         .add_env_vars(env)
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
@@ -456,10 +463,96 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
         .add_container_port("metrics", 9505)
-        .add_volume_mount("data", "/stackable/data")
-        .add_volume_mount("config", "/stackable/config")
-        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
-        .build();
+        .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .add_volume_mount("config", STACKABLE_CONFIG_DIR);
+
+    if zk.is_quorum_secure() {
+        container_zk.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
+    }
+    if zk.is_client_secure() {
+        container_zk.add_volume_mount("client-tls", CLIENT_TLS_DIR);
+    }
+
+    let container_zk = container_zk.build();
+
+    let mut pod_builder = PodBuilder::new();
+    pod_builder
+        .metadata_builder(|m| {
+            m.with_recommended_labels(
+                zk,
+                APP_NAME,
+                zk_version,
+                &rolegroup_ref.role,
+                &rolegroup_ref.role_group,
+            )
+        })
+        .add_init_container(container_prepare)
+        .add_container(container_zk)
+        .add_volume(Volume {
+            name: "config".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: Some(rolegroup_ref.object_name()),
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        })
+        .security_context(PodSecurityContext {
+            fs_group: Some(1000),
+            ..PodSecurityContext::default()
+        });
+
+    if zk.is_quorum_secure() {
+        pod_builder.add_volume(Volume {
+            name: "quorum-tls".to_string(),
+            csi: Some(CSIVolumeSource {
+                driver: "secrets.stackable.tech".to_string(),
+                volume_attributes: Some(
+                    vec![
+                        (
+                            "secrets.stackable.tech/class".to_string(),
+                            "tls".to_string(),
+                        ),
+                        (
+                            "secrets.stackable.tech/scope".to_string(),
+                            "node,pod".to_string(),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect::<BTreeMap<_, _>>(),
+                ),
+                ..CSIVolumeSource::default()
+            }),
+            ..Volume::default()
+        });
+    }
+
+    if zk.is_client_secure() {
+        pod_builder.add_volume(Volume {
+            name: "client-tls".to_string(),
+            csi: Some(CSIVolumeSource {
+                driver: "secrets.stackable.tech".to_string(),
+                volume_attributes: Some(
+                    vec![
+                        (
+                            "secrets.stackable.tech/class".to_string(),
+                            "tls".to_string(),
+                        ),
+                        (
+                            "secrets.stackable.tech/scope".to_string(),
+                            "node,pod".to_string(),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect::<BTreeMap<_, _>>(),
+                ),
+                ..CSIVolumeSource::default()
+            }),
+            ..Volume::default()
+        });
+    }
+
+    let pod_builder = pod_builder.build_template();
+
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
@@ -491,53 +584,7 @@ fn build_server_rolegroup_statefulset(
                 ..LabelSelector::default()
             },
             service_name: rolegroup_ref.object_name(),
-            template: PodBuilder::new()
-                .metadata_builder(|m| {
-                    m.with_recommended_labels(
-                        zk,
-                        APP_NAME,
-                        zk_version,
-                        &rolegroup_ref.role,
-                        &rolegroup_ref.role_group,
-                    )
-                })
-                .add_init_container(container_prepare)
-                .add_container(container_zk)
-                .add_volume(Volume {
-                    name: "config".to_string(),
-                    config_map: Some(ConfigMapVolumeSource {
-                        name: Some(rolegroup_ref.object_name()),
-                        ..ConfigMapVolumeSource::default()
-                    }),
-                    ..Volume::default()
-                })
-                .add_volume(Volume {
-                    name: "quorum-tls".to_string(),
-                    csi: Some(CSIVolumeSource {
-                        driver: "secrets.stackable.tech".to_string(),
-                        volume_attributes: Some(
-                            vec![
-                                (
-                                    "secrets.stackable.tech/class".to_string(),
-                                    "tls".to_string(),
-                                ),
-                                (
-                                    "secrets.stackable.tech/scope".to_string(),
-                                    "node,pod".to_string(),
-                                ),
-                            ]
-                            .into_iter()
-                            .collect::<BTreeMap<_, _>>(),
-                        ),
-                        ..CSIVolumeSource::default()
-                    }),
-                    ..Volume::default()
-                })
-                .security_context(PodSecurityContext {
-                    fs_group: Some(1000),
-                    ..PodSecurityContext::default()
-                })
-                .build_template(),
+            template: pod_builder,
             volume_claim_templates: Some(vec![PersistentVolumeClaim {
                 metadata: ObjectMeta {
                     name: Some("data".to_string()),
