@@ -156,7 +156,7 @@ properties:
             type: "file"
             file: "zoo.cfg"
       datatype:
-        type: "boolean"
+        type: "bool"
       defaultValues:
         - value: "false"
       roles:
