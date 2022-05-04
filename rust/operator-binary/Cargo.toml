@@ -19,7 +19,7 @@ serde_json = "1.0.79"
 serde_yaml = "0.8.23"
 snafu = "0.7.0"
 strum = { version = "0.24.0", features = ["derive"] }
-tokio = { version = "1.17.0", features = ["full"] }
+tokio = { version = "1.18.1", features = ["full"] }
 tokio01 = { version = "0.1.22", package = "tokio" }
 tokio-executor = "0.1.10"
 tokio-zookeeper = "0.1.3"
