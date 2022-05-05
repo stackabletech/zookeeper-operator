@@ -159,11 +159,51 @@ properties:
         type: "bool"
       defaultValues:
         - value: "false"
+      recommendedValues:
+        - value: "true"
       roles:
         - name: "server"
           required: false
       asOfVersion: "3.5.5"
       description: "Enables encrypted quorum communication."
+
+  - property: &sslQuorumClientAuth
+      propertyNames:
+        - name: "ssl.quorum.clientAuth"
+          kind:
+            type: "file"
+            file: "zoo.cfg"
+      datatype:
+        type: "string"
+      allowedValues:
+        - "none"
+        - "want"
+        - "need"
+      defaultValues:
+        - value: "need"
+      recommendedValues:
+        - value: "need"
+      roles:
+        - name: "server"
+          required: false
+      asOfVersion: "3.5.7"
+      description: "Specifies options to authenticate ssl connections from clients."
+
+  - property: &sslQuorumHostNameVerification
+      propertyNames:
+        - name: "ssl.quorum.hostnameVerification"
+          kind:
+            type: "file"
+            file: "zoo.cfg"
+      datatype:
+        type: "bool"
+      recommendedValues:
+        - value: "true"
+      roles:
+        - name: "server"
+          required: false
+      asOfVersion: "3.5.7"
+      description: "Specifies whether the hostname verification is enabled in quorum TLS negotiation process. Disabling it only recommended for testing purposes."
 
   - property: &sslQuorumKeyStoreLocation
       propertyNames:
@@ -230,6 +270,44 @@ properties:
   ##########################
   # Client TLS
   ##########################
+  - property: &sslClientAuth
+      propertyNames:
+        - name: "ssl.clientAuth"
+          kind:
+            type: "file"
+            file: "zoo.cfg"
+      datatype:
+        type: "string"
+      allowedValues:
+        - "none"
+        - "want"
+        - "need"
+      defaultValues:
+        - value: "need"
+      recommendedValues:
+        - value: "need"
+      roles:
+        - name: "server"
+          required: false
+      asOfVersion: "3.5.7"
+      description: "Specifies options to authenticate ssl connections from clients."
+
+  - property: &sslHostNameVerification
+      propertyNames:
+        - name: "ssl.hostnameVerification"
+          kind:
+            type: "file"
+            file: "zoo.cfg"
+      datatype:
+        type: "bool"
+      recommendedValues:
+        - value: "true"
+      roles:
+        - name: "server"
+          required: false
+      asOfVersion: "3.5.7"
+      description: "Specifies whether the hostname verification is enabled in client TLS negotiation process. Disabling it only recommended for testing purposes."
+
   - property: &sslKeyStoreLocation
       propertyNames:
         - name: "ssl.keyStore.location"
@@ -291,7 +369,9 @@ properties:
           required: false
       asOfVersion: "3.5.5"
       description: "The password to unlock the client truststore."
-
+    ##########################
+    # Common TLS
+    ##########################
   - property: &authProviderX509
       propertyNames:
         - name: "authProvider.x509"
@@ -304,11 +384,8 @@ properties:
         - name: "server"
           required: false
       asOfVersion: "0.0.0"
-      description: "Used for secure client authentication.."
+      description: "Used for secure client authentication."
 
-    ##########################
-    # Common TLS
-    ##########################
   - property: &serverCnxnFactory
       propertyNames:
         - name: "serverCnxnFactory"

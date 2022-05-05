@@ -141,13 +141,14 @@ impl ZookeeperConfig {
     pub const SSL_QUORUM_TRUST_STORE_PASSWORD: &'static str = "ssl.quorum.trustStore.password";
     // Client TLS
     pub const SECURE_CLIENT_PORT: &'static str = "secureClientPort";
+    pub const SSL_CLIENT_AUTH: &'static str = "ssl.clientAuth";
+    pub const SSL_HOST_NAME_VERIFICATION: &'static str = "ssl.hostnameVerification";
     pub const SSL_KEY_STORE_LOCATION: &'static str = "ssl.keyStore.location";
     pub const SSL_KEY_STORE_PASSWORD: &'static str = "ssl.keyStore.password";
     pub const SSL_TRUST_STORE_LOCATION: &'static str = "ssl.trustStore.location";
     pub const SSL_TRUST_STORE_PASSWORD: &'static str = "ssl.trustStore.password";
-    pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
-    pub const SSL_CLIENT_AUTH: &'static str = "ssl.clientAuth";
     // Common TLS
+    pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
 
     fn myid_offset(&self) -> u16 {
@@ -218,6 +219,10 @@ impl Configuration for ZookeeperConfig {
             Some("org.apache.zookeeper.server.NettyServerCnxnFactory".to_string()),
         );
         result.insert(
+            Self::SSL_AUTH_PROVIDER_X509.to_string(),
+            Some("org.apache.zookeeper.server.auth.X509AuthenticationProvider".to_string()),
+        );
+        result.insert(
             Self::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
             Some(format!("{dir}/keystore.p12", dir = QUORUM_TLS_DIR)),
         );
@@ -265,15 +270,16 @@ impl Configuration for ZookeeperConfig {
                 Some(resource.client_port().to_string()),
             );
             result.insert(
+                Self::SSL_HOST_NAME_VERIFICATION.to_string(),
+                Some("true".to_string()),
+            );
+
+            result.insert(
                 "client.portUnification".to_string(),
                 Some("true".to_string()),
             );
             // END TICKET
 
-            result.insert(
-                Self::SERVER_CNXN_FACTORY.to_string(),
-                Some("org.apache.zookeeper.server.NettyServerCnxnFactory".to_string()),
-            );
             result.insert(
                 Self::SSL_KEY_STORE_LOCATION.to_string(),
                 Some(format!("{dir}/keystore.p12", dir = CLIENT_TLS_DIR)),
@@ -290,11 +296,6 @@ impl Configuration for ZookeeperConfig {
                 Self::SSL_TRUST_STORE_PASSWORD.to_string(),
                 Some(TLS_STORE_SECRET.to_string()),
             );
-            result.insert(
-                Self::SSL_AUTH_PROVIDER_X509.to_string(),
-                Some("org.apache.zookeeper.server.auth.X509AuthenticationProvider".to_string()),
-            );
-
             // Check if we need to enable authentication
             if resource.client_tls_authentication_class().is_some() {
                 result.insert(Self::SSL_CLIENT_AUTH.to_string(), Some("need".to_string()));
