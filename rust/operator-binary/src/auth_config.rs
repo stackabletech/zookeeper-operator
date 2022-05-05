@@ -4,13 +4,11 @@ use stackable_zookeeper_crd::{
 
 pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
     let mut args = vec![];
-    // TODO: we need to check if another secret / authentication class is used
-    if zk.is_quorum_secure() {
-        args.extend(create_key_and_trust_store_cmd(
-            QUORUM_TLS_DIR,
-            TLS_STORE_SECRET,
-        ));
-    }
+
+    args.extend(create_key_and_trust_store_cmd(
+        QUORUM_TLS_DIR,
+        TLS_STORE_SECRET,
+    ));
 
     if zk.is_client_secure() {
         args.extend(create_key_and_trust_store_cmd(

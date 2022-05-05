@@ -9,7 +9,7 @@ spec:
     tls:
       secretClass: tls
     clientAuthentication:
-      authenticationClass: zookeeper-client-tls
+      authenticationClass: zk-client-tls
     quorumTlsSecretClass: tls
   servers:
     roleGroups:
@@ -19,14 +19,24 @@ spec:
 apiVersion: authentication.stackable.tech/v1alpha1
 kind: AuthenticationClass
 metadata:
-  name: zookeeper-client-tls
+  name: zk-client-tls
 spec:
   provider:
     tls:
-      verification:
-        server:
-          caCert:
-            secretClass: tls
+      clientCertSecretClass: zk-client-auth-secret
+---
+apiVersion: secrets.stackable.tech/v1alpha1
+kind: SecretClass
+metadata:
+  name: zk-client-auth-secret
+spec:
+  backend:
+    autoTls:
+      ca:
+        secret:
+          name: secret-provisioner-tls-zk-client-ca
+          namespace: default
+        autoGenerate: true
 ---
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperZnode

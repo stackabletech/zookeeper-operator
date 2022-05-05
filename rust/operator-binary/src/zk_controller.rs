@@ -11,13 +11,16 @@ use std::{
 use crate::{
     auth_config::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
-    APP_NAME,
+    ObjectRef, APP_NAME,
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::commons::authentication::AuthenticationClassProvider;
 use stackable_operator::k8s_openapi::api::core::v1::CSIVolumeSource;
+use stackable_operator::kube::api::DynamicObject;
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
+    commons::authentication::AuthenticationClass,
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
@@ -122,12 +125,56 @@ pub enum Error {
     ApplyStatus {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("failed to retrieve {}", authentication_class))]
+    AuthenticationClassRetrieval {
+        source: stackable_operator::error::Error,
+        authentication_class: ObjectRef<AuthenticationClass>,
+    },
+    #[snafu(display(
+        "failed to use authentication mechanism {} - supported methods: {:?}",
+        method,
+        supported
+    ))]
+    AuthenticationMethodNotSupported {
+        authentication_class: ObjectRef<AuthenticationClass>,
+        supported: Vec<String>,
+        method: String,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl ReconcilerError for Error {
     fn category(&self) -> &'static str {
         ErrorDiscriminants::from(self).into()
+    }
+    fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
+        match self {
+            Error::ObjectHasNoNamespace => None,
+            Error::ObjectHasNoVersion => None,
+            Error::NoServerRole => None,
+            Error::GlobalServiceNameNotFound => None,
+            Error::RoleGroupServiceNameNotFound { .. } => None,
+            Error::ApplyRoleService { .. } => None,
+            Error::ApplyRoleGroupService { .. } => None,
+            Error::BuildRoleGroupConfig { .. } => None,
+            Error::ApplyRoleGroupConfig { .. } => None,
+            Error::ApplyRoleGroupStatefulSet { .. } => None,
+            Error::GenerateProductConfig { .. } => None,
+            Error::InvalidProductConfig { .. } => None,
+            Error::SerializeZooCfg { .. } => None,
+            Error::ObjectMissingMetadataForOwnerRef { .. } => None,
+            Error::BuildDiscoveryConfig { .. } => None,
+            Error::ApplyDiscoveryConfig { .. } => None,
+            Error::ApplyStatus { .. } => None,
+            Error::AuthenticationClassRetrieval {
+                authentication_class,
+                ..
+            } => Some(authentication_class.clone().erase()),
+            Error::AuthenticationMethodNotSupported {
+                authentication_class,
+                ..
+            } => Some(authentication_class.clone().erase()),
+        }
     }
 }
 
@@ -168,6 +215,20 @@ pub async fn reconcile_zk(
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
+    let client_authentication_class = if let Some(auth_class) = zk.client_tls_authentication_class()
+    {
+        Some(
+            client
+                .get::<AuthenticationClass>(&auth_class, None) // AuthenticationClass has ClusterScope
+                .await
+                .context(AuthenticationClassRetrievalSnafu {
+                    authentication_class: ObjectRef::<AuthenticationClass>::new(&auth_class),
+                })?,
+        )
+    } else {
+        None
+    };
+
     let server_role_service = build_server_role_service(&zk)?;
     let server_role_service = client
         .apply_patch(
@@ -182,7 +243,12 @@ pub async fn reconcile_zk(
 
         let rg_service = build_server_rolegroup_service(&rolegroup, &zk)?;
         let rg_configmap = build_server_rolegroup_config_map(&rolegroup, &zk, rolegroup_config)?;
-        let rg_statefulset = build_server_rolegroup_statefulset(&rolegroup, &zk, rolegroup_config)?;
+        let rg_statefulset = build_server_rolegroup_statefulset(
+            &rolegroup,
+            &zk,
+            rolegroup_config,
+            client_authentication_class.as_ref(),
+        )?;
         client
             .apply_patch(FIELD_MANAGER_SCOPE, &rg_service, &rg_service)
             .await
@@ -376,6 +442,7 @@ fn build_server_rolegroup_statefulset(
     rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     zk: &ZookeeperCluster,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
+    client_authentication_class: Option<&AuthenticationClass>,
 ) -> Result<StatefulSet> {
     let rolegroup = zk
         .spec
@@ -417,11 +484,9 @@ fn build_server_rolegroup_statefulset(
             }),
             ..EnvVar::default()
         }])
-        .add_volume_mount("data", STACKABLE_DATA_DIR);
+        .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
 
-    if zk.is_quorum_secure() {
-        container_prepare.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
-    }
     if zk.is_client_secure() {
         container_prepare.add_volume_mount("client-tls", CLIENT_TLS_DIR);
     }
@@ -464,11 +529,9 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk-election", 3888)
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", STACKABLE_DATA_DIR)
-        .add_volume_mount("config", STACKABLE_CONFIG_DIR);
+        .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
 
-    if zk.is_quorum_secure() {
-        container_zk.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
-    }
     if zk.is_client_secure() {
         container_zk.add_volume_mount("client-tls", CLIENT_TLS_DIR);
     }
@@ -496,13 +559,7 @@ fn build_server_rolegroup_statefulset(
             }),
             ..Volume::default()
         })
-        .security_context(PodSecurityContext {
-            fs_group: Some(1000),
-            ..PodSecurityContext::default()
-        });
-
-    if zk.is_quorum_secure() {
-        pod_builder.add_volume(Volume {
+        .add_volume(Volume {
             name: "quorum-tls".to_string(),
             csi: Some(CSIVolumeSource {
                 driver: "secrets.stackable.tech".to_string(),
@@ -510,7 +567,7 @@ fn build_server_rolegroup_statefulset(
                     vec![
                         (
                             "secrets.stackable.tech/class".to_string(),
-                            "tls".to_string(),
+                            zk.quorum_tls_secret_class(),
                         ),
                         (
                             "secrets.stackable.tech/scope".to_string(),
@@ -523,10 +580,28 @@ fn build_server_rolegroup_statefulset(
                 ..CSIVolumeSource::default()
             }),
             ..Volume::default()
+        })
+        .security_context(PodSecurityContext {
+            fs_group: Some(1000),
+            ..PodSecurityContext::default()
         });
-    }
 
     if zk.is_client_secure() {
+        let secret_class = if let Some(auth_class) = client_authentication_class {
+            match &auth_class.spec.provider {
+                AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.clone(),
+                _ => {
+                    return Err(Error::AuthenticationMethodNotSupported {
+                        authentication_class: ObjectRef::from_obj(auth_class),
+                        supported: vec!["tls".to_string()],
+                        method: auth_class.spec.provider.to_string(),
+                    })
+                }
+            }
+        } else {
+            None
+        };
+
         pod_builder.add_volume(Volume {
             name: "client-tls".to_string(),
             csi: Some(CSIVolumeSource {
@@ -535,7 +610,7 @@ fn build_server_rolegroup_statefulset(
                     vec![
                         (
                             "secrets.stackable.tech/class".to_string(),
-                            "tls".to_string(),
+                            secret_class.unwrap_or_else(|| zk.client_tls_secret_class()),
                         ),
                         (
                             "secrets.stackable.tech/scope".to_string(),
