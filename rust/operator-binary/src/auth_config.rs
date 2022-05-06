@@ -63,7 +63,8 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
 }
 
 fn generate_password() -> String {
-    format!("export {STORE_PASSWORD_ENV}=$(echo $RANDOM | md5sum | head -c 20)",)
+    // taken from https://unix.stackexchange.com/questions/230673/how-to-generate-a-random-string
+    format!("export {STORE_PASSWORD_ENV}=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 20 ; echo '')",)
 }
 
 fn write_store_password_to_config(property: &str) -> String {
