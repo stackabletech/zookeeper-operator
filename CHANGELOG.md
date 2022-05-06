@@ -11,16 +11,18 @@ All notable changes to this project will be documented in this file.
   a single namespace to watch ([#434]).
 - Support for ZooKeeper 3.8.0 added ([#464]).
 - Integration tests for all supported ZooKeeper versions added ([#464]).
+- TLS encryption and authentication support for quorum and client ([#xxx]).
 
 ### Changed
 
-- Operator-rs: 0.10.0 -> 0.15.0 ([#408], [#431], [#434], [#454]).
+- Operator-rs: 0.10.0 -> 0.19.0 ([#408], [#431], [#434], [#454], [#xxx]).
 
 [#408]: https://github.com/stackabletech/zookeeper-operator/pull/408
 [#431]: https://github.com/stackabletech/zookeeper-operator/pull/431
 [#434]: https://github.com/stackabletech/zookeeper-operator/pull/434
 [#454]: https://github.com/stackabletech/zookeeper-operator/pull/454
 [#464]: https://github.com/stackabletech/zookeeper-operator/pull/464
+[#xxx]: https://github.com/stackabletech/zookeeper-operator/pull/xxx
 
 ## [0.9.0] - 2022-02-14
 
