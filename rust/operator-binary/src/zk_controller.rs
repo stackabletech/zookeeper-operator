@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    auth_config::create_init_container_command_args,
+    command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
     ObjectRef, APP_NAME,
 };
