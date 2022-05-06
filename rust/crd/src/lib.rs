@@ -262,16 +262,20 @@ impl Configuration for ZookeeperConfig {
                 Some(resource.client_port().to_string()),
             );
             result.insert(
-                Self::SSL_HOST_NAME_VERIFICATION.to_string(),
-                Some("true".to_string()),
-            );
-
-            result.insert(
                 "client.portUnification".to_string(),
                 Some("true".to_string()),
             );
+            // TODO: Remove clientPort and portUnification in favor of secureClientPort once the bug is fixed
+            // result.insert(
+            //     Self::SECURE_CLIENT_PORT.to_string(),
+            //     Some(resource.client_port().to_string()),
+            // );
             // END TICKET
 
+            result.insert(
+                Self::SSL_HOST_NAME_VERIFICATION.to_string(),
+                Some("true".to_string()),
+            );
             // The keystore and truststore passwords should not be in the configmap and are generated
             // and written later via script in the init container
             result.insert(

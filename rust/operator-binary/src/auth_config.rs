@@ -8,8 +8,8 @@ const STORE_PASSWORD_ENV: &str = "STORE_PASSWORD";
 pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
     let mut args = vec![];
 
-    // copy config files to a writeable empty folder
-    // in order to set key and truststore pws later
+    // copy config files to a writeable empty folder in order to set key and
+    // truststore passwords in the initcontainer via script
     args.extend(vec![
         format!(
             "echo copying {conf} to {rw_conf}",
@@ -23,6 +23,7 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
         ),
     ]);
 
+    // Quorum
     args.push(generate_password());
     args.extend(create_key_and_trust_store_cmd(QUORUM_TLS_DIR));
     args.extend(vec![
@@ -30,6 +31,7 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
         write_store_password_to_config(ZookeeperConfig::SSL_QUORUM_TRUST_STORE_PASSWORD),
     ]);
 
+    // Client
     if zk.is_client_secure() {
         args.push(generate_password());
         args.extend(create_key_and_trust_store_cmd(CLIENT_TLS_DIR));
