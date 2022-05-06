@@ -369,9 +369,9 @@ properties:
           required: false
       asOfVersion: "3.5.5"
       description: "The password to unlock the client truststore."
-    ##########################
-    # Common TLS
-    ##########################
+  ##########################
+  # Common TLS
+  ##########################
   - property: &authProviderX509
       propertyNames:
         - name: "authProvider.x509"

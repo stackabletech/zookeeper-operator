@@ -1,4 +1,3 @@
-
 ---
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperCluster
@@ -16,25 +15,3 @@ spec:
     roleGroups:
       default:
         replicas: 3
----
-apiVersion: authentication.stackable.tech/v1alpha1
-kind: AuthenticationClass
-metadata:
-  name: zk-client-tls # <2>
-spec:
-  provider:
-    tls:
-      clientCertSecretClass: zk-client-auth-secret # <3>
----
-apiVersion: secrets.stackable.tech/v1alpha1
-kind: SecretClass
-metadata:
-  name: zk-client-auth-secret # <4>
-spec:
-  backend:
-    autoTls:
-      ca:
-        secret:
-          name: secret-provisioner-tls-zk-client-ca
-          namespace: default
-        autoGenerate: true
