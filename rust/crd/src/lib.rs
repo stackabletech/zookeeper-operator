@@ -14,12 +14,10 @@ pub const SECURE_CLIENT_PORT: u16 = 2282;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
+pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
 
 pub const QUORUM_TLS_DIR: &str = "/stackable/tls/quorum";
 pub const CLIENT_TLS_DIR: &str = "/stackable/tls/client";
-// TODO: Generate? Currently this is written in the ConfigMap.
-//  It probably makes sense to add that after mounting the CM?
-pub const TLS_STORE_SECRET: &str = "My_5t4ck4ble_53cr4T";
 
 const DEFAULT_SECRET_CLASS: &str = "tls";
 
@@ -222,21 +220,15 @@ impl Configuration for ZookeeperConfig {
             Self::SSL_AUTH_PROVIDER_X509.to_string(),
             Some("org.apache.zookeeper.server.auth.X509AuthenticationProvider".to_string()),
         );
+        // The keystore and truststore passwords should not be in the configmap and are generated
+        // and written later via script in the init container
         result.insert(
             Self::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
             Some(format!("{dir}/keystore.p12", dir = QUORUM_TLS_DIR)),
         );
         result.insert(
-            Self::SSL_QUORUM_KEY_STORE_PASSWORD.to_string(),
-            Some(TLS_STORE_SECRET.to_string()),
-        );
-        result.insert(
             Self::SSL_QUORUM_TRUST_STORE_LOCATION.to_string(),
             Some(format!("{dir}/truststore.p12", dir = QUORUM_TLS_DIR)),
-        );
-        result.insert(
-            Self::SSL_QUORUM_TRUST_STORE_PASSWORD.to_string(),
-            Some(TLS_STORE_SECRET.to_string()),
         );
 
         // Client TLS
@@ -280,21 +272,15 @@ impl Configuration for ZookeeperConfig {
             );
             // END TICKET
 
+            // The keystore and truststore passwords should not be in the configmap and are generated
+            // and written later via script in the init container
             result.insert(
                 Self::SSL_KEY_STORE_LOCATION.to_string(),
                 Some(format!("{dir}/keystore.p12", dir = CLIENT_TLS_DIR)),
             );
             result.insert(
-                Self::SSL_KEY_STORE_PASSWORD.to_string(),
-                Some(TLS_STORE_SECRET.to_string()),
-            );
-            result.insert(
                 Self::SSL_TRUST_STORE_LOCATION.to_string(),
                 Some(format!("{dir}/truststore.p12", dir = CLIENT_TLS_DIR)),
-            );
-            result.insert(
-                Self::SSL_TRUST_STORE_PASSWORD.to_string(),
-                Some(TLS_STORE_SECRET.to_string()),
             );
             // Check if we need to enable authentication
             if resource.client_tls_authentication_class().is_some() {

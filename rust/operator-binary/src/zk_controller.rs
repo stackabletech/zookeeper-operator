@@ -16,7 +16,7 @@ use crate::{
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::commons::authentication::AuthenticationClassProvider;
-use stackable_operator::k8s_openapi::api::core::v1::CSIVolumeSource;
+use stackable_operator::k8s_openapi::api::core::v1::{CSIVolumeSource, EmptyDirVolumeSource};
 use stackable_operator::kube::api::DynamicObject;
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
@@ -47,7 +47,7 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole, CLIENT_TLS_DIR, QUORUM_TLS_DIR,
-    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
@@ -485,7 +485,9 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         }])
         .add_volume_mount("data", STACKABLE_DATA_DIR)
-        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
+        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
+        .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR);
 
     if zk.is_client_secure() {
         container_prepare.add_volume_mount("client-tls", CLIENT_TLS_DIR);
@@ -503,7 +505,7 @@ fn build_server_rolegroup_statefulset(
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
-            format!("{dir}/zoo.cfg", dir = STACKABLE_CONFIG_DIR),
+            format!("{dir}/zoo.cfg", dir = STACKABLE_RW_CONFIG_DIR),
         ])
         .add_env_vars(env)
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
@@ -530,6 +532,7 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
         .add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
 
     if zk.is_client_secure() {
@@ -557,6 +560,14 @@ fn build_server_rolegroup_statefulset(
                 name: Some(rolegroup_ref.object_name()),
                 ..ConfigMapVolumeSource::default()
             }),
+            ..Volume::default()
+        })
+        .add_volume(Volume {
+            empty_dir: Some(EmptyDirVolumeSource {
+                medium: None,
+                size_limit: None,
+            }),
+            name: "rwconfig".to_string(),
             ..Volume::default()
         })
         .add_volume(Volume {
