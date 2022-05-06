@@ -80,7 +80,7 @@ WARNING: Due to a https://issues.apache.org/jira/browse/ZOOKEEPER-4276[bug] in Z
 == Monitoring
 
 The managed ZooKeeper instances are automatically configured to export Prometheus metrics. See
-xref:home::monitoring.adoc[] for more details.
+xref:home:operators:monitoring.adoc[] for more details.
 
 == Configuration & Environment Overrides
 
