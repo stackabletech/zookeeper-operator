@@ -8,7 +8,7 @@ echo "Start TLS testing..."
 ############################################################################
 # test the plaintext unsecured connection
 ############################################################################
-/stackable/zookeeper/bin/zkCli.sh -server ${SERVER} ls / &> /dev/null
+/stackable/zookeeper/bin/zkCli.sh -server "${SERVER}" ls / &> /dev/null
 
 if [[ $? != 0 ]];
 then
