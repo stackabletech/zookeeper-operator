@@ -51,7 +51,7 @@ export CLIENT_JVMFLAGS="
 -Dzookeeper.ssl.trustStore.location=/stackable/tls/quorum/truststore.p12
 -Dzookeeper.ssl.trustStore.password=${QUORUM_STORE_SECRET}"
 
-/stackable/zookeeper/bin/zkCli.sh -server ${SERVER} ls / &> /dev/null
+/stackable/zookeeper/bin/zkCli.sh -server "${SERVER}" ls / &> /dev/null
 
 if [[ $? == 0 ]];
 then
