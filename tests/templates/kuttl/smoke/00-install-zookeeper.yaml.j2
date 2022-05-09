@@ -4,6 +4,12 @@ kind: ZookeeperCluster
 metadata:
   name: test-zk
 spec:
+  config:
+    tls:
+      secretClass: tls
+    clientAuthentication:
+      authenticationClass: zk-client-tls
+    quorumTlsSecretClass: tls
   servers:
     roleGroups:
       primary:
@@ -16,6 +22,28 @@ spec:
           myidOffset: 20
   version: {{ test_scenario['values']['zookeeper'] }}
   stopped: false
+---
+apiVersion: authentication.stackable.tech/v1alpha1
+kind: AuthenticationClass
+metadata:
+  name: zk-client-tls
+spec:
+  provider:
+    tls:
+      clientCertSecretClass: zk-client-auth-secret
+---
+apiVersion: secrets.stackable.tech/v1alpha1
+kind: SecretClass
+metadata:
+  name: zk-client-auth-secret
+spec:
+  backend:
+    autoTls:
+      ca:
+        secret:
+          name: secret-provisioner-tls-zk-client-ca
+          namespace: default
+        autoGenerate: true
 ---
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperZnode
