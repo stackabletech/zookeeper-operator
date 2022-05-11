@@ -5,6 +5,7 @@ NAMESPACE=$1
 SERVER="test-zk-server-primary-1.test-zk-server-primary.${NAMESPACE}.svc.cluster.local:2282"
 
 # just to be safe...
+unset QUORUM_STORE_SECRET
 unset CLIENT_STORE_SECRET
 unset CLIENT_JVMFLAGS
 
