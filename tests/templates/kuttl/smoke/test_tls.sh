@@ -4,9 +4,13 @@
 NAMESPACE=$1
 SERVER="test-zk-server-primary-1.test-zk-server-primary.${NAMESPACE}.svc.cluster.local:2282"
 
+# just to be safe...
+unset CLIENT_STORE_SECRET
+unset CLIENT_JVMFLAGS
+
 echo "Start TLS testing..."
 ############################################################################
-# test the plaintext unsecured connection
+# Test the plaintext unsecured connection
 ############################################################################
 if ! /stackable/zookeeper/bin/zkCli.sh -server "${SERVER}" ls / &> /dev/null;
 then
@@ -16,7 +20,7 @@ fi
 echo "[SUCCESS] Unsecure client connection established!"
 
 ############################################################################
-# we set the correct client tls credentials and expect to be able to connect
+# We set the correct client tls credentials and expect to be able to connect
 ############################################################################
 CLIENT_STORE_SECRET="$(< /stackable/rwconfig/zoo.cfg grep "ssl.keyStore.password" | cut -d "=" -f2)"
 export CLIENT_STORE_SECRET
@@ -28,7 +32,6 @@ export CLIENT_JVMFLAGS="
 -Dzookeeper.ssl.keyStore.password=${CLIENT_STORE_SECRET}
 -Dzookeeper.ssl.trustStore.location=/stackable/tls/client/truststore.p12
 -Dzookeeper.ssl.trustStore.password=${CLIENT_STORE_SECRET}"
-
 
 if ! /stackable/zookeeper/bin/zkCli.sh -server "${SERVER}" ls / &> /dev/null;
 then
