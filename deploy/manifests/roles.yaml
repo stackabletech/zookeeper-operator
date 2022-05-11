@@ -69,6 +69,14 @@ rules:
     verbs:
       - get
   - apiGroups:
+      - authentication.stackable.tech
+    resources:
+      - authenticationclasses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
       - events.k8s.io
     resources:
       - events
