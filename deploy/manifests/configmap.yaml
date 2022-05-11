@@ -191,7 +191,7 @@ data:
             - name: "server"
               required: false
           asOfVersion: "3.5.7"
-          description: "Specifies options to authenticate ssl connections from clients."
+          description: "Specifies options to authenticate ssl connections from other quorum members."
 
       - property: &sslQuorumHostNameVerification
           propertyNames:

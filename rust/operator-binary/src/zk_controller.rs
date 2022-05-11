@@ -15,18 +15,18 @@ use crate::{
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
-use stackable_operator::commons::authentication::AuthenticationClassProvider;
-use stackable_operator::k8s_openapi::api::core::v1::{CSIVolumeSource, EmptyDirVolumeSource};
-use stackable_operator::kube::api::DynamicObject;
 use stackable_operator::{
-    builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
-    commons::authentication::AuthenticationClass,
+    builder::{
+        ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
+        SecretOperatorVolumeSourceBuilder, VolumeBuilder,
+    },
+    commons::authentication::{AuthenticationClass, AuthenticationClassProvider},
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
-                ConfigMap, ConfigMapVolumeSource, EnvVar, EnvVarSource, ExecAction,
-                ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec,
+                ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
+                ExecAction, ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec,
                 PodSecurityContext, Probe, ResourceRequirements, SecurityContext, Service,
                 ServicePort, ServiceSpec, Volume,
             },
@@ -34,7 +34,7 @@ use stackable_operator::{
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
     },
     kube::{
-        api::ObjectMeta,
+        api::{DynamicObject, ObjectMeta},
         runtime::controller::{self, Context},
     },
     labels::{role_group_selector_labels, role_selector_labels},
@@ -570,28 +570,16 @@ fn build_server_rolegroup_statefulset(
             name: "rwconfig".to_string(),
             ..Volume::default()
         })
-        .add_volume(Volume {
-            name: "quorum-tls".to_string(),
-            csi: Some(CSIVolumeSource {
-                driver: "secrets.stackable.tech".to_string(),
-                volume_attributes: Some(
-                    vec![
-                        (
-                            "secrets.stackable.tech/class".to_string(),
-                            zk.quorum_tls_secret_class(),
-                        ),
-                        (
-                            "secrets.stackable.tech/scope".to_string(),
-                            "node,pod".to_string(),
-                        ),
-                    ]
-                    .into_iter()
-                    .collect::<BTreeMap<_, _>>(),
-                ),
-                ..CSIVolumeSource::default()
-            }),
-            ..Volume::default()
-        })
+        .add_volume(
+            VolumeBuilder::new("quorum-tls")
+                .csi(
+                    SecretOperatorVolumeSourceBuilder::new(zk.quorum_tls_secret_class())
+                        .with_node_scope()
+                        .with_pod_scope()
+                        .build(),
+                )
+                .build(),
+        )
         .security_context(PodSecurityContext {
             fs_group: Some(1000),
             ..PodSecurityContext::default()
@@ -613,28 +601,18 @@ fn build_server_rolegroup_statefulset(
             None
         };
 
-        pod_builder.add_volume(Volume {
-            name: "client-tls".to_string(),
-            csi: Some(CSIVolumeSource {
-                driver: "secrets.stackable.tech".to_string(),
-                volume_attributes: Some(
-                    vec![
-                        (
-                            "secrets.stackable.tech/class".to_string(),
-                            secret_class.unwrap_or_else(|| zk.client_tls_secret_class()),
-                        ),
-                        (
-                            "secrets.stackable.tech/scope".to_string(),
-                            "node,pod".to_string(),
-                        ),
-                    ]
-                    .into_iter()
-                    .collect::<BTreeMap<_, _>>(),
-                ),
-                ..CSIVolumeSource::default()
-            }),
-            ..Volume::default()
-        });
+        pod_builder.add_volume(
+            VolumeBuilder::new("client-tls")
+                .csi(
+                    SecretOperatorVolumeSourceBuilder::new(
+                        secret_class.unwrap_or_else(|| zk.client_tls_secret_class()),
+                    )
+                    .with_node_scope()
+                    .with_pod_scope()
+                    .build(),
+                )
+                .build(),
+        );
     }
 
     let pod_builder = pod_builder.build_template();

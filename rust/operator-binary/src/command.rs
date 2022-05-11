@@ -62,11 +62,13 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
     args.join(" && ")
 }
 
+/// Generates the shell script to retrieve a random 20 character password  
 fn generate_password() -> String {
-    // taken from https://unix.stackexchange.com/questions/230673/how-to-generate-a-random-string
     format!("export {STORE_PASSWORD_ENV}=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 20 ; echo '')",)
 }
 
+/// Generates the shell script to append the generated password from `generate_password()`
+/// to the zoo.cfg to set key and truststore passwords.
 fn write_store_password_to_config(property: &str) -> String {
     format!(
         "echo {property}=${STORE_PASSWORD_ENV} >> {rwconf}/zoo.cfg",
@@ -75,6 +77,8 @@ fn write_store_password_to_config(property: &str) -> String {
     )
 }
 
+/// Generates the shell script to create key and truststores from the certificates provided
+/// by the secret operator
 fn create_key_and_trust_store_cmd(directory: &str) -> Vec<String> {
     vec![
         format!("echo [{dir}] Storing password", dir = directory),
