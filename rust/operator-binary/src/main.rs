@@ -1,3 +1,4 @@
+mod command;
 mod discovery;
 mod utils;
 mod zk_controller;
@@ -26,7 +27,6 @@ mod built_info {
 }
 
 pub const APP_NAME: &str = "zookeeper";
-pub const APP_PORT: u16 = 2181;
 
 #[derive(clap::Parser)]
 #[clap(about = built_info::PKG_DESCRIPTION, author = stackable_operator::cli::AUTHOR)]
@@ -37,7 +37,6 @@ struct Opts {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    stackable_operator::logging::initialize_logging("ZOOKEEPER_OPERATOR_LOG");
     // tokio-zookeeper depends on Tokio 0.1
     let tokio01_runtime = tokio01::runtime::Runtime::new()?;
 
@@ -51,7 +50,13 @@ async fn main() -> anyhow::Result<()> {
         Command::Run(ProductOperatorRun {
             product_config,
             watch_namespace,
+            tracing_target,
         }) => {
+            stackable_operator::logging::initialize_logging(
+                "ZOOKEEPER_OPERATOR_LOG",
+                APP_NAME,
+                tracing_target,
+            );
             stackable_operator::utils::print_startup_string(
                 built_info::PKG_DESCRIPTION,
                 built_info::PKG_VERSION,

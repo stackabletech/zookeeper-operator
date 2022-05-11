@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
 use stackable_operator::{
@@ -9,6 +7,19 @@ use stackable_operator::{
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
+use std::collections::BTreeMap;
+
+pub const CLIENT_PORT: u16 = 2181;
+pub const SECURE_CLIENT_PORT: u16 = 2282;
+
+pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
+pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
+pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
+
+pub const QUORUM_TLS_DIR: &str = "/stackable/tls/quorum";
+pub const CLIENT_TLS_DIR: &str = "/stackable/tls/client";
+
+const DEFAULT_SECRET_CLASS: &str = "tls";
 
 /// A cluster of ZooKeeper nodes
 #[derive(Clone, CustomResource, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -36,6 +47,67 @@ pub struct ZookeeperClusterSpec {
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub servers: Option<Role<ZookeeperConfig>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<GlobalZookeeperConfig>,
+}
+
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalZookeeperConfig {
+    #[serde(flatten)]
+    pub tls_config: Option<TlsConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TlsConfig {
+    /// Only affects client connections. This setting controls:
+    /// - If TLS encryption is used at all
+    /// - Which cert the servers should use to authenticate themselves against the client
+    /// Defaults to `TlsSecretClass` { secret_class: "tls".to_string() }.
+    pub tls: Option<TlsSecretClass>,
+    /// Only affects client connections. This setting controls:
+    /// - If clients need to authenticate themselves against the server via TLS
+    /// - Which ca.crt to use when validating the provided client certs
+    /// Defaults to `None`
+    pub client_authentication: Option<ClientAuthenticationClass>,
+    /// Only affects quorum communication. Use mutual verification between Zookeeper Nodes
+    /// (mandatory). This setting controls:
+    /// - Which cert the servers should use to authenticate themselves against other servers
+    /// - Which ca.crt to use when validating the other server
+    pub quorum_tls_secret_class: String,
+}
+
+impl Default for TlsConfig {
+    fn default() -> Self {
+        Self {
+            tls: Some(TlsSecretClass {
+                secret_class: DEFAULT_SECRET_CLASS.to_string(),
+            }),
+            client_authentication: None,
+            quorum_tls_secret_class: DEFAULT_SECRET_CLASS.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TlsSecretClass {
+    pub secret_class: String,
+}
+
+impl Default for TlsSecretClass {
+    fn default() -> Self {
+        Self {
+            secret_class: DEFAULT_SECRET_CLASS.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientAuthenticationClass {
+    pub authentication_class: String,
 }
 
 #[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -51,9 +123,31 @@ impl ZookeeperConfig {
     pub const INIT_LIMIT: &'static str = "initLimit";
     pub const SYNC_LIMIT: &'static str = "syncLimit";
     pub const TICK_TIME: &'static str = "tickTime";
+    pub const DATA_DIR: &'static str = "dataDir";
 
     pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
+    pub const CLIENT_PORT: &'static str = "clientPort";
+
+    // Quorum TLS
+    pub const SSL_QUORUM: &'static str = "sslQuorum";
+    pub const SSL_QUORUM_CLIENT_AUTH: &'static str = "ssl.quorum.clientAuth";
+    pub const SSL_QUORUM_HOST_NAME_VERIFICATION: &'static str = "ssl.quorum.hostnameVerification";
+    pub const SSL_QUORUM_KEY_STORE_LOCATION: &'static str = "ssl.quorum.keyStore.location";
+    pub const SSL_QUORUM_KEY_STORE_PASSWORD: &'static str = "ssl.quorum.keyStore.password";
+    pub const SSL_QUORUM_TRUST_STORE_LOCATION: &'static str = "ssl.quorum.trustStore.location";
+    pub const SSL_QUORUM_TRUST_STORE_PASSWORD: &'static str = "ssl.quorum.trustStore.password";
+    // Client TLS
+    pub const SECURE_CLIENT_PORT: &'static str = "secureClientPort";
+    pub const SSL_CLIENT_AUTH: &'static str = "ssl.clientAuth";
+    pub const SSL_HOST_NAME_VERIFICATION: &'static str = "ssl.hostnameVerification";
+    pub const SSL_KEY_STORE_LOCATION: &'static str = "ssl.keyStore.location";
+    pub const SSL_KEY_STORE_PASSWORD: &'static str = "ssl.keyStore.password";
+    pub const SSL_TRUST_STORE_LOCATION: &'static str = "ssl.trustStore.location";
+    pub const SSL_TRUST_STORE_PASSWORD: &'static str = "ssl.trustStore.password";
+    // Common TLS
+    pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
+    pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
 
     fn myid_offset(&self) -> u16 {
         self.myid_offset.unwrap_or(1)
@@ -89,7 +183,7 @@ impl Configuration for ZookeeperConfig {
 
     fn compute_files(
         &self,
-        _resource: &Self::Configurable,
+        resource: &Self::Configurable,
         _role_name: &str,
         _file: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
@@ -103,6 +197,106 @@ impl Configuration for ZookeeperConfig {
         if let Some(tick_time) = self.tick_time {
             result.insert(Self::TICK_TIME.to_string(), Some(tick_time.to_string()));
         }
+        result.insert(
+            Self::DATA_DIR.to_string(),
+            Some(STACKABLE_DATA_DIR.to_string()),
+        );
+
+        // Quorum TLS
+        result.insert(Self::SSL_QUORUM.to_string(), Some("true".to_string()));
+        result.insert(
+            Self::SSL_QUORUM_HOST_NAME_VERIFICATION.to_string(),
+            Some("true".to_string()),
+        );
+        result.insert(
+            Self::SSL_QUORUM_CLIENT_AUTH.to_string(),
+            Some("need".to_string()),
+        );
+        result.insert(
+            Self::SERVER_CNXN_FACTORY.to_string(),
+            Some("org.apache.zookeeper.server.NettyServerCnxnFactory".to_string()),
+        );
+        result.insert(
+            Self::SSL_AUTH_PROVIDER_X509.to_string(),
+            Some("org.apache.zookeeper.server.auth.X509AuthenticationProvider".to_string()),
+        );
+        // The keystore and truststore passwords should not be in the configmap and are generated
+        // and written later via script in the init container
+        result.insert(
+            Self::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
+            Some(format!("{dir}/keystore.p12", dir = QUORUM_TLS_DIR)),
+        );
+        result.insert(
+            Self::SSL_QUORUM_TRUST_STORE_LOCATION.to_string(),
+            Some(format!("{dir}/truststore.p12", dir = QUORUM_TLS_DIR)),
+        );
+
+        // Client TLS
+        if resource.is_client_secure() {
+            // We set only the clientPort and portUnification here because otherwise there is a port bind exception
+            // See: https://issues.apache.org/jira/browse/ZOOKEEPER-4276
+            // --> Normally we would like to only set the secureClientPort (check out commented code below)
+            // What we tried:
+            // 1) Set clientPort and secureClientPort will fail with
+            // "static.config different from dynamic config .. "
+            // result.insert(
+            //     Self::CLIENT_PORT.to_string(),
+            //     Some(CLIENT_PORT.to_string()),
+            // );
+            // result.insert(
+            //     Self::SECURE_CLIENT_PORT.to_string(),
+            //     Some(SECURE_CLIENT_PORT.to_string()),
+            // );
+
+            // 2) Setting only secureClientPort will result in the above mentioned bind exception.
+            // The NettyFactory tries to bind multiple times on the secureClientPort.
+            // result.insert(
+            //     Self::SECURE_CLIENT_PORT.to_string(),
+            //     Some(resource.client_port().to_string()),
+            // );
+
+            // 3) Using the clientPort and portUnification still allows plaintext connection without
+            // authentication, but at least TLS and authentication works when connecting securely.
+            result.insert(
+                Self::CLIENT_PORT.to_string(),
+                Some(resource.client_port().to_string()),
+            );
+            result.insert(
+                "client.portUnification".to_string(),
+                Some("true".to_string()),
+            );
+            // TODO: Remove clientPort and portUnification in favor of secureClientPort once the bug is fixed
+            // result.insert(
+            //     Self::SECURE_CLIENT_PORT.to_string(),
+            //     Some(resource.client_port().to_string()),
+            // );
+            // END TICKET
+
+            result.insert(
+                Self::SSL_HOST_NAME_VERIFICATION.to_string(),
+                Some("true".to_string()),
+            );
+            // The keystore and truststore passwords should not be in the configmap and are generated
+            // and written later via script in the init container
+            result.insert(
+                Self::SSL_KEY_STORE_LOCATION.to_string(),
+                Some(format!("{dir}/keystore.p12", dir = CLIENT_TLS_DIR)),
+            );
+            result.insert(
+                Self::SSL_TRUST_STORE_LOCATION.to_string(),
+                Some(format!("{dir}/truststore.p12", dir = CLIENT_TLS_DIR)),
+            );
+            // Check if we need to enable authentication
+            if resource.client_tls_authentication_class().is_some() {
+                result.insert(Self::SSL_CLIENT_AUTH.to_string(), Some("need".to_string()));
+            }
+        } else {
+            result.insert(
+                Self::CLIENT_PORT.to_string(),
+                Some(resource.client_port().to_string()),
+            );
+        }
+
         Ok(result)
     }
 }
@@ -178,6 +372,56 @@ impl ZookeeperCluster {
                     zookeeper_myid: i + rolegroup.config.config.myid_offset(),
                 })
             }))
+    }
+
+    pub fn client_port(&self) -> u16 {
+        if self.is_client_secure() {
+            SECURE_CLIENT_PORT
+        } else {
+            CLIENT_PORT
+        }
+    }
+
+    /// Returns the secret class for client connection encryption. Defaults to `tls`.
+    pub fn client_tls_secret_class(&self) -> String {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.config
+            .as_ref()
+            .and_then(|c| c.tls_config.as_ref())
+            .and_then(|tls| tls.tls.clone())
+            .unwrap_or_default()
+            .secret_class
+    }
+
+    /// Checks if we should use TLS to encrypt client connections.
+    pub fn is_client_secure(&self) -> bool {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.config
+            .as_ref()
+            .and_then(|c| c.tls_config.as_ref())
+            .and_then(|tls| tls.tls.as_ref())
+            .is_some()
+    }
+
+    /// Returns the authentication class used for client authentication
+    pub fn client_tls_authentication_class(&self) -> Option<String> {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.config
+            .as_ref()
+            .and_then(|c| c.tls_config.as_ref())
+            .and_then(|tls| tls.client_authentication.as_ref())
+            .map(|auth| auth.authentication_class.clone())
+    }
+
+    /// Returns the secret class for internal server encryption
+    pub fn quorum_tls_secret_class(&self) -> String {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.config
+            .as_ref()
+            .and_then(|c| c.tls_config.as_ref())
+            .map(|tls| tls.quorum_tls_secret_class.as_ref())
+            .unwrap_or(DEFAULT_SECRET_CLASS)
+            .to_string()
     }
 }
 

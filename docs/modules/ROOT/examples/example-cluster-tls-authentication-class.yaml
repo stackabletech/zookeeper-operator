@@ -1,0 +1,9 @@
+---
+apiVersion: authentication.stackable.tech/v1alpha1
+kind: AuthenticationClass
+metadata:
+  name: zk-client-tls # <2>
+spec:
+  provider:
+    tls:
+      clientCertSecretClass: zk-client-auth-secret # <3>

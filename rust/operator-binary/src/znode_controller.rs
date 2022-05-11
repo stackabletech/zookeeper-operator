@@ -4,10 +4,7 @@
 
 use std::{convert::Infallible, sync::Arc, time::Duration};
 
-use crate::{
-    discovery::{self, build_discovery_configmaps},
-    APP_PORT,
-};
+use crate::discovery::{self, build_discovery_configmaps};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     k8s_openapi::api::core::v1::{ConfigMap, Service},
@@ -244,7 +241,7 @@ fn zk_mgmt_addr(zk: &ZookeeperCluster) -> Result<String> {
             .with_context(|| NoZkFqdnSnafu {
                 zk: ObjectRef::from_obj(zk),
             })?,
-        APP_PORT,
+        zk.client_port(),
     ))
 }
 

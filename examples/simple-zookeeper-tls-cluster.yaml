@@ -2,8 +2,9 @@
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperCluster
 metadata:
-  name: test-zk
+  name: simple-zk
 spec:
+  version: 3.8.0
   config:
     tls:
       secretClass: tls
@@ -12,16 +13,8 @@ spec:
     quorumTlsSecretClass: tls
   servers:
     roleGroups:
-      primary:
-        replicas: 2
-        config:
-          myidOffset: 10
-      secondary:
-        replicas: 1
-        config:
-          myidOffset: 20
-  version: {{ test_scenario['values']['zookeeper'] }}
-  stopped: false
+      default:
+        replicas: 3
 ---
 apiVersion: authentication.stackable.tech/v1alpha1
 kind: AuthenticationClass
@@ -48,7 +41,9 @@ spec:
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperZnode
 metadata:
-  name: test-znode
+  name: simple-znode
 spec:
   clusterRef:
-    name: test-zk
+    name: simple-zk
+    # Optional when ZookeeperZnode is in the same Namespace as the ZookeeperCluster
+    # namespace: default

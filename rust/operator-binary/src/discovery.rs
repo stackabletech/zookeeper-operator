@@ -8,7 +8,7 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
 
-use crate::{zk_controller::zk_version, APP_NAME, APP_PORT};
+use crate::{zk_controller::zk_version, APP_NAME};
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -122,7 +122,7 @@ fn pod_hosts(zk: &ZookeeperCluster) -> Result<impl IntoIterator<Item = (String, 
         .pods()
         .context(ExpectedPodsSnafu)?
         .into_iter()
-        .map(|pod_ref| (pod_ref.fqdn(), APP_PORT)))
+        .map(|pod_ref| (pod_ref.fqdn(), zk.client_port())))
 }
 
 /// Lists all nodes currently hosting Pods participating in the [`Service`]

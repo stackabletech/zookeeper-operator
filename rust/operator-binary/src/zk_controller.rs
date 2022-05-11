@@ -9,19 +9,24 @@ use std::{
 };
 
 use crate::{
+    command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
-    APP_NAME, APP_PORT,
+    ObjectRef, APP_NAME,
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
+    builder::{
+        ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
+        SecretOperatorVolumeSourceBuilder, VolumeBuilder,
+    },
+    commons::authentication::{AuthenticationClass, AuthenticationClassProvider},
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
-                ConfigMap, ConfigMapVolumeSource, EnvVar, EnvVarSource, ExecAction,
-                ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec,
+                ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
+                ExecAction, ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec,
                 PodSecurityContext, Probe, ResourceRequirements, SecurityContext, Service,
                 ServicePort, ServiceSpec, Volume,
             },
@@ -29,7 +34,7 @@ use stackable_operator::{
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
     },
     kube::{
-        api::ObjectMeta,
+        api::{DynamicObject, ObjectMeta},
         runtime::controller::{self, Context},
     },
     labels::{role_group_selector_labels, role_selector_labels},
@@ -40,7 +45,10 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     role_utils::RoleGroupRef,
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole};
+use stackable_zookeeper_crd::{
+    ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole, CLIENT_TLS_DIR, QUORUM_TLS_DIR,
+    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
+};
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
@@ -117,12 +125,56 @@ pub enum Error {
     ApplyStatus {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("failed to retrieve {}", authentication_class))]
+    AuthenticationClassRetrieval {
+        source: stackable_operator::error::Error,
+        authentication_class: ObjectRef<AuthenticationClass>,
+    },
+    #[snafu(display(
+        "failed to use authentication mechanism {} - supported methods: {:?}",
+        method,
+        supported
+    ))]
+    AuthenticationMethodNotSupported {
+        authentication_class: ObjectRef<AuthenticationClass>,
+        supported: Vec<String>,
+        method: String,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl ReconcilerError for Error {
     fn category(&self) -> &'static str {
         ErrorDiscriminants::from(self).into()
+    }
+    fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
+        match self {
+            Error::ObjectHasNoNamespace => None,
+            Error::ObjectHasNoVersion => None,
+            Error::NoServerRole => None,
+            Error::GlobalServiceNameNotFound => None,
+            Error::RoleGroupServiceNameNotFound { .. } => None,
+            Error::ApplyRoleService { .. } => None,
+            Error::ApplyRoleGroupService { .. } => None,
+            Error::BuildRoleGroupConfig { .. } => None,
+            Error::ApplyRoleGroupConfig { .. } => None,
+            Error::ApplyRoleGroupStatefulSet { .. } => None,
+            Error::GenerateProductConfig { .. } => None,
+            Error::InvalidProductConfig { .. } => None,
+            Error::SerializeZooCfg { .. } => None,
+            Error::ObjectMissingMetadataForOwnerRef { .. } => None,
+            Error::BuildDiscoveryConfig { .. } => None,
+            Error::ApplyDiscoveryConfig { .. } => None,
+            Error::ApplyStatus { .. } => None,
+            Error::AuthenticationClassRetrieval {
+                authentication_class,
+                ..
+            } => Some(authentication_class.clone().erase()),
+            Error::AuthenticationMethodNotSupported {
+                authentication_class,
+                ..
+            } => Some(authentication_class.clone().erase()),
+        }
     }
 }
 
@@ -157,10 +209,25 @@ pub async fn reconcile_zk(
         false,
     )
     .context(InvalidProductConfigSnafu)?;
+
     let role_server_config = validated_config
         .get(&ZookeeperRole::Server.to_string())
         .map(Cow::Borrowed)
         .unwrap_or_default();
+
+    let client_authentication_class = if let Some(auth_class) = zk.client_tls_authentication_class()
+    {
+        Some(
+            client
+                .get::<AuthenticationClass>(&auth_class, None) // AuthenticationClass has ClusterScope
+                .await
+                .context(AuthenticationClassRetrievalSnafu {
+                    authentication_class: ObjectRef::<AuthenticationClass>::new(&auth_class),
+                })?,
+        )
+    } else {
+        None
+    };
 
     let server_role_service = build_server_role_service(&zk)?;
     let server_role_service = client
@@ -176,7 +243,12 @@ pub async fn reconcile_zk(
 
         let rg_service = build_server_rolegroup_service(&rolegroup, &zk)?;
         let rg_configmap = build_server_rolegroup_config_map(&rolegroup, &zk, rolegroup_config)?;
-        let rg_statefulset = build_server_rolegroup_statefulset(&rolegroup, &zk, rolegroup_config)?;
+        let rg_statefulset = build_server_rolegroup_statefulset(
+            &rolegroup,
+            &zk,
+            rolegroup_config,
+            client_authentication_class.as_ref(),
+        )?;
         client
             .apply_patch(FIELD_MANAGER_SCOPE, &rg_service, &rg_service)
             .await
@@ -247,7 +319,7 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
         spec: Some(ServiceSpec {
             ports: Some(vec![ServicePort {
                 name: Some("zk".to_string()),
-                port: APP_PORT.into(),
+                port: zk.client_port().into(),
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
             }]),
@@ -272,9 +344,12 @@ fn build_server_rolegroup_config_map(
     zoo_cfg.extend(zk.pods().into_iter().flatten().map(|pod| {
         (
             format!("server.{}", pod.zookeeper_myid),
-            format!("{}:2888:3888;{}", pod.fqdn(), APP_PORT),
+            format!("{}:2888:3888;{}", pod.fqdn(), zk.client_port()),
         )
     }));
+
+    // TLS
+
     let zoo_cfg = zoo_cfg
         .into_iter()
         .map(|(k, v)| (k, Some(v)))
@@ -336,7 +411,7 @@ fn build_server_rolegroup_service(
             ports: Some(vec![
                 ServicePort {
                     name: Some("zk".to_string()),
-                    port: APP_PORT.into(),
+                    port: zk.client_port().into(),
                     protocol: Some("TCP".to_string()),
                     ..ServicePort::default()
                 },
@@ -367,6 +442,7 @@ fn build_server_rolegroup_statefulset(
     rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     zk: &ZookeeperCluster,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
+    client_authentication_class: Option<&AuthenticationClass>,
 ) -> Result<StatefulSet> {
     let rolegroup = zk
         .spec
@@ -390,18 +466,12 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         })
         .collect::<Vec<_>>();
-    let mut container_prepare = ContainerBuilder::new("prepare")
+
+    let mut container_prepare = ContainerBuilder::new("prepare");
+    container_prepare
         .image(&image)
-        .args(vec![
-            "sh".to_string(),
-            "-c".to_string(),
-            [
-                "chown stackable:stackable /stackable/data",
-                "chmod a=,u=rwX /stackable/data",
-                "expr $MYID_OFFSET + $(echo $POD_NAME | sed 's/.*-//') > /stackable/data/myid",
-            ]
-            .join(" && "),
-        ])
+        .command(vec!["sh".to_string(), "-c".to_string()])
+        .args(vec![create_init_container_command_args(zk)])
         .add_env_vars(env.clone())
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
@@ -414,18 +484,28 @@ fn build_server_rolegroup_statefulset(
             }),
             ..EnvVar::default()
         }])
-        .add_volume_mount("data", "/stackable/data")
-        .build();
+        .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
+        .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR);
+
+    if zk.is_client_secure() {
+        container_prepare.add_volume_mount("client-tls", CLIENT_TLS_DIR);
+    }
+
+    let mut container_prepare = container_prepare.build();
     container_prepare
         .security_context
         .get_or_insert_with(SecurityContext::default)
         .run_as_user = Some(0);
-    let container_zk = ContainerBuilder::new("zookeeper")
+
+    let mut container_zk = ContainerBuilder::new("zookeeper");
+    container_zk
         .image(image)
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
-            "/stackable/config/zoo.cfg".to_string(),
+            format!("{dir}/zoo.cfg", dir = STACKABLE_RW_CONFIG_DIR),
         ])
         .add_env_vars(env)
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
@@ -439,20 +519,104 @@ fn build_server_rolegroup_statefulset(
                     // we can use Bash's virtual /dev/tcp filesystem to accomplish the same thing
                     format!(
                         "exec 3<>/dev/tcp/localhost/{} && echo srvr >&3 && grep '^Mode: ' <&3",
-                        APP_PORT
+                        zk.client_port()
                     ),
                 ]),
             }),
             period_seconds: Some(1),
             ..Probe::default()
         })
-        .add_container_port("zk", APP_PORT.into())
+        .add_container_port("zk", zk.client_port().into())
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
         .add_container_port("metrics", 9505)
-        .add_volume_mount("data", "/stackable/data")
-        .add_volume_mount("config", "/stackable/config")
-        .build();
+        .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
+
+    if zk.is_client_secure() {
+        container_zk.add_volume_mount("client-tls", CLIENT_TLS_DIR);
+    }
+
+    let container_zk = container_zk.build();
+
+    let mut pod_builder = PodBuilder::new();
+    pod_builder
+        .metadata_builder(|m| {
+            m.with_recommended_labels(
+                zk,
+                APP_NAME,
+                zk_version,
+                &rolegroup_ref.role,
+                &rolegroup_ref.role_group,
+            )
+        })
+        .add_init_container(container_prepare)
+        .add_container(container_zk)
+        .add_volume(Volume {
+            name: "config".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: Some(rolegroup_ref.object_name()),
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        })
+        .add_volume(Volume {
+            empty_dir: Some(EmptyDirVolumeSource {
+                medium: None,
+                size_limit: None,
+            }),
+            name: "rwconfig".to_string(),
+            ..Volume::default()
+        })
+        .add_volume(
+            VolumeBuilder::new("quorum-tls")
+                .csi(
+                    SecretOperatorVolumeSourceBuilder::new(zk.quorum_tls_secret_class())
+                        .with_node_scope()
+                        .with_pod_scope()
+                        .build(),
+                )
+                .build(),
+        )
+        .security_context(PodSecurityContext {
+            fs_group: Some(1000),
+            ..PodSecurityContext::default()
+        });
+
+    if zk.is_client_secure() {
+        let secret_class = if let Some(auth_class) = client_authentication_class {
+            match &auth_class.spec.provider {
+                AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.clone(),
+                _ => {
+                    return Err(Error::AuthenticationMethodNotSupported {
+                        authentication_class: ObjectRef::from_obj(auth_class),
+                        supported: vec!["tls".to_string()],
+                        method: auth_class.spec.provider.to_string(),
+                    })
+                }
+            }
+        } else {
+            None
+        };
+
+        pod_builder.add_volume(
+            VolumeBuilder::new("client-tls")
+                .csi(
+                    SecretOperatorVolumeSourceBuilder::new(
+                        secret_class.unwrap_or_else(|| zk.client_tls_secret_class()),
+                    )
+                    .with_node_scope()
+                    .with_pod_scope()
+                    .build(),
+                )
+                .build(),
+        );
+    }
+
+    let pod_builder = pod_builder.build_template();
+
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
@@ -484,31 +648,7 @@ fn build_server_rolegroup_statefulset(
                 ..LabelSelector::default()
             },
             service_name: rolegroup_ref.object_name(),
-            template: PodBuilder::new()
-                .metadata_builder(|m| {
-                    m.with_recommended_labels(
-                        zk,
-                        APP_NAME,
-                        zk_version,
-                        &rolegroup_ref.role,
-                        &rolegroup_ref.role_group,
-                    )
-                })
-                .add_init_container(container_prepare)
-                .add_container(container_zk)
-                .add_volume(Volume {
-                    name: "config".to_string(),
-                    config_map: Some(ConfigMapVolumeSource {
-                        name: Some(rolegroup_ref.object_name()),
-                        ..ConfigMapVolumeSource::default()
-                    }),
-                    ..Volume::default()
-                })
-                .security_context(PodSecurityContext {
-                    fs_group: Some(1000),
-                    ..PodSecurityContext::default()
-                })
-                .build_template(),
+            template: pod_builder,
             volume_claim_templates: Some(vec![PersistentVolumeClaim {
                 metadata: ObjectMeta {
                     name: Some("data".to_string()),

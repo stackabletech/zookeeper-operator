@@ -26,6 +26,31 @@ spec:
             spec:
               description: A cluster of ZooKeeper nodes
               properties:
+                config:
+                  nullable: true
+                  properties:
+                    clientAuthentication:
+                      description: "Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs Defaults to `None`"
+                      nullable: true
+                      properties:
+                        authenticationClass:
+                          type: string
+                      required:
+                        - authenticationClass
+                      type: object
+                    quorumTlsSecretClass:
+                      description: "Only affects quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server"
+                      type: string
+                    tls:
+                      description: "Only affects client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to `TlsSecretClass` { secret_class: \"tls\".to_string() }."
+                      nullable: true
+                      properties:
+                        secretClass:
+                          type: string
+                      required:
+                        - secretClass
+                      type: object
+                  type: object
                 servers:
                   nullable: true
                   properties:
