@@ -8,8 +8,8 @@ edition = "2021"
 repository = "https://github.com/stackabletech/zookeeper-operator"
 
 [dependencies]
-serde = "1.0.136"
-serde_json = "1.0.79"
-snafu = "0.7.0"
+serde = "1.0.137"
+serde_json = "1.0.81"
+snafu = "0.7.1"
 stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.19.0" }
 strum = { version = "0.24.0", features = ["derive"] }
