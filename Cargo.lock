@@ -221,9 +221,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.1.15"
+version = "3.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85a35a599b11c089a7f49105658d089b8f2cf0882993c17daf6de15285c2c35d"
+checksum = "d2dbdf4bdacb33466e854ce889eee8dfd5729abf7ccd7664d0a2d60cd384440b"
 dependencies = [
  "atty",
  "bitflags",
@@ -238,9 +238,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "3.1.7"
+version = "3.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3aab4734e083b809aaf5794e14e756d1c798d2c69c7f7de7a09a2f5214993c1"
+checksum = "25320346e922cffe59c0bbc5410c8d8784509efb321488971081313cb1e1a33c"
 dependencies = [
  "heck",
  "proc-macro-error",
@@ -812,7 +812,7 @@ dependencies = [
  "itoa",
  "pin-project-lite",
  "socket2",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tower-service",
  "tracing",
  "want",
@@ -831,7 +831,7 @@ dependencies = [
  "openssl",
  "openssl-sys",
  "parking_lot 0.12.0",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tokio-openssl",
  "tower-layer",
 ]
@@ -844,7 +844,7 @@ checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
 dependencies = [
  "hyper",
  "pin-project-lite",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tokio-io-timeout",
 ]
 
@@ -857,7 +857,7 @@ dependencies = [
  "bytes 1.1.0",
  "hyper",
  "native-tls",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tokio-native-tls",
 ]
 
@@ -1036,7 +1036,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "thiserror",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tokio-native-tls",
  "tokio-util",
  "tower",
@@ -1094,7 +1094,7 @@ dependencies = [
  "serde_json",
  "smallvec 1.8.0",
  "thiserror",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tokio-util",
  "tracing",
 ]
@@ -1432,7 +1432,7 @@ dependencies = [
  "pin-project",
  "rand",
  "thiserror",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tokio-stream",
 ]
 
@@ -1448,7 +1448,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "thiserror",
  "thrift",
- "tokio 1.18.1",
+ "tokio 1.18.2",
 ]
 
 [[package]]
@@ -2035,7 +2035,7 @@ dependencies = [
  "stackable-operator-derive",
  "strum",
  "thiserror",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
@@ -2083,7 +2083,7 @@ dependencies = [
  "stackable-zookeeper-crd",
  "strum",
  "tokio 0.1.22",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tokio-executor",
  "tokio-zookeeper",
  "tracing",
@@ -2271,9 +2271,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.18.1"
+version = "1.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dce653fb475565de9f6fb0614b28bca8df2c430c0cf84bcd9c843f15de5414cc"
+checksum = "4903bf0427cf68dddd5aa6a93220756f8be0c34fcfa9f5e6191e103e15a31395"
 dependencies = [
  "bytes 1.1.0",
  "libc",
@@ -2349,7 +2349,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30b74022ada614a1b4834de765f9bb43877f910cc8ce4be40e89042c9223a8bf"
 dependencies = [
  "pin-project-lite",
- "tokio 1.18.1",
+ "tokio 1.18.2",
 ]
 
 [[package]]
@@ -2370,7 +2370,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
 dependencies = [
  "native-tls",
- "tokio 1.18.1",
+ "tokio 1.18.2",
 ]
 
 [[package]]
@@ -2382,7 +2382,7 @@ dependencies = [
  "futures-util",
  "openssl",
  "openssl-sys",
- "tokio 1.18.1",
+ "tokio 1.18.2",
 ]
 
 [[package]]
@@ -2412,7 +2412,7 @@ checksum = "50145484efff8818b5ccd256697f36863f587da82cf8b409c53adf1e840798e3"
 dependencies = [
  "futures-core",
  "pin-project-lite",
- "tokio 1.18.1",
+ "tokio 1.18.2",
 ]
 
 [[package]]
@@ -2512,7 +2512,7 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "slab",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tracing",
 ]
 
@@ -2549,7 +2549,7 @@ dependencies = [
  "futures-util",
  "pin-project",
  "pin-project-lite",
- "tokio 1.18.1",
+ "tokio 1.18.2",
  "tokio-util",
  "tower-layer",
  "tower-service",

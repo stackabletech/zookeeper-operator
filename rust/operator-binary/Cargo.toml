@@ -9,17 +9,17 @@ repository = "https://github.com/stackabletech/zookeeper-operator"
 
 [dependencies]
 anyhow = "1.0.57"
-clap = { version = "3.1.12", features = ["derive"] }
+clap = { version = "3.1.18", features = ["derive"] }
 failure = "0.1.8"
 fnv = "1.0.7"
 futures = { version = "0.3.21", features = ["compat"] }
-semver = "1.0.7"
-serde = "1.0.136"
-serde_json = "1.0.79"
-serde_yaml = "0.8.23"
-snafu = "0.7.0"
+semver = "1.0.9"
+serde = "1.0.137"
+serde_json = "1.0.81"
+serde_yaml = "0.8.24"
+snafu = "0.7.1"
 strum = { version = "0.24.0", features = ["derive"] }
-tokio = { version = "1.18.1", features = ["full"] }
+tokio = { version = "1.18.2", features = ["full"] }
 tokio01 = { version = "0.1.22", package = "tokio" }
 tokio-executor = "0.1.10"
 tokio-zookeeper = "0.1.3"
