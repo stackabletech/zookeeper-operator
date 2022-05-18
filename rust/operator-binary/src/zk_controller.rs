@@ -453,7 +453,7 @@ fn build_server_rolegroup_statefulset(
         .get(&rolegroup_ref.role_group);
     let zk_version = zk_version(zk)?;
     let image = format!(
-        "docker.stackable.tech/stackable/zookeeper:{}-stackable0",
+        "docker.stackable.tech/stackable/zookeeper:{}",
         zk_version
     );
     let env = server_config
