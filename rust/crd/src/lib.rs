@@ -1,7 +1,13 @@
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
 use stackable_operator::{
+    commons::resources::{CpuLimits, MemoryLimits, NoRuntimeLimits, PvcConfig, Resources},
+    config::merge::{chainable_merge, Merge},
     crd::ClusterRef,
+    k8s_openapi::{
+        api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
+        apimachinery::pkg::api::resource::Quantity,
+    },
     kube::{runtime::reflector::ObjectRef, CustomResource},
     product_config_utils::{ConfigError, Configuration},
     role_utils::{Role, RoleGroupRef},
@@ -117,6 +123,14 @@ pub struct ZookeeperConfig {
     pub sync_limit: Option<u32>,
     pub tick_time: Option<u32>,
     pub myid_offset: Option<u16>,
+    pub resources: Option<Resources<Storage, NoRuntimeLimits>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Merge, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Storage {
+    #[serde(default)]
+    pub data: PvcConfig,
 }
 
 impl ZookeeperConfig {
@@ -422,6 +436,82 @@ impl ZookeeperCluster {
             .map(|tls| tls.quorum_tls_secret_class.as_ref())
             .unwrap_or(DEFAULT_SECRET_CLASS)
             .to_string()
+    }
+
+    /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
+    /// These can be defined at the role or rolegroup level and as usual, the
+    /// following precedence rules are implemented:
+    /// 1. group pvc
+    /// 2. role pvc
+    /// 3. a default PVC with 1Gi capacity
+    pub fn resources(
+        &self,
+        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
+    ) -> (Vec<PersistentVolumeClaim>, ResourceRequirements) {
+        let mut rg_resources = self.rolegroup_resources(rolegroup_ref);
+        let mut role_resources = self.role_resources();
+        let mut default_resources = Some(self.default_resources());
+
+        let resources = [
+            default_resources.as_mut(),
+            role_resources.as_mut(),
+            rg_resources.as_mut(),
+        ]
+        .into_iter()
+        .flatten()
+        .reduce(|old, new| chainable_merge(new, old))
+        .unwrap(); // always succeeds because default_resources is Some()
+
+        let result_1 = resources
+            .storage
+            .data
+            .build_pvc("data", Some(vec!["ReadWriteOnce"]));
+        let result_2 = resources.clone().into();
+
+        (vec![result_1], result_2)
+    }
+
+    fn rolegroup_resources(
+        &self,
+        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
+    ) -> Option<Resources<Storage, NoRuntimeLimits>> {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.servers
+            .as_ref()
+            .and_then(|role| {
+                role.role_groups
+                    .get(&rolegroup_ref.role_group)
+                    .map(|rolegroup| &rolegroup.config.config)
+            })
+            .and_then(|rolegroup_config| rolegroup_config.resources.clone())
+    }
+
+    fn role_resources(&self) -> Option<Resources<Storage, NoRuntimeLimits>> {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.servers
+            .as_ref()
+            .map(|role| &role.config.config)
+            .and_then(|server_config| server_config.resources.clone())
+    }
+
+    fn default_resources(&self) -> Resources<Storage, NoRuntimeLimits> {
+        Resources {
+            cpu: CpuLimits {
+                min: None,
+                max: None,
+            },
+            memory: MemoryLimits {
+                limit: None,
+                runtime_limits: NoRuntimeLimits {},
+            },
+            storage: Storage {
+                data: PvcConfig {
+                    capacity: Some(Quantity("1Gi".to_owned())),
+                    storage_class: None,
+                    selectors: None,
+                },
+            },
+        }
     }
 }
 
