@@ -348,8 +348,6 @@ fn build_server_rolegroup_config_map(
         )
     }));
 
-    // TLS
-
     let zoo_cfg = zoo_cfg
         .into_iter()
         .map(|(k, v)| (k, Some(v)))
@@ -572,7 +570,7 @@ fn build_server_rolegroup_statefulset(
         })
         .add_volume(
             VolumeBuilder::new("quorum-tls")
-                .csi(
+                .ephemeral(
                     SecretOperatorVolumeSourceBuilder::new(zk.quorum_tls_secret_class())
                         .with_node_scope()
                         .with_pod_scope()
@@ -603,7 +601,7 @@ fn build_server_rolegroup_statefulset(
 
         pod_builder.add_volume(
             VolumeBuilder::new("client-tls")
-                .csi(
+                .ephemeral(
                     SecretOperatorVolumeSourceBuilder::new(
                         secret_class.unwrap_or_else(|| zk.client_tls_secret_class()),
                     )
