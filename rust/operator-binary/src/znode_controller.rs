@@ -65,9 +65,6 @@ pub enum Error {
     },
     #[snafu(display("failed to ensure that ZNode {} is missing from {}", znode_path, zk))]
     EnsureZnodeMissing {
-
-
-
         source: znode_mgmt::Error,
         zk: ObjectRef<ZookeeperCluster>,
         znode_path: String,

@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.
 
 - Operator-rs: 0.10.0 -> 0.19.0 ([#408], [#431], [#434], [#454], [#479]).
 - [BREAKING] Specifying the product version has been changed to adhere to [ADR018](https://docs.stackable.tech/home/contributor/adr/ADR018-product_image_versioning.html) instead of just specifying the product version you will now have to add the Stackable image version as well, so `version: 3.5.8` becomes (for example) `version: 3.5.8-stackable0.1.0` ([#487])
-- 
+
 [#408]: https://github.com/stackabletech/zookeeper-operator/pull/408
 [#431]: https://github.com/stackabletech/zookeeper-operator/pull/431
 [#434]: https://github.com/stackabletech/zookeeper-operator/pull/434
