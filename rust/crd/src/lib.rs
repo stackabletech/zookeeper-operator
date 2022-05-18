@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
+use stackable_operator::error::OperatorResult;
+use stackable_operator::memory::Memory;
 use stackable_operator::{
     commons::resources::{CpuLimits, MemoryLimits, NoRuntimeLimits, PvcConfig, Resources},
     config::merge::{chainable_merge, Merge},
@@ -9,14 +11,17 @@ use stackable_operator::{
         apimachinery::pkg::api::resource::Quantity,
     },
     kube::{runtime::reflector::ObjectRef, CustomResource},
+    memory,
     product_config_utils::{ConfigError, Configuration},
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
 use std::collections::BTreeMap;
+use std::str::FromStr;
 
 pub const CLIENT_PORT: u16 = 2181;
 pub const SECURE_CLIENT_PORT: u16 = 2282;
+pub const METRICS_PORT: u16 = 9505;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
@@ -141,6 +146,7 @@ impl ZookeeperConfig {
 
     pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
+    pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
     pub const CLIENT_PORT: &'static str = "clientPort";
 
     // Quorum TLS
@@ -176,7 +182,7 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let jvm_flags = "-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar=9505:/stackable/jmx/server.yaml".to_string();
+        let jvm_flags = format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml");
         Ok([
             (
                 Self::MYID_OFFSET.to_string(),
@@ -512,6 +518,14 @@ impl ZookeeperCluster {
                 },
             },
         }
+    }
+
+    fn heap_limits(&self, resources: &ResourceRequirements) -> OperatorResult<String> {
+        if let Some(memory_limit) = resources.limits.and_then(|limits| limits.get("memory")) {
+            let memory = Memory::try_from(memory_limit.clone())?;
+        }
+
+        Ok("".to_string())
     }
 }
 

@@ -26,19 +26,19 @@ use stackable_operator::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PersistentVolumeClaim, PersistentVolumeClaimSpec,
-                PodSecurityContext, Probe, ResourceRequirements, SecurityContext, Service,
-                ServicePort, ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, SecurityContext,
+                Service, ServicePort, ServiceSpec, Volume,
             },
         },
-        apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
+        apimachinery::pkg::apis::meta::v1::LabelSelector,
     },
     kube::{
-        api::{DynamicObject, ObjectMeta},
+        api::DynamicObject,
         runtime::controller::{self, Context},
     },
     labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
+    memory::to_java_heap,
     product_config::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
     },
@@ -46,12 +46,14 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperClusterStatus, ZookeeperRole, CLIENT_TLS_DIR, QUORUM_TLS_DIR,
-    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
+    ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR,
+    QUORUM_TLS_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
+
+const JVM_HEAP_FACTOR: f32 = 0.8;
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -140,6 +142,10 @@ pub enum Error {
         supported: Vec<String>,
         method: String,
     },
+    #[snafu(display("invalid java heap config: {source}"))]
+    InvalidJavaHeapConfig {
+        source: stackable_operator::error::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -174,6 +180,7 @@ impl ReconcilerError for Error {
                 authentication_class,
                 ..
             } => Some(authentication_class.clone().erase()),
+            Error::InvalidJavaHeapConfig { .. } => None,
         }
     }
 }
@@ -454,10 +461,10 @@ fn build_server_rolegroup_statefulset(
         "docker.stackable.tech/stackable/zookeeper:{}-stackable0",
         zk_version
     );
-    let env = server_config
+    let mut env_vars = server_config
         .get(&PropertyNameKind::Env)
         .iter()
-        .flat_map(|env_vars| env_vars.iter())
+        .flat_map()
         .map(|(k, v)| EnvVar {
             name: k.clone(),
             value: Some(v.clone()),
@@ -465,12 +472,15 @@ fn build_server_rolegroup_statefulset(
         })
         .collect::<Vec<_>>();
 
+    let (pvc, resources) = zk.resources(rolegroup_ref);
+    // set heap size if available
+
     let mut container_prepare = ContainerBuilder::new("prepare");
     container_prepare
         .image(&image)
         .command(vec!["sh".to_string(), "-c".to_string()])
         .args(vec![create_init_container_command_args(zk)])
-        .add_env_vars(env.clone())
+        .add_env_vars(env_vars.clone())
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
             value_from: Some(EnvVarSource {
@@ -505,7 +515,7 @@ fn build_server_rolegroup_statefulset(
             "start-foreground".to_string(),
             format!("{dir}/zoo.cfg", dir = STACKABLE_RW_CONFIG_DIR),
         ])
-        .add_env_vars(env)
+        .add_env_vars(env_vars)
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
         // This also acts as a hint to the StatefulSet controller to wait for each pod to enter quorum before taking down the next
         .readiness_probe(Probe {
@@ -531,7 +541,8 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
-        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
+        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
+        .resources(resources);
 
     if zk.is_client_secure() {
         container_zk.add_volume_mount("client-tls", CLIENT_TLS_DIR);
@@ -647,25 +658,7 @@ fn build_server_rolegroup_statefulset(
             },
             service_name: rolegroup_ref.object_name(),
             template: pod_builder,
-            volume_claim_templates: Some(vec![PersistentVolumeClaim {
-                metadata: ObjectMeta {
-                    name: Some("data".to_string()),
-                    ..ObjectMeta::default()
-                },
-                spec: Some(PersistentVolumeClaimSpec {
-                    access_modes: Some(vec!["ReadWriteOnce".to_string()]),
-                    resources: Some(ResourceRequirements {
-                        requests: Some({
-                            let mut map = BTreeMap::new();
-                            map.insert("storage".to_string(), Quantity("1Gi".to_string()));
-                            map
-                        }),
-                        ..ResourceRequirements::default()
-                    }),
-                    ..PersistentVolumeClaimSpec::default()
-                }),
-                ..PersistentVolumeClaim::default()
-            }]),
+            volume_claim_templates: Some(pvc),
             ..StatefulSetSpec::default()
         }),
         status: None,

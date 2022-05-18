@@ -5,6 +5,16 @@ metadata:
   name: simple-zk
 spec:
   servers:
+    config:
+      resources:
+        storage:
+          data:
+            capacity: '2Gi'
+        cpu:
+          max: '500m'
+          min: '250m'
+        memory:
+          limit: '2Gi'
     roleGroups:
       primary:
         replicas: 2
