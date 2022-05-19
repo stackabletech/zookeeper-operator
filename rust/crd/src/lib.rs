@@ -1,23 +1,22 @@
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
-use stackable_operator::error::OperatorResult;
-use stackable_operator::memory::Memory;
+use stackable_operator::memory::BinaryMultiple;
 use stackable_operator::{
     commons::resources::{CpuLimits, MemoryLimits, NoRuntimeLimits, PvcConfig, Resources},
     config::merge::{chainable_merge, Merge},
     crd::ClusterRef,
+    error::OperatorResult,
     k8s_openapi::{
         api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
         apimachinery::pkg::api::resource::Quantity,
     },
     kube::{runtime::reflector::ObjectRef, CustomResource},
-    memory,
+    memory::to_java_heap_value,
     product_config_utils::{ConfigError, Configuration},
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
 use std::collections::BTreeMap;
-use std::str::FromStr;
 
 pub const CLIENT_PORT: u16 = 2181;
 pub const SECURE_CLIENT_PORT: u16 = 2282;
@@ -26,10 +25,10 @@ pub const METRICS_PORT: u16 = 9505;
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
-
 pub const QUORUM_TLS_DIR: &str = "/stackable/tls/quorum";
 pub const CLIENT_TLS_DIR: &str = "/stackable/tls/client";
 
+const JVM_HEAP_FACTOR: f32 = 0.8;
 const DEFAULT_SECRET_CLASS: &str = "tls";
 
 /// A cluster of ZooKeeper nodes
@@ -520,12 +519,22 @@ impl ZookeeperCluster {
         }
     }
 
-    fn heap_limits(&self, resources: &ResourceRequirements) -> OperatorResult<String> {
-        if let Some(memory_limit) = resources.limits.and_then(|limits| limits.get("memory")) {
-            let memory = Memory::try_from(memory_limit.clone())?;
+    pub fn heap_limits(&self, resources: &ResourceRequirements) -> OperatorResult<Option<u32>> {
+        let mut heap = None;
+        if let Some(memory_limit) = resources
+            .limits
+            .as_ref()
+            .and_then(|limits| limits.get("memory"))
+        {
+            // ZooKeeper requires its heap values in the ZK_SERVER_HEAP env variable
+            // which must me set in "Mebi" only.
+            heap = Some(to_java_heap_value(
+                memory_limit,
+                JVM_HEAP_FACTOR,
+                BinaryMultiple::Mebi,
+            )?);
         }
-
-        Ok("".to_string())
+        Ok(heap)
     }
 }
 

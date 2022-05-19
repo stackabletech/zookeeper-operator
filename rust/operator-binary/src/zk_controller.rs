@@ -38,7 +38,6 @@ use stackable_operator::{
     },
     labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
-    memory::to_java_heap,
     product_config::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
     },
@@ -52,8 +51,6 @@ use stackable_zookeeper_crd::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
-
-const JVM_HEAP_FACTOR: f32 = 0.8;
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -464,7 +461,7 @@ fn build_server_rolegroup_statefulset(
     let mut env_vars = server_config
         .get(&PropertyNameKind::Env)
         .iter()
-        .flat_map()
+        .flat_map(|env| env.iter())
         .map(|(k, v)| EnvVar {
             name: k.clone(),
             value: Some(v.clone()),
@@ -474,6 +471,16 @@ fn build_server_rolegroup_statefulset(
 
     let (pvc, resources) = zk.resources(rolegroup_ref);
     // set heap size if available
+    let heap_limits = zk
+        .heap_limits(&resources)
+        .context(InvalidJavaHeapConfigSnafu)?;
+    if heap_limits.is_some() {
+        env_vars.push(EnvVar {
+            name: ZookeeperConfig::ZK_SERVER_HEAP.to_string(),
+            value: heap_limits.map(|limits| limits.to_string()),
+            ..EnvVar::default()
+        });
+    }
 
     let mut container_prepare = ContainerBuilder::new("prepare");
     container_prepare
