@@ -14,7 +14,7 @@ spec:
           max: '500m'
           min: '250m'
         memory:
-          limit: '2Gi'
+          limit: '1Gi'
     roleGroups:
       primary:
         replicas: 2
