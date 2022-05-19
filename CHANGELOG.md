@@ -12,11 +12,11 @@ All notable changes to this project will be documented in this file.
 - Support for ZooKeeper 3.8.0 added ([#464]).
 - Integration tests for all supported ZooKeeper versions added ([#464]).
 - TLS encryption and authentication support for quorum and client ([#479]).
-- PVCs for data storage, cpu and memory limits are now configurable ([#xxx]).
+- PVCs for data storage, cpu and memory limits are now configurable ([#490]).
 
 ### Changed
 
-- Operator-rs: 0.10.0 -> 0.21.0 ([#408], [#431], [#434], [#454], [#479], [#xxx]).
+- Operator-rs: 0.10.0 -> 0.22.0 ([#408], [#431], [#434], [#454], [#479], [#490]).
 
 [#408]: https://github.com/stackabletech/zookeeper-operator/pull/408
 [#431]: https://github.com/stackabletech/zookeeper-operator/pull/431
@@ -24,7 +24,7 @@ All notable changes to this project will be documented in this file.
 [#454]: https://github.com/stackabletech/zookeeper-operator/pull/454
 [#464]: https://github.com/stackabletech/zookeeper-operator/pull/464
 [#479]: https://github.com/stackabletech/zookeeper-operator/pull/479
-[#xxx]: https://github.com/stackabletech/zookeeper-operator/pull/xxx
+[#490]: https://github.com/stackabletech/zookeeper-operator/pull/490
 
 ## [0.9.0] - 2022-02-14
 
