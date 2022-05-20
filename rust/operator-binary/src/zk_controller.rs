@@ -474,10 +474,10 @@ fn build_server_rolegroup_statefulset(
     let heap_limits = zk
         .heap_limits(&resources)
         .context(InvalidJavaHeapConfigSnafu)?;
-    if heap_limits.is_some() {
+    if let Some(heap_limits) = heap_limits {
         env_vars.push(EnvVar {
             name: ZookeeperConfig::ZK_SERVER_HEAP.to_string(),
-            value: heap_limits.map(|limits| limits.to_string()),
+            value: Some(heap_limits.to_string()),
             ..EnvVar::default()
         });
     }

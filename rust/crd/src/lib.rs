@@ -453,25 +453,16 @@ impl ZookeeperCluster {
         &self,
         rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     ) -> (Vec<PersistentVolumeClaim>, ResourceRequirements) {
-        let mut rg_resources = self.rolegroup_resources(rolegroup_ref);
-        let mut role_resources = self.role_resources();
-        let mut default_resources = Some(self.default_resources());
+        let mut role_resources = self.role_resources().unwrap_or_default();
+        role_resources.merge(&self.default_resources());
+        let mut resources = self.rolegroup_resources(rolegroup_ref).unwrap_or_default();
+        resources.merge(&role_resources);
 
-        let resources = [
-            default_resources.as_mut(),
-            role_resources.as_mut(),
-            rg_resources.as_mut(),
-        ]
-        .into_iter()
-        .flatten()
-        .reduce(|old, new| chainable_merge(new, old))
-        .unwrap(); // always succeeds because default_resources is Some()
-
-        let result_1 = resources
+        let data_pvc = resources
             .storage
             .data
             .build_pvc("data", Some(vec!["ReadWriteOnce"]));
-        let result_2 = resources.clone().into();
+        let pod_resources = resources.clone().into();
 
         (vec![result_1], result_2)
     }
@@ -482,13 +473,14 @@ impl ZookeeperCluster {
     ) -> Option<Resources<Storage, NoRuntimeLimits>> {
         let spec: &ZookeeperClusterSpec = &self.spec;
         spec.servers
-            .as_ref()
-            .and_then(|role| {
-                role.role_groups
-                    .get(&rolegroup_ref.role_group)
-                    .map(|rolegroup| &rolegroup.config.config)
-            })
-            .and_then(|rolegroup_config| rolegroup_config.resources.clone())
+            .as_ref()?
+            .role_groups
+            .get(&rolegroup_ref.role_group)?
+            .config
+            .config
+            .resources
+            .clone()
+
     }
 
     fn role_resources(&self) -> Option<Resources<Storage, NoRuntimeLimits>> {
@@ -499,7 +491,7 @@ impl ZookeeperCluster {
             .and_then(|server_config| server_config.resources.clone())
     }
 
-    fn default_resources(&self) -> Resources<Storage, NoRuntimeLimits> {
+    fn default_resources() -> Resources<Storage, NoRuntimeLimits> {
         Resources {
             cpu: CpuLimits {
                 min: None,
@@ -520,21 +512,14 @@ impl ZookeeperCluster {
     }
 
     pub fn heap_limits(&self, resources: &ResourceRequirements) -> OperatorResult<Option<u32>> {
-        let mut heap = None;
-        if let Some(memory_limit) = resources
+        resources
             .limits
             .as_ref()
             .and_then(|limits| limits.get("memory"))
-        {
-            // ZooKeeper requires its heap values in the ZK_SERVER_HEAP env variable
-            // which must me set in "Mebi" only.
-            heap = Some(to_java_heap_value(
-                memory_limit,
-                JVM_HEAP_FACTOR,
-                BinaryMultiple::Mebi,
-            )?);
-        }
-        Ok(heap)
+            .map(|memory_limit| {
+                to_java_heap_value(memory_limit, JVM_HEAP_FACTOR, BinaryMultiple::Mebi)
+            })
+            .transpose()
     }
 }
 
