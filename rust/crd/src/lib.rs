@@ -3,7 +3,7 @@ use snafu::{OptionExt, Snafu};
 use stackable_operator::memory::BinaryMultiple;
 use stackable_operator::{
     commons::resources::{CpuLimits, MemoryLimits, NoRuntimeLimits, PvcConfig, Resources},
-    config::merge::{chainable_merge, Merge},
+    config::merge::Merge,
     crd::ClusterRef,
     error::OperatorResult,
     k8s_openapi::{
@@ -454,7 +454,7 @@ impl ZookeeperCluster {
         rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     ) -> (Vec<PersistentVolumeClaim>, ResourceRequirements) {
         let mut role_resources = self.role_resources().unwrap_or_default();
-        role_resources.merge(&self.default_resources());
+        role_resources.merge(&Self::default_resources());
         let mut resources = self.rolegroup_resources(rolegroup_ref).unwrap_or_default();
         resources.merge(&role_resources);
 
@@ -464,7 +464,7 @@ impl ZookeeperCluster {
             .build_pvc("data", Some(vec!["ReadWriteOnce"]));
         let pod_resources = resources.clone().into();
 
-        (vec![result_1], result_2)
+        (vec![data_pvc], pod_resources)
     }
 
     fn rolegroup_resources(
@@ -480,15 +480,11 @@ impl ZookeeperCluster {
             .config
             .resources
             .clone()
-
     }
 
     fn role_resources(&self) -> Option<Resources<Storage, NoRuntimeLimits>> {
         let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.servers
-            .as_ref()
-            .map(|role| &role.config.config)
-            .and_then(|server_config| server_config.resources.clone())
+        spec.servers.as_ref()?.config.config.resources.clone()
     }
 
     fn default_resources() -> Resources<Storage, NoRuntimeLimits> {

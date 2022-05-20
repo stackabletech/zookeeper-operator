@@ -460,8 +460,8 @@ fn build_server_rolegroup_statefulset(
     );
     let mut env_vars = server_config
         .get(&PropertyNameKind::Env)
-        .iter()
-        .flat_map(|env| env.iter())
+        .into_iter()
+        .flatten()
         .map(|(k, v)| EnvVar {
             name: k.clone(),
             value: Some(v.clone()),
