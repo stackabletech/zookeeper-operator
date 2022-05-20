@@ -4,4 +4,3 @@
 * Concepts
 ** xref:znodes.adoc[]
 ** xref:discovery.adoc[]
-
