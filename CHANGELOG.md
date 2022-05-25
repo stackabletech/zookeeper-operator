@@ -12,10 +12,12 @@ All notable changes to this project will be documented in this file.
 - Support for ZooKeeper 3.8.0 added ([#464]).
 - Integration tests for all supported ZooKeeper versions added ([#464]).
 - TLS encryption and authentication support for quorum and client ([#479]).
+- PVCs for data storage, cpu and memory limits are now configurable ([#490]).
 
 ### Changed
 
-- Operator-rs: 0.10.0 -> 0.19.0 ([#408], [#431], [#434], [#454], [#479]).
+- Operator-rs: 0.10.0 -> 0.21.1 ([#408], [#431], [#434], [#454], [#479], [#490]).
+- [BREAKING] Specifying the product version has been changed to adhere to [ADR018](https://docs.stackable.tech/home/contributor/adr/ADR018-product_image_versioning.html) instead of just specifying the product version you will now have to add the Stackable image version as well, so `version: 3.5.8` becomes (for example) `version: 3.5.8-stackable0.1.0` ([#487])
 
 [#408]: https://github.com/stackabletech/zookeeper-operator/pull/408
 [#431]: https://github.com/stackabletech/zookeeper-operator/pull/431
@@ -23,6 +25,8 @@ All notable changes to this project will be documented in this file.
 [#454]: https://github.com/stackabletech/zookeeper-operator/pull/454
 [#464]: https://github.com/stackabletech/zookeeper-operator/pull/464
 [#479]: https://github.com/stackabletech/zookeeper-operator/pull/479
+[#487]: https://github.com/stackabletech/zookeeper-operator/pull/487
+[#490]: https://github.com/stackabletech/zookeeper-operator/pull/490
 
 ## [0.9.0] - 2022-02-14
 
@@ -53,9 +57,7 @@ All notable changes to this project will be documented in this file.
 
 ## [0.8.0] - 2021-12-22
 
-
 ## [0.7.0] - 2021-12-20
-
 
 ### Changed
 
@@ -68,7 +70,6 @@ All notable changes to this project will be documented in this file.
 
 ## [0.5.0] - 2021-11-12
 
-
 ### Changed
 
 - `operator-rs` `0.3.0` → `0.4.0` ([#255]).
@@ -80,6 +81,7 @@ All notable changes to this project will be documented in this file.
 ## [0.4.1] - 2021-10-27
 
 ### Added
+
 - `process_command` to reconcile loop for command handling ([#223]).
 - `rust/crd/lib/command.rs` for command CRDs
 - Trait implementations for command handling for the cluster and status ([#223]):
@@ -93,12 +95,14 @@ All notable changes to this project will be documented in this file.
 - Example custom resources for Restart, Start, Stop ([#223]).
 
 ### Changed
+
 - Switched to operator-rs tag 0.3.0 ([#251])
 - Use `identity::LabeledPodIdentityFactory` to generate pod ids. ([#217])
 - Fix `ZookeeperCluster` conditions overwriting each other ([#228])
 - BREAKING: renamed crd/util.rs to crd/discovery.rs ([#230]).
 
 ### Fixed
+
 - Fixed a bug where `wait_until_crds_present` only reacted to the main CRD, not the commands ([#251]).
 - The ZooKeeper discovery now correctly uses the "client" container port from the pod instead of defaulting to 2181 which will only work if the default port is used ([#230]).
 
@@ -110,8 +114,8 @@ All notable changes to this project will be documented in this file.
 
 ## [0.4.0] - 2021-09-21
 
-
 ### Changed
+
 - `kube-rs`: `0.59` → `0.60` ([#214]).
 - `k8s-openapi` features: `v1_21` → `v1_22` ([#214]).
 
@@ -119,22 +123,23 @@ All notable changes to this project will be documented in this file.
 
 ## [0.3.0] - 2021-09-20
 
-
 ### Added
+
 - Added versioning code from operator-rs for up and downgrades ([#210]).
 - Added `ProductVersion` to status ([#210]).
 - Added `PodToNodeMapping` to status ([#209]).
 
 ### Changed
+
 - Using scheduler with history from operator-rs instead of random node selection([#209]).
 
 ### Removed
+
 - Code for version handling ([#210]).
 - Removed `current_version` and `target_version` from cluster status ([#210]).
 - Removed `assign_ids`, `read_pod_information` and anything id related which is now covered by the scheduler ([#209]).
 - Removed warning for replicas and node id problems from docs ([#209]).
 - Set right yaml indentation for the usage examples in docs ([#209]).
-
 
 [#209]: https://github.com/stackabletech/zookeeper-operator/pull/209
 [#210]: https://github.com/stackabletech/zookeeper-operator/pull/210
@@ -142,6 +147,7 @@ All notable changes to this project will be documented in this file.
 ## [0.2.0] - 2021-09-14
 
 ### Changed
+
 - **Breaking:** Repository structure was changed and the -server crate renamed to -binary. As part of this change the -server suffix was removed from both the package name for os packages and the name of the executable ([#197]).
 
 [#197]: https://github.com/stackabletech/zookeeper-operator/pull/197
@@ -149,4 +155,5 @@ All notable changes to this project will be documented in this file.
 ## [0.1.0] - 2021.09.07
 
 ### Added
+
 - Initial release

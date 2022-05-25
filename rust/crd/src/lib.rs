@@ -1,8 +1,17 @@
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
+use stackable_operator::memory::BinaryMultiple;
 use stackable_operator::{
+    commons::resources::{CpuLimits, MemoryLimits, NoRuntimeLimits, PvcConfig, Resources},
+    config::merge::Merge,
     crd::ClusterRef,
+    error::OperatorResult,
+    k8s_openapi::{
+        api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
+        apimachinery::pkg::api::resource::Quantity,
+    },
     kube::{runtime::reflector::ObjectRef, CustomResource},
+    memory::to_java_heap_value,
     product_config_utils::{ConfigError, Configuration},
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
@@ -11,14 +20,15 @@ use std::collections::BTreeMap;
 
 pub const CLIENT_PORT: u16 = 2181;
 pub const SECURE_CLIENT_PORT: u16 = 2282;
+pub const METRICS_PORT: u16 = 9505;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
-
 pub const QUORUM_TLS_DIR: &str = "/stackable/tls/quorum";
 pub const CLIENT_TLS_DIR: &str = "/stackable/tls/client";
 
+const JVM_HEAP_FACTOR: f32 = 0.8;
 const DEFAULT_SECRET_CLASS: &str = "tls";
 
 /// A cluster of ZooKeeper nodes
@@ -117,6 +127,14 @@ pub struct ZookeeperConfig {
     pub sync_limit: Option<u32>,
     pub tick_time: Option<u32>,
     pub myid_offset: Option<u16>,
+    pub resources: Option<Resources<Storage, NoRuntimeLimits>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Merge, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Storage {
+    #[serde(default)]
+    pub data: PvcConfig,
 }
 
 impl ZookeeperConfig {
@@ -127,6 +145,7 @@ impl ZookeeperConfig {
 
     pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
+    pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
     pub const CLIENT_PORT: &'static str = "clientPort";
 
     // Quorum TLS
@@ -162,7 +181,7 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let jvm_flags = "-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar=9505:/stackable/jmx/server.yaml".to_string();
+        let jvm_flags = format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml");
         Ok([
             (
                 Self::MYID_OFFSET.to_string(),
@@ -422,6 +441,81 @@ impl ZookeeperCluster {
             .map(|tls| tls.quorum_tls_secret_class.as_ref())
             .unwrap_or(DEFAULT_SECRET_CLASS)
             .to_string()
+    }
+
+    /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
+    /// These can be defined at the role or rolegroup level and as usual, the
+    /// following precedence rules are implemented:
+    /// 1. group pvc
+    /// 2. role pvc
+    /// 3. a default PVC with 1Gi capacity
+    pub fn resources(
+        &self,
+        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
+    ) -> (Vec<PersistentVolumeClaim>, ResourceRequirements) {
+        let mut role_resources = self.role_resources().unwrap_or_default();
+        role_resources.merge(&Self::default_resources());
+        let mut resources = self.rolegroup_resources(rolegroup_ref).unwrap_or_default();
+        resources.merge(&role_resources);
+
+        let data_pvc = resources
+            .storage
+            .data
+            .build_pvc("data", Some(vec!["ReadWriteOnce"]));
+        let pod_resources = resources.clone().into();
+
+        (vec![data_pvc], pod_resources)
+    }
+
+    fn rolegroup_resources(
+        &self,
+        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
+    ) -> Option<Resources<Storage, NoRuntimeLimits>> {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.servers
+            .as_ref()?
+            .role_groups
+            .get(&rolegroup_ref.role_group)?
+            .config
+            .config
+            .resources
+            .clone()
+    }
+
+    fn role_resources(&self) -> Option<Resources<Storage, NoRuntimeLimits>> {
+        let spec: &ZookeeperClusterSpec = &self.spec;
+        spec.servers.as_ref()?.config.config.resources.clone()
+    }
+
+    fn default_resources() -> Resources<Storage, NoRuntimeLimits> {
+        Resources {
+            cpu: CpuLimits {
+                min: None,
+                max: None,
+            },
+            memory: MemoryLimits {
+                limit: None,
+                runtime_limits: NoRuntimeLimits {},
+            },
+            storage: Storage {
+                data: PvcConfig {
+                    capacity: Some(Quantity("1Gi".to_owned())),
+                    storage_class: None,
+                    selectors: None,
+                },
+            },
+        }
+    }
+
+    pub fn heap_limits(&self, resources: &ResourceRequirements) -> OperatorResult<Option<u32>> {
+        resources
+            .limits
+            .as_ref()
+            .and_then(|limits| limits.get("memory"))
+            .map(|memory_limit| {
+                to_java_heap_value(memory_limit, JVM_HEAP_FACTOR, BinaryMultiple::Mebi)
+            })
+            .transpose()
     }
 }
 

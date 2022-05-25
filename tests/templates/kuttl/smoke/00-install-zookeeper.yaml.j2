@@ -11,6 +11,16 @@ spec:
       authenticationClass: zk-client-tls
     quorumTlsSecretClass: tls
   servers:
+    config:
+      resources:
+        storage:
+          data:
+            capacity: '1Gi'
+        cpu:
+          max: '500m'
+          min: '250m'
+        memory:
+          limit: '0.5Gi'
     roleGroups:
       primary:
         replicas: 2
@@ -20,6 +30,10 @@ spec:
         replicas: 1
         config:
           myidOffset: 20
+          resources:
+            storage:
+              data:
+                capacity: '1.5Gi'
   version: {{ test_scenario['values']['zookeeper'] }}
   stopped: false
 ---

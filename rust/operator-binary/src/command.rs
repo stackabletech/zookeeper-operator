@@ -62,7 +62,7 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
     args.join(" && ")
 }
 
-/// Generates the shell script to retrieve a random 20 character password  
+/// Generates the shell script to retrieve a random 20 character password
 fn generate_password() -> String {
     format!("export {STORE_PASSWORD_ENV}=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 20 ; echo '')",)
 }
