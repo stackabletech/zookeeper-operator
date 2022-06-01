@@ -7,7 +7,7 @@ use std::{convert::Infallible, sync::Arc, time::Duration};
 use crate::discovery::{self, build_discovery_configmaps};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    k8s_openapi::api::core::v1::{ConfigMap, Service},
+    k8s_openapi::api::core::v1::{ConfigMap, Service, Endpoints},
     kube::{
         self,
         api::ObjectMeta,
@@ -175,7 +175,23 @@ async fn reconcile_apply(
     znode_path: &str,
 ) -> Result<controller::Action> {
     let zk = zk?;
-    znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk)?, znode_path)
+
+    let server_role_service_endpoints = client
+        .get::<Endpoints>(
+            &zk.server_role_service_name()
+                .with_context(|| NoZkSvcNameSnafu {
+                    zk: ObjectRef::from_obj(&zk),
+                })?,
+            zk.metadata.namespace.as_deref(),
+        )
+        .await
+        .context(FindZkSvcSnafu {
+            zk: ObjectRef::from_obj(&zk),
+        })?;
+
+    tracing::info!("service endpoints: {:?}", server_role_service_endpoints.subsets);
+
+     znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk)?, znode_path)
         .await
         .with_context(|_| EnsureZnodeSnafu {
             zk: ObjectRef::from_obj(&zk),
