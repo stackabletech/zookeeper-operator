@@ -84,6 +84,8 @@ pub enum Error {
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("service endpoint is missing subsets for {}", zk))]
+    NoEndpointSubsets { zk: ObjectRef<ZookeeperCluster> },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -125,6 +127,7 @@ impl ReconcilerError for Error {
             Error::ApplyDiscoveryConfigMap { cm, .. } => Some(cm.clone().erase()),
             Error::Finalizer { source: _ } => None,
             Error::ObjectMissingMetadataForOwnerRef { source: _ } => None,
+            Error::NoEndpointSubsets { zk } => Some(zk.clone().erase()),
         }
     }
 }
@@ -176,7 +179,7 @@ async fn reconcile_apply(
 ) -> Result<controller::Action> {
     let zk = zk?;
 
-    let server_role_service_endpoints = client
+    let server_role_service_subsets = client
         .get::<Endpoints>(
             &zk.server_role_service_name()
                 .with_context(|| NoZkSvcNameSnafu {
@@ -187,11 +190,15 @@ async fn reconcile_apply(
         .await
         .context(FindZkSvcSnafu {
             zk: ObjectRef::from_obj(&zk),
+        })?
+        .subsets
+        .context(NoEndpointSubsetsSnafu {
+            zk: ObjectRef::from_obj(&zk),
         })?;
 
     tracing::info!(
-        "service endpoints: {:?}",
-        server_role_service_endpoints.subsets
+        "service endpoint subsets: {:?}",
+        server_role_service_subsets
     );
 
     znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk)?, znode_path)
