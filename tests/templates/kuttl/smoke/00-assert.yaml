@@ -60,5 +60,5 @@ metadata:
   name: data-test-zk-server-secondary-0
 status:
   capacity:
-    storage: 1536Mi
+    storage: 2Gi
   phase: Bound
