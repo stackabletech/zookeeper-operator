@@ -10,4 +10,4 @@ spec:
   versions:
     _-operator: NIGHTLY
     zookeeper-operator: "$ZOOKEEPER_OPERATOR_VERSION"
-  node_count: 3
+  node_count: 8

@@ -530,7 +530,7 @@ fn build_server_rolegroup_statefulset(
                     // We don't have telnet or netcat in the container images, but
                     // we can use Bash's virtual /dev/tcp filesystem to accomplish the same thing
                     format!(
-                        "exec 3<>/dev/tcp/localhost/{} && echo srvr >&3 && grep '^Mode: ' <&3",
+                        "exec 3<>/dev/tcp/127.0.0.1/{} && echo srvr >&3 && grep '^Mode: ' <&3",
                         zk.client_port()
                     ),
                 ]),
