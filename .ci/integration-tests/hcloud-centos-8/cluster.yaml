@@ -16,4 +16,4 @@ spec:
     zookeeper-operator: "$ZOOKEEPER_OPERATOR_VERSION"
   nodes:
     main:
-      numberOfNodes: 3
+      numberOfNodes: 8
