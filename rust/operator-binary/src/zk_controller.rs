@@ -596,7 +596,8 @@ fn build_server_rolegroup_statefulset(
         .security_context(PodSecurityContext {
             fs_group: Some(1000),
             ..PodSecurityContext::default()
-        });
+        })
+        .service_account_name("zookeeper-serviceaccount");
 
     if zk.is_client_secure() {
         let secret_class = if let Some(auth_class) = client_authentication_class {

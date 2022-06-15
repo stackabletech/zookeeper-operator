@@ -1,4 +1,14 @@
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: zookeeper-serviceaccount
+  namespace: default
+  labels:
+    app.kubernetes.io/name: zookeeper-operator
+    app.kubernetes.io/instance: zookeeper-operator
+    app.kubernetes.io/version: "0.10.0-nightly"
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -98,3 +108,63 @@ rules:
       - zookeeperclusters/status
     verbs:
       - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: zookeeper-role
+  namespace: default
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - configmaps
+      - secrets
+      - endpoints
+      - serviceaccounts
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - authentication.stackable.tech
+    resources:
+      - authenticationclasses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - events.k8s.io
+    resources:
+      - events
+    verbs:
+      - create
+  - apiGroups:
+      - security.openshift.io
+    resourceNames:
+      - hostmount-anyuid
+    resources:
+      - securitycontextconstraints
+    verbs:
+      - use
+---
+apiVersion: rbac.authorization.k8s.io/v1
+# This cluster role binding allows anyone in the "manager" group to read secrets in any namespace.
+kind: RoleBinding
+metadata:
+  name: zookeeper-rolebinding
+  namespace: default
+  labels:
+    app.kubernetes.io/name: zookeeper-operator
+    app.kubernetes.io/instance: zookeeper-operator
+    app.kubernetes.io/version: "0.10.0-nightly"
+subjects:
+  - kind: ServiceAccount
+    name: zookeeper-serviceaccount
+    namespace: default
+roleRef:
+  kind: Role
+  name: zookeeper-role
+  apiGroup: rbac.authorization.k8s.io
