@@ -15,6 +15,7 @@ use crate::{
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::role_utils::Role;
 use stackable_operator::{
     builder::{
         ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
@@ -34,7 +35,7 @@ use stackable_operator::{
     },
     kube::{
         api::DynamicObject,
-        runtime::controller::{self, Context},
+        runtime::controller::{self},
     },
     labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
@@ -143,6 +144,10 @@ pub enum Error {
     InvalidJavaHeapConfig {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("failed to merge config: {source}"))]
+    ConfigMergeFailed {
+        source: stackable_operator::error::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -178,18 +183,22 @@ impl ReconcilerError for Error {
                 ..
             } => Some(authentication_class.clone().erase()),
             Error::InvalidJavaHeapConfig { .. } => None,
+            Error::ConfigMergeFailed { .. } => None,
         }
     }
 }
 
 const PROPERTIES_FILE: &str = "zoo.cfg";
 
-pub async fn reconcile_zk(
-    zk: Arc<ZookeeperCluster>,
-    ctx: Context<Ctx>,
-) -> Result<controller::Action> {
+pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
-    let client = &ctx.get_ref().client;
+    let client = &ctx.client;
+
+    let merged_role: Role<ZookeeperConfig> = Role::convert_and_merge(
+        &ZookeeperRole::Server.to_string(),
+        &zk.spec.servers.clone().context(NoServerRoleSnafu)?,
+    )
+    .context(ConfigMergeFailedSnafu)?;
 
     let validated_config = validate_all_roles_and_groups_config(
         zk_version(&zk)?,
@@ -202,13 +211,13 @@ pub async fn reconcile_zk(
                         PropertyNameKind::Env,
                         PropertyNameKind::File(PROPERTIES_FILE.to_string()),
                     ],
-                    zk.spec.servers.clone().context(NoServerRoleSnafu)?,
+                    merged_role,
                 ),
             )]
             .into(),
         )
         .context(GenerateProductConfigSnafu)?,
-        &ctx.get_ref().product_config,
+        &ctx.product_config,
         false,
         false,
     )
@@ -673,6 +682,6 @@ pub fn zk_version(zk: &ZookeeperCluster) -> Result<&str> {
     zk.spec.version.as_deref().context(ObjectHasNoVersionSnafu)
 }
 
-pub fn error_policy(_error: &Error, _ctx: Context<Ctx>) -> controller::Action {
+pub fn error_policy(_error: &Error, _ctx: Arc<Ctx>) -> controller::Action {
     controller::Action::requeue(Duration::from_secs(5))
 }

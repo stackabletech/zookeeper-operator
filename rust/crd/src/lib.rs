@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
-use stackable_operator::memory::BinaryMultiple;
 use stackable_operator::{
     commons::resources::{CpuLimits, MemoryLimits, NoRuntimeLimits, PvcConfig, Resources},
-    config::merge::Merge,
+    config::{merge::Merge, optional::Optional},
     crd::ClusterRef,
     error::OperatorResult,
     k8s_openapi::{
@@ -11,7 +10,7 @@ use stackable_operator::{
         apimachinery::pkg::api::resource::Quantity,
     },
     kube::{runtime::reflector::ObjectRef, CustomResource},
-    memory::to_java_heap_value,
+    memory::{to_java_heap_value, BinaryMultiple},
     product_config_utils::{ConfigError, Configuration},
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
@@ -56,7 +55,7 @@ pub struct ZookeeperClusterSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub servers: Option<Role<ZookeeperConfig>>,
+    pub servers: Option<Role<OptionalZookeeperConfig>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config: Option<GlobalZookeeperConfig>,
 }
@@ -120,14 +119,24 @@ pub struct ClientAuthenticationClass {
     pub authentication_class: String,
 }
 
-#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+const INIT_LIMIT: u32 = 5;
+const SYNC_LIMIT: u32 = 2;
+const TICK_TIME: u32 = 3000;
+const MYID_OFFSET: u16 = 1;
+
+#[derive(Clone, Default, Debug, Deserialize, JsonSchema, Optional, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperConfig {
-    pub init_limit: Option<u32>,
-    pub sync_limit: Option<u32>,
-    pub tick_time: Option<u32>,
-    pub myid_offset: Option<u16>,
-    pub resources: Option<Resources<Storage, NoRuntimeLimits>>,
+    #[optional(default_value = "INIT_LIMIT")]
+    pub init_limit: u32,
+    #[optional(default_value = "SYNC_LIMIT")]
+    pub sync_limit: u32,
+    #[optional(default_value = "TICK_TIME")]
+    pub tick_time: u32,
+    #[optional(default_value = "MYID_OFFSET")]
+    pub myid_offset: u16,
+    #[optional(default_impl = "ZookeeperCluster::default_resources")]
+    pub resources: Resources<Storage, NoRuntimeLimits>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Merge, JsonSchema, PartialEq, Serialize)]
@@ -167,10 +176,6 @@ impl ZookeeperConfig {
     // Common TLS
     pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
-
-    fn myid_offset(&self) -> u16 {
-        self.myid_offset.unwrap_or(1)
-    }
 }
 
 impl Configuration for ZookeeperConfig {
@@ -185,7 +190,7 @@ impl Configuration for ZookeeperConfig {
         Ok([
             (
                 Self::MYID_OFFSET.to_string(),
-                Some(self.myid_offset().to_string()),
+                Some(self.myid_offset.to_string()),
             ),
             (Self::SERVER_JVMFLAGS.to_string(), Some(jvm_flags)),
         ]
@@ -207,15 +212,19 @@ impl Configuration for ZookeeperConfig {
         _file: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         let mut result = BTreeMap::new();
-        if let Some(init_limit) = self.init_limit {
-            result.insert(Self::INIT_LIMIT.to_string(), Some(init_limit.to_string()));
-        }
-        if let Some(sync_limit) = self.sync_limit {
-            result.insert(Self::SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
-        }
-        if let Some(tick_time) = self.tick_time {
-            result.insert(Self::TICK_TIME.to_string(), Some(tick_time.to_string()));
-        }
+        // CRD config
+        result.insert(
+            Self::INIT_LIMIT.to_string(),
+            Some(self.init_limit.to_string()),
+        );
+        result.insert(
+            Self::SYNC_LIMIT.to_string(),
+            Some(self.sync_limit.to_string()),
+        );
+        result.insert(
+            Self::TICK_TIME.to_string(),
+            Some(self.tick_time.to_string()),
+        );
         result.insert(
             Self::DATA_DIR.to_string(),
             Some(STACKABLE_DATA_DIR.to_string()),
@@ -388,7 +397,7 @@ impl ZookeeperCluster {
                     namespace: ns.clone(),
                     role_group_service_name: rolegroup_ref.object_name(),
                     pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
-                    zookeeper_myid: i + rolegroup.config.config.myid_offset(),
+                    zookeeper_myid: i + 1, // TODO: rolegroup.config.config.myid_offset,
                 })
             }))
     }
