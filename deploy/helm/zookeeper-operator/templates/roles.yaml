@@ -101,6 +101,50 @@ rules:
 ---
 # TODO: these are product RBAC objects. They have to be moved to the operator
 # code since the namespace is not known by helm at install time.
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: zookeeper-scc
+  annotations:
+    kubernetes.io/description: |-
+      zookeeper-scc is derived from hostmount-anyuid. It provides all the features of the
+      restricted SCC but allows host mounts and any UID by a pod.  This is primarily
+      used by the persistent volume recycler. WARNING: this SCC allows host file
+      system access as any UID, including UID 0.  Grant with caution.
+    release.openshift.io/create-only: "true"
+allowHostDirVolumePlugin: true
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: true
+allowPrivilegedContainer: false
+allowedCapabilities: null
+defaultAddCapabilities: null
+fsGroup:
+  type: RunAsAny
+groups: []
+priority: null
+readOnlyRootFilesystem: false
+requiredDropCapabilities:
+- MKNOD
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: MustRunAs
+supplementalGroups:
+  type: RunAsAny
+volumes:
+- configMap
+- downwardAPI
+- emptyDir
+- hostPath
+- nfs
+- persistentVolumeClaim
+- projected
+- secret
+- ephemeral
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -136,7 +180,7 @@ rules:
   - apiGroups:
     - security.openshift.io
     resourceNames:
-    - hostmount-anyuid
+    - zookeeper-scc
     resources:
     - securitycontextconstraints
     verbs:
