@@ -98,6 +98,7 @@ rules:
       - {{ include "operator.name" . }}clusters/status
     verbs:
       - patch
+{{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" -}}
 ---
 # TODO: these are product RBAC objects. They have to be moved to the operator
 # code since the namespace is not known by helm at install time.
@@ -144,6 +145,7 @@ volumes:
 - projected
 - secret
 - ephemeral
+{{ end -}}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
