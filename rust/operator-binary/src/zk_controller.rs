@@ -15,6 +15,10 @@ use crate::{
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::k8s_openapi::api::{
+    core::v1::ServiceAccount,
+    rbac::v1::{RoleRef, Subject},
+};
 use stackable_operator::{
     builder::{
         ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
@@ -44,6 +48,10 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     role_utils::RoleGroupRef,
 };
+use stackable_operator::{
+    k8s_openapi::api::rbac::v1::{PolicyRule, Role, RoleBinding},
+    kube::ResourceExt,
+};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR,
     QUORUM_TLS_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
@@ -51,6 +59,8 @@ use stackable_zookeeper_crd::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
+
+const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -143,6 +153,18 @@ pub enum Error {
     InvalidJavaHeapConfig {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("failed to create RBAC role: {source}"))]
+    ApplyRbacRole {
+        source: stackable_operator::error::Error,
+    },
+    #[snafu(display("failed to create RBAC service account: {source}"))]
+    ApplyServiceAccount {
+        source: stackable_operator::error::Error,
+    },
+    #[snafu(display("failed to create RBAC role binding: {source}"))]
+    ApplyRoleBinding {
+        source: stackable_operator::error::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -178,6 +200,9 @@ impl ReconcilerError for Error {
                 ..
             } => Some(authentication_class.clone().erase()),
             Error::InvalidJavaHeapConfig { .. } => None,
+            Error::ApplyRbacRole { .. } => None,
+            Error::ApplyServiceAccount { .. } => None,
+            Error::ApplyRoleBinding { .. } => None,
         }
     }
 }
@@ -232,6 +257,20 @@ pub async fn reconcile_zk(
     } else {
         None
     };
+
+    let (rbac_role, rbac_sa, rbac_rolebinding) = build_zk_rbac_resources(&zk)?;
+    client
+        .apply_patch(FIELD_MANAGER_SCOPE, &rbac_role, &rbac_role)
+        .await
+        .with_context(|_| ApplyRbacRoleSnafu)?;
+    client
+        .apply_patch(FIELD_MANAGER_SCOPE, &rbac_sa, &rbac_sa)
+        .await
+        .with_context(|_| ApplyServiceAccountSnafu)?;
+    client
+        .apply_patch(FIELD_MANAGER_SCOPE, &rbac_rolebinding, &rbac_rolebinding)
+        .await
+        .with_context(|_| ApplyRoleBindingSnafu)?;
 
     let server_role_service = build_server_role_service(&zk)?;
     let server_role_service = client
@@ -300,6 +339,78 @@ pub async fn reconcile_zk(
         .context(ApplyStatusSnafu)?;
 
     Ok(controller::Action::await_change())
+}
+
+pub fn build_zk_rbac_resources(
+    zk: &ZookeeperCluster,
+) -> Result<(Role, ServiceAccount, RoleBinding)> {
+    let role = Role {
+        metadata: ObjectMetaBuilder::new()
+            .name_and_namespace(zk)
+            .name("zookeeper-role".to_string())
+            .with_label("managed-by".to_string(), "zookeeper-operator".to_string())
+            .build(),
+        rules: Some(vec![
+            PolicyRule {
+                api_groups: Some(vec!["".into()]),
+                resources: Some(vec![
+                    "configmaps".into(),
+                    "secrets".into(),
+                    "volumes".into(),
+                ]),
+                verbs: vec!["get".into()],
+                ..PolicyRule::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["authentication.stackable.tech".into()]),
+                resources: Some(vec!["authenticationclasses".into()]),
+                verbs: vec!["get".into()],
+                ..PolicyRule::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["events.k8s.io".into()]),
+                resources: Some(vec!["events".into()]),
+                verbs: vec!["create".into()],
+                ..PolicyRule::default()
+            },
+            PolicyRule {
+                api_groups: Some(vec!["security.openshift.io".into()]),
+                resources: Some(vec!["zookeeper-scc".into()]),
+                verbs: vec!["use".into()],
+                ..PolicyRule::default()
+            },
+        ]),
+    };
+
+    let service_account = ServiceAccount {
+        metadata: ObjectMetaBuilder::new()
+            .name_and_namespace(zk)
+            .name(SERVICE_ACCOUNT.to_string())
+            .with_label("managed-by".to_string(), "zookeeper-operator".to_string())
+            .build(),
+        ..ServiceAccount::default()
+    };
+
+    let role_binding = RoleBinding {
+        metadata: ObjectMetaBuilder::new()
+            .name_and_namespace(zk)
+            .name("zookeeper-rolebinding".to_string())
+            .with_label("managed-by".to_string(), "zookeeper-operator".to_string())
+            .build(),
+        role_ref: RoleRef {
+            kind: "Role".to_string(),
+            name: "zookeeper-role".to_string(),
+            api_group: "rbac.authorization.k8s.io".to_string(),
+        },
+        subjects: Some(vec![Subject {
+            kind: "ServiceAccount".to_string(),
+            name: "zookeeper-serviceaccount".to_string(),
+            namespace: zk.namespace(),
+            ..Subject::default()
+        }]),
+    };
+
+    Ok((role, service_account, role_binding))
 }
 
 /// The server-role service is the primary endpoint that should be used by clients that do not perform internal load balancing,
@@ -597,7 +708,7 @@ fn build_server_rolegroup_statefulset(
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name("zookeeper-serviceaccount");
+        .service_account_name(SERVICE_ACCOUNT);
 
     if zk.is_client_secure() {
         let secret_class = if let Some(auth_class) = client_authentication_class {
