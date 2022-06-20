@@ -31,8 +31,6 @@ rules:
   - apiGroups:
       - rbac.authorization.k8s.io
     resources:
-      - serviceaccounts
-      - roles
       - rolebindings
     verbs:
       - create
@@ -100,6 +98,7 @@ rules:
       - {{ include "operator.name" . }}clusters/status
     verbs:
       - patch
+
 {{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" -}}
 ---
 # TODO: these are product RBAC objects. They have to be moved to the operator
@@ -147,4 +146,32 @@ volumes:
 - projected
 - secret
 - ephemeral
+{{ end -}}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "operator.name" . }}-clusterrole
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - secrets
+      - serviceaccounts
+    verbs:
+      - get
+  - apiGroups:
+      - events.k8s.io
+    resources:
+      - events
+    verbs:
+      - create
+{{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" -}}
+  - apiGroups:
+       - security.openshift.io
+     resources:
+       - zookeeper-scc
+     verbs:
+       - use
 {{ end -}}

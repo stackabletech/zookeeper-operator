@@ -31,8 +31,6 @@ rules:
   - apiGroups:
       - rbac.authorization.k8s.io
     resources:
-      - serviceaccounts
-      - roles
       - rolebindings
     verbs:
       - create
@@ -100,3 +98,23 @@ rules:
       - zookeeperclusters/status
     verbs:
       - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: zookeeper-clusterrole
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - secrets
+      - serviceaccounts
+    verbs:
+      - get
+  - apiGroups:
+      - events.k8s.io
+    resources:
+      - events
+    verbs:
+      - create

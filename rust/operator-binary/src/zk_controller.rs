@@ -48,10 +48,7 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     role_utils::RoleGroupRef,
 };
-use stackable_operator::{
-    k8s_openapi::api::rbac::v1::{PolicyRule, Role, RoleBinding},
-    kube::ResourceExt,
-};
+use stackable_operator::{k8s_openapi::api::rbac::v1::RoleBinding, kube::ResourceExt};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR,
     QUORUM_TLS_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
@@ -258,11 +255,7 @@ pub async fn reconcile_zk(
         None
     };
 
-    let (rbac_role, rbac_sa, rbac_rolebinding) = build_zk_rbac_resources(&zk)?;
-    client
-        .apply_patch(FIELD_MANAGER_SCOPE, &rbac_role, &rbac_role)
-        .await
-        .with_context(|_| ApplyRbacRoleSnafu)?;
+    let (rbac_sa, rbac_rolebinding) = build_zk_rbac_resources(&zk)?;
     client
         .apply_patch(FIELD_MANAGER_SCOPE, &rbac_sa, &rbac_sa)
         .await
@@ -341,43 +334,7 @@ pub async fn reconcile_zk(
     Ok(controller::Action::await_change())
 }
 
-pub fn build_zk_rbac_resources(
-    zk: &ZookeeperCluster,
-) -> Result<(Role, ServiceAccount, RoleBinding)> {
-    let role = Role {
-        metadata: ObjectMetaBuilder::new()
-            .name_and_namespace(zk)
-            .name("zookeeper-role".to_string())
-            .with_label("managed-by".to_string(), "zookeeper-operator".to_string())
-            .build(),
-        rules: Some(vec![
-            PolicyRule {
-                api_groups: Some(vec!["".into()]),
-                resources: Some(vec!["configmaps".into(), "secrets".into()]),
-                verbs: vec!["get".into()],
-                ..PolicyRule::default()
-            },
-            PolicyRule {
-                api_groups: Some(vec!["authentication.stackable.tech".into()]),
-                resources: Some(vec!["authenticationclasses".into()]),
-                verbs: vec!["get".into()],
-                ..PolicyRule::default()
-            },
-            PolicyRule {
-                api_groups: Some(vec!["events.k8s.io".into()]),
-                resources: Some(vec!["events".into()]),
-                verbs: vec!["create".into()],
-                ..PolicyRule::default()
-            },
-            PolicyRule {
-                api_groups: Some(vec!["security.openshift.io".into()]),
-                resources: Some(vec!["zookeeper-scc".into()]),
-                verbs: vec!["use".into()],
-                ..PolicyRule::default()
-            },
-        ]),
-    };
-
+pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount, RoleBinding)> {
     let service_account = ServiceAccount {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
@@ -395,7 +352,7 @@ pub fn build_zk_rbac_resources(
             .build(),
         role_ref: RoleRef {
             kind: "Role".to_string(),
-            name: "zookeeper-role".to_string(),
+            name: "zookeeper-clusterrole".to_string(),
             api_group: "rbac.authorization.k8s.io".to_string(),
         },
         subjects: Some(vec![Subject {
@@ -406,7 +363,7 @@ pub fn build_zk_rbac_resources(
         }]),
     };
 
-    Ok((role, service_account, role_binding))
+    Ok((service_account, role_binding))
 }
 
 /// The server-role service is the primary endpoint that should be used by clients that do not perform internal load balancing,
