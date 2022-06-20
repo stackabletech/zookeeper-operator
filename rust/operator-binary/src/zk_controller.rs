@@ -353,11 +353,7 @@ pub fn build_zk_rbac_resources(
         rules: Some(vec![
             PolicyRule {
                 api_groups: Some(vec!["".into()]),
-                resources: Some(vec![
-                    "configmaps".into(),
-                    "secrets".into(),
-                    "volumes".into(),
-                ]),
+                resources: Some(vec!["configmaps".into(), "secrets".into()]),
                 verbs: vec!["get".into()],
                 ..PolicyRule::default()
             },
