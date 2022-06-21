@@ -351,7 +351,7 @@ pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount,
             .with_label("managed-by".to_string(), "zookeeper-operator".to_string())
             .build(),
         role_ref: RoleRef {
-            kind: "Role".to_string(),
+            kind: "ClusterRole".to_string(),
             name: "zookeeper-clusterrole".to_string(),
             api_group: "rbac.authorization.k8s.io".to_string(),
         },

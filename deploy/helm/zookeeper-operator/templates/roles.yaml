@@ -98,11 +98,8 @@ rules:
       - {{ include "operator.name" . }}clusters/status
     verbs:
       - patch
-
-{{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" -}}
+{{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
 ---
-# TODO: these are product RBAC objects. They have to be moved to the operator
-# code since the namespace is not known by helm at install time.
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:
@@ -146,7 +143,7 @@ volumes:
 - projected
 - secret
 - ephemeral
-{{ end -}}
+{{ end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -167,11 +164,11 @@ rules:
       - events
     verbs:
       - create
-{{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" -}}
+{{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
   - apiGroups:
-       - security.openshift.io
-     resources:
-       - zookeeper-scc
-     verbs:
-       - use
-{{ end -}}
+      - security.openshift.io
+    resources:
+      - zookeeper-scc
+    verbs:
+      - use
+{{ end }}
