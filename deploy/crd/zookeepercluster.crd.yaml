@@ -50,6 +50,9 @@ spec:
                   type: object
                 servers:
                   nullable: true
+                  oneOf:
+                    - required:
+                        - config
                   properties:
                     cliOverrides:
                       additionalProperties:
@@ -57,7 +60,6 @@ spec:
                       default: {}
                       type: object
                     config:
-                      default: {}
                       properties:
                         initLimit:
                           format: uint32
@@ -167,6 +169,9 @@ spec:
                       type: object
                     roleGroups:
                       additionalProperties:
+                        oneOf:
+                          - required:
+                              - config
                         properties:
                           cliOverrides:
                             additionalProperties:
@@ -174,7 +179,6 @@ spec:
                             default: {}
                             type: object
                           config:
-                            default: {}
                             properties:
                               initLimit:
                                 format: uint32

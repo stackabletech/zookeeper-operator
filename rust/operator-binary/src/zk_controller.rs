@@ -15,7 +15,6 @@ use crate::{
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
-use stackable_operator::role_utils::Role;
 use stackable_operator::{
     builder::{
         ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
@@ -194,12 +193,6 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     tracing::info!("Starting reconcile");
     let client = &ctx.client;
 
-    let merged_role: Role<ZookeeperConfig> = Role::convert_and_merge(
-        &ZookeeperRole::Server.to_string(),
-        &zk.spec.servers.clone().context(NoServerRoleSnafu)?,
-    )
-    .context(ConfigMergeFailedSnafu)?;
-
     let validated_config = validate_all_roles_and_groups_config(
         zk_version(&zk)?,
         &transform_all_roles_to_config(
@@ -211,7 +204,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
                         PropertyNameKind::Env,
                         PropertyNameKind::File(PROPERTIES_FILE.to_string()),
                     ],
-                    merged_role,
+                    zk.spec.servers.clone().context(NoServerRoleSnafu)?,
                 ),
             )]
             .into(),

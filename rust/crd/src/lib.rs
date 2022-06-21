@@ -55,7 +55,7 @@ pub struct ZookeeperClusterSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub servers: Option<Role<OptionalZookeeperConfig>>,
+    pub servers: Option<Role<OptionalZookeeperConfig, ZookeeperConfig>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config: Option<GlobalZookeeperConfig>,
 }
@@ -397,7 +397,7 @@ impl ZookeeperCluster {
                     namespace: ns.clone(),
                     role_group_service_name: rolegroup_ref.object_name(),
                     pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
-                    zookeeper_myid: i + 1, // TODO: rolegroup.config.config.myid_offset,
+                    zookeeper_myid: i + rolegroup.config.config.get().myid_offset,
                 })
             }))
     }
@@ -481,19 +481,21 @@ impl ZookeeperCluster {
         rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     ) -> Option<Resources<Storage, NoRuntimeLimits>> {
         let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.servers
-            .as_ref()?
-            .role_groups
-            .get(&rolegroup_ref.role_group)?
-            .config
-            .config
-            .resources
-            .clone()
+        Some(
+            spec.servers
+                .as_ref()?
+                .role_groups
+                .get(&rolegroup_ref.role_group)?
+                .config
+                .config
+                .get()
+                .resources,
+        )
     }
 
     fn role_resources(&self) -> Option<Resources<Storage, NoRuntimeLimits>> {
         let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.servers.as_ref()?.config.config.resources.clone()
+        Some(spec.servers.as_ref()?.config.config.get().resources)
     }
 
     fn default_resources() -> Resources<Storage, NoRuntimeLimits> {
