@@ -41,6 +41,14 @@ rules:
       - update
       - watch
   - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+    verbs:
+      - bind
+    resourceNames:
+      - zookeeper-clusterrole
+  - apiGroups:
       - apps
     resources:
       - statefulsets
