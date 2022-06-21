@@ -150,10 +150,6 @@ pub enum Error {
     InvalidJavaHeapConfig {
         source: stackable_operator::error::Error,
     },
-    #[snafu(display("failed to create RBAC role: {source}"))]
-    ApplyRbacRole {
-        source: stackable_operator::error::Error,
-    },
     #[snafu(display("failed to create RBAC service account: {source}"))]
     ApplyServiceAccount {
         source: stackable_operator::error::Error,
@@ -197,7 +193,6 @@ impl ReconcilerError for Error {
                 ..
             } => Some(authentication_class.clone().erase()),
             Error::InvalidJavaHeapConfig { .. } => None,
-            Error::ApplyRbacRole { .. } => None,
             Error::ApplyServiceAccount { .. } => None,
             Error::ApplyRoleBinding { .. } => None,
         }
@@ -357,7 +352,7 @@ pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount,
         },
         subjects: Some(vec![Subject {
             kind: "ServiceAccount".to_string(),
-            name: "zookeeper-serviceaccount".to_string(),
+            name: SERVICE_ACCOUNT.to_string(),
             namespace: zk.namespace(),
             ..Subject::default()
         }]),
