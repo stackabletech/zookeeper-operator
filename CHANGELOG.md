@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - Integration tests for all supported ZooKeeper versions added ([#464]).
 - TLS encryption and authentication support for quorum and client ([#479]).
 - PVCs for data storage, cpu and memory limits are now configurable ([#490]).
+- OpenShift compatibility: use custom service account and cluster role for product pods ([#505]).
 
 ### Changed
 
@@ -27,6 +28,7 @@ All notable changes to this project will be documented in this file.
 [#479]: https://github.com/stackabletech/zookeeper-operator/pull/479
 [#487]: https://github.com/stackabletech/zookeeper-operator/pull/487
 [#490]: https://github.com/stackabletech/zookeeper-operator/pull/490
+[#505]: https://github.com/stackabletech/zookeeper-operator/pull/505
 
 ## [0.9.0] - 2022-02-14
 
