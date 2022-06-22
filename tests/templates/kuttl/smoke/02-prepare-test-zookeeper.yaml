@@ -4,6 +4,7 @@ kind: TestStep
 commands:
   - script: kubectl cp -n $NAMESPACE ./test_zookeeper.py  zk-test-helper-0:/tmp
   - script: kubectl cp -n $NAMESPACE ./requirements.txt zk-test-helper-0:/tmp
-  - script: kubectl exec -n $NAMESPACE zk-test-helper-0 -- pip install --user -r /tmp/requirements.txt
+  - script: kubectl exec -n $NAMESPACE zk-test-helper-0 -- python -m venv /tmp/venv
+  - script: kubectl exec -n $NAMESPACE zk-test-helper-0 -- bash -c 'source /tmp/venv/bin/activate && pip install -r /tmp/requirements.txt'
   - script: kubectl cp -n $NAMESPACE ./test_tls.sh test-zk-server-primary-0:/tmp
   - script: kubectl cp -n $NAMESPACE ./test_heap.sh test-zk-server-primary-0:/tmp

@@ -1,4 +1,15 @@
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zk-test-helper
+  labels:
+    app: zk-test-helper
+spec:
+  clusterIP: None
+  selector:
+    app: zk-test-helper
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -7,6 +18,7 @@ metadata:
     app: zk-test-helper
 spec:
   replicas: 1
+  serviceName: zk-test-helper
   selector:
     matchLabels:
       app: zk-test-helper
