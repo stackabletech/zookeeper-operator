@@ -1,6 +1,6 @@
 name: zookeeper
-version: "0.10"
+version: "nightly"
 title: Stackable Operator for Apache ZooKeeper
 nav:
   - modules/ROOT/nav.adoc
-prerelease: false
+prerelease: true
