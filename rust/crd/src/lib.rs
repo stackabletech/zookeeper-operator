@@ -6,8 +6,7 @@ use stackable_operator::{
     crd::ClusterRef,
     error::OperatorResult,
     k8s_openapi::{
-        api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
-        apimachinery::pkg::api::resource::Quantity,
+        api::core::v1::ResourceRequirements, apimachinery::pkg::api::resource::Quantity,
     },
     kube::{runtime::reflector::ObjectRef, CustomResource},
     memory::{to_java_heap_value, BinaryMultiple},
@@ -450,52 +449,6 @@ impl ZookeeperCluster {
             .map(|tls| tls.quorum_tls_secret_class.as_ref())
             .unwrap_or(DEFAULT_SECRET_CLASS)
             .to_string()
-    }
-
-    /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
-    /// These can be defined at the role or rolegroup level and as usual, the
-    /// following precedence rules are implemented:
-    /// 1. group pvc
-    /// 2. role pvc
-    /// 3. a default PVC with 1Gi capacity
-    pub fn resources(
-        &self,
-        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
-    ) -> (Vec<PersistentVolumeClaim>, ResourceRequirements) {
-        let mut role_resources = self.role_resources().unwrap_or_default();
-        role_resources.merge(&Self::default_resources());
-        let mut resources = self.rolegroup_resources(rolegroup_ref).unwrap_or_default();
-        resources.merge(&role_resources);
-
-        let data_pvc = resources
-            .storage
-            .data
-            .build_pvc("data", Some(vec!["ReadWriteOnce"]));
-        let pod_resources = resources.clone().into();
-
-        (vec![data_pvc], pod_resources)
-    }
-
-    fn rolegroup_resources(
-        &self,
-        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
-    ) -> Option<Resources<Storage, NoRuntimeLimits>> {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        Some(
-            spec.servers
-                .as_ref()?
-                .role_groups
-                .get(&rolegroup_ref.role_group)?
-                .config
-                .config
-                .get()
-                .resources,
-        )
-    }
-
-    fn role_resources(&self) -> Option<Resources<Storage, NoRuntimeLimits>> {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        Some(spec.servers.as_ref()?.config.config.get().resources)
     }
 
     fn default_resources() -> Resources<Storage, NoRuntimeLimits> {

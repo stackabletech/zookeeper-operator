@@ -9,7 +9,7 @@ spec:
       resources:
         storage:
           data:
-            capacity: '2Gi'
+            capacity: '1Gi'
         cpu:
           max: '500m'
           min: '250m'
@@ -20,6 +20,15 @@ spec:
         replicas: 2
         config:
           myidOffset: 10
+          resources:
+            storage:
+              data:
+                capacity: '2Gi'
+            cpu:
+              max: '600m'
+              min: '300m'
+            memory:
+              limit: '2Gi'
       secondary:
         replicas: 1
         config:

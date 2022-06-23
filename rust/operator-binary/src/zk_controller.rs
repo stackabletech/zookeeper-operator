@@ -1,13 +1,5 @@
 //! Ensures that `Pod`s are configured and running for each [`ZookeeperCluster`]
 
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-    hash::Hasher,
-    sync::Arc,
-    time::Duration,
-};
-
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
@@ -26,8 +18,8 @@ use stackable_operator::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, SecurityContext,
-                Service, ServicePort, ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, ResourceRequirements,
+                SecurityContext, Service, ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
@@ -48,6 +40,13 @@ use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR,
     QUORUM_TLS_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
 };
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+    hash::Hasher,
+    sync::Arc,
+    time::Duration,
+};
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
@@ -67,6 +66,10 @@ pub enum Error {
     ObjectHasNoVersion,
     #[snafu(display("object defines no server role"))]
     NoServerRole,
+    #[snafu(display("object has no role group {}", role_group))]
+    MissingRoleGroup {
+        role_group: RoleGroupRef<ZookeeperCluster>,
+    },
     #[snafu(display("failed to calculate global service name"))]
     GlobalServiceNameNotFound,
     #[snafu(display("failed to calculate service name for role {}", rolegroup))]
@@ -159,6 +162,7 @@ impl ReconcilerError for Error {
             Error::ObjectHasNoNamespace => None,
             Error::ObjectHasNoVersion => None,
             Error::NoServerRole => None,
+            Error::MissingRoleGroup { .. } => None,
             Error::GlobalServiceNameNotFound => None,
             Error::RoleGroupServiceNameNotFound { .. } => None,
             Error::ApplyRoleService { .. } => None,
@@ -454,7 +458,10 @@ fn build_server_rolegroup_statefulset(
         .as_ref()
         .context(NoServerRoleSnafu)?
         .role_groups
-        .get(&rolegroup_ref.role_group);
+        .get(&rolegroup_ref.role_group)
+        .with_context(|| MissingRoleGroupSnafu {
+            role_group: rolegroup_ref.clone(),
+        })?;
     let zk_version = zk_version(zk)?;
     let image = format!("docker.stackable.tech/stackable/zookeeper:{}", zk_version);
     let mut env_vars = server_config
@@ -468,7 +475,13 @@ fn build_server_rolegroup_statefulset(
         })
         .collect::<Vec<_>>();
 
-    let (pvc, resources) = zk.resources(rolegroup_ref);
+    let resources = rolegroup.config.config.get().resources;
+    let pvc = vec![resources
+        .storage
+        .data
+        .build_pvc("data", Some(vec!["ReadWriteOnce"]))];
+    let resources: ResourceRequirements = resources.into();
+
     // set heap size if available
     let heap_limits = zk
         .heap_limits(&resources)
@@ -651,7 +664,7 @@ fn build_server_rolegroup_statefulset(
             replicas: if zk.spec.stopped.unwrap_or(false) {
                 Some(0)
             } else {
-                rolegroup.and_then(|rg| rg.replicas).map(i32::from)
+                rolegroup.replicas.map(i32::from)
             },
             selector: LabelSelector {
                 match_labels: Some(role_group_selector_labels(
