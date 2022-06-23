@@ -49,6 +49,7 @@ spec:
                       type: object
                   type: object
                 servers:
+                  description: "The [`Role`] is parameterized with two configuration structs that are passed to the [`CommonConfiguration`] and [`RoleGroup`].\n\nThe first parameter should be derived via [`crate::config::optional::Optional`] from the second parameter.\n\n# Example\n\n```no_compile # use stackable_operator::config::optional::Optional; use stackable_operator::role_utils::Role; const DEFAULT_PORT: u16 = 11111; #[derive(Optional)] struct FooConfig { #[optional(default_value = \"DEFAULT_PORT\")] port: u16, } // This will roughly create an `OptionalFooConfig` with all fields optional and the Merge derive. #[derive(Merge)] struct OptionalFooConfig { port: Option<u16>, } // Additionally a From implementation will be derived: impl From<OptionalFooConfig> for FooConfig { fn from(optional: OptionalFooConfig) -> Self { Self { port: c.port.unwrap_or(DEFAULT_PORT), } } } // This should then be used in the FooClusterSpec like this: #[derive(Clone, CustomResource, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)] #[kube( group = \"foo.stackable.tech\", version = \"v1alpha1\", kind = \"FooCluster\", plural = \"fooclusters\", shortname = \"foo\", namespaced, crates( kube_core = \"stackable_operator::kube::core\", k8s_openapi = \"stackable_operator::k8s_openapi\", schemars = \"stackable_operator::schemars\" ) )] #[serde(rename_all = \"camelCase\")] pub struct FooClusterSpec { #[serde(default, skip_serializing_if = \"Option::is_none\")] pub foo_server: Option<Role<OptionalFooConfig, FooConfig>>, } ``` During deserialization, the [`CommonConfiguration`] of the [`Role`] and the [`RoleGroup`] as well as all (config|env|cli)_overrides are merged."
                   nullable: true
                   oneOf:
                     - required:
@@ -169,6 +170,7 @@ spec:
                       type: object
                     roleGroups:
                       additionalProperties:
+                        description: "The [`RoleGroup`] is parameterized the same way as [`Role`], offers a [`CommonConfiguration`] as well es `replicas` to specifiy the amount of desired pods and `selector` to speficy where pods might be scheduled."
                         oneOf:
                           - required:
                               - config
