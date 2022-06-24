@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
 use stackable_operator::{
     commons::resources::{CpuLimits, MemoryLimits, NoRuntimeLimits, PvcConfig, Resources},
-    config::{merge::Merge, optional::Optional},
+    config::{merge::Merge, optional::Complex, optional::Optional},
     crd::ClusterRef,
     error::OperatorResult,
     k8s_openapi::{

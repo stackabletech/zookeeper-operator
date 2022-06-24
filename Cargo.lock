@@ -1990,7 +1990,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator"
 version = "0.21.1"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=merge_typed_role_and_role_group_configs#22cef102907970cd7d3a361499a9aab69db93648"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=merge_typed_role_and_role_group_configs#cddcc99ee1ac3be6d88ab345c05bb708c63fa6af"
 dependencies = [
  "backoff",
  "chrono",
@@ -2024,7 +2024,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator-derive"
 version = "0.21.1"
-source = "git+https://github.com/stackabletech/operator-rs.git?branch=merge_typed_role_and_role_group_configs#22cef102907970cd7d3a361499a9aab69db93648"
+source = "git+https://github.com/stackabletech/operator-rs.git?branch=merge_typed_role_and_role_group_configs#cddcc99ee1ac3be6d88ab345c05bb708c63fa6af"
 dependencies = [
  "darling",
  "proc-macro2",
