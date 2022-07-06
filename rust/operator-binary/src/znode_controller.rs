@@ -12,11 +12,7 @@ use stackable_operator::{
         self,
         api::ObjectMeta,
         core::DynamicObject,
-        runtime::{
-            controller::{self, Context},
-            finalizer,
-            reflector::ObjectRef,
-        },
+        runtime::{controller, finalizer, reflector::ObjectRef},
     },
     logging::controller::ReconcilerError,
 };
@@ -131,7 +127,7 @@ impl ReconcilerError for Error {
 
 pub async fn reconcile_znode(
     znode: Arc<ZookeeperZnode>,
-    ctx: Context<Ctx>,
+    ctx: Arc<Ctx>,
 ) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
     let (ns, uid) = if let ObjectMeta {
@@ -144,7 +140,7 @@ pub async fn reconcile_znode(
     } else {
         return ObjectMissingMetadataSnafu.fail();
     };
-    let client = &ctx.get_ref().client;
+    let client = &ctx.client;
 
     let zk = find_zk_of_znode(client, &znode).await;
     // Use the uid (managed by k8s itself) rather than the object name, to ensure that malicious users can't trick the controller
@@ -272,7 +268,7 @@ async fn find_zk_of_znode(
     }
 }
 
-pub fn error_policy(_error: &Error, _ctx: Context<Ctx>) -> controller::Action {
+pub fn error_policy(_error: &Error, _ctx: Arc<Ctx>) -> controller::Action {
     controller::Action::requeue(Duration::from_secs(5))
 }
 
