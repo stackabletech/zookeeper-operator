@@ -36,10 +36,7 @@ use stackable_operator::{
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
     },
-    kube::{
-        api::DynamicObject,
-        runtime::controller::{self, Context},
-    },
+    kube::{api::DynamicObject, runtime::controller},
     labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
     product_config::{
@@ -201,12 +198,9 @@ impl ReconcilerError for Error {
 
 const PROPERTIES_FILE: &str = "zoo.cfg";
 
-pub async fn reconcile_zk(
-    zk: Arc<ZookeeperCluster>,
-    ctx: Context<Ctx>,
-) -> Result<controller::Action> {
+pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
-    let client = &ctx.get_ref().client;
+    let client = &ctx.client;
 
     let validated_config = validate_all_roles_and_groups_config(
         zk_version(&zk)?,
@@ -225,7 +219,7 @@ pub async fn reconcile_zk(
             .into(),
         )
         .context(GenerateProductConfigSnafu)?,
-        &ctx.get_ref().product_config,
+        &ctx.product_config,
         false,
         false,
     )
@@ -733,6 +727,6 @@ pub fn zk_version(zk: &ZookeeperCluster) -> Result<&str> {
     zk.spec.version.as_deref().context(ObjectHasNoVersionSnafu)
 }
 
-pub fn error_policy(_error: &Error, _ctx: Context<Ctx>) -> controller::Action {
+pub fn error_policy(_error: &Error, _ctx: Arc<Ctx>) -> controller::Action {
     controller::Action::requeue(Duration::from_secs(5))
 }

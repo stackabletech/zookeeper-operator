@@ -4,6 +4,8 @@ mod utils;
 mod zk_controller;
 mod znode_controller;
 
+use std::sync::Arc;
+
 use crate::utils::Tokio01ExecutorExt;
 use clap::Parser;
 use futures::{compat::Future01CompatExt, StreamExt};
@@ -15,7 +17,7 @@ use stackable_operator::{
     },
     kube::{
         api::ListParams,
-        runtime::{controller::Context, reflector::ObjectRef, Controller},
+        runtime::{reflector::ObjectRef, Controller},
         CustomResourceExt,
     },
     logging::controller::report_controller_reconciled,
@@ -110,7 +112,7 @@ async fn main() -> anyhow::Result<()> {
                 .run(
                     zk_controller::reconcile_zk,
                     zk_controller::error_policy,
-                    Context::new(zk_controller::Ctx {
+                    Arc::new(zk_controller::Ctx {
                         client: client.clone(),
                         product_config,
                     }),
@@ -154,7 +156,7 @@ async fn main() -> anyhow::Result<()> {
                             .run_in_ctx(znode_controller::reconcile_znode(znode, ctx))
                     },
                     znode_controller::error_policy,
-                    Context::new(znode_controller::Ctx {
+                    Arc::new(znode_controller::Ctx {
                         client: client.clone(),
                     }),
                 )
