@@ -7,8 +7,11 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Operator-rs: 0.21.1 -> 0.22.0 ([#516]).
+- Include chart name when installing with a custom release name ([#517], [#518]).
 
 [#516]: https://github.com/stackabletech/zookeeper-operator/pull/516
+[#517]: https://github.com/stackabletech/zookeeper-operator/pull/517
+[#518]: https://github.com/stackabletech/zookeeper-operator/pull/518
 
 ## [0.10.0] - 2022-06-23
 
