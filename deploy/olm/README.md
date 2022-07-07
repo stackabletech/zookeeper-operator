@@ -43,3 +43,21 @@
 
     docker build .  -f catalog.Dockerfile -t docker.stackable.tech/stackable/zookeeper-operator-catalog:latest
     docker push docker.stackable.tech/stackable/zookeeper-operator-catalog:latest
+
+## Install catalog
+
+    kubectl apply -f - << EOF
+    apiVersion: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    metadata:
+    name: zookeeper-operator-catalog
+    namespace: openshift-operators
+    spec:
+    sourceType: grpc
+    image: docker.stackable.tech/stackable/zookeeper-operator-catalog:latest
+    displayName: Stackable Catalog
+    publisher: Me
+    updateStrategy:
+        registryPoll:
+        interval: 10m
+    EOF
