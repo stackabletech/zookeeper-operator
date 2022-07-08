@@ -27,14 +27,15 @@ It was tested with:
     $ opm version
     Version: version.Version{OpmVersion:"v1.23.2", GitCommit:"82505333", BuildDate:"2022-07-04T13:45:39Z", GoOs:"linux", GoArch:"amd64"}
 
-Questions:
+## Open questions
 
+- OLM [doesn't support DaemonSet(s)](https://github.com/operator-framework/operator-lifecycle-manager/issues/1022) and we need them for the secret-operator. Currently we can deploy the secret-operator using Helm but this means we cannot configure the [required](https://olm.operatorframework.io/docs/tasks/creating-operator-manifests/#required-apis) apis of the Zookeeper bundle. What are the consequences for publishing and certification ?
 - Here we create a catalog for a single operator. We probably want a catalog for all Stackable operators in the future but this will get large very quickly. Figure out how to handle this. Especially figure out what happens with new versions of the same operator.
 - OLM cannot create SecurityContextConstraints objects. The Zookeeper cluster (not the operator) cannot run with the default `restricted` SCC. The current solution is to use the `hostmount-anyuid` SCC for the `zookeeper-clusterrole`. Will this pass the certification process ?
 - Everything (catalog, subscription, etc) is installed in the `stackable-operators` namespace. Is this a good idea ?
 - The Subscription object uses `installPlanApproval: Automatic` which means the operator is updated automatically for every new version. Is this a good idea?
 
-[OLM documentation](https://olm.operatorframework.io/docs/tasks/)
+See the [OLM documentation](https://olm.operatorframework.io/docs/tasks/) for details.
 
 ## Build and publish operator bundle image
 
