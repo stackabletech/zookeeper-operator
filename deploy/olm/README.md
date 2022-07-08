@@ -36,7 +36,7 @@
     package: zookeeper-operator
     name: preview
     entries:
-    - name: zookeeper-operator.v0.1.0
+    - name: zookeeper-operator.v0.10.0
     EOF
 
     opm validate catalog
@@ -46,18 +46,13 @@
 
 ## Install catalog
 
-    kubectl apply -f - << EOF
-    apiVersion: operators.coreos.com/v1alpha1
-    kind: CatalogSource
-    metadata:
-    name: zookeeper-operator-catalog
-    namespace: openshift-operators
-    spec:
-    sourceType: grpc
-    image: docker.stackable.tech/stackable/zookeeper-operator-catalog:latest
-    displayName: Stackable Catalog
-    publisher: Me
-    updateStrategy:
-        registryPoll:
-        interval: 10m
-    EOF
+    kubectl apply -f catalog-source.yaml
+
+## List available operators
+
+    kubectl get packagemanifest -n stackable-operators
+
+## Install operator
+
+    kubectl apply -f operator-group.yaml
+    kubectl apply -f subscription.yaml

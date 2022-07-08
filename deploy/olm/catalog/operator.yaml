@@ -74,4 +74,4 @@ schema: olm.channel
 package: zookeeper-operator
 name: preview
 entries:
-  - name: zookeeper-operator.v0.1.0
+  - name: zookeeper-operator.v0.10.0
