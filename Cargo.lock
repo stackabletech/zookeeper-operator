@@ -812,7 +812,7 @@ dependencies = [
  "itoa",
  "pin-project-lite",
  "socket2",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tower-service",
  "tracing",
  "want",
@@ -831,7 +831,7 @@ dependencies = [
  "openssl",
  "openssl-sys",
  "parking_lot 0.12.1",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tokio-openssl",
  "tower-layer",
 ]
@@ -844,7 +844,7 @@ checksum = "bbb958482e8c7be4bc3cf272a766a2b0bf1a6755e7a6ae777f017a31d11b13b1"
 dependencies = [
  "hyper",
  "pin-project-lite",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tokio-io-timeout",
 ]
 
@@ -857,7 +857,7 @@ dependencies = [
  "bytes 1.1.0",
  "hyper",
  "native-tls",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tokio-native-tls",
 ]
 
@@ -1036,7 +1036,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "thiserror",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tokio-native-tls",
  "tokio-util",
  "tower",
@@ -1094,7 +1094,7 @@ dependencies = [
  "serde_json",
  "smallvec 1.9.0",
  "thiserror",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tokio-util",
  "tracing",
 ]
@@ -1412,7 +1412,7 @@ dependencies = [
  "pin-project",
  "rand",
  "thiserror",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tokio-stream",
 ]
 
@@ -1428,7 +1428,7 @@ dependencies = [
  "opentelemetry-semantic-conventions",
  "thiserror",
  "thrift",
- "tokio 1.19.2",
+ "tokio 1.20.0",
 ]
 
 [[package]]
@@ -2015,7 +2015,7 @@ dependencies = [
  "stackable-operator-derive",
  "strum",
  "thiserror",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
@@ -2063,7 +2063,7 @@ dependencies = [
  "stackable-zookeeper-crd",
  "strum",
  "tokio 0.1.22",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tokio-executor",
  "tokio-zookeeper",
  "tracing",
@@ -2252,10 +2252,11 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.19.2"
+version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c51a52ed6686dd62c320f9b89299e9dfb46f730c7a48e635c19f21d116cb1439"
+checksum = "57aec3cfa4c296db7255446efb4928a6be304b431a806216105542a67b6ca82e"
 dependencies = [
+ "autocfg",
  "bytes 1.1.0",
  "libc",
  "memchr",
@@ -2330,7 +2331,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30b74022ada614a1b4834de765f9bb43877f910cc8ce4be40e89042c9223a8bf"
 dependencies = [
  "pin-project-lite",
- "tokio 1.19.2",
+ "tokio 1.20.0",
 ]
 
 [[package]]
@@ -2351,7 +2352,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
 dependencies = [
  "native-tls",
- "tokio 1.19.2",
+ "tokio 1.20.0",
 ]
 
 [[package]]
@@ -2363,7 +2364,7 @@ dependencies = [
  "futures-util",
  "openssl",
  "openssl-sys",
- "tokio 1.19.2",
+ "tokio 1.20.0",
 ]
 
 [[package]]
@@ -2393,7 +2394,7 @@ checksum = "df54d54117d6fdc4e4fea40fe1e4e566b3505700e148a6827e59b34b0d2600d9"
 dependencies = [
  "futures-core",
  "pin-project-lite",
- "tokio 1.19.2",
+ "tokio 1.20.0",
 ]
 
 [[package]]
@@ -2493,7 +2494,7 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "slab",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tracing",
 ]
 
@@ -2530,7 +2531,7 @@ dependencies = [
  "futures-util",
  "pin-project",
  "pin-project-lite",
- "tokio 1.19.2",
+ "tokio 1.20.0",
  "tokio-util",
  "tower-layer",
  "tower-service",
