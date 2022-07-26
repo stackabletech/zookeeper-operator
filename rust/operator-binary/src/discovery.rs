@@ -25,7 +25,7 @@ pub enum Error {
     NoNamespace,
     #[snafu(display("failed to list expected pods"))]
     ExpectedPods {
-        source: stackable_zookeeper_crd::NoNamespaceError,
+        source: stackable_zookeeper_crd::ListPodsError,
     },
     #[snafu(display("could not find service port with name {}", port_name))]
     NoServicePort { port_name: String },

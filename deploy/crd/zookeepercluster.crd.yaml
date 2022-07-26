@@ -70,7 +70,16 @@ spec:
                           nullable: true
                           type: integer
                         resources:
-                          nullable: true
+                          default:
+                            memory:
+                              limit: ~
+                              runtimeLimits: {}
+                            cpu:
+                              min: ~
+                              max: ~
+                            storage:
+                              data:
+                                capacity: ~
                           properties:
                             cpu:
                               default:
@@ -187,7 +196,16 @@ spec:
                                 nullable: true
                                 type: integer
                               resources:
-                                nullable: true
+                                default:
+                                  memory:
+                                    limit: ~
+                                    runtimeLimits: {}
+                                  cpu:
+                                    min: ~
+                                    max: ~
+                                  storage:
+                                    data:
+                                      capacity: ~
                                 properties:
                                   cpu:
                                     default:

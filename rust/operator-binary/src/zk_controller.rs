@@ -15,10 +15,6 @@ use crate::{
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
-use stackable_operator::k8s_openapi::api::{
-    core::v1::ServiceAccount,
-    rbac::v1::{RoleRef, Subject},
-};
 use stackable_operator::{
     builder::{
         ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
@@ -44,6 +40,13 @@ use stackable_operator::{
     },
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     role_utils::RoleGroupRef,
+};
+use stackable_operator::{
+    config::fragment::ValidationError,
+    k8s_openapi::api::{
+        core::v1::{ResourceRequirements, ServiceAccount},
+        rbac::v1::{RoleRef, Subject},
+    },
 };
 use stackable_operator::{k8s_openapi::api::rbac::v1::RoleBinding, kube::ResourceExt};
 use stackable_zookeeper_crd::{
@@ -73,7 +76,16 @@ pub enum Error {
     NoServerRole,
     #[snafu(display("failed to calculate global service name"))]
     GlobalServiceNameNotFound,
-    #[snafu(display("failed to calculate service name for role {}", rolegroup))]
+    #[snafu(display("rolegroup {rolegroup} not found"))]
+    RoleGroupNotFound {
+        rolegroup: RoleGroupRef<ZookeeperCluster>,
+    },
+    #[snafu(display("failed to validate configuration of rolegroup {rolegroup}"))]
+    RoleGroupValidation {
+        rolegroup: RoleGroupRef<ZookeeperCluster>,
+        source: ValidationError,
+    },
+    #[snafu(display("failed to calculate service name for rolegroup {}", rolegroup))]
     RoleGroupServiceNameNotFound {
         rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
@@ -168,6 +180,8 @@ impl ReconcilerError for Error {
             Error::ObjectHasNoVersion => None,
             Error::NoServerRole => None,
             Error::GlobalServiceNameNotFound => None,
+            Error::RoleGroupNotFound { .. } => None,
+            Error::RoleGroupValidation { .. } => None,
             Error::RoleGroupServiceNameNotFound { .. } => None,
             Error::ApplyRoleService { .. } => None,
             Error::ApplyRoleGroupService { .. } => None,
@@ -264,33 +278,45 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(ApplyRoleServiceSnafu)?;
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
-        let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
+        let rolegroup_ref = zk.server_rolegroup_ref(rolegroup_name);
+        let (role, rolegroup) =
+            zk.rolegroup(&rolegroup_ref)
+                .with_context(|| RoleGroupNotFoundSnafu {
+                    rolegroup: rolegroup_ref.clone(),
+                })?;
+        let rolegroup_typed_config = rolegroup
+            .validate_config::<ZookeeperConfig>(role, &ZookeeperCluster::server_default_config())
+            .with_context(|_| RoleGroupValidationSnafu {
+                rolegroup: rolegroup_ref.clone(),
+            })?;
 
-        let rg_service = build_server_rolegroup_service(&rolegroup, &zk)?;
-        let rg_configmap = build_server_rolegroup_config_map(&rolegroup, &zk, rolegroup_config)?;
+        let rg_service = build_server_rolegroup_service(&rolegroup_ref, &zk)?;
+        let rg_configmap =
+            build_server_rolegroup_config_map(&rolegroup_ref, &zk, rolegroup_config)?;
         let rg_statefulset = build_server_rolegroup_statefulset(
-            &rolegroup,
+            &rolegroup_ref,
             &zk,
             rolegroup_config,
             client_authentication_class.as_ref(),
+            &rolegroup_typed_config,
         )?;
         client
             .apply_patch(FIELD_MANAGER_SCOPE, &rg_service, &rg_service)
             .await
             .with_context(|_| ApplyRoleGroupServiceSnafu {
-                rolegroup: rolegroup.clone(),
+                rolegroup: rolegroup_ref.clone(),
             })?;
         client
             .apply_patch(FIELD_MANAGER_SCOPE, &rg_configmap, &rg_configmap)
             .await
             .with_context(|_| ApplyRoleGroupConfigSnafu {
-                rolegroup: rolegroup.clone(),
+                rolegroup: rolegroup_ref.clone(),
             })?;
         client
             .apply_patch(FIELD_MANAGER_SCOPE, &rg_statefulset, &rg_statefulset)
             .await
             .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
-                rolegroup: rolegroup.clone(),
+                rolegroup: rolegroup_ref.clone(),
             })?;
     }
 
@@ -498,6 +524,7 @@ fn build_server_rolegroup_statefulset(
     zk: &ZookeeperCluster,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     client_authentication_class: Option<&AuthenticationClass>,
+    rolegroup_typed_config: &ZookeeperConfig,
 ) -> Result<StatefulSet> {
     let rolegroup = zk
         .spec
@@ -519,10 +546,12 @@ fn build_server_rolegroup_statefulset(
         })
         .collect::<Vec<_>>();
 
-    let (pvc, resources) = zk.resources(rolegroup_ref);
+    let resources = rolegroup_typed_config.resources.clone();
+    let pvcs = resources.storage.build_pvcs();
+    let container_resources: ResourceRequirements = resources.into();
     // set heap size if available
     let heap_limits = zk
-        .heap_limits(&resources)
+        .heap_limits(&container_resources)
         .context(InvalidJavaHeapConfigSnafu)?;
     if let Some(heap_limits) = heap_limits {
         env_vars.push(EnvVar {
@@ -599,7 +628,7 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
         .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
-        .resources(resources);
+        .resources(container_resources);
 
     if zk.is_client_secure() {
         container_zk.add_volume_mount("client-tls", CLIENT_TLS_DIR);
@@ -716,7 +745,7 @@ fn build_server_rolegroup_statefulset(
             },
             service_name: rolegroup_ref.object_name(),
             template: pod_builder,
-            volume_claim_templates: Some(pvc),
+            volume_claim_templates: Some(pvcs),
             ..StatefulSetSpec::default()
         }),
         status: None,
