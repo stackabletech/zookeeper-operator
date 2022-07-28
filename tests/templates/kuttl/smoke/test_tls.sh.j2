@@ -2,7 +2,12 @@
 # Usage: test_tls.sh namespace
 
 NAMESPACE=$1
+
+{% if test_scenario['values']['use-client-tls'] == 'true' %}
 SERVER="test-zk-server-primary-1.test-zk-server-primary.${NAMESPACE}.svc.cluster.local:2282"
+{% else %}
+SERVER="test-zk-server-primary-1.test-zk-server-primary.${NAMESPACE}.svc.cluster.local:2181"
+{% endif %}
 
 # just to be safe...
 unset QUORUM_STORE_SECRET
@@ -20,6 +25,7 @@ then
 fi
 echo "[SUCCESS] Unsecure client connection established!"
 
+{% if test_scenario['values']['use-client-tls'] == 'true' %}
 ############################################################################
 # We set the correct client tls credentials and expect to be able to connect
 ############################################################################
@@ -41,6 +47,7 @@ then
 fi
 echo "[SUCCESS] Secure and authenticated client connection established!"
 
+{% endif %}
 ############################################################################
 # We set the (wrong) quorum tls credentials and expect to fail (wrong certificate)
 ############################################################################
