@@ -32,7 +32,7 @@ const JVM_HEAP_FACTOR: f32 = 0.8;
 const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
 
 /// A cluster of ZooKeeper nodes
-#[derive(Clone, CustomResource, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[kube(
     group = "zookeeper.stackable.tech",
     version = "v1alpha1",
@@ -47,34 +47,39 @@ const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
         schemars = "stackable_operator::schemars"
     )
 )]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "camelCase")]
 pub struct ZookeeperClusterSpec {
     /// Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub stopped: Option<bool>,
     /// Desired ZooKeeper version
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    #[serde(
-        default = "global_config_default",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub config: Option<GlobalZookeeperConfig>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub servers: Option<Role<ZookeeperConfig>>,
 }
 
-#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+impl Default for ZookeeperClusterSpec {
+    fn default() -> Self {
+        Self {
+            config: Some(GlobalZookeeperConfig::default()),
+            stopped: Default::default(),
+            version: Default::default(),
+            servers: Default::default(),
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Debug, JsonSchema, PartialEq, Serialize)]
+#[serde(default, rename_all = "camelCase")]
 pub struct GlobalZookeeperConfig {
     /// Only affects client connections. This setting controls:
     /// - If TLS encryption is used at all
     /// - Which cert the servers should use to authenticate themselves against the client
     /// Defaults to `TlsSecretClass` { secret_class: "tls".to_string() }.
-    #[serde(
-        default = "tls_secret_class_default",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tls: Option<TlsSecretClass>,
     /// Only affects client connections. This setting controls:
     /// - If clients need to authenticate themselves against the server via TLS
@@ -86,18 +91,17 @@ pub struct GlobalZookeeperConfig {
     /// (mandatory). This setting controls:
     /// - Which cert the servers should use to authenticate themselves against other servers
     /// - Which ca.crt to use when validating the other server
-    #[serde(default = "quorum_tls_secret_class_default")]
     pub quorum_tls_secret_class: String,
 }
 
-fn global_config_default() -> Option<GlobalZookeeperConfig> {
-    Some(GlobalZookeeperConfig {
-        tls: Some(TlsSecretClass {
-            secret_class: TLS_DEFAULT_SECRET_CLASS.to_string(),
-        }),
-        client_authentication: None,
-        quorum_tls_secret_class: TLS_DEFAULT_SECRET_CLASS.to_string(),
-    })
+impl Default for GlobalZookeeperConfig {
+    fn default() -> Self {
+        Self {
+            tls: Some(TlsSecretClass::default()),
+            client_authentication: Default::default(),
+            quorum_tls_secret_class: TLS_DEFAULT_SECRET_CLASS.to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -106,14 +110,12 @@ pub struct TlsSecretClass {
     pub secret_class: String,
 }
 
-fn tls_secret_class_default() -> Option<TlsSecretClass> {
-    Some(TlsSecretClass {
-        secret_class: TLS_DEFAULT_SECRET_CLASS.to_string(),
-    })
-}
-
-fn quorum_tls_secret_class_default() -> String {
-    TLS_DEFAULT_SECRET_CLASS.to_string()
+impl Default for TlsSecretClass {
+    fn default() -> Self {
+        Self {
+            secret_class: TLS_DEFAULT_SECRET_CLASS.into(),
+        }
+    }
 }
 
 #[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -428,9 +430,8 @@ impl ZookeeperCluster {
         let spec: &ZookeeperClusterSpec = &self.spec;
         spec.config
             .as_ref()
-            .map(|c| c.quorum_tls_secret_class.as_ref())
-            .unwrap_or(TLS_DEFAULT_SECRET_CLASS)
-            .to_string()
+            .map(|c| c.quorum_tls_secret_class.to_owned())
+            .unwrap_or_default()
     }
 
     /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
@@ -589,8 +590,6 @@ mod tests {
               secretClass: simple-zookeeper-client-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
-
-        println!("{}", serde_yaml::to_string(&zookeeper).unwrap());
 
         assert_eq!(
             zookeeper.client_tls_secret_class().unwrap().secret_class,
