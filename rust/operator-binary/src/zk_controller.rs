@@ -652,7 +652,7 @@ fn build_server_rolegroup_statefulset(
         })
         .service_account_name(SERVICE_ACCOUNT);
 
-    if zk.is_client_secure() {
+    if let Some(secret) = zk.client_tls_secret_class() {
         let secret_class = if let Some(auth_class) = client_authentication_class {
             match &auth_class.spec.provider {
                 AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.clone(),
@@ -672,7 +672,7 @@ fn build_server_rolegroup_statefulset(
             VolumeBuilder::new("client-tls")
                 .ephemeral(
                     SecretOperatorVolumeSourceBuilder::new(
-                        secret_class.unwrap_or_else(|| zk.client_tls_secret_class()),
+                        secret_class.unwrap_or_else(|| secret.secret_class.clone()),
                     )
                     .with_node_scope()
                     .with_pod_scope()

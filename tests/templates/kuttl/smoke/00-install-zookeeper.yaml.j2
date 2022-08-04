@@ -5,10 +5,14 @@ metadata:
   name: test-zk
 spec:
   config:
+{% if test_scenario['values']['use-client-tls'] == 'true' %}
     tls:
       secretClass: tls
     clientAuthentication:
       authenticationClass: zk-client-tls
+{% else %}
+    tls: null
+{% endif %}
     quorumTlsSecretClass: tls
   servers:
     config:
@@ -36,6 +40,7 @@ spec:
                 capacity: '2Gi'
   version: {{ test_scenario['values']['zookeeper'] }}
   stopped: false
+{% if test_scenario['values']['use-client-tls'] == 'true' %}
 ---
 apiVersion: authentication.stackable.tech/v1alpha1
 kind: AuthenticationClass
@@ -58,6 +63,7 @@ spec:
           name: secret-provisioner-tls-zk-client-ca
           namespace: default
         autoGenerate: true
+{% endif %}
 ---
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperZnode
