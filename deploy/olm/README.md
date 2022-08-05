@@ -1,22 +1,31 @@
 # OLM installation files
 
-The following steps describe how to install the Stackable operator for Apache Zookeeper using the [Operator Lifecycle Manager](https://olm.operatorframework.io/).
+The following steps describe how to install the Stackable operator for Apache Zookeeper using the [Operator Lifecycle Manager](https://olm.operatorframework.io/) (OLM).
 
 It specifically installs the version 0.10.0 of the operator. Installing additional versions in the future requires generating new bundle images and updating the catalog as described below.
 
 ## Usage
 
-The operator is installed if the last paragraph in this document is successful.
+Prerequisite is of course a running OpenShift cluster.
 
-The `commons-operator` and `secret-operator` are **required** to manage Zookeeper clusters. They need to be installed using `helm` since it's not possible to install them with `olm`.
+First, install the operator using OLM:
 
-The `kuttl` tests don't work because they themselves require SCCs which are not available.
+    kubectl apply -f catalog-source.yaml \
+    -f operator-group.yaml \
+    -f subscription.yaml
 
-This was successfuly tested:
+Then, install the operator dependencies with Helm:
+
+    helm install secret-operator stackable/secret-operator
+    helm install commons-operator stackable/commons-operator
+
+And finally, create an Apache Zookeeper cluster:
 
     kubectl create -f examples/simple-zookeeper-cluster.yaml
 
-## Requirements
+NOTE: The `kuttl` tests don't work because they themselves require SCCs which are not available.
+
+## OLM packaging requirements
 
 - An [OpenShift](https://developers.redhat.com/products/openshift-local/overview) cluster.
 - [opm](https://github.com/operator-framework/operator-registry/)
