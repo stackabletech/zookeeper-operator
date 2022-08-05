@@ -4,6 +4,18 @@ The following steps describe how to install the Stackable operator for Apache Zo
 
 It specifically installs the version 0.10.0 of the operator. Installing additional versions in the future requires generating new bundle images and updating the catalog as described below.
 
+## Usage
+
+The operator is installed if the last paragraph in this document is successful.
+
+The `commons-operator` and `secret-operator` are **required** to manage Zookeeper clusters. They need to be installed using `helm` since it's not possible to install them with `olm`.
+
+The `kuttl` tests don't work because they themselves require SCCs which are not available.
+
+This was successfuly tested:
+
+    kubectl create -f examples/simple-zookeeper-cluster.yaml
+
 ## Requirements
 
 - An [OpenShift](https://developers.redhat.com/products/openshift-local/overview) cluster.
