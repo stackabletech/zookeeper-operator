@@ -1,16 +1,15 @@
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperConfig, CLIENT_TLS_DIR, QUORUM_TLS_DIR, STACKABLE_CONFIG_DIR,
-    STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
+    ZookeeperCluster, ZookeeperConfig, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, QUORUM_TLS_DIR,
+    QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
+    SYSTEM_TRUST_STORE_DIR,
 };
 
 const STORE_PASSWORD_ENV: &str = "STORE_PASSWORD";
 
 pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
-    let mut args = vec![];
-
-    // copy config files to a writeable empty folder in order to set key and
-    // truststore passwords in the initcontainer via script
-    args.extend(vec![
+    let mut args = vec![
+        // copy config files to a writeable empty folder in order to set key and
+        // truststore passwords in the init container via script
         format!(
             "echo copying {conf} to {rw_conf}",
             conf = STACKABLE_CONFIG_DIR,
@@ -21,43 +20,50 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
             conf = STACKABLE_CONFIG_DIR,
             rw_conf = STACKABLE_RW_CONFIG_DIR
         ),
-    ]);
+    ];
 
     // Quorum
     args.push(generate_password());
-    args.extend(create_key_and_trust_store_cmd(QUORUM_TLS_DIR));
+    args.extend(create_key_and_trust_store_cmd(
+        QUORUM_TLS_MOUNT_DIR,
+        QUORUM_TLS_DIR,
+        "quorum-tls",
+    ));
     args.extend(vec![
         write_store_password_to_config(ZookeeperConfig::SSL_QUORUM_KEY_STORE_PASSWORD),
         write_store_password_to_config(ZookeeperConfig::SSL_QUORUM_TRUST_STORE_PASSWORD),
     ]);
+    chown_and_chmod(QUORUM_TLS_DIR);
 
-    // Client
-    if zk.is_client_secure() {
+    // client-tls and client-auth-tls (only the certificates specified are accepted)
+    if zk.tls_enabled() {
         args.push(generate_password());
-        args.extend(create_key_and_trust_store_cmd(CLIENT_TLS_DIR));
+
+        // only copy system truststore if client tls enabled and no client auth specified
+        if zk.client_tls_secret_class().is_some() && zk.client_tls_authentication_class().is_none()
+        {
+            args.push(format!("keytool -importkeystore -srckeystore {SYSTEM_TRUST_STORE_DIR} -srcstoretype jks -srcstorepass changeit -destkeystore {CLIENT_TLS_DIR}/truststore.p12 -deststoretype pkcs12 -deststorepass ${STORE_PASSWORD_ENV} -noprompt"));
+        }
+
+        args.extend(create_key_and_trust_store_cmd(
+            CLIENT_TLS_MOUNT_DIR,
+            CLIENT_TLS_DIR,
+            "client-tls",
+        ));
 
         args.extend(vec![
             write_store_password_to_config(ZookeeperConfig::SSL_KEY_STORE_PASSWORD),
             write_store_password_to_config(ZookeeperConfig::SSL_TRUST_STORE_PASSWORD),
         ]);
+        chown_and_chmod(CLIENT_TLS_DIR);
     }
 
-    args.extend([
-        format!("chown stackable:stackable {dir}", dir = STACKABLE_DATA_DIR),
-        format!("chmod a=,u=rwX {dir}", dir = STACKABLE_DATA_DIR),
-        format!(
-            "chown -R stackable:stackable {rwconf_directory}",
-            rwconf_directory = STACKABLE_RW_CONFIG_DIR
-        ),
-        format!(
-            "chmod -R a=,u=rwX {rwconf_directory}",
-            rwconf_directory = STACKABLE_RW_CONFIG_DIR
-        ),
-        format!(
-            "expr $MYID_OFFSET + $(echo $POD_NAME | sed 's/.*-//') > {dir}/myid",
-            dir = STACKABLE_DATA_DIR
-        ),
-    ]);
+    args.extend(chown_and_chmod(STACKABLE_DATA_DIR));
+    args.extend(chown_and_chmod(STACKABLE_RW_CONFIG_DIR));
+    args.push(format!(
+        "expr $MYID_OFFSET + $(echo $POD_NAME | sed 's/.*-//') > {dir}/myid",
+        dir = STACKABLE_DATA_DIR
+    ));
 
     args.join(" && ")
 }
@@ -77,26 +83,34 @@ fn write_store_password_to_config(property: &str) -> String {
     )
 }
 
-/// Generates the shell script to create key and truststores from the certificates provided
+/// Generates the shell script to create key and trust stores from the certificates provided
 /// by the secret operator
-fn create_key_and_trust_store_cmd(directory: &str) -> Vec<String> {
+fn create_key_and_trust_store_cmd(
+    mount_directory: &str,
+    stackable_directory: &str,
+    alias_name: &str,
+) -> Vec<String> {
     vec![
-        format!("echo [{dir}] Storing password", dir = directory),
-        format!("echo ${STORE_PASSWORD_ENV} > {dir}/password", dir = directory),
-        format!("echo [{dir}] Cleaning up truststore - just in case", dir = directory),
-        format!("rm -f {dir}/truststore.p12",  dir = directory),
-        format!("echo [{dir}] Creating truststore", dir = directory),
-        format!("keytool -importcert -file {dir}/ca.crt -keystore {dir}/truststore.p12 -storetype pkcs12 -noprompt -alias ca_cert -storepass ${STORE_PASSWORD_ENV}", dir = directory),
-        format!("echo [{dir}] Creating certificate chain", dir = directory),
-        format!("cat {dir}/ca.crt {dir}/tls.crt > {dir}/chain.crt", dir = directory),
-        format!("echo [{dir}] Creating keystore", dir = directory),
-        format!("openssl pkcs12 -export -in {dir}/chain.crt -inkey {dir}/tls.key -out {dir}/keystore.p12 --passout file:{dir}/password",
-                 dir = directory),
-        format!("echo [{dir}] Cleaning up password", dir = directory),
-        format!("rm -f {dir}/password", dir = directory),
-        format!("echo [{dir}] Chowning store directory", dir = directory),
+        format!("echo [{stackable_directory}] Storing password"),
+        format!("echo ${STORE_PASSWORD_ENV} > {stackable_directory}/password"),
+        format!("echo [{stackable_directory}] Cleaning up truststore - just in case"),
+        format!("rm -f {stackable_directory}/truststore.p12"),
+        format!("echo [{stackable_directory}] Creating truststore"),
+        format!("keytool -importcert -file {mount_directory}/ca.crt -keystore {stackable_directory}/truststore.p12 -storetype pkcs12 -noprompt -alias {alias_name} -storepass ${STORE_PASSWORD_ENV}"),
+        format!("echo [{stackable_directory}] Creating certificate chain"),
+        format!("cat {mount_directory}/ca.crt {mount_directory}/tls.crt > {stackable_directory}/chain.crt"),
+        format!("echo [{stackable_directory}] Creating keystore"),
+        format!("openssl pkcs12 -export -in {stackable_directory}/chain.crt -inkey {mount_directory}/tls.key -out {stackable_directory}/keystore.p12 --passout file:{stackable_directory}/password"),
+        format!("echo [{stackable_directory}] Cleaning up password"),
+        format!("rm -f {stackable_directory}/password"),
+    ]
+}
+
+/// Generates a shell script to chown and chmod the provided directory.
+fn chown_and_chmod(directory: &str) -> Vec<String> {
+    vec![
+        format!("echo chown and chmod {dir}", dir = directory),
         format!("chown -R stackable:stackable {dir}", dir = directory),
-        format!("echo [{dir}] Chmodding store directory", dir = directory),
         format!("chmod -R a=,u=rwX {dir}", dir = directory),
     ]
 }
