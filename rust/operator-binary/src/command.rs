@@ -33,7 +33,7 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
         write_store_password_to_config(ZookeeperConfig::SSL_QUORUM_KEY_STORE_PASSWORD),
         write_store_password_to_config(ZookeeperConfig::SSL_QUORUM_TRUST_STORE_PASSWORD),
     ]);
-    chown_and_chmod(QUORUM_TLS_DIR);
+    args.extend(chown_and_chmod(QUORUM_TLS_DIR));
 
     // client-tls and client-auth-tls (only the certificates specified are accepted)
     if zk.tls_enabled() {
@@ -55,7 +55,7 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
             write_store_password_to_config(ZookeeperConfig::SSL_KEY_STORE_PASSWORD),
             write_store_password_to_config(ZookeeperConfig::SSL_TRUST_STORE_PASSWORD),
         ]);
-        chown_and_chmod(CLIENT_TLS_DIR);
+        args.extend(chown_and_chmod(CLIENT_TLS_DIR));
     }
 
     args.extend(chown_and_chmod(STACKABLE_DATA_DIR));
