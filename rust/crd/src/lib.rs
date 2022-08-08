@@ -577,6 +577,10 @@ mod tests {
             zookeeper.client_tls_secret_class().unwrap().secret_class,
             TLS_DEFAULT_SECRET_CLASS.to_string()
         );
+        assert_eq!(
+            zookeeper.quorum_tls_secret_class(),
+            TLS_DEFAULT_SECRET_CLASS.to_string()
+        );
 
         let input = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -595,6 +599,10 @@ mod tests {
             zookeeper.client_tls_secret_class().unwrap().secret_class,
             "simple-zookeeper-client-tls".to_string()
         );
+        assert_eq!(
+            zookeeper.quorum_tls_secret_class(),
+            TLS_DEFAULT_SECRET_CLASS
+        );
 
         let input = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -608,6 +616,10 @@ mod tests {
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(zookeeper.client_tls_secret_class(), None);
+        assert_eq!(
+            zookeeper.quorum_tls_secret_class(),
+            TLS_DEFAULT_SECRET_CLASS.to_string()
+        );
 
         let input = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -623,6 +635,10 @@ mod tests {
         assert_eq!(
             zookeeper.client_tls_secret_class().unwrap().secret_class,
             TLS_DEFAULT_SECRET_CLASS.to_string()
+        );
+        assert_eq!(
+            zookeeper.quorum_tls_secret_class(),
+            "simple-zookeeper-quorum-tls"
         );
     }
 
@@ -641,6 +657,10 @@ mod tests {
             zookeeper.quorum_tls_secret_class(),
             TLS_DEFAULT_SECRET_CLASS.to_string()
         );
+        assert_eq!(
+            zookeeper.client_tls_secret_class().unwrap().secret_class,
+            TLS_DEFAULT_SECRET_CLASS
+        );
 
         let input = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -656,6 +676,10 @@ mod tests {
         assert_eq!(
             zookeeper.quorum_tls_secret_class(),
             "simple-zookeeper-quorum-tls".to_string()
+        );
+        assert_eq!(
+            zookeeper.client_tls_secret_class().unwrap().secret_class,
+            TLS_DEFAULT_SECRET_CLASS
         );
 
         let input = r#"
@@ -673,6 +697,10 @@ mod tests {
         assert_eq!(
             zookeeper.quorum_tls_secret_class(),
             TLS_DEFAULT_SECRET_CLASS.to_string()
+        );
+        assert_eq!(
+            zookeeper.client_tls_secret_class().unwrap().secret_class,
+            "simple-zookeeper-client-tls"
         );
     }
 }
