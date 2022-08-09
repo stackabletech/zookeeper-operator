@@ -5,5 +5,7 @@ metadata:
   name: test-regorule
 commands:
   - script: kubectl exec -n $NAMESPACE zk-test-helper-0 -- bash -c "source /tmp/venv/bin/activate && python /tmp/test_zookeeper.py -n $NAMESPACE"
-  - script: kubectl exec -n $NAMESPACE test-zk-server-primary-0 -- /tmp/test_tls.sh $NAMESPACE
   - script: kubectl exec -n $NAMESPACE test-zk-server-primary-0 -- /tmp/test_heap.sh
+{% if test_scenario['values']['use-client-auth-tls'] == 'true' or test_scenario['values']['use-client-tls'] == 'true' %}
+  - script: kubectl exec -n $NAMESPACE test-zk-server-primary-0 -- /tmp/test_tls.sh $NAMESPACE
+{% endif %}

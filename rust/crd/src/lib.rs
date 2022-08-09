@@ -292,7 +292,7 @@ impl Configuration for ZookeeperConfig {
                 "client.portUnification".to_string(),
                 Some("true".to_string()),
             );
-            // TODO: Remove clientPort and portUnification in favor of secureClientPort once the bug is fixed
+            // TODO: Remove clientPort and portUnification (above) in favor of secureClientPort once the bug is fixed
             // result.insert(
             //     Self::SECURE_CLIENT_PORT.to_string(),
             //     Some(resource.client_port().to_string()),

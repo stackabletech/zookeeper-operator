@@ -9,11 +9,14 @@ All notable changes to this project will be documented in this file.
 - Operator-rs: 0.21.1 -> 0.22.0 ([#516]).
 - Include chart name when installing with a custom release name ([#517], [#518]).
 - Fixed bug where client TLS could not be disabled ([#529]).
+- Switched init container to tools image ([#xxx]).
+- Fixed client authentication. Now only the provided secretClass is eligible. Split up tls (client/quorum) dirs into separate directories and create key/truststores in different directory ([#xxx]).
 
 [#516]: https://github.com/stackabletech/zookeeper-operator/pull/516
 [#517]: https://github.com/stackabletech/zookeeper-operator/pull/517
 [#518]: https://github.com/stackabletech/zookeeper-operator/pull/518
 [#529]: https://github.com/stackabletech/zookeeper-operator/pull/529
+[#xxx]: https://github.com/stackabletech/zookeeper-operator/pull/xxx
 
 ## [0.10.0] - 2022-06-23
 
