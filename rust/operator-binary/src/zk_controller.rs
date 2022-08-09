@@ -693,14 +693,14 @@ fn tls_volume_mounts(
                 client_cert_secret_class: Some(secret_class),
             }) => {
                 // mounts for secret volume
-                cb_prepare.add_volume_mount("client-tls-mount", CLIENT_TLS_MOUNT_DIR);
-                cb_zookeeper.add_volume_mount("client-tls-mount", CLIENT_TLS_MOUNT_DIR);
-                pod_builder.add_volume(create_tls_volume("client-tls-mount", secret_class));
+                cb_prepare.add_volume_mount("client-tls-auth-mount", CLIENT_TLS_MOUNT_DIR);
+                cb_zookeeper.add_volume_mount("client-tls-auth-mount", CLIENT_TLS_MOUNT_DIR);
+                pod_builder.add_volume(create_tls_volume("client-tls-auth-mount", secret_class));
                 // empty mount for trust and keystore
-                cb_prepare.add_volume_mount("client-tls", CLIENT_TLS_DIR);
-                cb_zookeeper.add_volume_mount("client-tls", CLIENT_TLS_DIR);
+                cb_prepare.add_volume_mount("client-tls-auth", CLIENT_TLS_DIR);
+                cb_zookeeper.add_volume_mount("client-tls-auth", CLIENT_TLS_DIR);
                 pod_builder.add_volume(
-                    VolumeBuilder::new("client-tls")
+                    VolumeBuilder::new("client-tls-auth")
                         .with_empty_dir(Some(""), None)
                         .build(),
                 );

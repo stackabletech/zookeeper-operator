@@ -39,17 +39,17 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
     if zk.tls_enabled() {
         args.push(generate_password());
 
-        // only copy system truststore if client tls enabled and no client auth specified
-        if zk.client_tls_secret_class().is_some() && zk.client_tls_authentication_class().is_none()
-        {
-            args.push(format!("keytool -importkeystore -srckeystore {SYSTEM_TRUST_STORE_DIR} -srcstoretype jks -srcstorepass changeit -destkeystore {CLIENT_TLS_DIR}/truststore.p12 -deststoretype pkcs12 -deststorepass ${STORE_PASSWORD_ENV} -noprompt"));
-        }
-
         args.extend(create_key_and_trust_store_cmd(
             CLIENT_TLS_MOUNT_DIR,
             CLIENT_TLS_DIR,
             "client-tls",
         ));
+
+        // only copy system truststore if client tls enabled and no client auth specified
+        if zk.client_tls_secret_class().is_some() && zk.client_tls_authentication_class().is_none()
+        {
+            args.push(format!("keytool -importkeystore -srckeystore {SYSTEM_TRUST_STORE_DIR} -srcstoretype jks -srcstorepass changeit -destkeystore {CLIENT_TLS_DIR}/truststore.p12 -deststoretype pkcs12 -deststorepass ${STORE_PASSWORD_ENV} -noprompt"));
+        }
 
         args.extend(vec![
             write_store_password_to_config(ZookeeperConfig::SSL_KEY_STORE_PASSWORD),
@@ -91,8 +91,6 @@ fn create_key_and_trust_store_cmd(
     alias_name: &str,
 ) -> Vec<String> {
     vec![
-        format!("echo [{stackable_directory}] Storing password"),
-        format!("echo ${STORE_PASSWORD_ENV} > {stackable_directory}/password"),
         format!("echo [{stackable_directory}] Cleaning up truststore - just in case"),
         format!("rm -f {stackable_directory}/truststore.p12"),
         format!("echo [{stackable_directory}] Creating truststore"),
@@ -100,16 +98,14 @@ fn create_key_and_trust_store_cmd(
         format!("echo [{stackable_directory}] Creating certificate chain"),
         format!("cat {mount_directory}/ca.crt {mount_directory}/tls.crt > {stackable_directory}/chain.crt"),
         format!("echo [{stackable_directory}] Creating keystore"),
-        format!("openssl pkcs12 -export -in {stackable_directory}/chain.crt -inkey {mount_directory}/tls.key -out {stackable_directory}/keystore.p12 --passout file:{stackable_directory}/password"),
-        format!("echo [{stackable_directory}] Cleaning up password"),
-        format!("rm -f {stackable_directory}/password"),
+        format!("openssl pkcs12 -export -in {stackable_directory}/chain.crt -inkey {mount_directory}/tls.key -out {stackable_directory}/keystore.p12 --passout pass:${STORE_PASSWORD_ENV}"),
     ]
 }
 
 /// Generates a shell script to chown and chmod the provided directory.
 fn chown_and_chmod(directory: &str) -> Vec<String> {
     vec![
-        format!("echo chown and chmod {dir}", dir = directory),
+        format!("echo [{dir}] chown and chmod", dir = directory),
         format!("chown -R stackable:stackable {dir}", dir = directory),
         format!("chmod -R a=,u=rwX {dir}", dir = directory),
     ]
