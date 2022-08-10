@@ -688,24 +688,11 @@ fn tls_volume_mounts(
     cb_zookeeper: &mut ContainerBuilder,
     client_authentication_class: Option<&AuthenticationClass>,
 ) -> Result<()> {
-    if let Some(auth_class) = client_authentication_class {
+    let tls_secret_class = if let Some(auth_class) = client_authentication_class {
         match &auth_class.spec.provider {
             AuthenticationClassProvider::Tls(TlsAuthenticationProvider {
                 client_cert_secret_class: Some(secret_class),
-            }) => {
-                // mounts for secret volume
-                cb_prepare.add_volume_mount("client-tls-auth-mount", CLIENT_TLS_MOUNT_DIR);
-                cb_zookeeper.add_volume_mount("client-tls-auth-mount", CLIENT_TLS_MOUNT_DIR);
-                pod_builder.add_volume(create_tls_volume("client-tls-auth-mount", secret_class));
-                // empty mount for trust and keystore
-                cb_prepare.add_volume_mount("client-tls-auth", CLIENT_TLS_DIR);
-                cb_zookeeper.add_volume_mount("client-tls-auth", CLIENT_TLS_DIR);
-                pod_builder.add_volume(
-                    VolumeBuilder::new("client-tls-auth")
-                        .with_empty_dir(Some(""), None)
-                        .build(),
-                );
-            }
+            }) => Some(secret_class),
             _ => {
                 return Err(Error::AuthenticationMethodNotSupported {
                     authentication_class: ObjectRef::from_obj(auth_class),
@@ -715,13 +702,16 @@ fn tls_volume_mounts(
             }
         }
     } else if let Some(client_tls) = zk.client_tls_secret_class() {
+        Some(&client_tls.secret_class)
+    } else {
+        None
+    };
+
+    if let Some(secret_class) = tls_secret_class {
         // mounts for secret volume
         cb_prepare.add_volume_mount("client-tls-mount", CLIENT_TLS_MOUNT_DIR);
         cb_zookeeper.add_volume_mount("client-tls-mount", CLIENT_TLS_MOUNT_DIR);
-        pod_builder.add_volume(create_tls_volume(
-            "client-tls-mount",
-            &client_tls.secret_class,
-        ));
+        pod_builder.add_volume(create_tls_volume("client-tls-mount", secret_class));
         // empty mount for trust and keystore
         cb_prepare.add_volume_mount("client-tls", CLIENT_TLS_DIR);
         cb_zookeeper.add_volume_mount("client-tls", CLIENT_TLS_DIR);
