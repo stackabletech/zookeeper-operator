@@ -701,10 +701,9 @@ fn tls_volume_mounts(
                 })
             }
         }
-    } else if let Some(client_tls) = zk.client_tls_secret_class() {
-        Some(&client_tls.secret_class)
     } else {
-        None
+        zk.client_tls_secret_class()
+            .map(|client_tls| &client_tls.secret_class)
     };
 
     if let Some(secret_class) = tls_secret_class {
