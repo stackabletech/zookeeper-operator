@@ -499,9 +499,6 @@ fn build_server_rolegroup_statefulset(
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     client_authentication_class: Option<&AuthenticationClass>,
 ) -> Result<StatefulSet> {
-    let mut cb_prepare = ContainerBuilder::new("prepare");
-    let mut cb_zookeeper = ContainerBuilder::new(APP_NAME);
-    let mut pod_builder = PodBuilder::new();
     let zk_version = zk_version(zk)?;
 
     let rolegroup = zk
@@ -535,6 +532,10 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         });
     }
+
+    let mut cb_prepare = ContainerBuilder::new("prepare");
+    let mut cb_zookeeper = ContainerBuilder::new(APP_NAME);
+    let mut pod_builder = PodBuilder::new();
 
     // add volumes and mounts depending on tls / auth settings
     tls_volume_mounts(
