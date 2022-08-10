@@ -36,7 +36,7 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
     args.extend(chown_and_chmod(QUORUM_TLS_DIR));
 
     // client-tls and client-auth-tls (only the certificates specified are accepted)
-    if zk.tls_enabled() {
+    if zk.client_tls_enabled() {
         args.push(generate_password());
 
         args.extend(create_key_and_trust_store_cmd(

@@ -259,7 +259,7 @@ impl Configuration for ZookeeperConfig {
         );
 
         // Client TLS
-        if resource.tls_enabled() {
+        if resource.client_tls_enabled() {
             // We set only the clientPort and portUnification here because otherwise there is a port bind exception
             // See: https://issues.apache.org/jira/browse/ZOOKEEPER-4276
             // --> Normally we would like to only set the secureClientPort (check out commented code below)
@@ -402,7 +402,7 @@ impl ZookeeperCluster {
     }
 
     pub fn client_port(&self) -> u16 {
-        if self.tls_enabled() {
+        if self.client_tls_enabled() {
             SECURE_CLIENT_PORT
         } else {
             CLIENT_PORT
@@ -416,7 +416,7 @@ impl ZookeeperCluster {
     }
 
     /// Checks if we should use TLS to encrypt client connections.
-    pub fn tls_enabled(&self) -> bool {
+    pub fn client_tls_enabled(&self) -> bool {
         self.client_tls_secret_class().is_some() || self.client_tls_authentication_class().is_some()
     }
 
