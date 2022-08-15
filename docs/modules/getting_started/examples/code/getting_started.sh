@@ -21,13 +21,18 @@ helm repo add stackable-dev https://repo.stackable.tech/repository/helm-dev/
 # end::helm-add-repo[]
 echo "Installing Operators with Helm"
 # tag::helm-install-operators[]
+helm install --wait commons-operator stackable-dev/commons-operator --version 0.3.0-nightly
+helm install --wait secret-operator stackable-dev/secret-operator --version 0.6.0-nightly
 helm install --wait zookeeper-operator stackable-dev/zookeeper-operator --version 0.11.0-nightly
 # end::helm-install-operators[]
 ;;
 "stackablectl")
 echo "installing Operators with stackablectl"
 # tag::stackablectl-install-operators[]
-stackablectl operator install zookeeper=0.11.0-nightly
+stackablectl operator install \
+  commons=0.3.0-nightly \
+  secret=0.6.0-nightly \
+  zookeeper=0.11.0-nightly
 # end::stackablectl-install-operators[]
 ;;
 *)
@@ -36,3 +41,18 @@ exit 1
 ;;
 esac
 
+echo "Creating ZooKeeper cluster"
+# tag::install-zookeeper[]
+kubectl apply -f zookeeper.yaml
+# end::install-zookeeper[]
+
+sleep 5
+
+echo "Awaiting ZooKeeper rollout finish"
+# tag::watch-zookeeper-rollout[]
+kubectl rollout status --watch statefulset/simple-zk-server-default
+# end::watch-zookeeper-rollout[]
+
+# TODO ping zookeeper here to see if it's there
+
+# TODO create a ZNode (explain what it is) and check if its there

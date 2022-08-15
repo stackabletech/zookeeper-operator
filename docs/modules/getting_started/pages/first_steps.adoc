@@ -1,1 +1,10 @@
 = First steps
+
+[source,yaml]
+include::example$code/zookeeper.yaml[]
+
+
+[source,bash]
+include::example$code/getting_started.sh[tag=install-zookeeper]
+
+== Verify
