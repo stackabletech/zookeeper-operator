@@ -1,10 +1,79 @@
 = First steps
 
+Now that the operator is installed it is time to deploy a ZooKeeper cluster and connect to it.
+
+== Deploy ZooKeeper
+
+The ZooKeeper cluster is deployed with a very simple resource definition. Create a file called `zookeeper.yaml`:
+
 [source,yaml]
 include::example$code/zookeeper.yaml[]
 
-
+and apply it:
 [source,bash]
 include::example$code/getting_started.sh[tag=install-zookeeper]
 
-== Verify
+The operator will create a ZooKeeper cluster with two replicas. Use kubectl to observe the status of the cluster:
+
+[source,bash]
+include::example$code/getting_started.sh[tag=watch-zookeeper-rollout]
+
+The Operator deploys readiness probes to make sure the replicas are in quorum. Only then will the StefulSet actually be marked as `Ready`. You will see
+
+----
+partitioned roll out complete: 2 new pods have been updated...
+----
+
+== Connect to the cluster
+
+The ZooKeeper cluster is up and running.
+To connect to it from outside of the cluster, forward the port:
+
+[source,bash]
+kubectl port-forward svc/simple-zk 2282
+
+Now use `zkCli.sh` to connect:
+
+[source,bash]
+zkCli.sh --silent -server localhost:2282
+
+You will see a prompt, showing that the connection was successful:
+
+[source]
+----
+[zk: localhost:2282(CONNECTED) 0]
+----
+
+Now run the command `ls /` and you will see:
+
+[source]
+----
+[zookeeper]
+----
+
+
+== Set up a ZNode
+
+ZooKeeper manages its data in a hierarchical node system. A xref:ROOT:znodes.adoc[ZNode] is similar to a directory or folder in a file system. You should always use a dedicated ZNode per application that is using ZooKeeper.
+
+ZNodes are created with manifest files too, of the kind ZookeeperZnode. Create a file called `znode.yaml` with the following contents:
+
+[source,yaml]
+include::example$code/znode.yaml[]
+
+And apply it:
+
+[source,bash]
+include::example$code/getting_started.sh[tag=apply-znode]
+
+Now run `ls /` in `zkCli.sh` again and the ZNode has appeared in the output:
+
+----
+[znode-4e0a6098-057a-42cc-926e-276ea6305e09, zookeeper]
+----
+
+Great! This step concludes the Getting started guide. You have installed the ZooKeeper Operator and it's dependencies and set up your first ZooKeeper cluster as well as your first ZNode.
+
+== What's next
+
+Have a look at the xref:ROOT:usage.adoc[] page to learn more about configuration options for you ZooKeeper cluster like setting up encryption or authentication. You can also have a look at the xref:ROOT:znodes.adoc[] page to learn more about ZNodes.

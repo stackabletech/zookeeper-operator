@@ -53,6 +53,8 @@ echo "Awaiting ZooKeeper rollout finish"
 kubectl rollout status --watch statefulset/simple-zk-server-default
 # end::watch-zookeeper-rollout[]
 
-# TODO ping zookeeper here to see if it's there
 
-# TODO create a ZNode (explain what it is) and check if its there
+echo "Applying ZNode"
+# tag::apply-znode[]
+kubectl apply -f znode.yaml
+# end::apply-znode[]

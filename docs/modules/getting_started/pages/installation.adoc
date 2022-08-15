@@ -6,9 +6,9 @@ On this page you will install the Stackable ZooKeeper Operator.
 
 There are 2 ways to run Stackable Operators
 
-1. Using xref:stackablectl::index.adoc[]
+1. Using xref:stackablectl::index.adoc[] (recommended)
 
-1. Using Helm
+2. Using Helm
 
 === stackablectl
 
@@ -32,13 +32,13 @@ TIP: Consult the xref:stackablectl::quickstart.adoc[] to learn more about how to
 
 === Helm
 
-You can also use Helm to install the Operator. Add the Stackable Helm repository:
+You can also use Helm to install the Operators. Add the Stackable Helm repository:
 [source,bash]
 ----
 include::example$code/getting_started.sh[tag=helm-add-repo]
 ----
 
-Then install the Stackable Operator:
+Then install the Stackable Operators:
 [source,bash]
 ----
 include::example$code/getting_started.sh[tag=helm-install-operators]
@@ -48,4 +48,4 @@ Helm will deploy the Operators in a Kubernetes Deployment and apply the CRDs for
 
 == What's next
 
-TODO
+xref:first_steps.adoc[Set up a ZooKeeper cluster].
