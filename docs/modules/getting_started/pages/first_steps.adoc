@@ -24,27 +24,16 @@ The Operator deploys readiness probes to make sure the replicas are in quorum. O
 partitioned roll out complete: 2 new pods have been updated...
 ----
 
-== Connect to the cluster
+The ZooKeeper is now ready.
 
-The ZooKeeper cluster is up and running.
-To connect to it from outside of the cluster, forward the port:
+== List nodes
 
-[source,bash]
-kubectl port-forward svc/simple-zk 2282
-
-Now use `zkCli.sh` to connect:
+ZooKeeper manages its data in a hierarchical node system. You can look at the nodes using the zkCli tool. It is included inside of Stackable ZooKeeper container, and you can invoke it using `kubectl run`:
 
 [source,bash]
-zkCli.sh --silent -server localhost:2282
+include::example$code/getting_started.sh[tag=zkcli-ls]
 
-You will see a prompt, showing that the connection was successful:
-
-[source]
-----
-[zk: localhost:2282(CONNECTED) 0]
-----
-
-Now run the command `ls /` and you will see:
+Among log output you will see the current list of nodes in `/`:
 
 [source]
 ----
@@ -54,8 +43,7 @@ Now run the command `ls /` and you will see:
 
 == Set up a ZNode
 
-ZooKeeper manages its data in a hierarchical node system. A xref:ROOT:znodes.adoc[ZNode] is similar to a directory or folder in a file system. You should always use a dedicated ZNode per application that is using ZooKeeper.
-
+It is useful to use different nodes for different applications using ZooKeeper, and the Stackable Operator uses xref:ROOT:znodes.adoc[ZNodes] for this.
 ZNodes are created with manifest files too, of the kind ZookeeperZnode. Create a file called `znode.yaml` with the following contents:
 
 [source,yaml]
@@ -66,7 +54,12 @@ And apply it:
 [source,bash]
 include::example$code/getting_started.sh[tag=apply-znode]
 
-Now run `ls /` in `zkCli.sh` again and the ZNode has appeared in the output:
+Use the same command as before to list the nodes:
+
+[source,bash]
+include::example$code/getting_started.sh[tag=zkcli-ls]
+
+and the ZNode has appeared in the output:
 
 ----
 [znode-4e0a6098-057a-42cc-926e-276ea6305e09, zookeeper]

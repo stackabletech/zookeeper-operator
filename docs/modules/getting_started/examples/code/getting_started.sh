@@ -48,13 +48,39 @@ kubectl apply -f zookeeper.yaml
 
 sleep 5
 
+### Connect to cluster
+
 echo "Awaiting ZooKeeper rollout finish"
 # tag::watch-zookeeper-rollout[]
 kubectl rollout status --watch statefulset/simple-zk-server-default
 # end::watch-zookeeper-rollout[]
 
+zkCli_ls() {
+# tag::zkcli-ls[]
+kubectl run my-pod \
+  --stdin --tty --quiet --rm --restart=Never \
+  --image docker.stackable.tech/stackable/zookeeper:3.8.0-stackable0.7.1 -- \
+  bin/zkCli.sh -server simple-zk-server-default:2282 ls /
+# end::zkcli-ls[]
+}
+
+if zkCli_ls | grep '^\[zookeeper\]$'; then
+  echo "works"
+else
+  echo "doesn't work"
+fi
+
+### ZNode
 
 echo "Applying ZNode"
 # tag::apply-znode[]
 kubectl apply -f znode.yaml
 # end::apply-znode[]
+
+sleep 5
+
+if zkCli_ls | grep '^\[znode-.\{8\}-.\{4\}-.\{4\}-.\{4\}-.\{12\}, zookeeper\]$'; then
+  echo "works"
+else
+  echo "doesn't work"
+fi

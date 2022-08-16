@@ -8,7 +8,6 @@ You will need:
 
 * a Kubernetes cluster
 * kubectl
-* the `zkCli.sh` script to interact with the ZooKeeper cluster
 * optional: Helm
 
 == What's next
