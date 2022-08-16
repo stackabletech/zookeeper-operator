@@ -9,11 +9,13 @@ All notable changes to this project will be documented in this file.
 - Operator-rs: 0.21.1 -> 0.22.0 ([#516]).
 - Include chart name when installing with a custom release name ([#517], [#518]).
 - Fixed bug where client TLS could not be disabled ([#529]).
+- Replaced python image with testing-tools image for integration tests ([#535]).
 
 [#516]: https://github.com/stackabletech/zookeeper-operator/pull/516
 [#517]: https://github.com/stackabletech/zookeeper-operator/pull/517
 [#518]: https://github.com/stackabletech/zookeeper-operator/pull/518
 [#529]: https://github.com/stackabletech/zookeeper-operator/pull/529
+[#535]: https://github.com/stackabletech/zookeeper-operator/pull/535
 
 ## [0.10.0] - 2022-06-23
 
