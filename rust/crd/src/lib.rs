@@ -76,7 +76,7 @@ impl Default for ZookeeperClusterSpec {
     }
 }
 
-#[derive(Clone, Deserialize, Debug, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct GlobalZookeeperConfig {
     /// Only affects client connections. This setting controls:
@@ -108,7 +108,7 @@ impl Default for GlobalZookeeperConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TlsSecretClass {
     pub secret_class: String,
@@ -122,7 +122,7 @@ impl Default for TlsSecretClass {
     }
 }
 
-#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientAuthenticationClass {
     pub authentication_class: String,
@@ -334,7 +334,7 @@ pub enum ZookeeperRole {
     Server,
 }
 
-#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterStatus {
     /// An opaque value that changes every time a discovery detail does

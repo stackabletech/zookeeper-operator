@@ -11,12 +11,14 @@ All notable changes to this project will be documented in this file.
 - Fixed bug where client TLS could not be disabled ([#529]).
 - Switched init container to tools image ([#533]).
 - Fixed client authentication. Now only the provided secretClass is eligible. Split up tls (client/quorum) dirs into separate directories and create key/truststores in different directory ([#533]).
+- Replaced python image with testing-tools image for integration tests ([#535]).
 
 [#516]: https://github.com/stackabletech/zookeeper-operator/pull/516
 [#517]: https://github.com/stackabletech/zookeeper-operator/pull/517
 [#518]: https://github.com/stackabletech/zookeeper-operator/pull/518
 [#529]: https://github.com/stackabletech/zookeeper-operator/pull/529
 [#533]: https://github.com/stackabletech/zookeeper-operator/pull/533
+[#535]: https://github.com/stackabletech/zookeeper-operator/pull/535
 
 ## [0.10.0] - 2022-06-23
 
