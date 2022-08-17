@@ -10,8 +10,13 @@ dimensions:
     values:
       - "true"
       - "false"
+  - name: use-client-auth-tls
+    values:
+      - "true"
+      - "false"
 tests:
   - name: smoke
     dimensions:
       - zookeeper
       - use-client-tls
+      - use-client-auth-tls
