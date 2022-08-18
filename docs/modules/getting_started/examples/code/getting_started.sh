@@ -55,6 +55,7 @@ echo "Awaiting ZooKeeper rollout finish"
 kubectl rollout status --watch statefulset/simple-zk-server-default
 # end::watch-zookeeper-rollout[]
 
+# NOTE: This command sporadically fails in kind. It works well in other k8s implementations.
 zkCli_ls() {
 # tag::zkcli-ls[]
 kubectl run my-pod \
@@ -64,10 +65,15 @@ kubectl run my-pod \
 # end::zkcli-ls[]
 }
 
-if zkCli_ls | grep '^\[zookeeper\]$'; then
-  echo "works"
+ls_result=$(zkCli_ls) >/dev/null 2>&1
+
+
+if echo "$ls_result" | grep '^\[zookeeper\]' > /dev/null; then
+  echo "zkCli.sh ls command worked"
 else
-  echo "doesn't work"
+  echo "zkCli.sh ls command did not work. command output:"
+  echo "$ls_result"
+  exit 1
 fi
 
 ### ZNode
@@ -79,8 +85,36 @@ kubectl apply -f znode.yaml
 
 sleep 5
 
-if zkCli_ls | grep '^\[znode-.\{8\}-.\{4\}-.\{4\}-.\{4\}-.\{12\}, zookeeper\]$'; then
-  echo "works"
+ls_result=$(zkCli_ls) > /dev/null 2>&1
+
+if echo "$ls_result" | grep '^\[znode-.\{8\}-.\{4\}-.\{4\}-.\{4\}-.\{12\}, zookeeper\]' > /dev/null; then
+  echo "zkCli.sh ls command worked"
 else
-  echo "doesn't work"
+  echo "zkCli.sh ls command did not work. command output:"
+  echo "$ls_result"
+  exit 1
 fi
+
+get_configmap() {
+# tag::get-znode-cm
+kubectl describe configmap simple-znode
+# end::get-znode-cm
+}
+
+cm_output=$(get_configmap)
+
+if [[ $? == 0 ]]; then
+  echo "ConfigMap retrieved."
+else
+  echo "Could not get ConfigMap 'simple-znode'"
+  exit 1
+fi
+
+if echo "$cm_output" | grep 2282/znode > /dev/null; then
+  echo "ConfigMap contains a reference of the ZNode"
+else
+  echo "ConfigMap doesn't seem to reference the ZNode"
+  exit 1
+fi
+
+echo "Script ran successfully!"

@@ -26,7 +26,7 @@ partitioned roll out complete: 2 new pods have been updated...
 
 The ZooKeeper is now ready.
 
-== List nodes
+== Deploy a ZNode
 
 ZooKeeper manages its data in a hierarchical node system. You can look at the nodes using the zkCli tool. It is included inside of Stackable ZooKeeper container, and you can invoke it using `kubectl run`:
 
@@ -40,8 +40,7 @@ Among log output you will see the current list of nodes in `/`:
 [zookeeper]
 ----
 
-
-== Set up a ZNode
+The `zookeeper` node contains ZooKeeper configuration data.
 
 It is useful to use different nodes for different applications using ZooKeeper, and the Stackable Operator uses xref:ROOT:znodes.adoc[ZNodes] for this.
 ZNodes are created with manifest files too, of the kind ZookeeperZnode. Create a file called `znode.yaml` with the following contents:
@@ -64,6 +63,30 @@ and the ZNode has appeared in the output:
 ----
 [znode-4e0a6098-057a-42cc-926e-276ea6305e09, zookeeper]
 ----
+
+== The discovery ConfigMap
+
+The operator creates a ConfigMap with connection information that has the same name as the ZNode - in this case `simple-znode`. Have a look at it using
+
+[source,bash]
+kubectl describe configmap simple-znode
+
+You will get output similar to this:
+
+[source]
+ZOOKEEPER:
+----
+simple-zk-server-default-0.simple-zk-server-default.default.svc.cluster.local:2282,simple-zk-server-default-1.simple-zk-server-default.default.svc.cluster.local:2282/znode-2a9d12be-bfee-49dc-9030-2cb3c3dd80d3
+ZOOKEEPER_CHROOT:
+----
+/znode-2a9d12be-bfee-49dc-9030-2cb3c3dd80d3
+ZOOKEEPER_HOSTS:
+----
+simple-zk-server-default-0.simple-zk-server-default.default.svc.cluster.local:2282,simple-zk-server-default-1.simple-zk-server-default.default.svc.cluster.local:2282
+
+The `ZOOKEEPER` entry contains a ZooKeeper connection string that you can use to connect to this specific ZNode.
+The `ZOOKEEPER_CHROOT` and `ZOOKEEPER_HOSTS` entries contain the node name and hosts list respectively. You can use these three entries mounted into a pod to connect to ZooKeeper at this specific ZNode and read/write configation in that ZNode.
+
 
 Great! This step concludes the Getting started guide. You have installed the ZooKeeper Operator and it's dependencies and set up your first ZooKeeper cluster as well as your first ZNode.
 
