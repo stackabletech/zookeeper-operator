@@ -1,6 +1,6 @@
 = Getting started
 
-This guide will get you started with ZooKeeper using the Stackable Operator. It will guide you through the installation of the Operator and its dependencies, setting up your first ZooKeeper cluster and connecting to it, and setting up your first Znode.
+This guide will get you started with Apache ZooKeeper using the Stackable Operator. It will guide you through the installation of the Operator and its dependencies, setting up your first ZooKeeper cluster and connecting to it as well as setting up your first xref:ROOT:znodes.adoc[ZNode].
 
 == Prerequisites
 
