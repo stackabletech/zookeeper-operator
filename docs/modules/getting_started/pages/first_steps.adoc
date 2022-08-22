@@ -24,7 +24,7 @@ The Operator deploys readiness probes to make sure the replicas are ready and es
 partitioned roll out complete: 2 new pods have been updated...
 ----
 
-The ZooKeeper is now ready.
+The ZooKeeper cluster is now ready.
 
 == Deploy a ZNode
 
