@@ -35,7 +35,7 @@ include::example$code/getting_started.sh[tag=zkcli-ls]
 
 NOTE: You might wonder why the logs are used instead of the output from `kubectl run`. This is because `kubectl run` sometimes loses lines of the output, a link:https://github.com/kubernetes/kubernetes/issues/27264[known issue].
 
-Among log output you will see the current list of nodes in `/`:
+Among the log output you will see the current list of nodes in the root directory `/`:
 
 [source]
 ----
