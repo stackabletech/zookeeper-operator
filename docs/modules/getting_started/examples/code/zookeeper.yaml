@@ -8,4 +8,4 @@ spec:
   servers:
     roleGroups:
       default:
-        replicas: 2
+        replicas: 3
