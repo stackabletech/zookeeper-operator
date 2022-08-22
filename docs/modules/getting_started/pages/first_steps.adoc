@@ -18,7 +18,7 @@ The operator will create a ZooKeeper cluster with two replicas. Use kubectl to o
 [source,bash]
 include::example$code/getting_started.sh[tag=watch-zookeeper-rollout]
 
-The Operator deploys readiness probes to make sure the replicas are in quorum. Only then will the StefulSet actually be marked as `Ready`. You will see
+The Operator deploys readiness probes to make sure the replicas are ready and established a quorum. Only then will the StefulSet actually be marked as `Ready`. You will see
 
 ----
 partitioned roll out complete: 2 new pods have been updated...
