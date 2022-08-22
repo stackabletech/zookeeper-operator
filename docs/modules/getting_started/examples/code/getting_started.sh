@@ -54,7 +54,8 @@ echo "Awaiting ZooKeeper rollout finish"
 kubectl rollout status --watch statefulset/simple-zk-server-default
 # end::watch-zookeeper-rollout[]
 
-# NOTE: This command sporadically fails in kind. It works well in other k8s implementations.
+# kubectl run sometimes misses log output, which is why we use run/logs/delete.
+# Issue for reference: https://github.com/kubernetes/kubernetes/issues/27264
 zkCli_ls() {
 # tag::zkcli-ls[]
 kubectl run my-pod \
