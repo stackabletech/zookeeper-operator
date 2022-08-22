@@ -5,7 +5,6 @@ set -euo pipefail
 # to test if the instructions in the guide work. The user *could* use it, but it is intended
 # for testing only.
 # The script will install the operator(s), create a product instance and interact with it.
-# No running processes are left behind (i.e. the port-forwarding is closed at the end)
 
 if [ $# -eq 0 ]
 then
