@@ -58,9 +58,11 @@ kubectl rollout status --watch statefulset/simple-zk-server-default
 zkCli_ls() {
 # tag::zkcli-ls[]
 kubectl run my-pod \
-  --stdin --tty --quiet --rm --restart=Never \
+  --stdin --tty --quiet --restart=Never \
   --image docker.stackable.tech/stackable/zookeeper:3.8.0-stackable0.7.1 -- \
-  bin/zkCli.sh -server simple-zk-server-default:2282 ls /
+  bin/zkCli.sh -server simple-zk-server-default:2282 ls / > /dev/null && \
+  kubectl logs my-pod && \
+  kubectl delete pods my-pod
 # end::zkcli-ls[]
 }
 

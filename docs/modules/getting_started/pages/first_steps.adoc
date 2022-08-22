@@ -33,6 +33,8 @@ ZooKeeper manages its data in a hierarchical node system. You can look at the no
 [source,bash]
 include::example$code/getting_started.sh[tag=zkcli-ls]
 
+NOTE: You might wonder why the logs are used instead of the output from `kubectl run`. This is because `kubectl run` sometimes loses lines of the output, a link:https://github.com/kubernetes/kubernetes/issues/27264[known issue].
+
 Among log output you will see the current list of nodes in `/`:
 
 [source]
