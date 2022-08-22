@@ -43,7 +43,7 @@ Among log output you will see the current list of nodes in `/`:
 The `zookeeper` node contains ZooKeeper configuration data.
 
 It is useful to use different nodes for different applications using ZooKeeper, and the Stackable Operator uses xref:ROOT:znodes.adoc[ZNodes] for this.
-ZNodes are created with manifest files too, of the kind ZookeeperZnode. Create a file called `znode.yaml` with the following contents:
+ZNodes are created with manifest files of the kind `ZookeeperZnode`. Create a file called `znode.yaml` with the following contents:
 
 [source,yaml]
 include::example$code/znode.yaml[]
