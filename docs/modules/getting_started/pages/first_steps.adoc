@@ -73,7 +73,7 @@ The operator creates a ConfigMap with connection information that has the same n
 [source,bash]
 kubectl describe configmap simple-znode
 
-You will get output similar to this:
+You will see an output similar to this:
 
 [source]
 ZOOKEEPER:
