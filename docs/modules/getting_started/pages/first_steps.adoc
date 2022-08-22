@@ -28,7 +28,7 @@ The ZooKeeper cluster is now ready.
 
 == Deploy a ZNode
 
-ZooKeeper manages its data in a hierarchical node system. You can look at the nodes using the zkCli tool. It is included inside of Stackable ZooKeeper container, and you can invoke it using `kubectl run`:
+ZooKeeper manages its data in a hierarchical node system. You can look at the nodes using the zkCli tool. It is included inside the Stackable ZooKeeper container, and you can invoke it using `kubectl run`:
 
 [source,bash]
 include::example$code/getting_started.sh[tag=zkcli-ls]
