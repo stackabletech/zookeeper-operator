@@ -1,7 +1,6 @@
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperConfig, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, QUORUM_TLS_DIR,
     QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
-    SYSTEM_TRUST_STORE_DIR,
 };
 
 const STORE_PASSWORD_ENV: &str = "STORE_PASSWORD";
@@ -44,12 +43,6 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
             CLIENT_TLS_DIR,
             "client-tls",
         ));
-
-        // only copy system truststore if client tls enabled and no client auth specified
-        if zk.client_tls_secret_class().is_some() && zk.client_tls_authentication_class().is_none()
-        {
-            args.push(format!("keytool -importkeystore -srckeystore {SYSTEM_TRUST_STORE_DIR} -srcstoretype jks -srcstorepass changeit -destkeystore {CLIENT_TLS_DIR}/truststore.p12 -deststoretype pkcs12 -deststorepass ${STORE_PASSWORD_ENV} -noprompt"));
-        }
 
         args.extend(vec![
             write_store_password_to_config(ZookeeperConfig::SSL_KEY_STORE_PASSWORD),
