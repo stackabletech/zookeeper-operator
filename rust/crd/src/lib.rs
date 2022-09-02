@@ -25,8 +25,12 @@ pub const METRICS_PORT: u16 = 9505;
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
-pub const QUORUM_TLS_DIR: &str = "/stackable/tls/quorum";
-pub const CLIENT_TLS_DIR: &str = "/stackable/tls/client";
+
+pub const QUORUM_TLS_DIR: &str = "/stackable/quorum_tls";
+pub const QUORUM_TLS_MOUNT_DIR: &str = "/stackable/quorum_tls_mount";
+pub const CLIENT_TLS_DIR: &str = "/stackable/client_tls";
+pub const CLIENT_TLS_MOUNT_DIR: &str = "/stackable/client_tls_mount";
+pub const SYSTEM_TRUST_STORE_DIR: &str = "/etc/pki/java/cacerts";
 
 const JVM_HEAP_FACTOR: f32 = 0.8;
 const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
@@ -98,7 +102,7 @@ impl Default for GlobalZookeeperConfig {
     fn default() -> Self {
         Self {
             tls: Some(TlsSecretClass::default()),
-            client_authentication: Default::default(),
+            client_authentication: None,
             quorum_tls_secret_class: TLS_DEFAULT_SECRET_CLASS.to_string(),
         }
     }
@@ -255,7 +259,7 @@ impl Configuration for ZookeeperConfig {
         );
 
         // Client TLS
-        if resource.is_client_secure() {
+        if resource.client_tls_enabled() {
             // We set only the clientPort and portUnification here because otherwise there is a port bind exception
             // See: https://issues.apache.org/jira/browse/ZOOKEEPER-4276
             // --> Normally we would like to only set the secureClientPort (check out commented code below)
@@ -288,7 +292,7 @@ impl Configuration for ZookeeperConfig {
                 "client.portUnification".to_string(),
                 Some("true".to_string()),
             );
-            // TODO: Remove clientPort and portUnification in favor of secureClientPort once the bug is fixed
+            // TODO: Remove clientPort and portUnification (above) in favor of secureClientPort once the bug is fixed
             // result.insert(
             //     Self::SECURE_CLIENT_PORT.to_string(),
             //     Some(resource.client_port().to_string()),
@@ -398,7 +402,7 @@ impl ZookeeperCluster {
     }
 
     pub fn client_port(&self) -> u16 {
-        if self.is_client_secure() {
+        if self.client_tls_enabled() {
             SECURE_CLIENT_PORT
         } else {
             CLIENT_PORT
@@ -412,25 +416,25 @@ impl ZookeeperCluster {
     }
 
     /// Checks if we should use TLS to encrypt client connections.
-    pub fn is_client_secure(&self) -> bool {
-        self.client_tls_secret_class().is_some()
+    pub fn client_tls_enabled(&self) -> bool {
+        self.client_tls_secret_class().is_some() || self.client_tls_authentication_class().is_some()
     }
 
     /// Returns the authentication class used for client authentication
-    pub fn client_tls_authentication_class(&self) -> Option<String> {
+    pub fn client_tls_authentication_class(&self) -> Option<&str> {
         let spec: &ZookeeperClusterSpec = &self.spec;
         spec.config
             .as_ref()
             .and_then(|c| c.client_authentication.as_ref())
-            .map(|tls| tls.authentication_class.clone())
+            .map(|tls| tls.authentication_class.as_ref())
     }
 
     /// Returns the secret class for internal server encryption
-    pub fn quorum_tls_secret_class(&self) -> String {
+    pub fn quorum_tls_secret_class(&self) -> &str {
         let spec: &ZookeeperClusterSpec = &self.spec;
         spec.config
             .as_ref()
-            .map(|c| c.quorum_tls_secret_class.to_owned())
+            .map(|c| c.quorum_tls_secret_class.as_ref())
             .unwrap_or_default()
     }
 
@@ -577,6 +581,10 @@ mod tests {
             zookeeper.client_tls_secret_class().unwrap().secret_class,
             TLS_DEFAULT_SECRET_CLASS.to_string()
         );
+        assert_eq!(
+            zookeeper.quorum_tls_secret_class(),
+            TLS_DEFAULT_SECRET_CLASS.to_string()
+        );
 
         let input = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -595,6 +603,10 @@ mod tests {
             zookeeper.client_tls_secret_class().unwrap().secret_class,
             "simple-zookeeper-client-tls".to_string()
         );
+        assert_eq!(
+            zookeeper.quorum_tls_secret_class(),
+            TLS_DEFAULT_SECRET_CLASS
+        );
 
         let input = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -608,6 +620,10 @@ mod tests {
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(zookeeper.client_tls_secret_class(), None);
+        assert_eq!(
+            zookeeper.quorum_tls_secret_class(),
+            TLS_DEFAULT_SECRET_CLASS.to_string()
+        );
 
         let input = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -623,6 +639,10 @@ mod tests {
         assert_eq!(
             zookeeper.client_tls_secret_class().unwrap().secret_class,
             TLS_DEFAULT_SECRET_CLASS.to_string()
+        );
+        assert_eq!(
+            zookeeper.quorum_tls_secret_class(),
+            "simple-zookeeper-quorum-tls"
         );
     }
 
@@ -641,6 +661,10 @@ mod tests {
             zookeeper.quorum_tls_secret_class(),
             TLS_DEFAULT_SECRET_CLASS.to_string()
         );
+        assert_eq!(
+            zookeeper.client_tls_secret_class().unwrap().secret_class,
+            TLS_DEFAULT_SECRET_CLASS
+        );
 
         let input = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -656,6 +680,10 @@ mod tests {
         assert_eq!(
             zookeeper.quorum_tls_secret_class(),
             "simple-zookeeper-quorum-tls".to_string()
+        );
+        assert_eq!(
+            zookeeper.client_tls_secret_class().unwrap().secret_class,
+            TLS_DEFAULT_SECRET_CLASS
         );
 
         let input = r#"
@@ -673,6 +701,10 @@ mod tests {
         assert_eq!(
             zookeeper.quorum_tls_secret_class(),
             TLS_DEFAULT_SECRET_CLASS.to_string()
+        );
+        assert_eq!(
+            zookeeper.client_tls_secret_class().unwrap().secret_class,
+            "simple-zookeeper-client-tls"
         );
     }
 }

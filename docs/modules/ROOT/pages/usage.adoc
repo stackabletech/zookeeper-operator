@@ -2,7 +2,10 @@
 
 If you are not installing the operator using Helm then after installation the CRD for this operator must be created:
 
-    kubectl apply -f /etc/stackable/zookeeper-operator/crd/zookeepercluster.crd.yaml
+[source]
+----
+kubectl apply -f /etc/stackable/zookeeper-operator/crd/zookeepercluster.crd.yaml
+----
 
 To create a three-node Apache ZooKeeper cluster you can use the example shown below.
 
@@ -49,7 +52,7 @@ Finally, a ConfigMap is created, containing a path that a ZooKeeper client can c
 
 == Encryption
 
-The quorum and client communication are encrypted by default via TLS. This requires the https://github.com/stackabletech/secret-operator[Secret Operator] to be present in order to provide certificates. The utilized certificates can be changed in a top-level config.
+The quorum and client communication are encrypted by default via TLS. This requires the xref:secret-operator::index.adoc[Secret Operator] to be present in order to provide certificates. The utilized certificates can be changed in a top-level config.
 
 [source,yaml]
 ----
@@ -58,7 +61,7 @@ include::example$example-cluster-tls-encryption.yaml[]
 <1> The `tls.secretClass` refers to the client-to-server encryption. Defaults to the `tls` secret.
 <2> The `quorumTlsSecretClass` refers to the server-to-server quorum encryption. Defaults to the `tls` secret.
 
-The `tls` secret is deployed from the https://github.com/stackabletech/secret-operator[Secret Operator] and looks like this:
+The `tls` secret is deployed from the xref:secret-operator::index.adoc[Secret Operator] and looks like this:
 
 [source,yaml]
 ----
@@ -69,7 +72,7 @@ You can create your own secrets and reference them e.g. in the `tls.secretClass`
 
 == Authentication
 
-The quorum or server-to-server communication is authenticated via TLS per default. In order to enforce TLS authentication for client-to-server communication, you can set an `AuthenticationClass` reference in the custom resource provided by the https://github.com/stackabletech/commons-operator[Commons Operator].
+The quorum or server-to-server communication is authenticated via TLS per default. In order to enforce TLS authentication for client-to-server communication, you can set an `AuthenticationClass` reference in the custom resource provided by the xref:commons-operator::index.adoc[Commons Operator].
 
 [source,yaml]
 ----
@@ -81,6 +84,8 @@ include::example$example-cluster-tls-authentication-secret.yaml[]
 <2> The referenced `AuthenticationClass` that references a `SecretClass` to provide certificates.
 <3> The reference to a `SecretClass`.
 <4> The `SecretClass` that is referenced by the `AuthenticationClass` in order to provide certificates.
+
+If both `spec.config.tls.secretClass` and `spec.config.clientAuthentication.authenticationClass` are set, the authentication class will take precedence over the secret class. The cluster will be encrypted and authenticate only against the authentication class.
 
 WARNING: Due to a https://issues.apache.org/jira/browse/ZOOKEEPER-4276[bug] in ZooKeeper, the `clientPort` property in combination with `client.portUnification=true` is used instead of the `secureClientPort`. This means that unencrypted and unauthenticated access to the ZooKeeper cluster is still possible.
 

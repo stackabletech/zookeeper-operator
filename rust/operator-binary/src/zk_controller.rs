@@ -1,13 +1,4 @@
 //! Ensures that `Pod`s are configured and running for each [`ZookeeperCluster`]
-
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-    hash::Hasher,
-    sync::Arc,
-    time::Duration,
-};
-
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
@@ -15,24 +6,24 @@ use crate::{
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
-use stackable_operator::k8s_openapi::api::{
-    core::v1::ServiceAccount,
-    rbac::v1::{RoleRef, Subject},
-};
 use stackable_operator::{
     builder::{
         ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
-        SecretOperatorVolumeSourceBuilder, VolumeBuilder,
+        SecretOperatorVolumeSourceBuilder, SecurityContextBuilder, VolumeBuilder,
     },
-    commons::authentication::{AuthenticationClass, AuthenticationClassProvider},
+    commons::{
+        authentication::{AuthenticationClass, AuthenticationClassProvider},
+        tls::TlsAuthenticationProvider,
+    },
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, SecurityContext,
-                Service, ServicePort, ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service,
+                ServiceAccount, ServicePort, ServiceSpec, Volume,
             },
+            rbac::v1::{RoleRef, Subject},
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
     },
@@ -48,7 +39,15 @@ use stackable_operator::{
 use stackable_operator::{k8s_openapi::api::rbac::v1::RoleBinding, kube::ResourceExt};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR,
-    QUORUM_TLS_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
+    CLIENT_TLS_MOUNT_DIR, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR,
+    STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
+};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+    hash::Hasher,
+    sync::Arc,
+    time::Duration,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
@@ -230,14 +229,15 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
+    // TODO: switch to AuthenticationClass::resolve if operator-rs is updated to 0.24.0
     let client_authentication_class = if let Some(auth_class) = zk.client_tls_authentication_class()
     {
         Some(
             client
-                .get::<AuthenticationClass>(&auth_class, None) // AuthenticationClass has ClusterScope
+                .get::<AuthenticationClass>(auth_class, None) // AuthenticationClass has ClusterScope
                 .await
                 .context(AuthenticationClassRetrievalSnafu {
-                    authentication_class: ObjectRef::<AuthenticationClass>::new(&auth_class),
+                    authentication_class: ObjectRef::<AuthenticationClass>::new(auth_class),
                 })?,
         )
     } else {
@@ -499,6 +499,8 @@ fn build_server_rolegroup_statefulset(
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     client_authentication_class: Option<&AuthenticationClass>,
 ) -> Result<StatefulSet> {
+    let zk_version = zk_version(zk)?;
+
     let rolegroup = zk
         .spec
         .servers
@@ -506,8 +508,7 @@ fn build_server_rolegroup_statefulset(
         .context(NoServerRoleSnafu)?
         .role_groups
         .get(&rolegroup_ref.role_group);
-    let zk_version = zk_version(zk)?;
-    let image = format!("docker.stackable.tech/stackable/zookeeper:{}", zk_version);
+
     let mut env_vars = server_config
         .get(&PropertyNameKind::Env)
         .into_iter()
@@ -532,9 +533,21 @@ fn build_server_rolegroup_statefulset(
         });
     }
 
-    let mut container_prepare = ContainerBuilder::new("prepare");
-    container_prepare
-        .image(&image)
+    let mut cb_prepare = ContainerBuilder::new("prepare");
+    let mut cb_zookeeper = ContainerBuilder::new(APP_NAME);
+    let mut pod_builder = PodBuilder::new();
+
+    // add volumes and mounts depending on tls / auth settings
+    tls_volume_mounts(
+        zk,
+        &mut pod_builder,
+        &mut cb_prepare,
+        &mut cb_zookeeper,
+        client_authentication_class,
+    )?;
+
+    let container_prepare = cb_prepare
+        .image("docker.stackable.tech/stackable/tools:0.2.0-stackable0.3.0")
         .command(vec!["sh".to_string(), "-c".to_string()])
         .args(vec![create_init_container_command_args(zk)])
         .add_env_vars(env_vars.clone())
@@ -550,23 +563,16 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         }])
         .add_volume_mount("data", STACKABLE_DATA_DIR)
-        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
-        .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR);
+        .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .security_context(SecurityContextBuilder::run_as_root())
+        .build();
 
-    if zk.is_client_secure() {
-        container_prepare.add_volume_mount("client-tls", CLIENT_TLS_DIR);
-    }
-
-    let mut container_prepare = container_prepare.build();
-    container_prepare
-        .security_context
-        .get_or_insert_with(SecurityContext::default)
-        .run_as_user = Some(0);
-
-    let mut container_zk = ContainerBuilder::new("zookeeper");
-    container_zk
-        .image(image)
+    let container_zk = cb_zookeeper
+        .image(format!(
+            "docker.stackable.tech/stackable/zookeeper:{}",
+            zk_version
+        ))
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
@@ -598,17 +604,10 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
-        .add_volume_mount("quorum-tls", QUORUM_TLS_DIR)
-        .resources(resources);
+        .resources(resources)
+        .build();
 
-    if zk.is_client_secure() {
-        container_zk.add_volume_mount("client-tls", CLIENT_TLS_DIR);
-    }
-
-    let container_zk = container_zk.build();
-
-    let mut pod_builder = PodBuilder::new();
-    pod_builder
+    let pod_template = pod_builder
         .metadata_builder(|m| {
             m.with_recommended_labels(
                 zk,
@@ -636,53 +635,12 @@ fn build_server_rolegroup_statefulset(
             name: "rwconfig".to_string(),
             ..Volume::default()
         })
-        .add_volume(
-            VolumeBuilder::new("quorum-tls")
-                .ephemeral(
-                    SecretOperatorVolumeSourceBuilder::new(zk.quorum_tls_secret_class())
-                        .with_node_scope()
-                        .with_pod_scope()
-                        .build(),
-                )
-                .build(),
-        )
         .security_context(PodSecurityContext {
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(SERVICE_ACCOUNT);
-
-    if let Some(secret) = zk.client_tls_secret_class() {
-        let secret_class = if let Some(auth_class) = client_authentication_class {
-            match &auth_class.spec.provider {
-                AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.clone(),
-                _ => {
-                    return Err(Error::AuthenticationMethodNotSupported {
-                        authentication_class: ObjectRef::from_obj(auth_class),
-                        supported: vec!["tls".to_string()],
-                        method: auth_class.spec.provider.to_string(),
-                    })
-                }
-            }
-        } else {
-            None
-        };
-
-        pod_builder.add_volume(
-            VolumeBuilder::new("client-tls")
-                .ephemeral(
-                    SecretOperatorVolumeSourceBuilder::new(
-                        secret_class.unwrap_or_else(|| secret.secret_class.clone()),
-                    )
-                    .with_node_scope()
-                    .with_pod_scope()
-                    .build(),
-                )
-                .build(),
-        );
-    }
-
-    let pod_builder = pod_builder.build_template();
+        .service_account_name(SERVICE_ACCOUNT)
+        .build_template();
 
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
@@ -715,12 +673,83 @@ fn build_server_rolegroup_statefulset(
                 ..LabelSelector::default()
             },
             service_name: rolegroup_ref.object_name(),
-            template: pod_builder,
+            template: pod_template,
             volume_claim_templates: Some(pvc),
             ..StatefulSetSpec::default()
         }),
         status: None,
     })
+}
+
+fn tls_volume_mounts(
+    zk: &ZookeeperCluster,
+    pod_builder: &mut PodBuilder,
+    cb_prepare: &mut ContainerBuilder,
+    cb_zookeeper: &mut ContainerBuilder,
+    client_authentication_class: Option<&AuthenticationClass>,
+) -> Result<()> {
+    let tls_secret_class = if let Some(auth_class) = client_authentication_class {
+        match &auth_class.spec.provider {
+            AuthenticationClassProvider::Tls(TlsAuthenticationProvider {
+                client_cert_secret_class: Some(secret_class),
+            }) => Some(secret_class),
+            _ => {
+                return Err(Error::AuthenticationMethodNotSupported {
+                    authentication_class: ObjectRef::from_obj(auth_class),
+                    supported: vec!["tls".to_string()],
+                    method: auth_class.spec.provider.to_string(),
+                })
+            }
+        }
+    } else {
+        zk.client_tls_secret_class()
+            .map(|client_tls| &client_tls.secret_class)
+    };
+
+    if let Some(secret_class) = tls_secret_class {
+        // mounts for secret volume
+        cb_prepare.add_volume_mount("client-tls-mount", CLIENT_TLS_MOUNT_DIR);
+        cb_zookeeper.add_volume_mount("client-tls-mount", CLIENT_TLS_MOUNT_DIR);
+        pod_builder.add_volume(create_tls_volume("client-tls-mount", secret_class));
+        // empty mount for trust and keystore
+        cb_prepare.add_volume_mount("client-tls", CLIENT_TLS_DIR);
+        cb_zookeeper.add_volume_mount("client-tls", CLIENT_TLS_DIR);
+        pod_builder.add_volume(
+            VolumeBuilder::new("client-tls")
+                .with_empty_dir(Some(""), None)
+                .build(),
+        );
+    }
+
+    // quorum
+    // mounts for secret volume
+    cb_prepare.add_volume_mount("quorum-tls-mount", QUORUM_TLS_MOUNT_DIR);
+    cb_zookeeper.add_volume_mount("quorum-tls-mount", QUORUM_TLS_MOUNT_DIR);
+    pod_builder.add_volume(create_tls_volume(
+        "quorum-tls-mount",
+        zk.quorum_tls_secret_class(),
+    ));
+    // empty mount for trust and keystore
+    cb_prepare.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
+    cb_zookeeper.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
+    pod_builder.add_volume(
+        VolumeBuilder::new("quorum-tls")
+            .with_empty_dir(Some(""), None)
+            .build(),
+    );
+
+    Ok(())
+}
+
+fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Volume {
+    VolumeBuilder::new(volume_name)
+        .ephemeral(
+            SecretOperatorVolumeSourceBuilder::new(secret_class_name)
+                .with_pod_scope()
+                .with_node_scope()
+                .build(),
+        )
+        .build()
 }
 
 pub fn zk_version(zk: &ZookeeperCluster) -> Result<&str> {
