@@ -4,5 +4,5 @@ helm:
   repo_url: https://repo.stackable.tech/repository/helm-dev/
 versions:
   commons: 0.3.0
-  secret: 0.6.0
+  secret: 0.5.0
   zk: 0.11.0
