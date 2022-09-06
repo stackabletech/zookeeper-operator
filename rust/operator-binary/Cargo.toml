@@ -3,7 +3,7 @@ name = "stackable-zookeeper-operator"
 authors = ["Stackable GmbH <info@stackable.de>"]
 description = "Stackable Operator for Apache ZooKeeper"
 license = "OSL-3.0"
-version = "0.11.0"
+version = "0.12.0-nightly"
 edition = "2021"
 repository = "https://github.com/stackabletech/zookeeper-operator"
 
