@@ -1,8 +1,8 @@
 ---
 apiVersion: v2
 name: zookeeper-operator
-version: "0.11.0-nightly"
-appVersion: "0.11.0-nightly"
+version: "0.11.0"
+appVersion: "0.11.0"
 description: The Stackable Operator for Apache ZooKeeper
 home: https://github.com/stackabletech/zookeeper-operator
 maintainers:
