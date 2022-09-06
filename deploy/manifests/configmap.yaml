@@ -409,4 +409,4 @@ metadata:
   labels:
     app.kubernetes.io/name: zookeeper-operator
     app.kubernetes.io/instance: zookeeper-operator
-    app.kubernetes.io/version: "0.11.0-nightly"
+    app.kubernetes.io/version: "0.11.0"
