@@ -22,7 +22,7 @@ echo "Installing Operators with Helm"
 # tag::helm-install-operators[]
 helm install --wait commons-operator {{ helm.repo_name }}/commons-operator --version {{ versions.commons }}
 helm install --wait secret-operator {{ helm.repo_name }}/secret-operator --version {{ versions.secret }}
-helm install --wait zookeeper-operator {{ helm.repo_name }}/zookeeper-operator --version {{ versions.zk }}
+helm install --wait zookeeper-operator {{ helm.repo_name }}/zookeeper-operator --version {{ versions.zookeeper }}
 # end::helm-install-operators[]
 ;;
 "stackablectl")
@@ -31,7 +31,7 @@ echo "installing Operators with stackablectl"
 stackablectl operator install \
   commons={{ versions.commons }} \
   secret={{ versions.secret }} \
-  zookeeper={{ versions.zk }}
+  zookeeper={{ versions.zookeeper }}
 # end::stackablectl-install-operators[]
 ;;
 *)
