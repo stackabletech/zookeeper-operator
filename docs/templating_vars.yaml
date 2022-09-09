@@ -5,4 +5,4 @@ helm:
 versions:
   commons: 0.4.0-nightly
   secret: 0.6.0-nightly
-  zk: 0.12.0-nightly
+  zookeeper: 0.12.0-nightly
