@@ -1018,9 +1018,9 @@ dependencies = [
 
 [[package]]
 name = "kube"
-version = "0.73.1"
+version = "0.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f68b954ea9ad888de953fb1488bd8f377c4c78d82d4642efa5925189210b50b7"
+checksum = "a527a8001a61d8d470dab27ac650889938760c243903e7cd90faaf7c60a34bdd"
 dependencies = [
  "k8s-openapi",
  "kube-client",
@@ -1031,9 +1031,9 @@ dependencies = [
 
 [[package]]
 name = "kube-client"
-version = "0.73.1"
+version = "0.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9150dc7107d9acf4986088f284a0a6dddc5ae37ef1ffdf142f6811dc5998dd58"
+checksum = "c0d48f42df4e8342e9f488c4b97e3759d0042c4e7ab1a853cc285adb44409480"
 dependencies = [
  "base64",
  "bytes 1.2.1",
@@ -1056,7 +1056,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
- "serde_yaml",
+ "serde_yaml 0.8.26",
  "thiserror",
  "tokio 1.21.1",
  "tokio-native-tls",
@@ -1068,9 +1068,9 @@ dependencies = [
 
 [[package]]
 name = "kube-core"
-version = "0.73.1"
+version = "0.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc8c429676abe6a73b374438d5ca02caaf9ae7a635441253c589b779fa5d0622"
+checksum = "91f56027f862fdcad265d2e9616af416a355e28a1c620bb709083494753e070d"
 dependencies = [
  "chrono",
  "form_urlencoded",
@@ -1086,9 +1086,9 @@ dependencies = [
 
 [[package]]
 name = "kube-derive"
-version = "0.73.1"
+version = "0.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfb405f0d39181acbfdc7c79e3fc095330c9b6465ab50aeb662d762e53b662f1"
+checksum = "66d74121eb41af4480052901f31142d8d9bbdf1b7c6b856da43bcb02f5b1b177"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1099,9 +1099,9 @@ dependencies = [
 
 [[package]]
 name = "kube-runtime"
-version = "0.73.1"
+version = "0.74.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6e9e9da456f0101b77f864a9da44866b9891ad4740db508b4b269343ebeb01d"
+checksum = "8fdcf5a20f968768e342ef1a457491bb5661fccd81119666d626c57500b16d99"
 dependencies = [
  "ahash",
  "backoff",
@@ -1632,7 +1632,7 @@ dependencies = [
  "semver 1.0.14",
  "serde",
  "serde_json",
- "serde_yaml",
+ "serde_yaml 0.8.26",
  "thiserror",
  "xml-rs",
 ]
@@ -1927,6 +1927,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_yaml"
+version = "0.9.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8613d593412a0deb7bbd8de9d908efff5a0cb9ccd8f62c641e7b2ed2f57291d1"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
+]
+
+[[package]]
 name = "sharded-slab"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2008,10 +2021,9 @@ dependencies = [
 
 [[package]]
 name = "stackable-operator"
-version = "0.22.0"
-source = "git+https://github.com/stackabletech/operator-rs.git?tag=0.22.0#5543877169d27770578e634d0d734aa6126f838c"
+version = "0.25.2"
+source = "git+https://github.com/stackabletech/operator-rs.git?tag=0.25.2#ef41dc96071665ce99b35e8090c8df3ef89e9616"
 dependencies = [
- "backoff",
  "chrono",
  "clap",
  "const_format",
@@ -2030,7 +2042,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "serde_yaml",
+ "serde_yaml 0.9.13",
  "stackable-operator-derive",
  "strum",
  "thiserror",
@@ -2042,8 +2054,8 @@ dependencies = [
 
 [[package]]
 name = "stackable-operator-derive"
-version = "0.22.0"
-source = "git+https://github.com/stackabletech/operator-rs.git?tag=0.22.0#5543877169d27770578e634d0d734aa6126f838c"
+version = "0.25.2"
+source = "git+https://github.com/stackabletech/operator-rs.git?tag=0.25.2#ef41dc96071665ce99b35e8090c8df3ef89e9616"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2057,7 +2069,7 @@ version = "0.12.0-nightly"
 dependencies = [
  "serde",
  "serde_json",
- "serde_yaml",
+ "serde_yaml 0.9.13",
  "snafu",
  "stackable-operator",
  "strum",
@@ -2077,7 +2089,6 @@ dependencies = [
  "semver 1.0.14",
  "serde",
  "serde_json",
- "serde_yaml",
  "snafu",
  "stackable-operator",
  "stackable-zookeeper-crd",
@@ -2708,6 +2719,12 @@ name = "unicode-xid"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f962df74c8c05a667b5ee8bcf162993134c104e96440b663c8daa176dc772d8c"
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1e5fa573d8ac5f1a856f8d7be41d390ee973daf97c806b2c1a465e4e1406e68"
 
 [[package]]
 name = "url"

@@ -4,11 +4,11 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ObjectMetaBuilder},
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
-    kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
+    kube::{runtime::reflector::ObjectRef, Resource},
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
 
-use crate::{zk_controller::zk_version, APP_NAME};
+use crate::{zk_controller::zk_version, APP_NAME, OPERATOR_NAME};
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -52,9 +52,9 @@ pub async fn build_discovery_configmaps(
     svc: &Service,
     chroot: Option<&str>,
 ) -> Result<Vec<ConfigMap>, Error> {
-    let name = owner.name();
+    let name = owner.meta().name.as_deref().context(NoNameSnafu)?;
     Ok(vec![
-        build_discovery_configmap(&name, owner, zk, chroot, pod_hosts(zk)?)?,
+        build_discovery_configmap(name, owner, zk, chroot, pod_hosts(zk)?)?,
         build_discovery_configmap(
             &format!("{}-nodeport", name),
             owner,
@@ -103,6 +103,7 @@ fn build_discovery_configmap(
                     zk,
                     APP_NAME,
                     zk_version(zk).unwrap_or("unknown"),
+                    OPERATOR_NAME,
                     &ZookeeperRole::Server.to_string(),
                     "discovery",
                 )

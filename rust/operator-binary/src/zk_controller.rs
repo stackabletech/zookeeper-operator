@@ -2,7 +2,7 @@
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
-    ObjectRef, APP_NAME,
+    ObjectRef, APP_NAME, OPERATOR_NAME,
 };
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
@@ -371,7 +371,14 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
             .name(&role_svc_name)
             .ownerreference_from_resource(zk, None, Some(true))
             .context(ObjectMissingMetadataForOwnerRefSnafu)?
-            .with_recommended_labels(zk, APP_NAME, zk_version(zk)?, &role_name, "global")
+            .with_recommended_labels(
+                zk,
+                APP_NAME,
+                zk_version(zk)?,
+                OPERATOR_NAME,
+                &role_name,
+                "global",
+            )
             .build(),
         spec: Some(ServiceSpec {
             ports: Some(vec![ServicePort {
@@ -420,6 +427,7 @@ fn build_server_rolegroup_config_map(
                     zk,
                     APP_NAME,
                     zk_version(zk)?,
+                    OPERATOR_NAME,
                     &rolegroup.role,
                     &rolegroup.role_group,
                 )
@@ -456,6 +464,7 @@ fn build_server_rolegroup_service(
                 zk,
                 APP_NAME,
                 zk_version(zk)?,
+                OPERATOR_NAME,
                 &rolegroup.role,
                 &rolegroup.role_group,
             )
@@ -533,8 +542,10 @@ fn build_server_rolegroup_statefulset(
         });
     }
 
-    let mut cb_prepare = ContainerBuilder::new("prepare");
-    let mut cb_zookeeper = ContainerBuilder::new(APP_NAME);
+    let mut cb_prepare =
+        ContainerBuilder::new("prepare").expect("invalid hard-coded container name");
+    let mut cb_zookeeper =
+        ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
     let mut pod_builder = PodBuilder::new();
 
     // add volumes and mounts depending on tls / auth settings
@@ -613,6 +624,7 @@ fn build_server_rolegroup_statefulset(
                 zk,
                 APP_NAME,
                 zk_version,
+                OPERATOR_NAME,
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
             )
@@ -652,6 +664,7 @@ fn build_server_rolegroup_statefulset(
                 zk,
                 APP_NAME,
                 zk_version,
+                OPERATOR_NAME,
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
             )
