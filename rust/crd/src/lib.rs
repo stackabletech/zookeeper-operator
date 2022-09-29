@@ -485,11 +485,11 @@ impl ZookeeperCluster {
     fn default_resources() -> Resources<Storage, NoRuntimeLimits> {
         Resources {
             cpu: CpuLimits {
-                min: None,
-                max: None,
+                min: Some(Quantity("500m".to_owned())),
+                max: Some(Quantity("4".to_owned())),
             },
             memory: MemoryLimits {
-                limit: None,
+                limit: Some(Quantity("512Mi".to_owned())),
                 runtime_limits: NoRuntimeLimits {},
             },
             storage: Storage {
