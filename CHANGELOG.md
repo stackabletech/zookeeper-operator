@@ -6,9 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Default resource requests (memory and cpu) for ZooKeeper pods ([#xxx]).
+- Default resource requests (memory and cpu) for ZooKeeper pods ([#563]).
 
-[#xxx]: https://github.com/stackabletech/zookeeper-operator/pull/xxx
+[#563]: https://github.com/stackabletech/zookeeper-operator/pull/563
 
 ## [0.11.0] - 2022-09-06
 
