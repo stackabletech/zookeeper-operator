@@ -20,3 +20,6 @@ tests:
       - zookeeper
       - use-client-tls
       - use-client-auth-tls
+  - name: delete-rolegroup
+    dimensions:
+      - zookeeper

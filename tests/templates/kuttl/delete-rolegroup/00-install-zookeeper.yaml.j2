@@ -1,0 +1,31 @@
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: test-zk
+spec:
+  config:
+    tls: null
+    quorumTlsSecretClass: tls
+  servers:
+    config:
+      resources:
+        storage:
+          data:
+            capacity: '1Gi'
+        cpu:
+          max: '500m'
+          min: '250m'
+        memory:
+          limit: '0.5Gi'
+    roleGroups:
+      primary:
+        replicas: 3
+        config:
+          myidOffset: 10
+      secondary:
+        replicas: 2
+        config:
+          myidOffset: 20
+  version: {{ test_scenario['values']['zookeeper'] }}
+  stopped: false
