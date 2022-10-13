@@ -15,10 +15,6 @@ spec:
     roleGroups:
       default:
         replicas: 3
-      secondary:
-        replicas: 2
-        config:
-          myidOffset: 10
 ---
 apiVersion: authentication.stackable.tech/v1alpha1
 kind: AuthenticationClass
