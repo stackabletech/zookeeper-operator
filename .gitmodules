@@ -1,3 +1,0 @@
-[submodule "vendor/operator-rs"]
-	path = vendor/operator-rs
-	url = https://github.com/stackabletech/operator-rs.git
