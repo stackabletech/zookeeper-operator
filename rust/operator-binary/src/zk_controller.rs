@@ -11,6 +11,7 @@ use stackable_operator::{
         ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
         SecretOperatorVolumeSourceBuilder, SecurityContextBuilder, VolumeBuilder,
     },
+    cluster_resources::ClusterResources,
     commons::{
         authentication::{AuthenticationClass, AuthenticationClassProvider},
         tls::TlsAuthenticationProvider,
@@ -27,7 +28,7 @@ use stackable_operator::{
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
     },
-    kube::{api::DynamicObject, runtime::controller},
+    kube::{api::DynamicObject, runtime::controller, Resource},
     labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
     product_config::{
@@ -51,7 +52,7 @@ use std::{
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
-const FIELD_MANAGER_SCOPE: &str = "zookeepercluster";
+const RESOURCE_SCOPE: &str = "zookeeper-operator_zookeepercluster";
 
 const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
@@ -142,16 +143,20 @@ pub enum Error {
         supported: Vec<String>,
         method: String,
     },
-    #[snafu(display("invalid java heap config: {source}"))]
+    #[snafu(display("invalid java heap config"))]
     InvalidJavaHeapConfig {
         source: stackable_operator::error::Error,
     },
-    #[snafu(display("failed to create RBAC service account: {source}"))]
+    #[snafu(display("failed to create RBAC service account"))]
     ApplyServiceAccount {
         source: stackable_operator::error::Error,
     },
-    #[snafu(display("failed to create RBAC role binding: {source}"))]
+    #[snafu(display("failed to create RBAC role binding"))]
     ApplyRoleBinding {
+        source: stackable_operator::error::Error,
+    },
+    #[snafu(display("failed to delete orphaned resources"))]
+    DeleteOrphans {
         source: stackable_operator::error::Error,
     },
 }
@@ -191,6 +196,7 @@ impl ReconcilerError for Error {
             Error::InvalidJavaHeapConfig { .. } => None,
             Error::ApplyServiceAccount { .. } => None,
             Error::ApplyRoleBinding { .. } => None,
+            Error::DeleteOrphans { .. } => None,
         }
     }
 }
@@ -200,6 +206,8 @@ const PROPERTIES_FILE: &str = "zoo.cfg";
 pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
     let client = &ctx.client;
+    let mut cluster_resources =
+        ClusterResources::new(APP_NAME, RESOURCE_SCOPE, &zk.object_ref(&())).unwrap();
 
     let validated_config = validate_all_roles_and_groups_config(
         zk_version(&zk)?,
@@ -245,22 +253,18 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     };
 
     let (rbac_sa, rbac_rolebinding) = build_zk_rbac_resources(&zk)?;
-    client
-        .apply_patch(FIELD_MANAGER_SCOPE, &rbac_sa, &rbac_sa)
+    cluster_resources
+        .add(client, &rbac_sa)
         .await
         .with_context(|_| ApplyServiceAccountSnafu)?;
-    client
-        .apply_patch(FIELD_MANAGER_SCOPE, &rbac_rolebinding, &rbac_rolebinding)
+    cluster_resources
+        .add(client, &rbac_rolebinding)
         .await
         .with_context(|_| ApplyRoleBindingSnafu)?;
 
     let server_role_service = build_server_role_service(&zk)?;
-    let server_role_service = client
-        .apply_patch(
-            FIELD_MANAGER_SCOPE,
-            &server_role_service,
-            &server_role_service,
-        )
+    let server_role_service = cluster_resources
+        .add(client, &server_role_service)
         .await
         .context(ApplyRoleServiceSnafu)?;
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
@@ -274,20 +278,20 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             rolegroup_config,
             client_authentication_class.as_ref(),
         )?;
-        client
-            .apply_patch(FIELD_MANAGER_SCOPE, &rg_service, &rg_service)
+        cluster_resources
+            .add(client, &rg_service)
             .await
             .with_context(|_| ApplyRoleGroupServiceSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
-        client
-            .apply_patch(FIELD_MANAGER_SCOPE, &rg_configmap, &rg_configmap)
+        cluster_resources
+            .add(client, &rg_configmap)
             .await
             .with_context(|_| ApplyRoleGroupConfigSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
-        client
-            .apply_patch(FIELD_MANAGER_SCOPE, &rg_statefulset, &rg_statefulset)
+        cluster_resources
+            .add(client, &rg_statefulset)
             .await
             .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
                 rolegroup: rolegroup.clone(),
@@ -297,12 +301,19 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
-    for discovery_cm in build_discovery_configmaps(client, &*zk, &zk, &server_role_service, None)
-        .await
-        .context(BuildDiscoveryConfigSnafu)?
+    for discovery_cm in build_discovery_configmaps(
+        client,
+        &*zk,
+        &zk,
+        &server_role_service,
+        None,
+        RESOURCE_SCOPE,
+    )
+    .await
+    .context(BuildDiscoveryConfigSnafu)?
     {
-        let discovery_cm = client
-            .apply_patch(FIELD_MANAGER_SCOPE, &discovery_cm, &discovery_cm)
+        let discovery_cm = cluster_resources
+            .add(client, &discovery_cm)
             .await
             .context(ApplyDiscoveryConfigSnafu)?;
         if let Some(generation) = discovery_cm.metadata.resource_version {
@@ -315,8 +326,12 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
     };
+    cluster_resources
+        .delete_orphaned_resources(client)
+        .await
+        .context(DeleteOrphansSnafu)?;
     client
-        .apply_patch_status(FIELD_MANAGER_SCOPE, &*zk, &status)
+        .apply_patch_status(RESOURCE_SCOPE, &*zk, &status)
         .await
         .context(ApplyStatusSnafu)?;
 
@@ -328,7 +343,14 @@ pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount,
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
             .name(SERVICE_ACCOUNT.to_string())
-            .with_label("managed-by".to_string(), "zookeeper-operator".to_string())
+            .with_recommended_labels(
+                zk,
+                APP_NAME,
+                zk_version(zk)?,
+                RESOURCE_SCOPE,
+                "global",
+                "global",
+            )
             .build(),
         ..ServiceAccount::default()
     };
@@ -337,7 +359,14 @@ pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount,
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
             .name("zookeeper-rolebinding".to_string())
-            .with_label("managed-by".to_string(), "zookeeper-operator".to_string())
+            .with_recommended_labels(
+                zk,
+                APP_NAME,
+                zk_version(zk)?,
+                RESOURCE_SCOPE,
+                "global",
+                "global",
+            )
             .build(),
         role_ref: RoleRef {
             kind: "ClusterRole".to_string(),
@@ -371,7 +400,14 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
             .name(&role_svc_name)
             .ownerreference_from_resource(zk, None, Some(true))
             .context(ObjectMissingMetadataForOwnerRefSnafu)?
-            .with_recommended_labels(zk, APP_NAME, zk_version(zk)?, &role_name, "global")
+            .with_recommended_labels(
+                zk,
+                APP_NAME,
+                zk_version(zk)?,
+                RESOURCE_SCOPE,
+                &role_name,
+                "global",
+            )
             .build(),
         spec: Some(ServiceSpec {
             ports: Some(vec![ServicePort {
@@ -420,6 +456,7 @@ fn build_server_rolegroup_config_map(
                     zk,
                     APP_NAME,
                     zk_version(zk)?,
+                    RESOURCE_SCOPE,
                     &rolegroup.role,
                     &rolegroup.role_group,
                 )
@@ -456,6 +493,7 @@ fn build_server_rolegroup_service(
                 zk,
                 APP_NAME,
                 zk_version(zk)?,
+                RESOURCE_SCOPE,
                 &rolegroup.role,
                 &rolegroup.role_group,
             )
@@ -533,8 +571,10 @@ fn build_server_rolegroup_statefulset(
         });
     }
 
-    let mut cb_prepare = ContainerBuilder::new("prepare");
-    let mut cb_zookeeper = ContainerBuilder::new(APP_NAME);
+    let mut cb_prepare =
+        ContainerBuilder::new("prepare").expect("invalid hard-coded container name");
+    let mut cb_zookeeper =
+        ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
     let mut pod_builder = PodBuilder::new();
 
     // add volumes and mounts depending on tls / auth settings
@@ -613,6 +653,7 @@ fn build_server_rolegroup_statefulset(
                 zk,
                 APP_NAME,
                 zk_version,
+                RESOURCE_SCOPE,
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
             )
@@ -652,6 +693,7 @@ fn build_server_rolegroup_statefulset(
                 zk,
                 APP_NAME,
                 zk_version,
+                RESOURCE_SCOPE,
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
             )

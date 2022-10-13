@@ -18,9 +18,9 @@ use stackable_operator::{
     kube::{
         api::ListParams,
         runtime::{reflector::ObjectRef, Controller},
-        CustomResourceExt,
     },
     logging::controller::report_controller_reconciled,
+    CustomResourceExt,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
 
@@ -28,7 +28,7 @@ mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
-pub const APP_NAME: &str = "zookeeper";
+const APP_NAME: &str = "zookeeper";
 
 #[derive(clap::Parser)]
 #[clap(about = built_info::PKG_DESCRIPTION, author = stackable_operator::cli::AUTHOR)]
@@ -44,11 +44,10 @@ async fn main() -> anyhow::Result<()> {
 
     let opts = Opts::parse();
     match opts.cmd {
-        Command::Crd => println!(
-            "{}{}",
-            serde_yaml::to_string(&ZookeeperCluster::crd())?,
-            serde_yaml::to_string(&ZookeeperZnode::crd())?
-        ),
+        Command::Crd => {
+            ZookeeperCluster::print_yaml_schema()?;
+            ZookeeperZnode::print_yaml_schema()?;
+        }
         Command::Run(ProductOperatorRun {
             product_config,
             watch_namespace,

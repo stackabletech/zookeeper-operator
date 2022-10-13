@@ -4,22 +4,27 @@
 
 use std::{convert::Infallible, sync::Arc, time::Duration};
 
-use crate::discovery::{self, build_discovery_configmaps};
+use crate::{
+    discovery::{self, build_discovery_configmaps},
+    APP_NAME,
+};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
+    cluster_resources::ClusterResources,
     k8s_openapi::api::core::v1::{ConfigMap, Service},
     kube::{
         self,
         api::ObjectMeta,
         core::DynamicObject,
         runtime::{controller, finalizer, reflector::ObjectRef},
+        Resource,
     },
     logging::controller::ReconcilerError,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
 use strum::{EnumDiscriminants, IntoStaticStr};
 
-const FIELD_MANAGER_SCOPE: &str = "zookeeperznode";
+const RESOURCE_SCOPE: &str = "zookeeper-operator_zookeeperznode";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -80,6 +85,10 @@ pub enum Error {
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("failed to delete orphaned resources"))]
+    DeleteOrphans {
+        source: stackable_operator::error::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -121,6 +130,7 @@ impl ReconcilerError for Error {
             Error::ApplyDiscoveryConfigMap { cm, .. } => Some(cm.clone().erase()),
             Error::Finalizer { source: _ } => None,
             Error::ObjectMissingMetadataForOwnerRef { source: _ } => None,
+            Error::DeleteOrphans { source: _ } => None,
         }
     }
 }
@@ -171,6 +181,9 @@ async fn reconcile_apply(
     znode_path: &str,
 ) -> Result<controller::Action> {
     let zk = zk?;
+    let mut cluster_resources =
+        ClusterResources::new(APP_NAME, RESOURCE_SCOPE, &znode.object_ref(&())).unwrap();
+
     znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk)?, znode_path)
         .await
         .with_context(|_| EnsureZnodeSnafu {
@@ -190,19 +203,29 @@ async fn reconcile_apply(
         .context(FindZkSvcSnafu {
             zk: ObjectRef::from_obj(&zk),
         })?;
-    for discovery_cm in
-        build_discovery_configmaps(client, znode, &zk, &server_role_service, Some(znode_path))
-            .await
-            .context(BuildDiscoveryConfigMapSnafu)?
+    for discovery_cm in build_discovery_configmaps(
+        client,
+        znode,
+        &zk,
+        &server_role_service,
+        Some(znode_path),
+        RESOURCE_SCOPE,
+    )
+    .await
+    .context(BuildDiscoveryConfigMapSnafu)?
     {
-        client
-            .apply_patch(FIELD_MANAGER_SCOPE, &discovery_cm, &discovery_cm)
+        cluster_resources
+            .add(client, &discovery_cm)
             .await
             .with_context(|_| ApplyDiscoveryConfigMapSnafu {
                 cm: ObjectRef::from_obj(&discovery_cm),
             })?;
     }
 
+    cluster_resources
+        .delete_orphaned_resources(client)
+        .await
+        .context(DeleteOrphansSnafu)?;
     Ok(controller::Action::await_change())
 }
 
