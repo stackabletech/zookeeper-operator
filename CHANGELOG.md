@@ -4,12 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Default resource requests (memory and cpu) for ZooKeeper pods ([#563]).
+
 ### Changed
 
 - Resources associated with rolegroups that have since been removed from the ZookeeperCluster will now be deleted ([#569]).
 - Operator-rs: 0.22.0 -> 0.25.3 ([#569]).
 
 [#569]: https://github.com/stackabletech/zookeeper-operator/pull/569
+[#563]: https://github.com/stackabletech/zookeeper-operator/pull/563
 
 ## [0.11.0] - 2022-09-06
 
