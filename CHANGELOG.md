@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Resources associated with rolegroups that have since been removed from the ZookeeperCluster will now be deleted ([#569]).
+- Operator-rs: 0.22.0 -> 0.25.3 ([#569]).
 
 [#569]: https://github.com/stackabletech/zookeeper-operator/pull/569
 
