@@ -29,7 +29,6 @@ mod built_info {
 }
 
 const APP_NAME: &str = "zookeeper";
-const OPERATOR_NAME: &str = "zookeeper-operator";
 
 #[derive(clap::Parser)]
 #[clap(about = built_info::PKG_DESCRIPTION, author = stackable_operator::cli::AUTHOR)]

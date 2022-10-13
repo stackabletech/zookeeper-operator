@@ -8,7 +8,7 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
 
-use crate::{zk_controller::zk_version, APP_NAME, OPERATOR_NAME};
+use crate::{zk_controller::zk_version, APP_NAME};
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -51,16 +51,18 @@ pub async fn build_discovery_configmaps(
     zk: &ZookeeperCluster,
     svc: &Service,
     chroot: Option<&str>,
+    app_managed_by: &str,
 ) -> Result<Vec<ConfigMap>, Error> {
     let name = owner.meta().name.as_deref().context(NoNameSnafu)?;
     Ok(vec![
-        build_discovery_configmap(name, owner, zk, chroot, pod_hosts(zk)?)?,
+        build_discovery_configmap(name, owner, zk, chroot, pod_hosts(zk)?, app_managed_by)?,
         build_discovery_configmap(
             &format!("{}-nodeport", name),
             owner,
             zk,
             chroot,
             nodeport_hosts(client, svc, "zk").await?,
+            app_managed_by,
         )?,
     ])
 }
@@ -74,6 +76,7 @@ fn build_discovery_configmap(
     zk: &ZookeeperCluster,
     chroot: Option<&str>,
     hosts: impl IntoIterator<Item = (impl Into<String>, u16)>,
+    app_managed_by: &str,
 ) -> Result<ConfigMap, Error> {
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"
@@ -100,10 +103,10 @@ fn build_discovery_configmap(
                     zk: ObjectRef::from_obj(zk),
                 })?
                 .with_recommended_labels(
-                    zk,
+                    owner,
                     APP_NAME,
                     zk_version(zk).unwrap_or("unknown"),
-                    OPERATOR_NAME,
+                    app_managed_by,
                     &ZookeeperRole::Server.to_string(),
                     "discovery",
                 )
