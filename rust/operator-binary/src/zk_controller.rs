@@ -21,8 +21,9 @@ use stackable_operator::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service,
-                ServiceAccount, ServicePort, ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PodAffinityTerm, WeightedPodAffinityTerm, PodAntiAffinity,
+                PodSecurityContext, Probe, Service, ServiceAccount, ServicePort, ServiceSpec,
+                Volume,
             },
             rbac::v1::{RoleRef, Subject},
         },
@@ -647,6 +648,25 @@ fn build_server_rolegroup_statefulset(
         .resources(resources)
         .build();
 
+    let anti_affinity = PodAntiAffinity {
+        preferred_during_scheduling_ignored_during_execution: Some(vec![WeightedPodAffinityTerm {
+            weight: 80,
+            pod_affinity_term: PodAffinityTerm {
+                label_selector: Some(LabelSelector {
+                    match_expressions: None,
+                    match_labels: Some(role_selector_labels(
+                        zk,
+                        APP_NAME,
+                        &ZookeeperRole::Server.to_string(),
+                    )),
+                }),
+                topology_key: "kubernetes.io/hostname".to_string(),
+                ..PodAffinityTerm::default()
+            },
+        }]),
+        ..PodAntiAffinity::default()
+    };
+
     let pod_template = pod_builder
         .metadata_builder(|m| {
             m.with_recommended_labels(
@@ -660,6 +680,7 @@ fn build_server_rolegroup_statefulset(
         })
         .add_init_container(container_prepare)
         .add_container(container_zk)
+        .pod_anti_affinity(anti_affinity)
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
