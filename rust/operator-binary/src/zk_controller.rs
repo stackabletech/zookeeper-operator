@@ -7,6 +7,7 @@ use crate::{
 
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::role_utils::RoleGroup;
 use stackable_operator::{
     builder::{
         ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
@@ -22,9 +23,9 @@ use stackable_operator::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodAffinityTerm, WeightedPodAffinityTerm, PodAntiAffinity,
+                ExecAction, ObjectFieldSelector, PodAffinityTerm, PodAntiAffinity,
                 PodSecurityContext, Probe, Service, ServiceAccount, ServicePort, ServiceSpec,
-                Volume,
+                Volume, WeightedPodAffinityTerm,
             },
             rbac::v1::{RoleRef, Subject},
         },
@@ -52,7 +53,6 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use stackable_operator::role_utils::RoleGroup;
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 const RESOURCE_SCOPE: &str = "zookeeper-operator_zookeepercluster";
@@ -686,7 +686,9 @@ fn build_server_rolegroup_statefulset(
         .add_init_container(container_prepare)
         .add_container(container_zk)
         .pod_anti_affinity(anti_affinity)
-        .maybe_node_selector(rolegroup.and_then(|rg: &RoleGroup<ZookeeperConfig>| rg.selector.clone()))
+        .maybe_node_selector(
+            rolegroup.and_then(|rg: &RoleGroup<ZookeeperConfig>| rg.selector.clone()),
+        )
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
