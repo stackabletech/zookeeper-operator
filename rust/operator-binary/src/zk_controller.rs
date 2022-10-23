@@ -4,6 +4,7 @@ use crate::{
     discovery::{self, build_discovery_configmaps},
     ObjectRef, APP_NAME,
 };
+
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -51,6 +52,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use stackable_operator::role_utils::RoleGroup;
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 const RESOURCE_SCOPE: &str = "zookeeper-operator_zookeepercluster";
@@ -548,6 +550,8 @@ fn build_server_rolegroup_statefulset(
         .role_groups
         .get(&rolegroup_ref.role_group);
 
+    println!("{:?}", rolegroup);
+
     let mut env_vars = server_config
         .get(&PropertyNameKind::Env)
         .into_iter()
@@ -648,6 +652,7 @@ fn build_server_rolegroup_statefulset(
         .resources(resources)
         .build();
 
+    // Define an anti affinity rule to try and distribute the pods over different nodes
     let anti_affinity = PodAntiAffinity {
         preferred_during_scheduling_ignored_during_execution: Some(vec![WeightedPodAffinityTerm {
             weight: 80,
@@ -681,6 +686,7 @@ fn build_server_rolegroup_statefulset(
         .add_init_container(container_prepare)
         .add_container(container_zk)
         .pod_anti_affinity(anti_affinity)
+        .maybe_node_selector(rolegroup.and_then(|rg: &RoleGroup<ZookeeperConfig>| rg.selector.clone()))
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
