@@ -33,6 +33,7 @@ pub const METRICS_PORT: u16 = 9505;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
+pub const STACKABLE_LOG_DIR: &str = "/stackable/log";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
 
 pub const QUORUM_TLS_DIR: &str = "/stackable/quorum_tls";
@@ -41,6 +42,12 @@ pub const CLIENT_TLS_DIR: &str = "/stackable/client_tls";
 pub const CLIENT_TLS_MOUNT_DIR: &str = "/stackable/client_tls_mount";
 pub const SYSTEM_TRUST_STORE_DIR: &str = "/etc/pki/java/cacerts";
 
+pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
+pub const VECTOR_CONFIG_FILE: &str = "vector.toml";
+
+pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log";
+
+pub const MAX_LOG_FILE_SIZE_IN_MB: i32 = 1000;
 const JVM_HEAP_FACTOR: f32 = 0.8;
 const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
 
@@ -232,7 +239,10 @@ impl Configuration for ZookeeperConfig {
         _resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let jvm_flags = format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml");
+        let jvm_flags = [
+            format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
+            format!("-Dlogback.configurationFile={STACKABLE_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}")
+        ].join(" ");
         Ok([
             (
                 Self::MYID_OFFSET.to_string(),

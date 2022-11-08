@@ -29,7 +29,7 @@ use stackable_operator::{
             },
             rbac::v1::{RoleBinding, RoleRef, Subject},
         },
-        apimachinery::pkg::apis::meta::v1::LabelSelector,
+        apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
     },
     kube::{api::DynamicObject, runtime::controller, Resource, ResourceExt},
     labels::{role_group_selector_labels, role_selector_labels},
@@ -42,8 +42,9 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR,
-    CLIENT_TLS_MOUNT_DIR, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR,
-    STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+    CLIENT_TLS_MOUNT_DIR, LOGBACK_CONFIG_FILE, MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR,
+    QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_DIR,
+    STACKABLE_RW_CONFIG_DIR, VECTOR_CONFIG_FILE, ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -229,7 +230,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     let validated_config = validate_all_roles_and_groups_config(
         &resolved_product_image.app_version_label,
         &transform_all_roles_to_config(
-            &*zk,
+            zk.as_ref(),
             [(
                 ZookeeperRole::Server.to_string(),
                 (
@@ -500,10 +501,95 @@ fn build_server_rolegroup_config_map(
                 }
             })?,
         )
+        .add_data(
+            LOGBACK_CONFIG_FILE,
+            create_log_config(
+                STACKABLE_LOG_DIR,
+                ZOOKEEPER_LOG_FILE,
+                MAX_LOG_FILE_SIZE_IN_MB,
+            ),
+        )
+        .add_data(
+            VECTOR_CONFIG_FILE,
+            create_vector_config(STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE),
+        )
         .build()
         .with_context(|_| BuildRoleGroupConfigSnafu {
             rolegroup: rolegroup.clone(),
         })
+}
+
+fn create_log_config(log_dir: &str, log_file: &str, max_size_in_mb: i32) -> String {
+    let number_of_archived_log_files = 1;
+    let max_log_file_size_in_mb = max_size_in_mb / (1 + number_of_archived_log_files);
+
+    format!(
+        r#"<configuration>
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{{ISO8601}} [myid:%X{{myid}}] - %-5p [%t:%C{{1}}@%L] - %m%n</pattern>
+    </encoder>
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>INFO</level>
+    </filter>
+  </appender>
+
+  <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <File>{log_dir}/{log_file}</File>
+    <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+      <layout class="ch.qos.logback.classic.log4j.XMLLayout" />
+    </encoder>
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>INFO</level>
+    </filter>
+    <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+      <minIndex>1</minIndex>
+      <maxIndex>{number_of_archived_log_files}</maxIndex>
+      <FileNamePattern>{log_dir}/{log_file}.%i</FileNamePattern>
+    </rollingPolicy>
+    <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+      <MaxFileSize>{max_log_file_size_in_mb}MB</MaxFileSize>
+    </triggeringPolicy>
+  </appender>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE" />
+    <appender-ref ref="FILE" />
+  </root>
+</configuration>"#
+    )
+}
+
+fn create_vector_config(log_dir: &str, log_file: &str) -> String {
+    format!(
+        r#"[sources.logfile]
+type = "file"
+include = ["{log_dir}/{log_file}"]
+
+[sources.logfile.multiline]
+mode = "halt_with"
+start_pattern = "^<log4j:event"
+condition_pattern = "</log4j:event>$"
+timeout_ms = 10000
+
+[transforms.processed]
+inputs = ["logfile"]
+type = "remap"
+source = '''
+wrapped_xml_event = "<root xmlns:log4j=\"http://jakarta.apache.org/log4j/\">" + string!(.message) + "</root>"
+parsed_event = parse_xml!(wrapped_xml_event).root
+.timestamp = to_timestamp!(to_float!(parsed_event.@timestamp) / 1000)
+.logger = parsed_event.@logger
+.level = parsed_event.@level
+.message = parsed_event.message
+'''
+
+[sinks.aggregator]
+inputs = ["processed"]
+type = "vector"
+address = "vector-aggregator.default.svc.cluster.local:6000"
+"#
+    )
 }
 
 /// The rolegroup [`Service`] is a headless service that allows direct access to the instances of a certain rolegroup
@@ -675,7 +761,19 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .add_volume_mount("log", STACKABLE_LOG_DIR)
         .resources(resources)
+        .build();
+
+    let container_log_agent = ContainerBuilder::new("vector")
+        .unwrap()
+        .image("docker.stackable.tech/timberio/vector:0.25.0-alpine")
+        .args(vec![
+            "--config".to_string(),
+            format!("{STACKABLE_CONFIG_DIR}/vector.toml"),
+        ])
+        .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount("log", STACKABLE_LOG_DIR)
         .build();
 
     let pod_template = pod_builder
@@ -691,6 +789,7 @@ fn build_server_rolegroup_statefulset(
         .image_pull_secrets_from_product_image(resolved_product_image)
         .add_init_container(container_prepare)
         .add_container(container_zk)
+        .add_container(container_log_agent)
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
@@ -705,6 +804,14 @@ fn build_server_rolegroup_statefulset(
                 size_limit: None,
             }),
             name: "rwconfig".to_string(),
+            ..Volume::default()
+        })
+        .add_volume(Volume {
+            name: "log".to_string(),
+            empty_dir: Some(EmptyDirVolumeSource {
+                medium: None,
+                size_limit: Some(Quantity(format!("{MAX_LOG_FILE_SIZE_IN_MB}M"))),
+            }),
             ..Volume::default()
         })
         .security_context(PodSecurityContext {
