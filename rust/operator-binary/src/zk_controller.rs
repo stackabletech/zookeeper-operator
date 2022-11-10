@@ -587,7 +587,7 @@ fn build_server_rolegroup_statefulset(
     )?;
 
     let container_prepare = cb_prepare
-        .image("docker.stackable.tech/stackable/tools:0.2.0-stackable0.3.0")
+        .image("docker.stackable.tech/stackable/tools:0.2.0-stackable0.4.0")
         .command(vec!["sh".to_string(), "-c".to_string()])
         .args(vec![create_init_container_command_args(zk)])
         .add_env_vars(env_vars.clone())
