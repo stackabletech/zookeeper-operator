@@ -60,6 +60,8 @@ pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
+const VECTOR_AGGREGATOR_CM_ENTRY: &str = "ADDRESS";
+
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
     pub product_config: ProductConfigManager,
@@ -170,6 +172,16 @@ pub enum Error {
     DeleteOrphans {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("failed to retrieve the ConfigMap {cm_name}"))]
+    ConfigMapNotFound {
+        source: stackable_operator::error::Error,
+        cm_name: String,
+    },
+    #[snafu(display("failed to retrieve the entry {entry} for ConfigMap {cm_name}"))]
+    MissingConfigMapEntry {
+        entry: &'static str,
+        cm_name: String,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -209,6 +221,8 @@ impl ReconcilerError for Error {
             Error::ApplyServiceAccount { .. } => None,
             Error::ApplyRoleBinding { .. } => None,
             Error::DeleteOrphans { .. } => None,
+            Error::ConfigMapNotFound { .. } => None,
+            Error::MissingConfigMapEntry { .. } => None,
         }
     }
 }
@@ -255,6 +269,31 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
+    let vector_aggregator_address = if let Some(vector_aggregator_config_map_name) =
+        &zk.spec.vector_aggregator_config_map_name
+    {
+        let vector_aggregator_address = client
+            .get::<ConfigMap>(
+                vector_aggregator_config_map_name,
+                zk.namespace()
+                    .as_deref()
+                    .context(ObjectHasNoNamespaceSnafu)?,
+            )
+            .await
+            .context(ConfigMapNotFoundSnafu {
+                cm_name: vector_aggregator_config_map_name.to_string(),
+            })?
+            .data
+            .and_then(|mut data| data.remove(VECTOR_AGGREGATOR_CM_ENTRY))
+            .context(MissingConfigMapEntrySnafu {
+                entry: VECTOR_AGGREGATOR_CM_ENTRY,
+                cm_name: vector_aggregator_config_map_name.to_string(),
+            })?;
+        Some(vector_aggregator_address)
+    } else {
+        None
+    };
+
     let client_authentication_class = if let Some(auth_class) = zk.client_tls_authentication_class()
     {
         Some(
@@ -295,6 +334,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             &rolegroup,
             rolegroup_config,
             &resolved_product_image,
+            vector_aggregator_address.as_deref(),
         )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             &zk,
@@ -459,6 +499,7 @@ fn build_server_rolegroup_config_map(
     rolegroup: &RoleGroupRef<ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     resolved_product_image: &ResolvedProductImage,
+    vector_aggregator_address: Option<&str>,
 ) -> Result<ConfigMap> {
     let mut zoo_cfg = server_config
         .get(&PropertyNameKind::File(
@@ -477,7 +518,9 @@ fn build_server_rolegroup_config_map(
         .into_iter()
         .map(|(k, v)| (k, Some(v)))
         .collect::<Vec<_>>();
-    ConfigMapBuilder::new()
+    let mut cm_builder = ConfigMapBuilder::new();
+
+    cm_builder
         .metadata(
             ObjectMetaBuilder::new()
                 .name_and_namespace(zk)
@@ -508,11 +551,28 @@ fn build_server_rolegroup_config_map(
                 ZOOKEEPER_LOG_FILE,
                 MAX_LOG_FILE_SIZE_IN_MB,
             ),
-        )
-        .add_data(
+        );
+
+    let role =
+        ZookeeperRole::from_str(&rolegroup.role).with_context(|_| RoleParseFailureSnafu {
+            role: rolegroup.role.to_string(),
+        })?;
+    let logging = zk
+        .logging(&role, rolegroup)
+        .context(CrdValidationFailureSnafu)?;
+
+    if logging.enable_vector_agent {
+        cm_builder.add_data(
             VECTOR_CONFIG_FILE,
-            create_vector_config(STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE),
-        )
+            create_vector_config(
+                STACKABLE_LOG_DIR,
+                ZOOKEEPER_LOG_FILE,
+                vector_aggregator_address.expect("vectorAggregatorAddress is set"),
+            ),
+        );
+    }
+
+    cm_builder
         .build()
         .with_context(|_| BuildRoleGroupConfigSnafu {
             rolegroup: rolegroup.clone(),
@@ -560,7 +620,7 @@ fn create_log_config(log_dir: &str, log_file: &str, max_size_in_mb: i32) -> Stri
     )
 }
 
-fn create_vector_config(log_dir: &str, log_file: &str) -> String {
+fn create_vector_config(log_dir: &str, log_file: &str, vector_aggregator_address: &str) -> String {
     format!(
         r#"[sources.logfile]
 type = "file"
@@ -587,7 +647,7 @@ parsed_event = parse_xml!(wrapped_xml_event).root
 [sinks.aggregator]
 inputs = ["processed"]
 type = "vector"
-address = "vector-aggregator.default.svc.cluster.local:6000"
+address = "{vector_aggregator_address}"
 "#
     )
 }
@@ -765,18 +825,7 @@ fn build_server_rolegroup_statefulset(
         .resources(resources)
         .build();
 
-    let container_log_agent = ContainerBuilder::new("vector")
-        .unwrap()
-        .image("docker.stackable.tech/timberio/vector:0.25.0-alpine")
-        .args(vec![
-            "--config".to_string(),
-            format!("{STACKABLE_CONFIG_DIR}/vector.toml"),
-        ])
-        .add_volume_mount("config", STACKABLE_CONFIG_DIR)
-        .add_volume_mount("log", STACKABLE_LOG_DIR)
-        .build();
-
-    let pod_template = pod_builder
+    pod_builder
         .metadata_builder(|m| {
             m.with_recommended_labels(build_recommended_labels(
                 zk,
@@ -789,7 +838,6 @@ fn build_server_rolegroup_statefulset(
         .image_pull_secrets_from_product_image(resolved_product_image)
         .add_init_container(container_prepare)
         .add_container(container_zk)
-        .add_container(container_log_agent)
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
@@ -820,8 +868,27 @@ fn build_server_rolegroup_statefulset(
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(SERVICE_ACCOUNT)
-        .build_template();
+        .service_account_name(SERVICE_ACCOUNT);
+
+    let logging = zk
+        .logging(&zk_role, rolegroup_ref)
+        .context(CrdValidationFailureSnafu)?;
+    if logging.enable_vector_agent {
+        let container_log_agent = ContainerBuilder::new("vector")
+            .unwrap()
+            .image("docker.stackable.tech/timberio/vector:0.25.0-alpine")
+            .args(vec![
+                "--config".to_string(),
+                format!("{STACKABLE_CONFIG_DIR}/vector.toml"),
+            ])
+            .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+            .add_volume_mount("log", STACKABLE_LOG_DIR)
+            .build();
+
+        pod_builder.add_container(container_log_agent);
+    }
+
+    let pod_template = pod_builder.build_template();
 
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()

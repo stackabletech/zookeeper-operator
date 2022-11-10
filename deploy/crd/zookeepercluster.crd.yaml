@@ -113,6 +113,54 @@ spec:
                         minimum: 0.0
                         nullable: true
                         type: integer
+                      logging:
+                        nullable: true
+                        properties:
+                          console:
+                            properties:
+                              loggers:
+                                additionalProperties:
+                                  properties:
+                                    level:
+                                      enum:
+                                      - TRACE
+                                      - DEBUG
+                                      - INFO
+                                      - WARN
+                                      - ERROR
+                                      nullable: true
+                                      type: string
+                                  type: object
+                                type: object
+                            required:
+                            - loggers
+                            type: object
+                          enableVectorAgent:
+                            nullable: true
+                            type: boolean
+                          file:
+                            properties:
+                              loggers:
+                                additionalProperties:
+                                  properties:
+                                    level:
+                                      enum:
+                                      - TRACE
+                                      - DEBUG
+                                      - INFO
+                                      - WARN
+                                      - ERROR
+                                      nullable: true
+                                      type: string
+                                  type: object
+                                type: object
+                            required:
+                            - loggers
+                            type: object
+                        required:
+                        - console
+                        - file
+                        type: object
                       myidOffset:
                         format: uint16
                         minimum: 0.0
@@ -354,6 +402,54 @@ spec:
                               minimum: 0.0
                               nullable: true
                               type: integer
+                            logging:
+                              nullable: true
+                              properties:
+                                console:
+                                  properties:
+                                    loggers:
+                                      additionalProperties:
+                                        properties:
+                                          level:
+                                            enum:
+                                            - TRACE
+                                            - DEBUG
+                                            - INFO
+                                            - WARN
+                                            - ERROR
+                                            nullable: true
+                                            type: string
+                                        type: object
+                                      type: object
+                                  required:
+                                  - loggers
+                                  type: object
+                                enableVectorAgent:
+                                  nullable: true
+                                  type: boolean
+                                file:
+                                  properties:
+                                    loggers:
+                                      additionalProperties:
+                                        properties:
+                                          level:
+                                            enum:
+                                            - TRACE
+                                            - DEBUG
+                                            - INFO
+                                            - WARN
+                                            - ERROR
+                                            nullable: true
+                                            type: string
+                                        type: object
+                                      type: object
+                                  required:
+                                  - loggers
+                                  type: object
+                              required:
+                              - console
+                              - file
+                              type: object
                             myidOffset:
                               format: uint16
                               minimum: 0.0
@@ -624,6 +720,9 @@ spec:
                 description: Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)
                 nullable: true
                 type: boolean
+              vectorAggregatorConfigMapName:
+                nullable: true
+                type: string
             required:
             - image
             type: object

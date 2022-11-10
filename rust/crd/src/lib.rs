@@ -8,7 +8,12 @@ use stackable_operator::{
             PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
         },
     },
-    config::{fragment, fragment::Fragment, fragment::ValidationError, merge::Merge},
+    config::{
+        fragment,
+        fragment::Fragment,
+        fragment::ValidationError,
+        merge::{Atomic, Merge},
+    },
     crd::ClusterRef,
     error::OperatorResult,
     k8s_openapi::{
@@ -88,6 +93,8 @@ pub struct ZookeeperClusterSpec {
     pub config: GlobalZookeeperConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub servers: Option<Role<ZookeeperConfig>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector_aggregator_config_map_name: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -154,6 +161,7 @@ pub struct ZookeeperConfig {
     pub tick_time: Option<u32>,
     pub myid_offset: Option<u16>,
     pub resources: Option<ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits>>,
+    pub logging: Option<LoggingFragment>,
 }
 
 #[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
@@ -174,6 +182,79 @@ pub struct ZookeeperStorageConfig {
     #[fragment_attrs(serde(default))]
     pub data: PvcConfig,
 }
+
+#[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
+#[fragment_attrs(
+    derive(
+        Clone,
+        Debug,
+        Default,
+        Deserialize,
+        Merge,
+        JsonSchema,
+        PartialEq,
+        Serialize
+    ),
+    serde(rename_all = "camelCase")
+)]
+pub struct Logging {
+    pub enable_vector_agent: bool,
+    pub file: LogTargetConfig,
+    pub console: LogTargetConfig,
+}
+
+#[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
+#[fragment_attrs(
+    derive(
+        Clone,
+        Debug,
+        Default,
+        Deserialize,
+        Merge,
+        JsonSchema,
+        PartialEq,
+        Serialize
+    ),
+    serde(rename_all = "camelCase")
+)]
+pub struct LogTargetConfig {
+    pub loggers: BTreeMap<String, LoggerConfig>,
+}
+
+#[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
+#[fragment_attrs(
+    derive(
+        Clone,
+        Debug,
+        Default,
+        Deserialize,
+        Merge,
+        JsonSchema,
+        PartialEq,
+        Serialize
+    ),
+    serde(rename_all = "camelCase")
+)]
+pub struct LoggerConfig {
+    pub level: LogLevel,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+pub enum LogLevel {
+    TRACE,
+    DEBUG,
+    INFO,
+    WARN,
+    ERROR,
+}
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        LogLevel::INFO
+    }
+}
+
+impl Atomic for LogLevel {}
 
 impl ZookeeperConfig {
     pub const INIT_LIMIT: &'static str = "initLimit";
@@ -208,6 +289,18 @@ impl ZookeeperConfig {
 
     fn myid_offset(&self) -> u16 {
         self.myid_offset.unwrap_or(1)
+    }
+
+    fn default_logging() -> LoggingFragment {
+        LoggingFragment {
+            enable_vector_agent: Some(true),
+            file: LogTargetConfigFragment {
+                loggers: Default::default(),
+            },
+            console: LogTargetConfigFragment {
+                loggers: Default::default(),
+            },
+        }
     }
 
     fn default_resources() -> ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> {
@@ -484,6 +577,39 @@ impl ZookeeperCluster {
     /// Returns the secret class for internal server encryption
     pub fn quorum_tls_secret_class(&self) -> &str {
         &self.spec.config.quorum_tls_secret_class
+    }
+
+    pub fn logging(
+        &self,
+        role: &ZookeeperRole,
+        rolegroup_ref: &RoleGroupRef<Self>,
+    ) -> Result<Logging, Error> {
+        let conf_defaults = ZookeeperConfig::default_logging();
+
+        let role = match role {
+            ZookeeperRole::Server => {
+                self.spec
+                    .servers
+                    .as_ref()
+                    .context(UnknownZookeeperRoleSnafu {
+                        role: role.to_string(),
+                        roles: vec![role.to_string()],
+                    })?
+            }
+        };
+
+        let mut conf_role = role.config.config.logging.clone().unwrap_or_default();
+
+        let mut conf_rolegroup = role
+            .role_groups
+            .get(&rolegroup_ref.role_group)
+            .and_then(|rg| rg.config.config.logging.clone())
+            .unwrap_or_default();
+
+        conf_role.merge(&conf_defaults);
+        conf_rolegroup.merge(&conf_role);
+
+        fragment::validate(conf_rolegroup).context(FragmentValidationFailureSnafu)
     }
 
     /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
