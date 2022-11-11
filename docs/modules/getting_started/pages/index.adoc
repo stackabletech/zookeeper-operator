@@ -10,7 +10,7 @@ You will need:
 * kubectl
 * optional: Helm
 
-Resource sizing depends on cluster type(s), usage and scope, but as a starting point we recommend a minimum of the following for this operator:
+Resource sizing depends on cluster type(s), usage and scope, but as a starting point we recommend a minimum of the following resources for this operator:
 
 * 0.2 cores
 * 256MB RAM
