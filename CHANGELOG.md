@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.12.0] - 2022-11-07
+
 ### Added
 
 - Default resource requests (memory and cpu) for ZooKeeper pods ([#563]).
