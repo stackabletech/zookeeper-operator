@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Updated stackable image versions ([#586]).
+
+[#586]: https://github.com/stackabletech/zookeeper-operator/pull/586
+
 ## [0.12.0] - 2022-11-07
 
 ### Added
