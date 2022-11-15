@@ -631,7 +631,7 @@ include = ["{log_dir}/{log_file}"]
 [sources.logfile.multiline]
 mode = "halt_with"
 start_pattern = "^<log4j:event"
-condition_pattern = "</log4j:event>$"
+condition_pattern = "</log4j:event>\r$"
 timeout_ms = 10000
 
 [transforms.processed]
