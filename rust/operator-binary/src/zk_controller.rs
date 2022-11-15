@@ -622,7 +622,9 @@ fn create_log_config(log_dir: &str, log_file: &str, max_size_in_mb: i32) -> Stri
 
 fn create_vector_config(log_dir: &str, log_file: &str, vector_aggregator_address: &str) -> String {
     format!(
-        r#"[sources.logfile]
+        r#"data_dir = "/stackable/vector/var"
+
+[sources.logfile]
 type = "file"
 include = ["{log_dir}/{log_file}"]
 
@@ -637,7 +639,7 @@ inputs = ["logfile"]
 type = "remap"
 source = '''
 wrapped_xml_event = "<root xmlns:log4j=\"http://jakarta.apache.org/log4j/\">" + string!(.message) + "</root>"
-parsed_event = parse_xml!(wrapped_xml_event).root
+parsed_event = parse_xml!(wrapped_xml_event).root.event
 .timestamp = to_timestamp!(to_float!(parsed_event.@timestamp) / 1000)
 .logger = parsed_event.@logger
 .level = parsed_event.@level
@@ -876,9 +878,10 @@ fn build_server_rolegroup_statefulset(
     if logging.enable_vector_agent {
         let container_log_agent = ContainerBuilder::new("vector")
             .unwrap()
-            .image("docker.stackable.tech/timberio/vector:0.25.0-alpine")
+            .image_from_product_image(resolved_product_image)
+            .command(vec!["/stackable/vector/bin/vector".into()])
             .args(vec![
-                "--config".to_string(),
+                "--config".into(),
                 format!("{STACKABLE_CONFIG_DIR}/vector.toml"),
             ])
             .add_volume_mount("config", STACKABLE_CONFIG_DIR)
