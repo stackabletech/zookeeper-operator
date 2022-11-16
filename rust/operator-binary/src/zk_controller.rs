@@ -626,6 +626,9 @@ fn create_vector_config(log_dir: &str, vector_aggregator_address: &str) -> Strin
 [log_schema]
 host_key = "pod"
 
+[sources.vector]
+type = "internal_logs"
+
 [sources.files_stdout]
 type = "file"
 include = ["{log_dir}/*/*.stdout.log"]
@@ -672,7 +675,20 @@ parsed_event = parse_xml!(wrapped_xml_event).root.event
 .message = parsed_event.message
 '''
 
-[transforms.extended_logs]
+[transforms.extended_logs_vector]
+inputs = ["vector"]
+type = "remap"
+source = '''
+.container = "vector"
+.level = .metadata.level
+.logger = .metadata.module_path
+if exists(.file) {{ .processed_file = del(.file) }}
+del(.metadata)
+del(.pid)
+del(.source_type)
+'''
+
+[transforms.extended_logs_files]
 inputs = ["processed_files_*"]
 type = "remap"
 source = '''
@@ -681,7 +697,7 @@ del(.source_type)
 '''
 
 [sinks.aggregator]
-inputs = ["extended_logs"]
+inputs = ["extended_logs_*"]
 type = "vector"
 address = "{vector_aggregator_address}"
 "#
