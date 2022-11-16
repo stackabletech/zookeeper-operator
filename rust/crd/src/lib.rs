@@ -50,7 +50,7 @@ pub const SYSTEM_TRUST_STORE_DIR: &str = "/etc/pki/java/cacerts";
 pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
 pub const VECTOR_CONFIG_FILE: &str = "vector.toml";
 
-pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log";
+pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
 
 pub const MAX_LOG_FILE_SIZE_IN_MB: i32 = 1000;
 const JVM_HEAP_FACTOR: f32 = 0.8;

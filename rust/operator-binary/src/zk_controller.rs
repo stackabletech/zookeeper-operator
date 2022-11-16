@@ -11,7 +11,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
         ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
-        SecretOperatorVolumeSourceBuilder, VolumeBuilder,
+        SecretOperatorVolumeSourceBuilder, SecurityContextBuilder, VolumeBuilder,
     },
     cluster_resources::ClusterResources,
     commons::{
@@ -547,7 +547,7 @@ fn build_server_rolegroup_config_map(
         .add_data(
             LOGBACK_CONFIG_FILE,
             create_log_config(
-                STACKABLE_LOG_DIR,
+                &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                 ZOOKEEPER_LOG_FILE,
                 MAX_LOG_FILE_SIZE_IN_MB,
             ),
@@ -566,7 +566,6 @@ fn build_server_rolegroup_config_map(
             VECTOR_CONFIG_FILE,
             create_vector_config(
                 STACKABLE_LOG_DIR,
-                ZOOKEEPER_LOG_FILE,
                 vector_aggregator_address.expect("vectorAggregatorAddress is set"),
             ),
         );
@@ -620,22 +619,49 @@ fn create_log_config(log_dir: &str, log_file: &str, max_size_in_mb: i32) -> Stri
     )
 }
 
-fn create_vector_config(log_dir: &str, log_file: &str, vector_aggregator_address: &str) -> String {
+fn create_vector_config(log_dir: &str, vector_aggregator_address: &str) -> String {
     format!(
         r#"data_dir = "/stackable/vector/var"
 
-[sources.logfile]
-type = "file"
-include = ["{log_dir}/{log_file}"]
+[log_schema]
+host_key = "pod"
 
-[sources.logfile.multiline]
+[sources.files_stdout]
+type = "file"
+include = ["{log_dir}/*/*.stdout.log"]
+
+[sources.files_stderr]
+type = "file"
+include = ["{log_dir}/*/*.stderr.log"]
+
+[sources.files_log4j]
+type = "file"
+include = ["{log_dir}/*/*.log4j.xml"]
+
+[sources.files_log4j.multiline]
 mode = "halt_with"
 start_pattern = "^<log4j:event"
 condition_pattern = "</log4j:event>\r$"
 timeout_ms = 10000
 
-[transforms.processed]
-inputs = ["logfile"]
+[transforms.processed_files_stdout]
+inputs = ["files_stdout"]
+type = "remap"
+source = '''
+.logger = "ROOT"
+.level = "INFO"
+'''
+
+[transforms.processed_files_stderr]
+inputs = ["files_stderr"]
+type = "remap"
+source = '''
+.logger = "ROOT"
+.level = "ERROR"
+'''
+
+[transforms.processed_files_log4j]
+inputs = ["files_log4j"]
 type = "remap"
 source = '''
 wrapped_xml_event = "<root xmlns:log4j=\"http://jakarta.apache.org/log4j/\">" + string!(.message) + "</root>"
@@ -646,8 +672,16 @@ parsed_event = parse_xml!(wrapped_xml_event).root.event
 .message = parsed_event.message
 '''
 
+[transforms.extended_logs]
+inputs = ["processed_files_*"]
+type = "remap"
+source = '''
+. |= parse_regex!(.file, r'^{log_dir}/(?P<container>.*?)/(?P<file>.*?)$')
+del(.source_type)
+'''
+
 [sinks.aggregator]
-inputs = ["processed"]
+inputs = ["extended_logs"]
 type = "vector"
 address = "{vector_aggregator_address}"
 "#
@@ -771,7 +805,7 @@ fn build_server_rolegroup_statefulset(
 
     let container_prepare = cb_prepare
         .image_from_product_image(resolved_product_image)
-        .command(vec!["sh".to_string(), "-c".to_string()])
+        .command(vec!["bash".to_string(), "-c".to_string()])
         .args(vec![create_init_container_command_args(zk)])
         .add_env_vars(env_vars.clone())
         .add_env_vars(vec![EnvVar {
@@ -788,6 +822,8 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .security_context(SecurityContextBuilder::run_as_root())
         .build();
 
     let container_zk = cb_zookeeper
