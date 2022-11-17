@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 anyhow = "1.0.58"
-clap = { version = "3.2.8", features = ["derive"] }
+clap = { version = "4.0.26", features = ["derive"] }
 failure = "0.1.8"
 fnv = "1.0.7"
 futures = { version = "0.3.21", features = ["compat"] }
