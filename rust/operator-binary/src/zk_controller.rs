@@ -41,8 +41,8 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{
-    Container, ContainerLogConfig, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig,
-    ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, LOGBACK_CONFIG_FILE,
+    Container, ContainerLogConfig, LogLevel, ZookeeperCluster, ZookeeperClusterStatus,
+    ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, LOGBACK_CONFIG_FILE,
     MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR,
     STACKABLE_DATA_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, VECTOR_CONFIG_FILE,
     ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
@@ -573,6 +573,8 @@ fn build_server_rolegroup_config_map(
             create_vector_config(
                 STACKABLE_LOG_DIR,
                 vector_aggregator_address.expect("vectorAggregatorAddress is set"),
+                &zk.container_log_config(rolegroup, Container::Vector)
+                    .unwrap_or_default(),
             ),
         );
     }
@@ -648,7 +650,28 @@ fn create_log_config(
     )
 }
 
-fn create_vector_config(log_dir: &str, vector_aggregator_address: &str) -> String {
+fn create_vector_config(
+    log_dir: &str,
+    vector_aggregator_address: &str,
+    config: &ContainerLogConfig,
+) -> String {
+    let vector_log_level = config
+        .file
+        .as_ref()
+        .and_then(|appender| appender.level_threshold.as_ref())
+        .cloned()
+        .unwrap_or_default();
+
+    let vector_log_level_filter_expression = match vector_log_level {
+        LogLevel::TRACE => "true",
+        LogLevel::DEBUG => r#".level != "TRACE""#,
+        LogLevel::INFO => r#"!includes(["TRACE", "DEBUG"], .metadata.level)"#,
+        LogLevel::WARN => r#"!includes(["TRACE", "DEBUG", "INFO"], .metadata.level)"#,
+        LogLevel::ERROR => r#"!includes(["TRACE", "DEBUG", "INFO", "WARN"], .metadata.level)"#,
+        LogLevel::FATAL => "false",
+        LogLevel::NONE => "false",
+    };
+
     format!(
         r#"data_dir = "/stackable/vector/var"
 
@@ -704,8 +727,13 @@ parsed_event = parse_xml!(wrapped_xml_event).root.event
 .message = parsed_event.message
 '''
 
-[transforms.extended_logs_vector]
+[transforms.filtered_logs_vector]
 inputs = ["vector"]
+type = "filter"
+condition = '{vector_log_level_filter_expression}'
+
+[transforms.extended_logs_vector]
+inputs = ["filtered_logs_vector"]
 type = "remap"
 source = '''
 .container = "vector"
