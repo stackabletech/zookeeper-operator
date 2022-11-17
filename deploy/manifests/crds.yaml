@@ -132,7 +132,7 @@ spec:
                                           - WARN
                                           - ERROR
                                           - FATAL
-                                          - OFF
+                                          - NONE
                                         nullable: true
                                         type: string
                                     type: object
@@ -146,7 +146,7 @@ spec:
                                           - WARN
                                           - ERROR
                                           - FATAL
-                                          - OFF
+                                          - NONE
                                         nullable: true
                                         type: string
                                     type: object
@@ -161,7 +161,7 @@ spec:
                                             - WARN
                                             - ERROR
                                             - FATAL
-                                            - OFF
+                                            - NONE
                                           nullable: true
                                           type: string
                                       type: object
@@ -435,7 +435,7 @@ spec:
                                                 - WARN
                                                 - ERROR
                                                 - FATAL
-                                                - OFF
+                                                - NONE
                                               nullable: true
                                               type: string
                                           type: object
@@ -449,7 +449,7 @@ spec:
                                                 - WARN
                                                 - ERROR
                                                 - FATAL
-                                                - OFF
+                                                - NONE
                                               nullable: true
                                               type: string
                                           type: object
@@ -464,7 +464,7 @@ spec:
                                                   - WARN
                                                   - ERROR
                                                   - FATAL
-                                                  - OFF
+                                                  - NONE
                                                 nullable: true
                                                 type: string
                                             type: object

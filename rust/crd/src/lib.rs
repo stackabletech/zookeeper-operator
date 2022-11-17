@@ -286,7 +286,7 @@ pub enum LogLevel {
     WARN,
     ERROR,
     FATAL,
-    OFF,
+    NONE,
 }
 
 impl Default for LogLevel {
