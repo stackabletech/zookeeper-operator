@@ -41,10 +41,11 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR,
-    CLIENT_TLS_MOUNT_DIR, LOGBACK_CONFIG_FILE, MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR,
-    QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_DIR,
-    STACKABLE_RW_CONFIG_DIR, VECTOR_CONFIG_FILE, ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
+    Container, ContainerLogConfig, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig,
+    ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, LOGBACK_CONFIG_FILE,
+    MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR,
+    STACKABLE_DATA_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, VECTOR_CONFIG_FILE,
+    ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -514,6 +515,14 @@ fn build_server_rolegroup_config_map(
         )
     }));
 
+    let role =
+        ZookeeperRole::from_str(&rolegroup.role).with_context(|_| RoleParseFailureSnafu {
+            role: rolegroup.role.to_string(),
+        })?;
+    let logging = zk
+        .logging(&role, rolegroup)
+        .context(CrdValidationFailureSnafu)?;
+
     let zoo_cfg = zoo_cfg
         .into_iter()
         .map(|(k, v)| (k, Some(v)))
@@ -550,16 +559,13 @@ fn build_server_rolegroup_config_map(
                 &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                 ZOOKEEPER_LOG_FILE,
                 MAX_LOG_FILE_SIZE_IN_MB,
+                &logging
+                    .containers
+                    .get(&Container::Zookeeper)
+                    .cloned()
+                    .unwrap_or_default(),
             ),
         );
-
-    let role =
-        ZookeeperRole::from_str(&rolegroup.role).with_context(|_| RoleParseFailureSnafu {
-            role: rolegroup.role.to_string(),
-        })?;
-    let logging = zk
-        .logging(&role, rolegroup)
-        .context(CrdValidationFailureSnafu)?;
 
     if logging.enable_vector_agent {
         cm_builder.add_data(
@@ -578,9 +584,26 @@ fn build_server_rolegroup_config_map(
         })
 }
 
-fn create_log_config(log_dir: &str, log_file: &str, max_size_in_mb: i32) -> String {
+fn create_log_config(
+    log_dir: &str,
+    log_file: &str,
+    max_size_in_mb: i32,
+    config: &ContainerLogConfig,
+) -> String {
     let number_of_archived_log_files = 1;
-    let max_log_file_size_in_mb = max_size_in_mb / (1 + number_of_archived_log_files);
+
+    let loggers = config
+        .loggers
+        .iter()
+        .filter(|(name, _)| name.as_str() != ContainerLogConfig::ROOT_LOGGER)
+        .map(|(name, logger_config)| {
+            format!(
+                "  <logger name=\"{name}\" level=\"{level}\" />\n",
+                name = name.escape_default(),
+                level = logger_config.level.to_owned(),
+            )
+        })
+        .collect::<String>();
 
     format!(
         r#"<configuration>
@@ -589,7 +612,7 @@ fn create_log_config(log_dir: &str, log_file: &str, max_size_in_mb: i32) -> Stri
       <pattern>%d{{ISO8601}} [myid:%X{{myid}}] - %-5p [%t:%C{{1}}@%L] - %m%n</pattern>
     </encoder>
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>INFO</level>
+      <level>{console_log_level_threshold}</level>
     </filter>
   </appender>
 
@@ -599,7 +622,7 @@ fn create_log_config(log_dir: &str, log_file: &str, max_size_in_mb: i32) -> Stri
       <layout class="ch.qos.logback.classic.log4j.XMLLayout" />
     </encoder>
     <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>INFO</level>
+      <level>{file_log_level_threshold}</level>
     </filter>
     <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
       <minIndex>1</minIndex>
@@ -611,11 +634,17 @@ fn create_log_config(log_dir: &str, log_file: &str, max_size_in_mb: i32) -> Stri
     </triggeringPolicy>
   </appender>
 
-  <root level="INFO">
+{loggers}
+  <root level="{root_log_level}">
     <appender-ref ref="CONSOLE" />
     <appender-ref ref="FILE" />
   </root>
-</configuration>"#
+</configuration>
+"#,
+        max_log_file_size_in_mb = max_size_in_mb / (1 + number_of_archived_log_files),
+        root_log_level = config.root_log_level().unwrap_or_default(),
+        console_log_level_threshold = config.console.level_threshold,
+        file_log_level_threshold = config.file.level_threshold,
     )
 }
 

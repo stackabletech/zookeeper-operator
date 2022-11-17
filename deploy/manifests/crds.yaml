@@ -119,50 +119,64 @@ spec:
                         logging:
                           nullable: true
                           properties:
-                            console:
-                              properties:
-                                loggers:
-                                  additionalProperties:
+                            containers:
+                              additionalProperties:
+                                properties:
+                                  console:
                                     properties:
-                                      level:
+                                      levelThreshold:
                                         enum:
                                           - TRACE
                                           - DEBUG
                                           - INFO
                                           - WARN
                                           - ERROR
+                                          - FATAL
+                                          - OFF
                                         nullable: true
                                         type: string
                                     type: object
-                                  type: object
-                              required:
-                                - loggers
+                                  file:
+                                    properties:
+                                      levelThreshold:
+                                        enum:
+                                          - TRACE
+                                          - DEBUG
+                                          - INFO
+                                          - WARN
+                                          - ERROR
+                                          - FATAL
+                                          - OFF
+                                        nullable: true
+                                        type: string
+                                    type: object
+                                  loggers:
+                                    additionalProperties:
+                                      properties:
+                                        level:
+                                          enum:
+                                            - TRACE
+                                            - DEBUG
+                                            - INFO
+                                            - WARN
+                                            - ERROR
+                                            - FATAL
+                                            - OFF
+                                          nullable: true
+                                          type: string
+                                      type: object
+                                    type: object
+                                required:
+                                  - console
+                                  - file
+                                  - loggers
+                                type: object
                               type: object
                             enableVectorAgent:
                               nullable: true
                               type: boolean
-                            file:
-                              properties:
-                                loggers:
-                                  additionalProperties:
-                                    properties:
-                                      level:
-                                        enum:
-                                          - TRACE
-                                          - DEBUG
-                                          - INFO
-                                          - WARN
-                                          - ERROR
-                                        nullable: true
-                                        type: string
-                                    type: object
-                                  type: object
-                              required:
-                                - loggers
-                              type: object
                           required:
-                            - console
-                            - file
+                            - containers
                           type: object
                         myidOffset:
                           format: uint16
@@ -408,50 +422,64 @@ spec:
                               logging:
                                 nullable: true
                                 properties:
-                                  console:
-                                    properties:
-                                      loggers:
-                                        additionalProperties:
+                                  containers:
+                                    additionalProperties:
+                                      properties:
+                                        console:
                                           properties:
-                                            level:
+                                            levelThreshold:
                                               enum:
                                                 - TRACE
                                                 - DEBUG
                                                 - INFO
                                                 - WARN
                                                 - ERROR
+                                                - FATAL
+                                                - OFF
                                               nullable: true
                                               type: string
                                           type: object
-                                        type: object
-                                    required:
-                                      - loggers
+                                        file:
+                                          properties:
+                                            levelThreshold:
+                                              enum:
+                                                - TRACE
+                                                - DEBUG
+                                                - INFO
+                                                - WARN
+                                                - ERROR
+                                                - FATAL
+                                                - OFF
+                                              nullable: true
+                                              type: string
+                                          type: object
+                                        loggers:
+                                          additionalProperties:
+                                            properties:
+                                              level:
+                                                enum:
+                                                  - TRACE
+                                                  - DEBUG
+                                                  - INFO
+                                                  - WARN
+                                                  - ERROR
+                                                  - FATAL
+                                                  - OFF
+                                                nullable: true
+                                                type: string
+                                            type: object
+                                          type: object
+                                      required:
+                                        - console
+                                        - file
+                                        - loggers
+                                      type: object
                                     type: object
                                   enableVectorAgent:
                                     nullable: true
                                     type: boolean
-                                  file:
-                                    properties:
-                                      loggers:
-                                        additionalProperties:
-                                          properties:
-                                            level:
-                                              enum:
-                                                - TRACE
-                                                - DEBUG
-                                                - INFO
-                                                - WARN
-                                                - ERROR
-                                              nullable: true
-                                              type: string
-                                          type: object
-                                        type: object
-                                    required:
-                                      - loggers
-                                    type: object
                                 required:
-                                  - console
-                                  - file
+                                  - containers
                                 type: object
                               myidOffset:
                                 format: uint16

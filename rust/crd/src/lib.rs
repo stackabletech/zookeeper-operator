@@ -199,8 +199,17 @@ pub struct ZookeeperStorageConfig {
 )]
 pub struct Logging {
     pub enable_vector_agent: bool,
-    pub file: LogTargetConfig,
-    pub console: LogTargetConfig,
+    pub containers: BTreeMap<Container, ContainerLogConfig>,
+}
+
+#[derive(
+    Clone, Debug, Deserialize, Display, Eq, JsonSchema, Ord, PartialEq, PartialOrd, Serialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum Container {
+    Prepare,
+    Vector,
+    Zookeeper,
 }
 
 #[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
@@ -217,8 +226,20 @@ pub struct Logging {
     ),
     serde(rename_all = "camelCase")
 )]
-pub struct LogTargetConfig {
+pub struct ContainerLogConfig {
     pub loggers: BTreeMap<String, LoggerConfig>,
+    pub console: AppenderConfig,
+    pub file: AppenderConfig,
+}
+
+impl ContainerLogConfig {
+    pub const ROOT_LOGGER: &'static str = "ROOT";
+
+    pub fn root_log_level(&self) -> Option<LogLevel> {
+        self.loggers
+            .get(Self::ROOT_LOGGER)
+            .map(|root| root.level.to_owned())
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
@@ -239,13 +260,33 @@ pub struct LoggerConfig {
     pub level: LogLevel,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
+#[fragment_attrs(
+    derive(
+        Clone,
+        Debug,
+        Default,
+        Deserialize,
+        Merge,
+        JsonSchema,
+        PartialEq,
+        Serialize
+    ),
+    serde(rename_all = "camelCase")
+)]
+pub struct AppenderConfig {
+    pub level_threshold: LogLevel,
+}
+
+#[derive(Clone, Debug, Deserialize, Display, Eq, JsonSchema, PartialEq, Serialize)]
 pub enum LogLevel {
     TRACE,
     DEBUG,
     INFO,
     WARN,
     ERROR,
+    FATAL,
+    OFF,
 }
 
 impl Default for LogLevel {
@@ -294,12 +335,7 @@ impl ZookeeperConfig {
     fn default_logging() -> LoggingFragment {
         LoggingFragment {
             enable_vector_agent: Some(true),
-            file: LogTargetConfigFragment {
-                loggers: Default::default(),
-            },
-            console: LogTargetConfigFragment {
-                loggers: Default::default(),
-            },
+            containers: Default::default(),
         }
     }
 
