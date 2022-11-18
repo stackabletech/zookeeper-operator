@@ -2,6 +2,7 @@
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
+    utils::build_recommended_labels,
     ObjectRef, APP_NAME, OPERATOR_NAME,
 };
 
@@ -30,7 +31,7 @@ use stackable_operator::{
         apimachinery::pkg::apis::meta::v1::LabelSelector,
     },
     kube::{api::DynamicObject, runtime::controller, Resource, ResourceExt},
-    labels::{role_group_selector_labels, role_selector_labels, ObjectLabels},
+    labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
     product_config::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
@@ -794,24 +795,6 @@ fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Volume {
                 .build(),
         )
         .build()
-}
-
-pub fn build_recommended_labels<'a>(
-    owner: &'a ZookeeperCluster,
-    controller_name: &'a str,
-    app_version: &'a str,
-    role: &'a str,
-    role_group: &'a str,
-) -> ObjectLabels<'a, ZookeeperCluster> {
-    ObjectLabels {
-        owner,
-        app_name: APP_NAME,
-        app_version,
-        operator_name: OPERATOR_NAME,
-        controller_name,
-        role,
-        role_group,
-    }
 }
 
 pub fn error_policy(
