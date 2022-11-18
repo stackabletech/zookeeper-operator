@@ -4,9 +4,10 @@ mod utils;
 mod zk_controller;
 mod znode_controller;
 
-use std::sync::Arc;
-
 use crate::utils::Tokio01ExecutorExt;
+use crate::zk_controller::ZK_CONTROLLER_NAME;
+use crate::znode_controller::ZNODE_CONTROLLER_NAME;
+
 use clap::Parser;
 use futures::{compat::Future01CompatExt, StreamExt};
 use stackable_operator::{
@@ -23,12 +24,14 @@ use stackable_operator::{
     CustomResourceExt,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
+use std::sync::Arc;
 
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
 }
 
 const APP_NAME: &str = "zookeeper";
+const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 
 #[derive(clap::Parser)]
 #[clap(about = built_info::PKG_DESCRIPTION, author = stackable_operator::cli::AUTHOR)]
@@ -70,10 +73,8 @@ async fn main() -> anyhow::Result<()> {
                 "deploy/config-spec/properties.yaml",
                 "/etc/stackable/zookeeper-operator/config-spec/properties.yaml",
             ])?;
-            let client = stackable_operator::client::create_client(Some(
-                "zookeeper.stackable.tech".to_string(),
-            ))
-            .await?;
+            let client =
+                stackable_operator::client::create_client(Some(OPERATOR_NAME.to_string())).await?;
             let zk_controller_builder = Controller::new(
                 watch_namespace.get_api::<ZookeeperCluster>(&client),
                 ListParams::default(),
@@ -119,7 +120,7 @@ async fn main() -> anyhow::Result<()> {
                 .map(|res| {
                     report_controller_reconciled(
                         &client,
-                        "zookeeperclusters.zookeeper.stackable.tech",
+                        &format!("{ZK_CONTROLLER_NAME}.{OPERATOR_NAME}"),
                         &res,
                     );
                 });
@@ -162,7 +163,7 @@ async fn main() -> anyhow::Result<()> {
                 .map(|res| {
                     report_controller_reconciled(
                         &client,
-                        "zookeeperznode.zookeeper.stackable.tech",
+                        &format!("{ZNODE_CONTROLLER_NAME}.{OPERATOR_NAME}"),
                         &res,
                     );
                 });

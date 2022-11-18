@@ -1,6 +1,7 @@
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperConfig, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, QUORUM_TLS_DIR,
     QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
+    ZOOKEEPER_PROPERTIES_FILE,
 };
 
 const STORE_PASSWORD_ENV: &str = "STORE_PASSWORD";
@@ -70,7 +71,7 @@ fn generate_password() -> String {
 /// to the zoo.cfg to set key and truststore passwords.
 fn write_store_password_to_config(property: &str) -> String {
     format!(
-        "echo {property}=${STORE_PASSWORD_ENV} >> {rwconf}/zoo.cfg",
+        "echo {property}=${STORE_PASSWORD_ENV} >> {rwconf}/{ZOOKEEPER_PROPERTIES_FILE}",
         property = property,
         rwconf = STACKABLE_RW_CONFIG_DIR
     )

@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
-use snafu::{OptionExt, Snafu};
-use stackable_operator::memory::BinaryMultiple;
+use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    commons::resources::{CpuLimits, MemoryLimits, NoRuntimeLimits, PvcConfig, Resources},
-    config::merge::Merge,
+    commons::resources::{
+        CpuLimitsFragment, MemoryLimitsFragment, NoRuntimeLimits, NoRuntimeLimitsFragment,
+        PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
+    },
+    config::{fragment, fragment::Fragment, fragment::ValidationError, merge::Merge},
     crd::ClusterRef,
     error::OperatorResult,
     k8s_openapi::{
@@ -12,11 +14,15 @@ use stackable_operator::{
     },
     kube::{runtime::reflector::ObjectRef, CustomResource},
     memory::to_java_heap_value,
+    memory::BinaryMultiple,
     product_config_utils::{ConfigError, Configuration},
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
 use std::collections::BTreeMap;
+use strum::{Display, EnumString};
+
+pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 
 pub const CLIENT_PORT: u16 = 2181;
 pub const SECURE_CLIENT_PORT: u16 = 2282;
@@ -34,6 +40,18 @@ pub const SYSTEM_TRUST_STORE_DIR: &str = "/etc/pki/java/cacerts";
 
 const JVM_HEAP_FACTOR: f32 = 0.8;
 const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
+
+#[derive(Snafu, Debug)]
+pub enum Error {
+    #[snafu(display("object has no namespace associated"))]
+    NoNamespace,
+    #[snafu(display("object defines no version"))]
+    ObjectHasNoVersion,
+    #[snafu(display("unknown ZooKeeper role found {role}. Should be one of {roles:?}"))]
+    UnknownZookeeperRole { role: String, roles: Vec<String> },
+    #[snafu(display("fragment validation failure"))]
+    FragmentValidationFailure { source: ValidationError },
+}
 
 /// A cluster of ZooKeeper nodes
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -135,13 +153,25 @@ pub struct ZookeeperConfig {
     pub sync_limit: Option<u32>,
     pub tick_time: Option<u32>,
     pub myid_offset: Option<u16>,
-    pub resources: Option<Resources<Storage, NoRuntimeLimits>>,
+    pub resources: Option<ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits>>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Merge, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Storage {
-    #[serde(default)]
+#[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
+#[fragment_attrs(
+    derive(
+        Clone,
+        Debug,
+        Default,
+        Deserialize,
+        Merge,
+        JsonSchema,
+        PartialEq,
+        Serialize
+    ),
+    serde(rename_all = "camelCase")
+)]
+pub struct ZookeeperStorageConfig {
+    #[fragment_attrs(serde(default))]
     pub data: PvcConfig,
 }
 
@@ -178,6 +208,26 @@ impl ZookeeperConfig {
 
     fn myid_offset(&self) -> u16 {
         self.myid_offset.unwrap_or(1)
+    }
+
+    fn default_resources() -> ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> {
+        ResourcesFragment {
+            cpu: CpuLimitsFragment {
+                min: Some(Quantity("500m".to_owned())),
+                max: Some(Quantity("4".to_owned())),
+            },
+            memory: MemoryLimitsFragment {
+                limit: Some(Quantity("512Mi".to_owned())),
+                runtime_limits: NoRuntimeLimitsFragment {},
+            },
+            storage: ZookeeperStorageConfigFragment {
+                data: PvcConfigFragment {
+                    capacity: Some(Quantity("1Gi".to_owned())),
+                    storage_class: None,
+                    selectors: None,
+                },
+            },
+        }
     }
 }
 
@@ -328,9 +378,12 @@ impl Configuration for ZookeeperConfig {
     }
 }
 
-#[derive(strum::Display)]
+#[derive(
+    Clone, Debug, Deserialize, Display, EnumString, Eq, Hash, JsonSchema, PartialEq, Serialize,
+)]
 #[strum(serialize_all = "camelCase")]
 pub enum ZookeeperRole {
+    #[strum(serialize = "server")]
     Server,
 }
 
@@ -342,11 +395,15 @@ pub struct ZookeeperClusterStatus {
     pub discovery_hash: Option<String>,
 }
 
-#[derive(Debug, Snafu)]
-#[snafu(display("object has no namespace associated"))]
-pub struct NoNamespaceError;
-
 impl ZookeeperCluster {
+    /// The image version provided in the `spec.version` field
+    pub fn image_version(&self) -> Result<&str, Error> {
+        self.spec
+            .version
+            .as_deref()
+            .context(ObjectHasNoVersionSnafu)
+    }
+
     /// The name of the role-level load-balanced Kubernetes `Service`
     pub fn server_role_service_name(&self) -> Option<String> {
         self.metadata.name.clone()
@@ -379,7 +436,7 @@ impl ZookeeperCluster {
     /// avoid instance churn. For example, regenerating zoo.cfg based on the cluster state would lead to
     /// a lot of spurious restarts, as well as opening us up to dangerous split-brain conditions because
     /// the pods have inconsistent snapshots of which servers they should expect to be in quorum.
-    pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, NoNamespaceError> {
+    pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, Error> {
         let ns = self.metadata.namespace.clone().context(NoNamespaceSnafu)?;
         Ok(self
             .spec
@@ -446,60 +503,52 @@ impl ZookeeperCluster {
     /// 3. a default PVC with 1Gi capacity
     pub fn resources(
         &self,
+        role: &ZookeeperRole,
         rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
-    ) -> (Vec<PersistentVolumeClaim>, ResourceRequirements) {
-        let mut role_resources = self.role_resources().unwrap_or_default();
-        role_resources.merge(&Self::default_resources());
-        let mut resources = self.rolegroup_resources(rolegroup_ref).unwrap_or_default();
-        resources.merge(&role_resources);
+    ) -> Result<(Vec<PersistentVolumeClaim>, ResourceRequirements), Error> {
+        // Initialize the result with all default values as baseline
+        let conf_defaults = ZookeeperConfig::default_resources();
+
+        let role = match role {
+            ZookeeperRole::Server => {
+                self.spec
+                    .servers
+                    .as_ref()
+                    .context(UnknownZookeeperRoleSnafu {
+                        role: role.to_string(),
+                        roles: vec![role.to_string()],
+                    })?
+            }
+        };
+
+        // Retrieve role resource config
+        let mut conf_role: ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> =
+            role.config.config.resources.clone().unwrap_or_default();
+
+        // Retrieve rolegroup specific resource config
+        let mut conf_rolegroup: ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> = role
+            .role_groups
+            .get(&rolegroup_ref.role_group)
+            .and_then(|rg| rg.config.config.resources.clone())
+            .unwrap_or_default();
+
+        // Merge more specific configs into default config
+        // Hierarchy is:
+        // 1. RoleGroup
+        // 2. Role
+        // 3. Default
+        conf_role.merge(&conf_defaults);
+        conf_rolegroup.merge(&conf_role);
+
+        let resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits> =
+            fragment::validate(conf_rolegroup).context(FragmentValidationFailureSnafu)?;
 
         let data_pvc = resources
             .storage
             .data
             .build_pvc("data", Some(vec!["ReadWriteOnce"]));
-        let pod_resources = resources.clone().into();
 
-        (vec![data_pvc], pod_resources)
-    }
-
-    fn rolegroup_resources(
-        &self,
-        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
-    ) -> Option<Resources<Storage, NoRuntimeLimits>> {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.servers
-            .as_ref()?
-            .role_groups
-            .get(&rolegroup_ref.role_group)?
-            .config
-            .config
-            .resources
-            .clone()
-    }
-
-    fn role_resources(&self) -> Option<Resources<Storage, NoRuntimeLimits>> {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.servers.as_ref()?.config.config.resources.clone()
-    }
-
-    fn default_resources() -> Resources<Storage, NoRuntimeLimits> {
-        Resources {
-            cpu: CpuLimits {
-                min: Some(Quantity("500m".to_owned())),
-                max: Some(Quantity("4".to_owned())),
-            },
-            memory: MemoryLimits {
-                limit: Some(Quantity("512Mi".to_owned())),
-                runtime_limits: NoRuntimeLimits {},
-            },
-            storage: Storage {
-                data: PvcConfig {
-                    capacity: Some(Quantity("1Gi".to_owned())),
-                    storage_class: None,
-                    selectors: None,
-                },
-            },
-        }
+        Ok((vec![data_pvc], resources.into()))
     }
 
     pub fn heap_limits(&self, resources: &ResourceRequirements) -> OperatorResult<Option<u32>> {
