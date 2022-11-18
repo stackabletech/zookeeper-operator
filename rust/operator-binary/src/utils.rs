@@ -1,5 +1,7 @@
+use crate::{APP_NAME, OPERATOR_NAME};
 use futures::Future;
 use pin_project::pin_project;
+use stackable_operator::labels::ObjectLabels;
 
 #[pin_project]
 pub struct WithTokio01Executor<F, E> {
@@ -34,3 +36,22 @@ pub trait Tokio01ExecutorExt {
 }
 
 impl<E: tokio01::executor::Executor> Tokio01ExecutorExt for E {}
+
+/// Creates recommended `ObjectLabels` to be used in deployed resources
+pub fn build_recommended_labels<'a, T>(
+    owner: &'a T,
+    controller_name: &'a str,
+    app_version: &'a str,
+    role: &'a str,
+    role_group: &'a str,
+) -> ObjectLabels<'a, T> {
+    ObjectLabels {
+        owner,
+        app_name: APP_NAME,
+        app_version,
+        operator_name: OPERATOR_NAME,
+        controller_name,
+        role,
+        role_group,
+    }
+}

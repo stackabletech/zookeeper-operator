@@ -6,7 +6,7 @@ use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use crate::{
     discovery::{self, build_discovery_configmaps},
-    APP_NAME,
+    APP_NAME, OPERATOR_NAME,
 };
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -24,7 +24,7 @@ use stackable_operator::{
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
 use strum::{EnumDiscriminants, IntoStaticStr};
 
-const RESOURCE_SCOPE: &str = "zookeeper-operator_zookeeperznode";
+pub const ZNODE_CONTROLLER_NAME: &str = "znode";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -89,6 +89,8 @@ pub enum Error {
     DeleteOrphans {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("object has no namespace"))]
+    ObjectHasNoNamespace,
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -131,6 +133,7 @@ impl ReconcilerError for Error {
             Error::Finalizer { source: _ } => None,
             Error::ObjectMissingMetadataForOwnerRef { source: _ } => None,
             Error::DeleteOrphans { source: _ } => None,
+            Error::ObjectHasNoNamespace => None,
         }
     }
 }
@@ -158,8 +161,8 @@ pub async fn reconcile_znode(
     let znode_path = format!("/znode-{}", uid);
 
     finalizer(
-        &client.get_namespaced_api::<ZookeeperZnode>(&ns),
-        "zookeeper.stackable.tech/znode",
+        &client.get_api::<ZookeeperZnode>(&ns),
+        &format!("{OPERATOR_NAME}/znode"),
         znode,
         |ev| async {
             match ev {
@@ -181,8 +184,13 @@ async fn reconcile_apply(
     znode_path: &str,
 ) -> Result<controller::Action> {
     let zk = zk?;
-    let mut cluster_resources =
-        ClusterResources::new(APP_NAME, RESOURCE_SCOPE, &znode.object_ref(&())).unwrap();
+    let mut cluster_resources = ClusterResources::new(
+        APP_NAME,
+        OPERATOR_NAME,
+        ZNODE_CONTROLLER_NAME,
+        &znode.object_ref(&()),
+    )
+    .unwrap();
 
     znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk)?, znode_path)
         .await
@@ -197,22 +205,19 @@ async fn reconcile_apply(
                 .with_context(|| NoZkSvcNameSnafu {
                     zk: ObjectRef::from_obj(&zk),
                 })?,
-            zk.metadata.namespace.as_deref(),
+            zk.metadata
+                .namespace
+                .as_deref()
+                .context(ObjectHasNoNamespaceSnafu)?,
         )
         .await
         .context(FindZkSvcSnafu {
             zk: ObjectRef::from_obj(&zk),
         })?;
-    for discovery_cm in build_discovery_configmaps(
-        client,
-        znode,
-        &zk,
-        &server_role_service,
-        Some(znode_path),
-        RESOURCE_SCOPE,
-    )
-    .await
-    .context(BuildDiscoveryConfigMapSnafu)?
+    for discovery_cm in
+        build_discovery_configmaps(&zk, znode, client, &server_role_service, Some(znode_path))
+            .await
+            .context(BuildDiscoveryConfigMapSnafu)?
     {
         cluster_resources
             .add(client, &discovery_cm)
@@ -273,7 +278,7 @@ async fn find_zk_of_znode(
         zk_ref.name.as_deref(),
         zk_ref.namespace_relative_from(znode),
     ) {
-        match client.get::<ZookeeperCluster>(zk_name, Some(zk_ns)).await {
+        match client.get::<ZookeeperCluster>(zk_name, zk_ns).await {
             Ok(zk) => Ok(zk),
             Err(err) => match &err {
                 stackable_operator::error::Error::KubeError {
@@ -291,7 +296,11 @@ async fn find_zk_of_znode(
     }
 }
 
-pub fn error_policy(_error: &Error, _ctx: Arc<Ctx>) -> controller::Action {
+pub fn error_policy(
+    _obj: Arc<ZookeeperZnode>,
+    _error: &Error,
+    _ctx: Arc<Ctx>,
+) -> controller::Action {
     controller::Action::requeue(Duration::from_secs(5))
 }
 

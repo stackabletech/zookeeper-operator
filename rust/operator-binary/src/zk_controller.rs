@@ -2,8 +2,10 @@
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
-    ObjectRef, APP_NAME,
+    utils::build_recommended_labels,
+    ObjectRef, APP_NAME, OPERATOR_NAME,
 };
+
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -24,11 +26,11 @@ use stackable_operator::{
                 ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service,
                 ServiceAccount, ServicePort, ServiceSpec, Volume,
             },
-            rbac::v1::{RoleRef, Subject},
+            rbac::v1::{RoleBinding, RoleRef, Subject},
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
     },
-    kube::{api::DynamicObject, runtime::controller, Resource},
+    kube::{api::DynamicObject, runtime::controller, Resource, ResourceExt},
     labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
     product_config::{
@@ -37,23 +39,22 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     role_utils::RoleGroupRef,
 };
-use stackable_operator::{k8s_openapi::api::rbac::v1::RoleBinding, kube::ResourceExt};
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR,
     CLIENT_TLS_MOUNT_DIR, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR,
-    STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
+    STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
     hash::Hasher,
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
-const RESOURCE_SCOPE: &str = "zookeeper-operator_zookeepercluster";
-
+pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
 pub struct Ctx {
@@ -67,10 +68,17 @@ pub struct Ctx {
 pub enum Error {
     #[snafu(display("object has no namespace"))]
     ObjectHasNoNamespace,
-    #[snafu(display("object defines no version"))]
-    ObjectHasNoVersion,
+    #[snafu(display("crd validation failure"))]
+    CrdValidationFailure {
+        source: stackable_zookeeper_crd::Error,
+    },
     #[snafu(display("object defines no server role"))]
     NoServerRole,
+    #[snafu(display("could not parse role [{role}]"))]
+    RoleParseFailure {
+        source: strum::ParseError,
+        role: String,
+    },
     #[snafu(display("failed to calculate global service name"))]
     GlobalServiceNameNotFound,
     #[snafu(display("failed to calculate service name for role {}", rolegroup))]
@@ -109,7 +117,7 @@ pub enum Error {
     InvalidProductConfig {
         source: stackable_operator::error::Error,
     },
-    #[snafu(display("failed to serialize zoo.cfg for {}", rolegroup))]
+    #[snafu(display("failed to serialize [{ZOOKEEPER_PROPERTIES_FILE}] for {}", rolegroup))]
     SerializeZooCfg {
         source: stackable_operator::product_config::writer::PropertiesWriterError,
         rolegroup: RoleGroupRef<ZookeeperCluster>,
@@ -169,8 +177,9 @@ impl ReconcilerError for Error {
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
             Error::ObjectHasNoNamespace => None,
-            Error::ObjectHasNoVersion => None,
+            Error::CrdValidationFailure { .. } => None,
             Error::NoServerRole => None,
+            Error::RoleParseFailure { .. } => None,
             Error::GlobalServiceNameNotFound => None,
             Error::RoleGroupServiceNameNotFound { .. } => None,
             Error::ApplyRoleService { .. } => None,
@@ -201,16 +210,19 @@ impl ReconcilerError for Error {
     }
 }
 
-const PROPERTIES_FILE: &str = "zoo.cfg";
-
 pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
     let client = &ctx.client;
-    let mut cluster_resources =
-        ClusterResources::new(APP_NAME, RESOURCE_SCOPE, &zk.object_ref(&())).unwrap();
+    let mut cluster_resources = ClusterResources::new(
+        APP_NAME,
+        OPERATOR_NAME,
+        ZK_CONTROLLER_NAME,
+        &zk.object_ref(&()),
+    )
+    .unwrap();
 
     let validated_config = validate_all_roles_and_groups_config(
-        zk_version(&zk)?,
+        zk.image_version().context(CrdValidationFailureSnafu)?,
         &transform_all_roles_to_config(
             &*zk,
             [(
@@ -218,7 +230,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
                 (
                     vec![
                         PropertyNameKind::Env,
-                        PropertyNameKind::File(PROPERTIES_FILE.to_string()),
+                        PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
                     ],
                     zk.spec.servers.clone().context(NoServerRoleSnafu)?,
                 ),
@@ -237,12 +249,10 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
-    // TODO: switch to AuthenticationClass::resolve if operator-rs is updated to 0.24.0
     let client_authentication_class = if let Some(auth_class) = zk.client_tls_authentication_class()
     {
         Some(
-            client
-                .get::<AuthenticationClass>(auth_class, None) // AuthenticationClass has ClusterScope
+            AuthenticationClass::resolve(client, auth_class)
                 .await
                 .context(AuthenticationClassRetrievalSnafu {
                     authentication_class: ObjectRef::<AuthenticationClass>::new(auth_class),
@@ -262,19 +272,19 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .with_context(|_| ApplyRoleBindingSnafu)?;
 
-    let server_role_service = build_server_role_service(&zk)?;
     let server_role_service = cluster_resources
-        .add(client, &server_role_service)
+        .add(client, &build_server_role_service(&zk)?)
         .await
         .context(ApplyRoleServiceSnafu)?;
+
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
 
-        let rg_service = build_server_rolegroup_service(&rolegroup, &zk)?;
-        let rg_configmap = build_server_rolegroup_config_map(&rolegroup, &zk, rolegroup_config)?;
+        let rg_service = build_server_rolegroup_service(&zk, &rolegroup)?;
+        let rg_configmap = build_server_rolegroup_config_map(&zk, &rolegroup, rolegroup_config)?;
         let rg_statefulset = build_server_rolegroup_statefulset(
-            &rolegroup,
             &zk,
+            &rolegroup,
             rolegroup_config,
             client_authentication_class.as_ref(),
         )?;
@@ -301,16 +311,9 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
-    for discovery_cm in build_discovery_configmaps(
-        client,
-        &*zk,
-        &zk,
-        &server_role_service,
-        None,
-        RESOURCE_SCOPE,
-    )
-    .await
-    .context(BuildDiscoveryConfigSnafu)?
+    for discovery_cm in build_discovery_configmaps(&zk, &*zk, client, &server_role_service, None)
+        .await
+        .context(BuildDiscoveryConfigSnafu)?
     {
         let discovery_cm = cluster_resources
             .add(client, &discovery_cm)
@@ -331,7 +334,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(DeleteOrphansSnafu)?;
     client
-        .apply_patch_status(RESOURCE_SCOPE, &*zk, &status)
+        .apply_patch_status(OPERATOR_NAME, &*zk, &status)
         .await
         .context(ApplyStatusSnafu)?;
 
@@ -343,14 +346,13 @@ pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount,
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
             .name(SERVICE_ACCOUNT.to_string())
-            .with_recommended_labels(
+            .with_recommended_labels(build_recommended_labels(
                 zk,
-                APP_NAME,
-                zk_version(zk)?,
-                RESOURCE_SCOPE,
+                ZK_CONTROLLER_NAME,
+                zk.image_version().context(CrdValidationFailureSnafu)?,
                 "global",
                 "global",
-            )
+            ))
             .build(),
         ..ServiceAccount::default()
     };
@@ -359,14 +361,13 @@ pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount,
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
             .name("zookeeper-rolebinding".to_string())
-            .with_recommended_labels(
+            .with_recommended_labels(build_recommended_labels(
                 zk,
-                APP_NAME,
-                zk_version(zk)?,
-                RESOURCE_SCOPE,
+                ZK_CONTROLLER_NAME,
+                zk.image_version().context(CrdValidationFailureSnafu)?,
                 "global",
                 "global",
-            )
+            ))
             .build(),
         role_ref: RoleRef {
             kind: "ClusterRole".to_string(),
@@ -400,14 +401,13 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
             .name(&role_svc_name)
             .ownerreference_from_resource(zk, None, Some(true))
             .context(ObjectMissingMetadataForOwnerRefSnafu)?
-            .with_recommended_labels(
+            .with_recommended_labels(build_recommended_labels(
                 zk,
-                APP_NAME,
-                zk_version(zk)?,
-                RESOURCE_SCOPE,
+                ZK_CONTROLLER_NAME,
+                zk.image_version().context(CrdValidationFailureSnafu)?,
                 &role_name,
                 "global",
-            )
+            ))
             .build(),
         spec: Some(ServiceSpec {
             ports: Some(vec![ServicePort {
@@ -426,12 +426,14 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
 
 /// The rolegroup [`ConfigMap`] configures the rolegroup based on the configuration given by the administrator
 fn build_server_rolegroup_config_map(
-    rolegroup: &RoleGroupRef<ZookeeperCluster>,
     zk: &ZookeeperCluster,
+    rolegroup: &RoleGroupRef<ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
 ) -> Result<ConfigMap> {
     let mut zoo_cfg = server_config
-        .get(&PropertyNameKind::File(PROPERTIES_FILE.to_string()))
+        .get(&PropertyNameKind::File(
+            ZOOKEEPER_PROPERTIES_FILE.to_string(),
+        ))
         .cloned()
         .unwrap_or_default();
     zoo_cfg.extend(zk.pods().into_iter().flatten().map(|pod| {
@@ -452,18 +454,17 @@ fn build_server_rolegroup_config_map(
                 .name(rolegroup.object_name())
                 .ownerreference_from_resource(zk, None, Some(true))
                 .context(ObjectMissingMetadataForOwnerRefSnafu)?
-                .with_recommended_labels(
+                .with_recommended_labels(build_recommended_labels(
                     zk,
-                    APP_NAME,
-                    zk_version(zk)?,
-                    RESOURCE_SCOPE,
+                    ZK_CONTROLLER_NAME,
+                    zk.image_version().context(CrdValidationFailureSnafu)?,
                     &rolegroup.role,
                     &rolegroup.role_group,
-                )
+                ))
                 .build(),
         )
         .add_data(
-            "zoo.cfg",
+            ZOOKEEPER_PROPERTIES_FILE,
             to_java_properties_string(zoo_cfg.iter().map(|(k, v)| (k, v))).with_context(|_| {
                 SerializeZooCfgSnafu {
                     rolegroup: rolegroup.clone(),
@@ -480,8 +481,8 @@ fn build_server_rolegroup_config_map(
 ///
 /// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
 fn build_server_rolegroup_service(
-    rolegroup: &RoleGroupRef<ZookeeperCluster>,
     zk: &ZookeeperCluster,
+    rolegroup: &RoleGroupRef<ZookeeperCluster>,
 ) -> Result<Service> {
     Ok(Service {
         metadata: ObjectMetaBuilder::new()
@@ -489,14 +490,13 @@ fn build_server_rolegroup_service(
             .name(&rolegroup.object_name())
             .ownerreference_from_resource(zk, None, Some(true))
             .context(ObjectMissingMetadataForOwnerRefSnafu)?
-            .with_recommended_labels(
+            .with_recommended_labels(build_recommended_labels(
                 zk,
-                APP_NAME,
-                zk_version(zk)?,
-                RESOURCE_SCOPE,
+                ZK_CONTROLLER_NAME,
+                zk.image_version().context(CrdValidationFailureSnafu)?,
                 &rolegroup.role,
                 &rolegroup.role_group,
-            )
+            ))
             .with_label("prometheus.io/scrape", "true")
             .build(),
         spec: Some(ServiceSpec {
@@ -532,13 +532,16 @@ fn build_server_rolegroup_service(
 ///
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_server_rolegroup_service`]).
 fn build_server_rolegroup_statefulset(
-    rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     zk: &ZookeeperCluster,
+    rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     client_authentication_class: Option<&AuthenticationClass>,
 ) -> Result<StatefulSet> {
-    let zk_version = zk_version(zk)?;
-
+    let zk_version = zk.image_version().context(CrdValidationFailureSnafu)?;
+    let zk_role =
+        ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| RoleParseFailureSnafu {
+            role: rolegroup_ref.role.to_string(),
+        })?;
     let rolegroup = zk
         .spec
         .servers
@@ -558,7 +561,9 @@ fn build_server_rolegroup_statefulset(
         })
         .collect::<Vec<_>>();
 
-    let (pvc, resources) = zk.resources(rolegroup_ref);
+    let (pvc, resources) = zk
+        .resources(&zk_role, rolegroup_ref)
+        .context(CrdValidationFailureSnafu)?;
     // set heap size if available
     let heap_limits = zk
         .heap_limits(&resources)
@@ -649,14 +654,13 @@ fn build_server_rolegroup_statefulset(
 
     let pod_template = pod_builder
         .metadata_builder(|m| {
-            m.with_recommended_labels(
+            m.with_recommended_labels(build_recommended_labels(
                 zk,
-                APP_NAME,
+                ZK_CONTROLLER_NAME,
                 zk_version,
-                RESOURCE_SCOPE,
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
-            )
+            ))
         })
         .add_init_container(container_prepare)
         .add_container(container_zk)
@@ -689,14 +693,13 @@ fn build_server_rolegroup_statefulset(
             .name(&rolegroup_ref.object_name())
             .ownerreference_from_resource(zk, None, Some(true))
             .context(ObjectMissingMetadataForOwnerRefSnafu)?
-            .with_recommended_labels(
+            .with_recommended_labels(build_recommended_labels(
                 zk,
-                APP_NAME,
+                ZK_CONTROLLER_NAME,
                 zk_version,
-                RESOURCE_SCOPE,
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
-            )
+            ))
             .build(),
         spec: Some(StatefulSetSpec {
             pod_management_policy: Some("Parallel".to_string()),
@@ -794,10 +797,10 @@ fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Volume {
         .build()
 }
 
-pub fn zk_version(zk: &ZookeeperCluster) -> Result<&str> {
-    zk.spec.version.as_deref().context(ObjectHasNoVersionSnafu)
-}
-
-pub fn error_policy(_error: &Error, _ctx: Arc<Ctx>) -> controller::Action {
+pub fn error_policy(
+    _obj: Arc<ZookeeperCluster>,
+    _error: &Error,
+    _ctx: Arc<Ctx>,
+) -> controller::Action {
     controller::Action::requeue(Duration::from_secs(5))
 }

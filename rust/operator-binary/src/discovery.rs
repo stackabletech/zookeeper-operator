@@ -1,4 +1,5 @@
-use std::{collections::BTreeSet, num::TryFromIntError};
+use crate::utils::build_recommended_labels;
+use crate::ZK_CONTROLLER_NAME;
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -7,8 +8,7 @@ use stackable_operator::{
     kube::{runtime::reflector::ObjectRef, Resource},
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
-
-use crate::{zk_controller::zk_version, APP_NAME};
+use std::{collections::BTreeSet, num::TryFromIntError};
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -23,9 +23,13 @@ pub enum Error {
     NoName,
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
+    #[snafu(display("object has no version"))]
+    NoVersion {
+        source: stackable_zookeeper_crd::Error,
+    },
     #[snafu(display("failed to list expected pods"))]
     ExpectedPods {
-        source: stackable_zookeeper_crd::NoNamespaceError,
+        source: stackable_zookeeper_crd::Error,
     },
     #[snafu(display("could not find service port with name {}", port_name))]
     NoServicePort { port_name: String },
@@ -46,23 +50,21 @@ pub enum Error {
 
 /// Builds discovery [`ConfigMap`]s for connecting to a [`ZookeeperCluster`] for all expected scenarios
 pub async fn build_discovery_configmaps(
-    client: &stackable_operator::client::Client,
-    owner: &impl Resource<DynamicType = ()>,
     zk: &ZookeeperCluster,
+    owner: &impl Resource<DynamicType = ()>,
+    client: &stackable_operator::client::Client,
     svc: &Service,
     chroot: Option<&str>,
-    app_managed_by: &str,
 ) -> Result<Vec<ConfigMap>, Error> {
     let name = owner.meta().name.as_deref().context(NoNameSnafu)?;
     Ok(vec![
-        build_discovery_configmap(name, owner, zk, chroot, pod_hosts(zk)?, app_managed_by)?,
+        build_discovery_configmap(name, owner, zk, chroot, pod_hosts(zk)?)?,
         build_discovery_configmap(
             &format!("{}-nodeport", name),
             owner,
             zk,
             chroot,
             nodeport_hosts(client, svc, "zk").await?,
-            app_managed_by,
         )?,
     ])
 }
@@ -76,7 +78,6 @@ fn build_discovery_configmap(
     zk: &ZookeeperCluster,
     chroot: Option<&str>,
     hosts: impl IntoIterator<Item = (impl Into<String>, u16)>,
-    app_managed_by: &str,
 ) -> Result<ConfigMap, Error> {
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"
@@ -102,14 +103,13 @@ fn build_discovery_configmap(
                 .with_context(|_| ObjectMissingMetadataForOwnerRefSnafu {
                     zk: ObjectRef::from_obj(zk),
                 })?
-                .with_recommended_labels(
-                    owner,
-                    APP_NAME,
-                    zk_version(zk).unwrap_or("unknown"),
-                    app_managed_by,
+                .with_recommended_labels(build_recommended_labels(
+                    zk,
+                    ZK_CONTROLLER_NAME,
+                    zk.image_version().context(NoVersionSnafu)?,
                     &ZookeeperRole::Server.to_string(),
                     "discovery",
-                )
+                ))
                 .build(),
         )
         .add_data("ZOOKEEPER", conn_str)
@@ -150,7 +150,10 @@ async fn nodeport_hosts(
     let endpoints = client
         .get::<Endpoints>(
             svc.metadata.name.as_deref().context(NoNameSnafu)?,
-            svc.metadata.namespace.as_deref(),
+            svc.metadata
+                .namespace
+                .as_deref()
+                .context(NoNamespaceSnafu)?,
         )
         .await
         .with_context(|_| FindEndpointsSnafu {
