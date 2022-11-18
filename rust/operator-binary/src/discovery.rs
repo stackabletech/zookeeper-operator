@@ -104,7 +104,7 @@ fn build_discovery_configmap(
                     zk: ObjectRef::from_obj(zk),
                 })?
                 .with_recommended_labels(build_recommended_labels(
-                    &zk,
+                    zk,
                     ZK_CONTROLLER_NAME,
                     zk.image_version().context(NoVersionSnafu)?,
                     &ZookeeperRole::Server.to_string(),
