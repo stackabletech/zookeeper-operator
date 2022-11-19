@@ -311,9 +311,16 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
-    for discovery_cm in build_discovery_configmaps(&zk, &*zk, client, &server_role_service, None)
-        .await
-        .context(BuildDiscoveryConfigSnafu)?
+    for discovery_cm in build_discovery_configmaps(
+        &zk,
+        &*zk,
+        client,
+        ZK_CONTROLLER_NAME,
+        &server_role_service,
+        None,
+    )
+    .await
+    .context(BuildDiscoveryConfigSnafu)?
     {
         let discovery_cm = cluster_resources
             .add(client, &discovery_cm)
