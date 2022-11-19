@@ -6,6 +6,9 @@ dimensions:
       - 3.6.3-stackable0.8.0
       - 3.7.0-stackable0.8.0
       - 3.8.0-stackable0.8.0
+  - name: zookeeper-latest
+    values:
+      - 3.8.0-stackable0.8.0
   - name: use-client-tls
     values:
       - "true"
@@ -23,3 +26,6 @@ tests:
   - name: delete-rolegroup
     dimensions:
       - zookeeper
+  - name: znode
+    dimensions:
+      - zookeeper-latest

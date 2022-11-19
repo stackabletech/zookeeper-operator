@@ -8,9 +8,11 @@ All notable changes to this project will be documented in this file.
 
 - Updated stackable image versions ([#586]).
 - Operator-rs: 0.25.3 -> 0.27.1 ([#591]).
+- Fixed bug where ZNode ConfigMaps were not created due to labeling issues ([#592]).
 
 [#586]: https://github.com/stackabletech/zookeeper-operator/pull/586
 [#591]: https://github.com/stackabletech/zookeeper-operator/pull/591
+[#592]: https://github.com/stackabletech/zookeeper-operator/pull/592
 
 ## [0.12.0] - 2022-11-07
 

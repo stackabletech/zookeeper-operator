@@ -214,10 +214,16 @@ async fn reconcile_apply(
         .context(FindZkSvcSnafu {
             zk: ObjectRef::from_obj(&zk),
         })?;
-    for discovery_cm in
-        build_discovery_configmaps(&zk, znode, client, &server_role_service, Some(znode_path))
-            .await
-            .context(BuildDiscoveryConfigMapSnafu)?
+    for discovery_cm in build_discovery_configmaps(
+        &zk,
+        znode,
+        client,
+        ZNODE_CONTROLLER_NAME,
+        &server_role_service,
+        Some(znode_path),
+    )
+    .await
+    .context(BuildDiscoveryConfigMapSnafu)?
     {
         cluster_resources
             .add(client, &discovery_cm)

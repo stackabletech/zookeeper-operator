@@ -1,5 +1,4 @@
 use crate::utils::build_recommended_labels;
-use crate::ZK_CONTROLLER_NAME;
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -53,16 +52,18 @@ pub async fn build_discovery_configmaps(
     zk: &ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
     client: &stackable_operator::client::Client,
+    controller_name: &str,
     svc: &Service,
     chroot: Option<&str>,
 ) -> Result<Vec<ConfigMap>, Error> {
     let name = owner.meta().name.as_deref().context(NoNameSnafu)?;
     Ok(vec![
-        build_discovery_configmap(name, owner, zk, chroot, pod_hosts(zk)?)?,
+        build_discovery_configmap(zk, owner, name, controller_name, chroot, pod_hosts(zk)?)?,
         build_discovery_configmap(
-            &format!("{}-nodeport", name),
-            owner,
             zk,
+            owner,
+            &format!("{}-nodeport", name),
+            controller_name,
             chroot,
             nodeport_hosts(client, svc, "zk").await?,
         )?,
@@ -73,9 +74,10 @@ pub async fn build_discovery_configmaps(
 ///
 /// `hosts` will usually come from either [`pod_hosts`] or [`nodeport_hosts`].
 fn build_discovery_configmap(
-    name: &str,
-    owner: &impl Resource<DynamicType = ()>,
     zk: &ZookeeperCluster,
+    owner: &impl Resource<DynamicType = ()>,
+    name: &str,
+    controller_name: &str,
     chroot: Option<&str>,
     hosts: impl IntoIterator<Item = (impl Into<String>, u16)>,
 ) -> Result<ConfigMap, Error> {
@@ -104,8 +106,8 @@ fn build_discovery_configmap(
                     zk: ObjectRef::from_obj(zk),
                 })?
                 .with_recommended_labels(build_recommended_labels(
-                    zk,
-                    ZK_CONTROLLER_NAME,
+                    owner,
+                    controller_name,
                     zk.image_version().context(NoVersionSnafu)?,
                     &ZookeeperRole::Server.to_string(),
                     "discovery",
