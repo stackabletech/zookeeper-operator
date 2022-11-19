@@ -1,5 +1,4 @@
 use crate::utils::build_recommended_labels;
-use crate::ZK_CONTROLLER_NAME;
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
