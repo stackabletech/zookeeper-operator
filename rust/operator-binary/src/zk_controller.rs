@@ -605,7 +605,7 @@ fn create_log_config(
             format!(
                 "  <logger name=\"{name}\" level=\"{level}\" />\n",
                 name = name.escape_default(),
-                level = logger_config.level.to_owned(),
+                level = logger_config.level.to_logback_literal(),
             )
         })
         .collect::<String>();
@@ -647,9 +647,12 @@ fn create_log_config(
 </configuration>
 "#,
         max_log_file_size_in_mb = max_size_in_mb / (1 + number_of_archived_log_files),
-        root_log_level = config.root_log_level().unwrap_or_default(),
-        console_log_level_threshold = config.console.level_threshold,
-        file_log_level_threshold = config.file.level_threshold,
+        root_log_level = config
+            .root_log_level()
+            .unwrap_or_default()
+            .to_logback_literal(),
+        console_log_level_threshold = config.console.level_threshold.to_logback_literal(),
+        file_log_level_threshold = config.file.level_threshold.to_logback_literal(),
     )
 }
 

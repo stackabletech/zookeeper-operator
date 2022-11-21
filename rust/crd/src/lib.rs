@@ -306,7 +306,7 @@ pub struct AppenderConfig {
     pub level_threshold: LogLevel,
 }
 
-#[derive(Clone, Debug, Deserialize, Display, Eq, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 pub enum LogLevel {
     TRACE,
     DEBUG,
@@ -324,6 +324,21 @@ impl Default for LogLevel {
 }
 
 impl Atomic for LogLevel {}
+
+impl LogLevel {
+    pub fn to_logback_literal(&self) -> String {
+        match self {
+            LogLevel::TRACE => "TRACE",
+            LogLevel::DEBUG => "DEBUG",
+            LogLevel::INFO => "INFO",
+            LogLevel::WARN => "WARN",
+            LogLevel::ERROR => "ERROR",
+            LogLevel::FATAL => "FATAL",
+            LogLevel::NONE => "OFF",
+        }
+        .into()
+    }
+}
 
 impl ZookeeperConfig {
     pub const INIT_LIMIT: &'static str = "initLimit";
