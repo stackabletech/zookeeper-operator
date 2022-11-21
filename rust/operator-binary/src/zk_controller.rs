@@ -573,7 +573,10 @@ fn build_server_rolegroup_config_map(
             create_vector_config(
                 STACKABLE_LOG_DIR,
                 vector_aggregator_address.expect("vectorAggregatorAddress is set"),
-                &zk.container_log_config(rolegroup, Container::Vector)
+                &logging
+                    .containers
+                    .get(&Container::Vector)
+                    .cloned()
                     .unwrap_or_default(),
             ),
         );
@@ -655,12 +658,7 @@ fn create_vector_config(
     vector_aggregator_address: &str,
     config: &ContainerLogConfig,
 ) -> String {
-    let vector_log_level = config
-        .file
-        .as_ref()
-        .and_then(|appender| appender.level_threshold.as_ref())
-        .cloned()
-        .unwrap_or_default();
+    let vector_log_level = config.file.level_threshold.to_owned();
 
     let vector_log_level_filter_expression = match vector_log_level {
         LogLevel::TRACE => "true",

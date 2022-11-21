@@ -117,12 +117,16 @@ spec:
                           nullable: true
                           type: integer
                         logging:
-                          nullable: true
+                          default:
+                            enableVectorAgent: null
+                            containers: {}
                           properties:
                             containers:
                               additionalProperties:
                                 properties:
                                   console:
+                                    default:
+                                      levelThreshold: null
                                     properties:
                                       levelThreshold:
                                         enum:
@@ -137,6 +141,8 @@ spec:
                                         type: string
                                     type: object
                                   file:
+                                    default:
+                                      levelThreshold: null
                                     properties:
                                       levelThreshold:
                                         enum:
@@ -165,18 +171,14 @@ spec:
                                           nullable: true
                                           type: string
                                       type: object
+                                    default: {}
                                     type: object
-                                required:
-                                  - console
-                                  - file
-                                  - loggers
                                 type: object
+                              default: {}
                               type: object
                             enableVectorAgent:
                               nullable: true
                               type: boolean
-                          required:
-                            - containers
                           type: object
                         myidOffset:
                           format: uint16
@@ -184,7 +186,16 @@ spec:
                           nullable: true
                           type: integer
                         resources:
-                          nullable: true
+                          default:
+                            memory:
+                              limit: null
+                              runtimeLimits: {}
+                            cpu:
+                              min: null
+                              max: null
+                            storage:
+                              data:
+                                capacity: null
                           properties:
                             cpu:
                               default:
@@ -420,12 +431,16 @@ spec:
                                 nullable: true
                                 type: integer
                               logging:
-                                nullable: true
+                                default:
+                                  enableVectorAgent: null
+                                  containers: {}
                                 properties:
                                   containers:
                                     additionalProperties:
                                       properties:
                                         console:
+                                          default:
+                                            levelThreshold: null
                                           properties:
                                             levelThreshold:
                                               enum:
@@ -440,6 +455,8 @@ spec:
                                               type: string
                                           type: object
                                         file:
+                                          default:
+                                            levelThreshold: null
                                           properties:
                                             levelThreshold:
                                               enum:
@@ -468,18 +485,14 @@ spec:
                                                 nullable: true
                                                 type: string
                                             type: object
+                                          default: {}
                                           type: object
-                                      required:
-                                        - console
-                                        - file
-                                        - loggers
                                       type: object
+                                    default: {}
                                     type: object
                                   enableVectorAgent:
                                     nullable: true
                                     type: boolean
-                                required:
-                                  - containers
                                 type: object
                               myidOffset:
                                 format: uint16
@@ -487,7 +500,16 @@ spec:
                                 nullable: true
                                 type: integer
                               resources:
-                                nullable: true
+                                default:
+                                  memory:
+                                    limit: null
+                                    runtimeLimits: {}
+                                  cpu:
+                                    min: null
+                                    max: null
+                                  storage:
+                                    data:
+                                      capacity: null
                                 properties:
                                   cpu:
                                     default:
