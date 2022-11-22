@@ -1,25 +1,13 @@
 use stackable_zookeeper_crd::{
     ZookeeperCluster, ZookeeperConfig, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, QUORUM_TLS_DIR,
-    QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_DIR,
-    STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+    QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR,
+    ZOOKEEPER_PROPERTIES_FILE,
 };
 
 const STORE_PASSWORD_ENV: &str = "STORE_PASSWORD";
 
-fn capture_logs(log_dir: &str, container: &str) -> Vec<String> {
-    let dir = format!("{log_dir}/{container}");
-    vec![
-        format!("mkdir --parents {dir}"),
-        format!(
-            "exec > >(tee {dir}/container.stdout.log) 2> >(tee {dir}/container.stderr.log >&2)"
-        ),
-    ]
-}
-
 pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
-    let mut args = capture_logs(STACKABLE_LOG_DIR, "prepare");
-
-    args.extend(vec![
+    let mut args = vec![
         // copy config files to a writeable empty folder in order to set key and
         // truststore passwords in the init container via script
         format!(
@@ -32,7 +20,7 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
             conf = STACKABLE_CONFIG_DIR,
             rw_conf = STACKABLE_RW_CONFIG_DIR
         ),
-    ]);
+    ];
 
     // Quorum
     args.push(generate_password());

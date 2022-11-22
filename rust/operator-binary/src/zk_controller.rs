@@ -49,6 +49,7 @@ use stackable_zookeeper_crd::{
 };
 use std::{
     borrow::Cow,
+    cmp,
     collections::{BTreeMap, HashMap},
     hash::Hasher,
     str::FromStr,
@@ -589,6 +590,62 @@ fn build_server_rolegroup_config_map(
         })
 }
 
+fn capture_shell_output(
+    log_dir: &str,
+    container: &str,
+    log_config: Option<&ContainerLogConfig>,
+) -> String {
+    let root_log_level = log_config
+        .and_then(|config| config.root_log_level())
+        .unwrap_or_default();
+    let console_log_level = cmp::max(
+        root_log_level,
+        log_config
+            .map(|config| config.console.level_threshold.to_owned())
+            .unwrap_or_default(),
+    );
+    let file_log_level = cmp::max(
+        root_log_level,
+        log_config
+            .map(|config| config.file.level_threshold.to_owned())
+            .unwrap_or_default(),
+    );
+
+    let log_file_dir = format!("{log_dir}/{container}");
+
+    let stdout_redirect = match (
+        console_log_level <= LogLevel::INFO,
+        file_log_level <= LogLevel::INFO,
+    ) {
+        (true, true) => format!(" > >(tee {log_file_dir}/container.stdout.log)"),
+        (true, false) => "".into(),
+        (false, true) => format!(" > {log_file_dir}/container.stdout.log"),
+        (false, false) => " > /dev/null".into(),
+    };
+
+    let stderr_redirect = match (
+        console_log_level <= LogLevel::ERROR,
+        file_log_level <= LogLevel::ERROR,
+    ) {
+        (true, true) => format!(" 2> >(tee {log_file_dir}/container.stderr.log >&2)"),
+        (true, false) => "".into(),
+        (false, true) => format!(" 2> {log_file_dir}/container.stderr.log"),
+        (false, false) => " 2> /dev/null".into(),
+    };
+
+    let mut args = Vec::new();
+    if file_log_level <= LogLevel::ERROR {
+        args.push(format!("mkdir --parents {log_file_dir}"));
+    }
+    if stdout_redirect.is_empty() && stderr_redirect.is_empty() {
+        args.push(":".into());
+    } else {
+        args.push(format!("exec{stdout_redirect}{stderr_redirect}"));
+    }
+
+    args.join(" && ")
+}
+
 fn create_log_config(
     log_dir: &str,
     log_file: &str,
@@ -836,6 +893,10 @@ fn build_server_rolegroup_statefulset(
         .role_groups
         .get(&rolegroup_ref.role_group);
 
+    let logging = zk
+        .logging(&zk_role, rolegroup_ref)
+        .context(CrdValidationFailureSnafu)?;
+
     let mut env_vars = server_config
         .get(&PropertyNameKind::Env)
         .into_iter()
@@ -880,7 +941,15 @@ fn build_server_rolegroup_statefulset(
     let container_prepare = cb_prepare
         .image_from_product_image(resolved_product_image)
         .command(vec!["bash".to_string(), "-c".to_string()])
-        .args(vec![create_init_container_command_args(zk)])
+        .args(vec![[
+            capture_shell_output(
+                STACKABLE_LOG_DIR,
+                "prepare",
+                logging.containers.get(&Container::Prepare),
+            ),
+            create_init_container_command_args(zk),
+        ]
+        .join(" && ")])
         .add_env_vars(env_vars.clone())
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
@@ -982,9 +1051,6 @@ fn build_server_rolegroup_statefulset(
         })
         .service_account_name(SERVICE_ACCOUNT);
 
-    let logging = zk
-        .logging(&zk_role, rolegroup_ref)
-        .context(CrdValidationFailureSnafu)?;
     if logging.enable_vector_agent {
         let container_log_agent = ContainerBuilder::new("vector")
             .unwrap()

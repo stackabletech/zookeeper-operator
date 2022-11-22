@@ -306,7 +306,9 @@ pub struct AppenderConfig {
     pub level_threshold: LogLevel,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Eq, JsonSchema, Ord, PartialEq, PartialOrd, Serialize,
+)]
 pub enum LogLevel {
     TRACE,
     DEBUG,
