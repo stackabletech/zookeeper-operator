@@ -41,11 +41,11 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{
-    Container, ContainerLogConfig, LogLevel, ZookeeperCluster, ZookeeperClusterStatus,
-    ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, LOGBACK_CONFIG_FILE,
-    MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR,
-    STACKABLE_DATA_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, VECTOR_CONFIG_FILE,
-    ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
+    Container, ContainerLogConfig, LogLevel, LoggingFramework, ZookeeperCluster,
+    ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR,
+    LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR,
+    QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_DIR,
+    STACKABLE_RW_CONFIG_DIR, VECTOR_CONFIG_FILE, ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -553,20 +553,40 @@ fn build_server_rolegroup_config_map(
                     rolegroup: rolegroup.clone(),
                 }
             })?,
-        )
-        .add_data(
-            LOGBACK_CONFIG_FILE,
-            create_log_config(
-                &format!("{STACKABLE_LOG_DIR}/zookeeper"),
-                ZOOKEEPER_LOG_FILE,
-                MAX_LOG_FILE_SIZE_IN_MB,
-                &logging
-                    .containers
-                    .get(&Container::Zookeeper)
-                    .cloned()
-                    .unwrap_or_default(),
-            ),
         );
+
+    match zk.logging_framework().context(CrdValidationFailureSnafu)? {
+        LoggingFramework::LOG4J => {
+            cm_builder.add_data(
+                LOG4J_CONFIG_FILE,
+                create_log4j_config(
+                    &format!("{STACKABLE_LOG_DIR}/zookeeper"),
+                    ZOOKEEPER_LOG_FILE,
+                    MAX_LOG_FILE_SIZE_IN_MB,
+                    &logging
+                        .containers
+                        .get(&Container::Zookeeper)
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
+            );
+        }
+        LoggingFramework::LOGBACK => {
+            cm_builder.add_data(
+                LOGBACK_CONFIG_FILE,
+                create_logback_config(
+                    &format!("{STACKABLE_LOG_DIR}/zookeeper"),
+                    ZOOKEEPER_LOG_FILE,
+                    MAX_LOG_FILE_SIZE_IN_MB,
+                    &logging
+                        .containers
+                        .get(&Container::Zookeeper)
+                        .cloned()
+                        .unwrap_or_default(),
+                ),
+            );
+        }
+    }
 
     if logging.enable_vector_agent {
         cm_builder.add_data(
@@ -646,7 +666,54 @@ fn capture_shell_output(
     args.join(" && ")
 }
 
-fn create_log_config(
+fn create_log4j_config(
+    log_dir: &str,
+    log_file: &str,
+    max_size_in_mb: i32,
+    config: &ContainerLogConfig,
+) -> String {
+    let number_of_archived_log_files = 1;
+
+    let loggers = config
+        .loggers
+        .iter()
+        .filter(|(name, _)| name.as_str() != ContainerLogConfig::ROOT_LOGGER)
+        .map(|(name, logger_config)| {
+            format!(
+                "log4j.logger.{name}={level}\n",
+                name = name.escape_default(),
+                level = logger_config.level.to_logback_literal(),
+            )
+        })
+        .collect::<String>();
+
+    format!(
+        r#"log4j.rootLogger={root_log_level}, CONSOLE, FILE
+
+log4j.appender.CONSOLE=org.apache.log4j.ConsoleAppender
+log4j.appender.CONSOLE.Threshold={console_log_level_threshold}
+log4j.appender.CONSOLE.layout=org.apache.log4j.PatternLayout
+log4j.appender.CONSOLE.layout.ConversionPattern=%d{{ISO8601}} [myid:%X{{myid}}] - %-5p [%t:%C{{1}}@%L] - %m%n
+
+log4j.appender.FILE=org.apache.log4j.RollingFileAppender
+log4j.appender.FILE.Threshold={file_log_level_threshold}
+log4j.appender.FILE.File={log_dir}/{log_file}
+log4j.appender.FILE.MaxFileSize={max_log_file_size_in_mb}MB
+log4j.appender.FILE.MaxBackupIndex={number_of_archived_log_files}
+log4j.appender.FILE.layout=org.apache.log4j.xml.XMLLayout
+
+{loggers}"#,
+        max_log_file_size_in_mb = max_size_in_mb / (1 + number_of_archived_log_files),
+        root_log_level = config
+            .root_log_level()
+            .unwrap_or_default()
+            .to_logback_literal(),
+        console_log_level_threshold = config.console.level_threshold.to_logback_literal(),
+        file_log_level_threshold = config.file.level_threshold.to_logback_literal(),
+    )
+}
+
+fn create_logback_config(
     log_dir: &str,
     log_file: &str,
     max_size_in_mb: i32,

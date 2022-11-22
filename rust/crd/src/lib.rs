@@ -48,6 +48,7 @@ pub const CLIENT_TLS_MOUNT_DIR: &str = "/stackable/client_tls_mount";
 pub const SYSTEM_TRUST_STORE_DIR: &str = "/etc/pki/java/cacerts";
 
 pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
+pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
 pub const VECTOR_CONFIG_FILE: &str = "vector.toml";
 
 pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
@@ -55,6 +56,8 @@ pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
 pub const MAX_LOG_FILE_SIZE_IN_MB: i32 = 1000;
 const JVM_HEAP_FACTOR: f32 = 0.8;
 const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
+
+pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -429,12 +432,21 @@ impl Configuration for ZookeeperConfigFragment {
 
     fn compute_env(
         &self,
-        _resource: &Self::Configurable,
+        resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+        let logging_framework =
+            resource
+                .logging_framework()
+                .map_err(|e| ConfigError::InvalidConfiguration {
+                    reason: e.to_string(),
+                })?;
         let jvm_flags = [
             format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
-            format!("-Dlogback.configurationFile={STACKABLE_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}")
+            match logging_framework {
+                LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
+                LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
+            }
         ].join(" ");
         Ok([
             (
@@ -611,7 +623,34 @@ pub struct ZookeeperClusterStatus {
     pub discovery_hash: Option<String>,
 }
 
+pub enum LoggingFramework {
+    LOG4J,
+    LOGBACK,
+}
+
 impl ZookeeperCluster {
+    pub fn logging_framework(&self) -> Result<LoggingFramework, Error> {
+        let version = self
+            .spec
+            .image
+            .resolve(DOCKER_IMAGE_BASE_NAME)
+            .product_version;
+        let zookeeper_versions_with_log4j = [
+            "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
+        ];
+
+        let framework = if zookeeper_versions_with_log4j
+            .into_iter()
+            .any(|prefix| version.starts_with(prefix))
+        {
+            LoggingFramework::LOG4J
+        } else {
+            LoggingFramework::LOGBACK
+        };
+
+        Ok(framework)
+    }
+
     /// The name of the role-level load-balanced Kubernetes `Service`
     pub fn server_role_service_name(&self) -> Option<String> {
         self.metadata.name.clone()
