@@ -13,7 +13,7 @@ anyhow = "1.0.58"
 clap = "4.0.26"
 failure = "0.1.8"
 fnv = "1.0.7"
-futures = { version = "0.3.21", features = ["compat"] }
+futures = { version = "0.3.21" }
 semver = "1.0.12"
 serde = "1.0.138"
 snafu = "0.7.1"
