@@ -4,12 +4,11 @@ mod utils;
 mod zk_controller;
 mod znode_controller;
 
-use crate::utils::Tokio01ExecutorExt;
 use crate::zk_controller::ZK_CONTROLLER_NAME;
 use crate::znode_controller::ZNODE_CONTROLLER_NAME;
 
 use clap::Parser;
-use futures::{compat::Future01CompatExt, StreamExt};
+use futures::StreamExt;
 use stackable_operator::{
     cli::{Command, ProductOperatorRun},
     k8s_openapi::api::{
@@ -42,9 +41,6 @@ struct Opts {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // tokio-zookeeper depends on Tokio 0.1
-    let tokio01_runtime = tokio01::runtime::Runtime::new()?;
-
     let opts = Opts::parse();
     match opts.cmd {
         Command::Crd => {
@@ -150,11 +146,7 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .shutdown_on_signal()
                 .run(
-                    |znode, ctx| {
-                        tokio01_runtime
-                            .executor()
-                            .run_in_ctx(znode_controller::reconcile_znode(znode, ctx))
-                    },
+                    znode_controller::reconcile_znode,
                     znode_controller::error_policy,
                     Arc::new(znode_controller::Ctx {
                         client: client.clone(),
@@ -174,6 +166,5 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    tokio01_runtime.shutdown_now().compat().await.unwrap();
     Ok(())
 }
