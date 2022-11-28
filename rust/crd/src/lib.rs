@@ -306,6 +306,7 @@ pub struct LoggerConfig {
     serde(rename_all = "camelCase")
 )]
 pub struct AppenderConfig {
+    #[fragment_attrs(serde(default))]
     pub level_threshold: LogLevel,
 }
 
