@@ -43,10 +43,10 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{
     Container, LoggingFramework, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig,
-    ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
-    MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR,
-    STACKABLE_DATA_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, VECTOR_CONFIG_FILE,
-    ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
+    ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, DOCKER_IMAGE_BASE_NAME, LOG4J_CONFIG_FILE,
+    LOGBACK_CONFIG_FILE, MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR,
+    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+    VECTOR_CONFIG_FILE, ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -59,7 +59,6 @@ use std::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
-pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
 const VECTOR_AGGREGATOR_CM_ENTRY: &str = "ADDRESS";
@@ -592,7 +591,6 @@ fn build_server_rolegroup_config_map(
         cm_builder.add_data(
             VECTOR_CONFIG_FILE,
             logging::framework::create_vector_config(
-                STACKABLE_LOG_DIR,
                 vector_aggregator_address.expect("vectorAggregatorAddress is set"),
                 &logging
                     .containers
@@ -843,19 +841,11 @@ fn build_server_rolegroup_statefulset(
         .service_account_name(SERVICE_ACCOUNT);
 
     if logging.enable_vector_agent {
-        let container_log_agent = ContainerBuilder::new("vector")
-            .unwrap()
-            .image_from_product_image(resolved_product_image)
-            .command(vec!["/stackable/vector/bin/vector".into()])
-            .args(vec![
-                "--config".into(),
-                format!("{STACKABLE_CONFIG_DIR}/vector.toml"),
-            ])
-            .add_volume_mount("config", STACKABLE_CONFIG_DIR)
-            .add_volume_mount("log", STACKABLE_LOG_DIR)
-            .build();
-
-        pod_builder.add_container(container_log_agent);
+        pod_builder.add_container(logging::framework::vector_container(
+            resolved_product_image,
+            "config",
+            "log",
+        ));
     }
 
     let pod_template = pod_builder.build_template();
