@@ -174,7 +174,6 @@ spec:
                                     default: {}
                                     type: object
                                 type: object
-                              default: {}
                               type: object
                             enableVectorAgent:
                               nullable: true
@@ -488,7 +487,6 @@ spec:
                                           default: {}
                                           type: object
                                       type: object
-                                    default: {}
                                     type: object
                                   enableVectorAgent:
                                     nullable: true

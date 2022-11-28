@@ -33,6 +33,7 @@ use stackable_operator::{
     },
     kube::{api::DynamicObject, runtime::controller, Resource, ResourceExt},
     labels::{role_group_selector_labels, role_selector_labels},
+    logging,
     logging::controller::ReconcilerError,
     product_config::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
@@ -41,15 +42,14 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{
-    Container, ContainerLogConfig, LogLevel, LoggingFramework, ZookeeperCluster,
-    ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR,
-    LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR,
-    QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_DIR,
-    STACKABLE_RW_CONFIG_DIR, VECTOR_CONFIG_FILE, ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
+    Container, LoggingFramework, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig,
+    ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
+    MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR,
+    STACKABLE_DATA_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, VECTOR_CONFIG_FILE,
+    ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
-    cmp,
     collections::{BTreeMap, HashMap},
     hash::Hasher,
     str::FromStr,
@@ -559,7 +559,7 @@ fn build_server_rolegroup_config_map(
         LoggingFramework::LOG4J => {
             cm_builder.add_data(
                 LOG4J_CONFIG_FILE,
-                create_log4j_config(
+                logging::framework::create_log4j_config(
                     &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                     ZOOKEEPER_LOG_FILE,
                     MAX_LOG_FILE_SIZE_IN_MB,
@@ -574,7 +574,7 @@ fn build_server_rolegroup_config_map(
         LoggingFramework::LOGBACK => {
             cm_builder.add_data(
                 LOGBACK_CONFIG_FILE,
-                create_logback_config(
+                logging::framework::create_logback_config(
                     &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                     ZOOKEEPER_LOG_FILE,
                     MAX_LOG_FILE_SIZE_IN_MB,
@@ -591,7 +591,7 @@ fn build_server_rolegroup_config_map(
     if logging.enable_vector_agent {
         cm_builder.add_data(
             VECTOR_CONFIG_FILE,
-            create_vector_config(
+            logging::framework::create_vector_config(
                 STACKABLE_LOG_DIR,
                 vector_aggregator_address.expect("vectorAggregatorAddress is set"),
                 &logging
@@ -608,282 +608,6 @@ fn build_server_rolegroup_config_map(
         .with_context(|_| BuildRoleGroupConfigSnafu {
             rolegroup: rolegroup.clone(),
         })
-}
-
-fn capture_shell_output(
-    log_dir: &str,
-    container: &str,
-    log_config: Option<&ContainerLogConfig>,
-) -> String {
-    let root_log_level = log_config
-        .and_then(|config| config.root_log_level())
-        .unwrap_or_default();
-    let console_log_level = cmp::max(
-        root_log_level,
-        log_config
-            .map(|config| config.console.level_threshold.to_owned())
-            .unwrap_or_default(),
-    );
-    let file_log_level = cmp::max(
-        root_log_level,
-        log_config
-            .map(|config| config.file.level_threshold.to_owned())
-            .unwrap_or_default(),
-    );
-
-    let log_file_dir = format!("{log_dir}/{container}");
-
-    let stdout_redirect = match (
-        console_log_level <= LogLevel::INFO,
-        file_log_level <= LogLevel::INFO,
-    ) {
-        (true, true) => format!(" > >(tee {log_file_dir}/container.stdout.log)"),
-        (true, false) => "".into(),
-        (false, true) => format!(" > {log_file_dir}/container.stdout.log"),
-        (false, false) => " > /dev/null".into(),
-    };
-
-    let stderr_redirect = match (
-        console_log_level <= LogLevel::ERROR,
-        file_log_level <= LogLevel::ERROR,
-    ) {
-        (true, true) => format!(" 2> >(tee {log_file_dir}/container.stderr.log >&2)"),
-        (true, false) => "".into(),
-        (false, true) => format!(" 2> {log_file_dir}/container.stderr.log"),
-        (false, false) => " 2> /dev/null".into(),
-    };
-
-    let mut args = Vec::new();
-    if file_log_level <= LogLevel::ERROR {
-        args.push(format!("mkdir --parents {log_file_dir}"));
-    }
-    if stdout_redirect.is_empty() && stderr_redirect.is_empty() {
-        args.push(":".into());
-    } else {
-        args.push(format!("exec{stdout_redirect}{stderr_redirect}"));
-    }
-
-    args.join(" && ")
-}
-
-fn create_log4j_config(
-    log_dir: &str,
-    log_file: &str,
-    max_size_in_mb: i32,
-    config: &ContainerLogConfig,
-) -> String {
-    let number_of_archived_log_files = 1;
-
-    let loggers = config
-        .loggers
-        .iter()
-        .filter(|(name, _)| name.as_str() != ContainerLogConfig::ROOT_LOGGER)
-        .map(|(name, logger_config)| {
-            format!(
-                "log4j.logger.{name}={level}\n",
-                name = name.escape_default(),
-                level = logger_config.level.to_logback_literal(),
-            )
-        })
-        .collect::<String>();
-
-    format!(
-        r#"log4j.rootLogger={root_log_level}, CONSOLE, FILE
-
-log4j.appender.CONSOLE=org.apache.log4j.ConsoleAppender
-log4j.appender.CONSOLE.Threshold={console_log_level_threshold}
-log4j.appender.CONSOLE.layout=org.apache.log4j.PatternLayout
-log4j.appender.CONSOLE.layout.ConversionPattern=%d{{ISO8601}} [myid:%X{{myid}}] - %-5p [%t:%C{{1}}@%L] - %m%n
-
-log4j.appender.FILE=org.apache.log4j.RollingFileAppender
-log4j.appender.FILE.Threshold={file_log_level_threshold}
-log4j.appender.FILE.File={log_dir}/{log_file}
-log4j.appender.FILE.MaxFileSize={max_log_file_size_in_mb}MB
-log4j.appender.FILE.MaxBackupIndex={number_of_archived_log_files}
-log4j.appender.FILE.layout=org.apache.log4j.xml.XMLLayout
-
-{loggers}"#,
-        max_log_file_size_in_mb = max_size_in_mb / (1 + number_of_archived_log_files),
-        root_log_level = config
-            .root_log_level()
-            .unwrap_or_default()
-            .to_logback_literal(),
-        console_log_level_threshold = config.console.level_threshold.to_logback_literal(),
-        file_log_level_threshold = config.file.level_threshold.to_logback_literal(),
-    )
-}
-
-fn create_logback_config(
-    log_dir: &str,
-    log_file: &str,
-    max_size_in_mb: i32,
-    config: &ContainerLogConfig,
-) -> String {
-    let number_of_archived_log_files = 1;
-
-    let loggers = config
-        .loggers
-        .iter()
-        .filter(|(name, _)| name.as_str() != ContainerLogConfig::ROOT_LOGGER)
-        .map(|(name, logger_config)| {
-            format!(
-                "  <logger name=\"{name}\" level=\"{level}\" />\n",
-                name = name.escape_default(),
-                level = logger_config.level.to_logback_literal(),
-            )
-        })
-        .collect::<String>();
-
-    format!(
-        r#"<configuration>
-  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-    <encoder>
-      <pattern>%d{{ISO8601}} [myid:%X{{myid}}] - %-5p [%t:%C{{1}}@%L] - %m%n</pattern>
-    </encoder>
-    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>{console_log_level_threshold}</level>
-    </filter>
-  </appender>
-
-  <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-    <File>{log_dir}/{log_file}</File>
-    <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
-      <layout class="ch.qos.logback.classic.log4j.XMLLayout" />
-    </encoder>
-    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-      <level>{file_log_level_threshold}</level>
-    </filter>
-    <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
-      <minIndex>1</minIndex>
-      <maxIndex>{number_of_archived_log_files}</maxIndex>
-      <FileNamePattern>{log_dir}/{log_file}.%i</FileNamePattern>
-    </rollingPolicy>
-    <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
-      <MaxFileSize>{max_log_file_size_in_mb}MB</MaxFileSize>
-    </triggeringPolicy>
-  </appender>
-
-{loggers}
-  <root level="{root_log_level}">
-    <appender-ref ref="CONSOLE" />
-    <appender-ref ref="FILE" />
-  </root>
-</configuration>
-"#,
-        max_log_file_size_in_mb = max_size_in_mb / (1 + number_of_archived_log_files),
-        root_log_level = config
-            .root_log_level()
-            .unwrap_or_default()
-            .to_logback_literal(),
-        console_log_level_threshold = config.console.level_threshold.to_logback_literal(),
-        file_log_level_threshold = config.file.level_threshold.to_logback_literal(),
-    )
-}
-
-fn create_vector_config(
-    log_dir: &str,
-    vector_aggregator_address: &str,
-    config: &ContainerLogConfig,
-) -> String {
-    let vector_log_level = config.file.level_threshold.to_owned();
-
-    let vector_log_level_filter_expression = match vector_log_level {
-        LogLevel::TRACE => "true",
-        LogLevel::DEBUG => r#".level != "TRACE""#,
-        LogLevel::INFO => r#"!includes(["TRACE", "DEBUG"], .metadata.level)"#,
-        LogLevel::WARN => r#"!includes(["TRACE", "DEBUG", "INFO"], .metadata.level)"#,
-        LogLevel::ERROR => r#"!includes(["TRACE", "DEBUG", "INFO", "WARN"], .metadata.level)"#,
-        LogLevel::FATAL => "false",
-        LogLevel::NONE => "false",
-    };
-
-    format!(
-        r#"data_dir = "/stackable/vector/var"
-
-[log_schema]
-host_key = "pod"
-
-[sources.vector]
-type = "internal_logs"
-
-[sources.files_stdout]
-type = "file"
-include = ["{log_dir}/*/*.stdout.log"]
-
-[sources.files_stderr]
-type = "file"
-include = ["{log_dir}/*/*.stderr.log"]
-
-[sources.files_log4j]
-type = "file"
-include = ["{log_dir}/*/*.log4j.xml"]
-
-[sources.files_log4j.multiline]
-mode = "halt_with"
-start_pattern = "^<log4j:event"
-condition_pattern = "</log4j:event>\r$"
-timeout_ms = 10000
-
-[transforms.processed_files_stdout]
-inputs = ["files_stdout"]
-type = "remap"
-source = '''
-.logger = "ROOT"
-.level = "INFO"
-'''
-
-[transforms.processed_files_stderr]
-inputs = ["files_stderr"]
-type = "remap"
-source = '''
-.logger = "ROOT"
-.level = "ERROR"
-'''
-
-[transforms.processed_files_log4j]
-inputs = ["files_log4j"]
-type = "remap"
-source = '''
-wrapped_xml_event = "<root xmlns:log4j=\"http://jakarta.apache.org/log4j/\">" + string!(.message) + "</root>"
-parsed_event = parse_xml!(wrapped_xml_event).root.event
-.timestamp = to_timestamp!(to_float!(parsed_event.@timestamp) / 1000)
-.logger = parsed_event.@logger
-.level = parsed_event.@level
-.message = parsed_event.message
-'''
-
-[transforms.filtered_logs_vector]
-inputs = ["vector"]
-type = "filter"
-condition = '{vector_log_level_filter_expression}'
-
-[transforms.extended_logs_vector]
-inputs = ["filtered_logs_vector"]
-type = "remap"
-source = '''
-.container = "vector"
-.level = .metadata.level
-.logger = .metadata.module_path
-if exists(.file) {{ .processed_file = del(.file) }}
-del(.metadata)
-del(.pid)
-del(.source_type)
-'''
-
-[transforms.extended_logs_files]
-inputs = ["processed_files_*"]
-type = "remap"
-source = '''
-. |= parse_regex!(.file, r'^{log_dir}/(?P<container>.*?)/(?P<file>.*?)$')
-del(.source_type)
-'''
-
-[sinks.aggregator]
-inputs = ["extended_logs_*"]
-type = "vector"
-address = "{vector_aggregator_address}"
-"#
-    )
 }
 
 /// The rolegroup [`Service`] is a headless service that allows direct access to the instances of a certain rolegroup
@@ -1009,7 +733,7 @@ fn build_server_rolegroup_statefulset(
         .image_from_product_image(resolved_product_image)
         .command(vec!["bash".to_string(), "-c".to_string()])
         .args(vec![[
-            capture_shell_output(
+            logging::framework::capture_shell_output(
                 STACKABLE_LOG_DIR,
                 "prepare",
                 logging.containers.get(&Container::Prepare),

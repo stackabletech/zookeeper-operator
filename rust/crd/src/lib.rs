@@ -8,12 +8,7 @@ use stackable_operator::{
             PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
         },
     },
-    config::{
-        fragment,
-        fragment::Fragment,
-        fragment::ValidationError,
-        merge::{Atomic, Merge},
-    },
+    config::{fragment, fragment::Fragment, fragment::ValidationError, merge::Merge},
     crd::ClusterRef,
     error::OperatorResult,
     k8s_openapi::{
@@ -21,6 +16,7 @@ use stackable_operator::{
         apimachinery::pkg::api::resource::Quantity,
     },
     kube::{runtime::reflector::ObjectRef, CustomResource},
+    logging::{self, spec::Logging},
     memory::to_java_heap_value,
     memory::BinaryMultiple,
     product_config_utils::{ConfigError, Configuration},
@@ -28,7 +24,7 @@ use stackable_operator::{
     schemars::{self, JsonSchema},
 };
 use std::collections::BTreeMap;
-use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
+use strum::{Display, EnumIter, EnumString};
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 
@@ -178,7 +174,7 @@ pub struct ZookeeperConfig {
     #[fragment_attrs(serde(default))]
     pub resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits>,
     #[fragment_attrs(serde(default))]
-    pub logging: Logging,
+    pub logging: Logging<Container>,
 }
 
 #[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
@@ -200,26 +196,6 @@ pub struct ZookeeperStorageConfig {
     pub data: PvcConfig,
 }
 
-#[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
-#[fragment_attrs(
-    derive(
-        Clone,
-        Debug,
-        Default,
-        Deserialize,
-        Merge,
-        JsonSchema,
-        PartialEq,
-        Serialize
-    ),
-    serde(rename_all = "camelCase")
-)]
-pub struct Logging {
-    pub enable_vector_agent: bool,
-    #[fragment_attrs(serde(default))]
-    pub containers: BTreeMap<Container, ContainerLogConfig>,
-}
-
 #[derive(
     Clone,
     Debug,
@@ -238,112 +214,6 @@ pub enum Container {
     Prepare,
     Vector,
     Zookeeper,
-}
-
-#[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
-#[fragment_attrs(
-    derive(
-        Clone,
-        Debug,
-        Default,
-        Deserialize,
-        Merge,
-        JsonSchema,
-        PartialEq,
-        Serialize
-    ),
-    serde(rename_all = "camelCase")
-)]
-pub struct ContainerLogConfig {
-    #[fragment_attrs(serde(default))]
-    pub loggers: BTreeMap<String, LoggerConfig>,
-    #[fragment_attrs(serde(default))]
-    pub console: AppenderConfig,
-    #[fragment_attrs(serde(default))]
-    pub file: AppenderConfig,
-}
-
-impl ContainerLogConfig {
-    pub const ROOT_LOGGER: &'static str = "ROOT";
-
-    pub fn root_log_level(&self) -> Option<LogLevel> {
-        self.loggers
-            .get(Self::ROOT_LOGGER)
-            .map(|root| root.level.to_owned())
-    }
-}
-
-#[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
-#[fragment_attrs(
-    derive(
-        Clone,
-        Debug,
-        Default,
-        Deserialize,
-        Merge,
-        JsonSchema,
-        PartialEq,
-        Serialize
-    ),
-    serde(rename_all = "camelCase")
-)]
-pub struct LoggerConfig {
-    pub level: LogLevel,
-}
-
-#[derive(Clone, Debug, Default, Eq, Fragment, JsonSchema, PartialEq)]
-#[fragment_attrs(
-    derive(
-        Clone,
-        Debug,
-        Default,
-        Deserialize,
-        Merge,
-        JsonSchema,
-        PartialEq,
-        Serialize
-    ),
-    serde(rename_all = "camelCase")
-)]
-pub struct AppenderConfig {
-    #[fragment_attrs(serde(default))]
-    pub level_threshold: LogLevel,
-}
-
-#[derive(
-    Clone, Copy, Debug, Deserialize, Eq, JsonSchema, Ord, PartialEq, PartialOrd, Serialize,
-)]
-pub enum LogLevel {
-    TRACE,
-    DEBUG,
-    INFO,
-    WARN,
-    ERROR,
-    FATAL,
-    NONE,
-}
-
-impl Default for LogLevel {
-    fn default() -> Self {
-        LogLevel::INFO
-    }
-}
-
-impl Atomic for LogLevel {}
-
-impl LogLevel {
-    pub fn to_logback_literal(&self) -> String {
-        match self {
-            LogLevel::TRACE => "TRACE",
-            LogLevel::DEBUG => "DEBUG",
-            LogLevel::INFO => "INFO",
-            LogLevel::WARN => "WARN",
-            LogLevel::ERROR => "ERROR",
-            LogLevel::FATAL => "FATAL",
-            LogLevel::NONE => "OFF",
-        }
-        .into()
-    }
 }
 
 impl ZookeeperConfig {
@@ -400,30 +270,7 @@ impl ZookeeperConfig {
                     },
                 },
             },
-            logging: LoggingFragment {
-                enable_vector_agent: Some(true),
-                containers: Container::iter()
-                    .map(|container| (container, Self::default_container_log_config()))
-                    .collect(),
-            },
-        }
-    }
-
-    fn default_container_log_config() -> ContainerLogConfigFragment {
-        ContainerLogConfigFragment {
-            loggers: [(
-                ContainerLogConfig::ROOT_LOGGER.into(),
-                LoggerConfigFragment {
-                    level: Some(LogLevel::INFO),
-                },
-            )]
-            .into(),
-            console: AppenderConfigFragment {
-                level_threshold: Some(LogLevel::INFO),
-            },
-            file: AppenderConfigFragment {
-                level_threshold: Some(LogLevel::INFO),
-            },
+            logging: logging::spec::default_logging(),
         }
     }
 }
@@ -790,7 +637,7 @@ impl ZookeeperCluster {
         &self,
         role: &ZookeeperRole,
         rolegroup_ref: &RoleGroupRef<Self>,
-    ) -> Result<Logging, Error> {
+    ) -> Result<Logging<Container>, Error> {
         let config = self.merged_config(role, rolegroup_ref)?;
         Ok(config.logging)
     }
