@@ -589,7 +589,7 @@ fn build_server_rolegroup_config_map(
 
     if logging.enable_vector_agent {
         cm_builder.add_data(
-            VECTOR_CONFIG_FILE,
+            logging::framework::VECTOR_CONFIG_FILE,
             logging::framework::create_vector_config(
                 vector_aggregator_address.expect("vectorAggregatorAddress is set"),
                 &logging

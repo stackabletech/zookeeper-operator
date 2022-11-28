@@ -45,7 +45,6 @@ pub const SYSTEM_TRUST_STORE_DIR: &str = "/etc/pki/java/cacerts";
 
 pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
 pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
-pub const VECTOR_CONFIG_FILE: &str = "vector.toml";
 
 pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
 
