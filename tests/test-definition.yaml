@@ -2,9 +2,9 @@
 dimensions:
   - name: zookeeper
     values:
-      - 3.5.8-stackable0.8.0
-      - 3.6.3-stackable0.8.0
-      - 3.7.0-stackable0.8.0
+      # - 3.5.8-stackable0.8.0
+      # - 3.6.3-stackable0.8.0
+      # - 3.7.0-stackable0.8.0
       - 3.8.0-stackable0.8.0
   - name: zookeeper-latest
     values:
@@ -12,11 +12,11 @@ dimensions:
   - name: use-client-tls
     values:
       - "true"
-      - "false"
+      # - "false"
   - name: use-client-auth-tls
     values:
       - "true"
-      - "false"
+      # - "false"
 tests:
   - name: smoke
     dimensions:

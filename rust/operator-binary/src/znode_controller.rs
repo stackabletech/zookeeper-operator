@@ -162,15 +162,10 @@ pub async fn reconcile_znode(
     };
     let client = &ctx.client;
 
-    let zk = find_zk_of_znode(client, &znode).await?;
+    let zk = find_zk_of_znode(client, &znode).await;
     // Use the uid (managed by k8s itself) rather than the object name, to ensure that malicious users can't trick the controller
     // into letting them take over a znode owned by someone else
     let znode_path = format!("/znode-{}", uid);
-
-    let resolved_product_image = &zk
-        .image()
-        .context(NoImageSnafu)?
-        .resolve(DOCKER_IMAGE_BASE_NAME);
 
     finalizer(
         &client.get_api::<ZookeeperZnode>(&ns),
@@ -179,10 +174,15 @@ pub async fn reconcile_znode(
         |ev| async {
             match ev {
                 finalizer::Event::Apply(znode) => {
-                    reconcile_apply(client, &znode, Ok(zk), &znode_path, resolved_product_image)
+                    let zk = zk?;
+                    let resolved_product_image = zk
+                        .image()
+                        .context(NoImageSnafu)?
+                        .resolve(DOCKER_IMAGE_BASE_NAME);
+                    reconcile_apply(client, &znode, Ok(zk), &znode_path, &resolved_product_image)
                         .await
                 }
-                finalizer::Event::Cleanup(_znode) => reconcile_cleanup(Ok(zk), &znode_path).await,
+                finalizer::Event::Cleanup(_znode) => reconcile_cleanup(zk, &znode_path).await,
             }
         },
     )
