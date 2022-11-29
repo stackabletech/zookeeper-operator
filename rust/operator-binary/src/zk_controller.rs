@@ -598,8 +598,9 @@ fn build_server_rolegroup_statefulset(
         client_authentication_class,
     )?;
 
+    let product_image = format!("docker.stackable.tech/stackable/zookeeper:{}", zk_version);
     let container_prepare = cb_prepare
-        .image("docker.stackable.tech/stackable/tools:0.2.0-stackable0.4.0")
+        .image(&product_image)
         .command(vec!["sh".to_string(), "-c".to_string()])
         .args(vec![create_init_container_command_args(zk)])
         .add_env_vars(env_vars.clone())
@@ -621,10 +622,7 @@ fn build_server_rolegroup_statefulset(
         .build();
 
     let container_zk = cb_zookeeper
-        .image(format!(
-            "docker.stackable.tech/stackable/zookeeper:{}",
-            zk_version
-        ))
+        .image(product_image)
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
