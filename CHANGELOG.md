@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- [BREAKING] Use Product image selection instead of version. `spec.version` has been replaced by `spec.image` ([#TODO]).
 - Updated stackable image versions ([#586]).
 - Operator-rs: 0.25.3 -> 0.27.1 ([#591]).
 - Fixed bug where ZNode ConfigMaps were not created due to labeling issues ([#592]).

@@ -4,6 +4,9 @@ kind: ZookeeperCluster
 metadata:
   name: test-zk
 spec:
+  image:
+    productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
+    stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
   config:
     tls: null
     quorumTlsSecretClass: tls
@@ -27,5 +30,3 @@ spec:
         replicas: 2
         config:
           myidOffset: 20
-  version: {{ test_scenario['values']['zookeeper'] }}
-  stopped: false

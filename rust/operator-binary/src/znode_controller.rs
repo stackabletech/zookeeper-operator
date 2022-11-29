@@ -6,11 +6,13 @@ use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use crate::{
     discovery::{self, build_discovery_configmaps},
+    zk_controller::DOCKER_IMAGE_BASE_NAME,
     APP_NAME, OPERATOR_NAME,
 };
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cluster_resources::ClusterResources,
+    commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Service},
     kube::{
         self,
@@ -91,6 +93,10 @@ pub enum Error {
     },
     #[snafu(display("object has no namespace"))]
     ObjectHasNoNamespace,
+    #[snafu(display("object has no image"))]
+    NoImage {
+        source: stackable_zookeeper_crd::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -134,6 +140,7 @@ impl ReconcilerError for Error {
             Error::ObjectMissingMetadataForOwnerRef { source: _ } => None,
             Error::DeleteOrphans { source: _ } => None,
             Error::ObjectHasNoNamespace => None,
+            Error::NoImage { source: _ } => None,
         }
     }
 }
@@ -155,10 +162,15 @@ pub async fn reconcile_znode(
     };
     let client = &ctx.client;
 
-    let zk = find_zk_of_znode(client, &znode).await;
+    let zk = find_zk_of_znode(client, &znode).await?;
     // Use the uid (managed by k8s itself) rather than the object name, to ensure that malicious users can't trick the controller
     // into letting them take over a znode owned by someone else
     let znode_path = format!("/znode-{}", uid);
+
+    let resolved_product_image = &zk
+        .image()
+        .context(NoImageSnafu)?
+        .resolve(DOCKER_IMAGE_BASE_NAME);
 
     finalizer(
         &client.get_api::<ZookeeperZnode>(&ns),
@@ -167,9 +179,10 @@ pub async fn reconcile_znode(
         |ev| async {
             match ev {
                 finalizer::Event::Apply(znode) => {
-                    reconcile_apply(client, &znode, zk, &znode_path).await
+                    reconcile_apply(client, &znode, Ok(zk), &znode_path, resolved_product_image)
+                        .await
                 }
-                finalizer::Event::Cleanup(_znode) => reconcile_cleanup(zk, &znode_path).await,
+                finalizer::Event::Cleanup(_znode) => reconcile_cleanup(Ok(zk), &znode_path).await,
             }
         },
     )
@@ -182,6 +195,7 @@ async fn reconcile_apply(
     znode: &ZookeeperZnode,
     zk: Result<ZookeeperCluster>,
     znode_path: &str,
+    resolved_product_image: &ResolvedProductImage,
 ) -> Result<controller::Action> {
     let zk = zk?;
     let mut cluster_resources = ClusterResources::new(
@@ -221,6 +235,7 @@ async fn reconcile_apply(
         ZNODE_CONTROLLER_NAME,
         &server_role_service,
         Some(znode_path),
+        resolved_product_image,
     )
     .await
     .context(BuildDiscoveryConfigMapSnafu)?

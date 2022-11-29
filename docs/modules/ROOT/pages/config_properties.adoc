@@ -8,7 +8,9 @@ kind: ZookeeperCluster
 metadata:
   name: simple
 spec:
-  version: 3.8.0-stackable0.8.0
+  image:
+    productVersion: 3.8.0
+    stackableVersion: 0.8.0
   servers:
     roleGroups:
       default:

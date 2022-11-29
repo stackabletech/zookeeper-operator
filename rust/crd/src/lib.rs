@@ -1,9 +1,12 @@
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    commons::resources::{
-        CpuLimitsFragment, MemoryLimitsFragment, NoRuntimeLimits, NoRuntimeLimitsFragment,
-        PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
+    commons::{
+        product_image_selection::ProductImage,
+        resources::{
+            CpuLimitsFragment, MemoryLimitsFragment, NoRuntimeLimits, NoRuntimeLimitsFragment,
+            PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
+        },
     },
     config::{fragment, fragment::Fragment, fragment::ValidationError, merge::Merge},
     crd::ClusterRef,
@@ -45,8 +48,8 @@ const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
 pub enum Error {
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
-    #[snafu(display("object defines no version"))]
-    ObjectHasNoVersion,
+    #[snafu(display("object defines no image"))]
+    ObjectHasNoImage,
     #[snafu(display("unknown ZooKeeper role found {role}. Should be one of {roles:?}"))]
     UnknownZookeeperRole { role: String, roles: Vec<String> },
     #[snafu(display("fragment validation failure"))]
@@ -76,7 +79,8 @@ pub struct ZookeeperClusterSpec {
     pub stopped: Option<bool>,
     /// Desired ZooKeeper version
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
+    // TODO: Change to non-optional, but this hinders the Default trait on ZookeeperClusterSpec
+    pub image: Option<ProductImage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config: Option<GlobalZookeeperConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -88,7 +92,7 @@ impl Default for ZookeeperClusterSpec {
         Self {
             config: Some(GlobalZookeeperConfig::default()),
             stopped: Default::default(),
-            version: Default::default(),
+            image: None,
             servers: Default::default(),
         }
     }
@@ -396,12 +400,9 @@ pub struct ZookeeperClusterStatus {
 }
 
 impl ZookeeperCluster {
-    /// The image version provided in the `spec.version` field
-    pub fn image_version(&self) -> Result<&str, Error> {
-        self.spec
-            .version
-            .as_deref()
-            .context(ObjectHasNoVersionSnafu)
+    /// The image provided in the `spec.image` field
+    pub fn image(&self) -> Result<&ProductImage, Error> {
+        self.spec.image.as_ref().context(ObjectHasNoImageSnafu)
     }
 
     /// The name of the role-level load-balanced Kubernetes `Service`
@@ -622,8 +623,7 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec:
-          version: abc
+        spec: {}
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
@@ -641,7 +641,6 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
-          version: abc
           config:
             tls:
               secretClass: simple-zookeeper-client-tls
@@ -663,7 +662,6 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
-          version: abc
           config:
             tls: null
         "#;
@@ -680,7 +678,6 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
-          version: abc
           config:
             quorumTlsSecretClass: simple-zookeeper-quorum-tls
         "#;
@@ -702,8 +699,7 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec:
-          version: abc
+        spec: {}
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
@@ -721,7 +717,6 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
-          version: abc
           config:
             quorumTlsSecretClass: simple-zookeeper-quorum-tls
         "#;
@@ -741,7 +736,6 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
-          version: abc
           config:
             tls:
               secretClass: simple-zookeeper-client-tls

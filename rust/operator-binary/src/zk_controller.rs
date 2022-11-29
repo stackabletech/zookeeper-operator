@@ -16,6 +16,7 @@ use stackable_operator::{
     cluster_resources::ClusterResources,
     commons::{
         authentication::{AuthenticationClass, AuthenticationClassProvider},
+        product_image_selection::ResolvedProductImage,
         tls::TlsAuthenticationProvider,
     },
     k8s_openapi::{
@@ -55,6 +56,7 @@ use std::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
+pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
 pub struct Ctx {
@@ -213,6 +215,12 @@ impl ReconcilerError for Error {
 pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
     let client = &ctx.client;
+
+    let resolved_product_image = zk
+        .image()
+        .context(CrdValidationFailureSnafu)?
+        .resolve(DOCKER_IMAGE_BASE_NAME);
+
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
         OPERATOR_NAME,
@@ -222,7 +230,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     .unwrap();
 
     let validated_config = validate_all_roles_and_groups_config(
-        zk.image_version().context(CrdValidationFailureSnafu)?,
+        &resolved_product_image.app_version_label,
         &transform_all_roles_to_config(
             &*zk,
             [(
@@ -262,7 +270,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         None
     };
 
-    let (rbac_sa, rbac_rolebinding) = build_zk_rbac_resources(&zk)?;
+    let (rbac_sa, rbac_rolebinding) = build_zk_rbac_resources(&zk, &resolved_product_image)?;
     cluster_resources
         .add(client, &rbac_sa)
         .await
@@ -273,20 +281,29 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .with_context(|_| ApplyRoleBindingSnafu)?;
 
     let server_role_service = cluster_resources
-        .add(client, &build_server_role_service(&zk)?)
+        .add(
+            client,
+            &build_server_role_service(&zk, &resolved_product_image)?,
+        )
         .await
         .context(ApplyRoleServiceSnafu)?;
 
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
 
-        let rg_service = build_server_rolegroup_service(&zk, &rolegroup)?;
-        let rg_configmap = build_server_rolegroup_config_map(&zk, &rolegroup, rolegroup_config)?;
+        let rg_service = build_server_rolegroup_service(&zk, &rolegroup, &resolved_product_image)?;
+        let rg_configmap = build_server_rolegroup_config_map(
+            &zk,
+            &rolegroup,
+            rolegroup_config,
+            &resolved_product_image,
+        )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             &zk,
             &rolegroup,
             rolegroup_config,
             client_authentication_class.as_ref(),
+            &resolved_product_image,
         )?;
         cluster_resources
             .add(client, &rg_service)
@@ -318,6 +335,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         ZK_CONTROLLER_NAME,
         &server_role_service,
         None,
+        &resolved_product_image,
     )
     .await
     .context(BuildDiscoveryConfigSnafu)?
@@ -348,7 +366,10 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     Ok(controller::Action::await_change())
 }
 
-pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount, RoleBinding)> {
+pub fn build_zk_rbac_resources(
+    zk: &ZookeeperCluster,
+    resolved_product_image: &ResolvedProductImage,
+) -> Result<(ServiceAccount, RoleBinding)> {
     let service_account = ServiceAccount {
         metadata: ObjectMetaBuilder::new()
             .name_and_namespace(zk)
@@ -356,7 +377,7 @@ pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount,
             .with_recommended_labels(build_recommended_labels(
                 zk,
                 ZK_CONTROLLER_NAME,
-                zk.image_version().context(CrdValidationFailureSnafu)?,
+                &resolved_product_image.app_version_label,
                 "global",
                 "global",
             ))
@@ -371,7 +392,7 @@ pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount,
             .with_recommended_labels(build_recommended_labels(
                 zk,
                 ZK_CONTROLLER_NAME,
-                zk.image_version().context(CrdValidationFailureSnafu)?,
+                &resolved_product_image.app_version_label,
                 "global",
                 "global",
             ))
@@ -397,7 +418,10 @@ pub fn build_zk_rbac_resources(zk: &ZookeeperCluster) -> Result<(ServiceAccount,
 ///
 /// Note that you should generally *not* hard-code clients to use these services; instead, create a [`ZookeeperZnode`](`stackable_zookeeper_crd::ZookeeperZnode`)
 /// and use the connection string that it gives you.
-pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
+pub fn build_server_role_service(
+    zk: &ZookeeperCluster,
+    resolved_product_image: &ResolvedProductImage,
+) -> Result<Service> {
     let role_name = ZookeeperRole::Server.to_string();
     let role_svc_name = zk
         .server_role_service_name()
@@ -411,7 +435,7 @@ pub fn build_server_role_service(zk: &ZookeeperCluster) -> Result<Service> {
             .with_recommended_labels(build_recommended_labels(
                 zk,
                 ZK_CONTROLLER_NAME,
-                zk.image_version().context(CrdValidationFailureSnafu)?,
+                &resolved_product_image.app_version_label,
                 &role_name,
                 "global",
             ))
@@ -436,6 +460,7 @@ fn build_server_rolegroup_config_map(
     zk: &ZookeeperCluster,
     rolegroup: &RoleGroupRef<ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
+    resolved_product_image: &ResolvedProductImage,
 ) -> Result<ConfigMap> {
     let mut zoo_cfg = server_config
         .get(&PropertyNameKind::File(
@@ -464,7 +489,7 @@ fn build_server_rolegroup_config_map(
                 .with_recommended_labels(build_recommended_labels(
                     zk,
                     ZK_CONTROLLER_NAME,
-                    zk.image_version().context(CrdValidationFailureSnafu)?,
+                    &resolved_product_image.app_version_label,
                     &rolegroup.role,
                     &rolegroup.role_group,
                 ))
@@ -490,6 +515,7 @@ fn build_server_rolegroup_config_map(
 fn build_server_rolegroup_service(
     zk: &ZookeeperCluster,
     rolegroup: &RoleGroupRef<ZookeeperCluster>,
+    resolved_product_image: &ResolvedProductImage,
 ) -> Result<Service> {
     Ok(Service {
         metadata: ObjectMetaBuilder::new()
@@ -500,7 +526,7 @@ fn build_server_rolegroup_service(
             .with_recommended_labels(build_recommended_labels(
                 zk,
                 ZK_CONTROLLER_NAME,
-                zk.image_version().context(CrdValidationFailureSnafu)?,
+                &resolved_product_image.app_version_label,
                 &rolegroup.role,
                 &rolegroup.role_group,
             ))
@@ -543,8 +569,8 @@ fn build_server_rolegroup_statefulset(
     rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     client_authentication_class: Option<&AuthenticationClass>,
+    resolved_product_image: &ResolvedProductImage,
 ) -> Result<StatefulSet> {
-    let zk_version = zk.image_version().context(CrdValidationFailureSnafu)?;
     let zk_role =
         ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| RoleParseFailureSnafu {
             role: rolegroup_ref.role.to_string(),
@@ -599,7 +625,7 @@ fn build_server_rolegroup_statefulset(
     )?;
 
     let container_prepare = cb_prepare
-        .image("docker.stackable.tech/stackable/tools:0.2.0-stackable0.4.0")
+        .image_from_product_image(resolved_product_image)
         .command(vec!["sh".to_string(), "-c".to_string()])
         .args(vec![create_init_container_command_args(zk)])
         .add_env_vars(env_vars.clone())
@@ -621,10 +647,7 @@ fn build_server_rolegroup_statefulset(
         .build();
 
     let container_zk = cb_zookeeper
-        .image(format!(
-            "docker.stackable.tech/stackable/zookeeper:{}",
-            zk_version
-        ))
+        .image_from_product_image(resolved_product_image)
         .args(vec![
             "bin/zkServer.sh".to_string(),
             "start-foreground".to_string(),
@@ -664,11 +687,12 @@ fn build_server_rolegroup_statefulset(
             m.with_recommended_labels(build_recommended_labels(
                 zk,
                 ZK_CONTROLLER_NAME,
-                zk_version,
+                &resolved_product_image.app_version_label,
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
             ))
         })
+        .image_pull_secrets_from_product_image(resolved_product_image)
         .add_init_container(container_prepare)
         .add_container(container_zk)
         .add_volume(Volume {
@@ -703,7 +727,7 @@ fn build_server_rolegroup_statefulset(
             .with_recommended_labels(build_recommended_labels(
                 zk,
                 ZK_CONTROLLER_NAME,
-                zk_version,
+                &resolved_product_image.app_version_label,
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
             ))
