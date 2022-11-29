@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- [BREAKING] Use Product image selection instead of version. `spec.version` has been replaced by `spec.image` ([#TODO]).
+- [BREAKING] Use Product image selection instead of version. `spec.version` has been replaced by `spec.image` ([#599]).
 - Updated stackable image versions ([#586]).
 - Operator-rs: 0.25.3 -> 0.27.1 ([#591]).
 - Fixed bug where ZNode ConfigMaps were not created due to labeling issues ([#592]).
@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 [#586]: https://github.com/stackabletech/zookeeper-operator/pull/586
 [#591]: https://github.com/stackabletech/zookeeper-operator/pull/591
 [#592]: https://github.com/stackabletech/zookeeper-operator/pull/592
+[#599]: https://github.com/stackabletech/zookeeper-operator/pull/599
 
 ## [0.12.0] - 2022-11-07
 
