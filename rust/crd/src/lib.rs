@@ -79,7 +79,7 @@ pub struct ZookeeperClusterSpec {
     pub stopped: Option<bool>,
     /// Desired ZooKeeper version
     #[serde(skip_serializing_if = "Option::is_none")]
-    // TODO: Change to non-optional, but this hinders the Default trait on ZookeeperClusterSpec
+    // `image` is optional, as this is needed by the Default trait on ZookeeperClusterSpec
     pub image: Option<ProductImage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config: Option<GlobalZookeeperConfig>,
