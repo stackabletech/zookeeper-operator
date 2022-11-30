@@ -3,6 +3,7 @@ use crate::utils::build_recommended_labels;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ObjectMetaBuilder},
+    commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
     kube::{runtime::reflector::ObjectRef, Resource},
 };
@@ -22,10 +23,6 @@ pub enum Error {
     NoName,
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
-    #[snafu(display("object has no version"))]
-    NoVersion {
-        source: stackable_zookeeper_crd::Error,
-    },
     #[snafu(display("failed to list expected pods"))]
     ExpectedPods {
         source: stackable_zookeeper_crd::Error,
@@ -55,10 +52,19 @@ pub async fn build_discovery_configmaps(
     controller_name: &str,
     svc: &Service,
     chroot: Option<&str>,
+    resolved_product_image: &ResolvedProductImage,
 ) -> Result<Vec<ConfigMap>, Error> {
     let name = owner.meta().name.as_deref().context(NoNameSnafu)?;
     Ok(vec![
-        build_discovery_configmap(zk, owner, name, controller_name, chroot, pod_hosts(zk)?)?,
+        build_discovery_configmap(
+            zk,
+            owner,
+            name,
+            controller_name,
+            chroot,
+            pod_hosts(zk)?,
+            resolved_product_image,
+        )?,
         build_discovery_configmap(
             zk,
             owner,
@@ -66,6 +72,7 @@ pub async fn build_discovery_configmaps(
             controller_name,
             chroot,
             nodeport_hosts(client, svc, "zk").await?,
+            resolved_product_image,
         )?,
     ])
 }
@@ -80,6 +87,7 @@ fn build_discovery_configmap(
     controller_name: &str,
     chroot: Option<&str>,
     hosts: impl IntoIterator<Item = (impl Into<String>, u16)>,
+    resolved_product_image: &ResolvedProductImage,
 ) -> Result<ConfigMap, Error> {
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"
@@ -108,7 +116,7 @@ fn build_discovery_configmap(
                 .with_recommended_labels(build_recommended_labels(
                     owner,
                     controller_name,
-                    zk.image_version().context(NoVersionSnafu)?,
+                    &resolved_product_image.app_version_label,
                     &ZookeeperRole::Server.to_string(),
                     "discovery",
                 ))

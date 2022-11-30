@@ -4,6 +4,10 @@ kind: ZookeeperCluster
 metadata:
   name: test-zk
 spec:
+spec:
+  image:
+    productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
+    stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
   config:
 {% if test_scenario['values']['use-client-tls'] == 'true' %}
     tls:
@@ -40,8 +44,6 @@ spec:
             storage:
               data:
                 capacity: '2Gi'
-  version: {{ test_scenario['values']['zookeeper'] }}
-  stopped: false
 {% if test_scenario['values']['use-client-auth-tls'] == 'true' %}
 ---
 apiVersion: authentication.stackable.tech/v1alpha1
