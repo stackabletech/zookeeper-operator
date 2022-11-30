@@ -122,6 +122,10 @@ spec:
                           properties:
                             containers:
                               additionalProperties:
+                                anyOf:
+                                  - required:
+                                      - custom
+                                  - {}
                                 properties:
                                   console:
                                     default:
@@ -136,6 +140,12 @@ spec:
                                           - ERROR
                                           - FATAL
                                           - NONE
+                                        nullable: true
+                                        type: string
+                                    type: object
+                                  custom:
+                                    properties:
+                                      configMap:
                                         nullable: true
                                         type: string
                                     type: object
@@ -435,6 +445,10 @@ spec:
                                 properties:
                                   containers:
                                     additionalProperties:
+                                      anyOf:
+                                        - required:
+                                            - custom
+                                        - {}
                                       properties:
                                         console:
                                           default:
@@ -449,6 +463,12 @@ spec:
                                                 - ERROR
                                                 - FATAL
                                                 - NONE
+                                              nullable: true
+                                              type: string
+                                          type: object
+                                        custom:
+                                          properties:
+                                            configMap:
                                               nullable: true
                                               type: string
                                           type: object

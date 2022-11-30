@@ -34,6 +34,7 @@ pub const METRICS_PORT: u16 = 9505;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
+pub const STACKABLE_LOG_CONFIG_DIR: &str = "/stackable/log_config";
 pub const STACKABLE_LOG_DIR: &str = "/stackable/log";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
 
@@ -291,8 +292,8 @@ impl Configuration for ZookeeperConfigFragment {
         let jvm_flags = [
             format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
             match logging_framework {
-                LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
-                LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
+                LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
+                LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
             }
         ].join(" ");
         Ok([

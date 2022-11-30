@@ -34,7 +34,13 @@ use stackable_operator::{
     kube::{api::DynamicObject, runtime::controller, Resource, ResourceExt},
     labels::{role_group_selector_labels, role_selector_labels},
     logging,
-    logging::controller::ReconcilerError,
+    logging::{
+        controller::ReconcilerError,
+        spec::{
+            ConfigMapLogConfig, ContainerLogConfig, ContainerLogConfigChoice,
+            CustomContainerLogConfig,
+        },
+    },
     product_config::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
     },
@@ -45,8 +51,8 @@ use stackable_zookeeper_crd::{
     Container, LoggingFramework, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig,
     ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, DOCKER_IMAGE_BASE_NAME, LOG4J_CONFIG_FILE,
     LOGBACK_CONFIG_FILE, MAX_LOG_FILE_SIZE_IN_MB, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR,
-    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
-    VECTOR_CONFIG_FILE, ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
+    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
+    STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -183,6 +189,8 @@ pub enum Error {
         entry: &'static str,
         cm_name: String,
     },
+    #[snafu(display("vectorAggregatorConfigMapName must be set"))]
+    MissingVectorAggregatorAddress,
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -224,6 +232,7 @@ impl ReconcilerError for Error {
             Error::DeleteOrphans { .. } => None,
             Error::ConfigMapNotFound { .. } => None,
             Error::MissingConfigMapEntry { .. } => None,
+            Error::MissingVectorAggregatorAddress => None,
         }
     }
 }
@@ -554,49 +563,51 @@ fn build_server_rolegroup_config_map(
             })?,
         );
 
-    match zk.logging_framework().context(CrdValidationFailureSnafu)? {
-        LoggingFramework::LOG4J => {
-            cm_builder.add_data(
-                LOG4J_CONFIG_FILE,
-                logging::framework::create_log4j_config(
-                    &format!("{STACKABLE_LOG_DIR}/zookeeper"),
-                    ZOOKEEPER_LOG_FILE,
-                    MAX_LOG_FILE_SIZE_IN_MB,
-                    &logging
-                        .containers
-                        .get(&Container::Zookeeper)
-                        .cloned()
-                        .unwrap_or_default(),
-                ),
-            );
-        }
-        LoggingFramework::LOGBACK => {
-            cm_builder.add_data(
-                LOGBACK_CONFIG_FILE,
-                logging::framework::create_logback_config(
-                    &format!("{STACKABLE_LOG_DIR}/zookeeper"),
-                    ZOOKEEPER_LOG_FILE,
-                    MAX_LOG_FILE_SIZE_IN_MB,
-                    &logging
-                        .containers
-                        .get(&Container::Zookeeper)
-                        .cloned()
-                        .unwrap_or_default(),
-                ),
-            );
+    if let Some(ContainerLogConfig {
+        choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
+    }) = logging.containers.get(&Container::Zookeeper)
+    {
+        match zk.logging_framework().context(CrdValidationFailureSnafu)? {
+            LoggingFramework::LOG4J => {
+                cm_builder.add_data(
+                    LOG4J_CONFIG_FILE,
+                    logging::framework::create_log4j_config(
+                        &format!("{STACKABLE_LOG_DIR}/zookeeper"),
+                        ZOOKEEPER_LOG_FILE,
+                        MAX_LOG_FILE_SIZE_IN_MB,
+                        log_config,
+                    ),
+                );
+            }
+            LoggingFramework::LOGBACK => {
+                cm_builder.add_data(
+                    LOGBACK_CONFIG_FILE,
+                    logging::framework::create_logback_config(
+                        &format!("{STACKABLE_LOG_DIR}/zookeeper"),
+                        ZOOKEEPER_LOG_FILE,
+                        MAX_LOG_FILE_SIZE_IN_MB,
+                        log_config,
+                    ),
+                );
+            }
         }
     }
+
+    let vector_log_config = if let Some(ContainerLogConfig {
+        choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
+    }) = logging.containers.get(&Container::Vector)
+    {
+        Some(log_config)
+    } else {
+        None
+    };
 
     if logging.enable_vector_agent {
         cm_builder.add_data(
             logging::framework::VECTOR_CONFIG_FILE,
             logging::framework::create_vector_config(
-                vector_aggregator_address.expect("vectorAggregatorAddress is set"),
-                &logging
-                    .containers
-                    .get(&Container::Vector)
-                    .cloned()
-                    .unwrap_or_default(),
+                vector_aggregator_address.context(MissingVectorAggregatorAddressSnafu)?,
+                vector_log_config,
             ),
         );
     }
@@ -727,18 +738,24 @@ fn build_server_rolegroup_statefulset(
         client_authentication_class,
     )?;
 
+    let mut args = Vec::new();
+
+    if let Some(ContainerLogConfig {
+        choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
+    }) = logging.containers.get(&Container::Prepare)
+    {
+        args.push(logging::framework::capture_shell_output(
+            STACKABLE_LOG_DIR,
+            "prepare",
+            log_config,
+        ));
+    }
+    args.push(create_init_container_command_args(zk));
+
     let container_prepare = cb_prepare
         .image_from_product_image(resolved_product_image)
         .command(vec!["bash".to_string(), "-c".to_string()])
-        .args(vec![[
-            logging::framework::capture_shell_output(
-                STACKABLE_LOG_DIR,
-                "prepare",
-                logging.containers.get(&Container::Prepare),
-            ),
-            create_init_container_command_args(zk),
-        ]
-        .join(" && ")])
+        .args(vec![args.join(" && ")])
         .add_env_vars(env_vars.clone())
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
@@ -790,6 +807,7 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
         .add_volume_mount("log", STACKABLE_LOG_DIR)
         .resources(resources)
@@ -839,6 +857,32 @@ fn build_server_rolegroup_statefulset(
             ..PodSecurityContext::default()
         })
         .service_account_name(SERVICE_ACCOUNT);
+
+    if let Some(ContainerLogConfig {
+        choice:
+            Some(ContainerLogConfigChoice::Custom(CustomContainerLogConfig {
+                custom: ConfigMapLogConfig { config_map },
+            })),
+    }) = logging.containers.get(&Container::Zookeeper)
+    {
+        pod_builder.add_volume(Volume {
+            name: "log-config".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: Some(config_map.into()),
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        });
+    } else {
+        pod_builder.add_volume(Volume {
+            name: "log-config".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: Some(rolegroup_ref.object_name()),
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        });
+    }
 
     if logging.enable_vector_agent {
         pod_builder.add_container(logging::framework::vector_container(
