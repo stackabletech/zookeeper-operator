@@ -129,8 +129,7 @@ spec:
                                   - {}
                                 properties:
                                   console:
-                                    default:
-                                      levelThreshold: null
+                                    nullable: true
                                     properties:
                                       levelThreshold:
                                         enum:
@@ -151,8 +150,7 @@ spec:
                                         type: string
                                     type: object
                                   file:
-                                    default:
-                                      levelThreshold: null
+                                    nullable: true
                                     properties:
                                       levelThreshold:
                                         enum:
@@ -452,8 +450,7 @@ spec:
                                         - {}
                                       properties:
                                         console:
-                                          default:
-                                            levelThreshold: null
+                                          nullable: true
                                           properties:
                                             levelThreshold:
                                               enum:
@@ -474,8 +471,7 @@ spec:
                                               type: string
                                           type: object
                                         file:
-                                          default:
-                                            levelThreshold: null
+                                          nullable: true
                                           properties:
                                             levelThreshold:
                                               enum:
