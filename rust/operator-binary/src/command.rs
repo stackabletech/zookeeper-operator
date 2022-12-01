@@ -33,7 +33,6 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
         write_store_password_to_config(ZookeeperConfig::SSL_QUORUM_KEY_STORE_PASSWORD),
         write_store_password_to_config(ZookeeperConfig::SSL_QUORUM_TRUST_STORE_PASSWORD),
     ]);
-    args.extend(chown_and_chmod(QUORUM_TLS_DIR));
 
     // client-tls and client-auth-tls (only the certificates specified are accepted)
     if zk.client_tls_enabled() {
@@ -49,11 +48,8 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
             write_store_password_to_config(ZookeeperConfig::SSL_KEY_STORE_PASSWORD),
             write_store_password_to_config(ZookeeperConfig::SSL_TRUST_STORE_PASSWORD),
         ]);
-        args.extend(chown_and_chmod(CLIENT_TLS_DIR));
     }
 
-    args.extend(chown_and_chmod(STACKABLE_DATA_DIR));
-    args.extend(chown_and_chmod(STACKABLE_RW_CONFIG_DIR));
     args.push(format!(
         "expr $MYID_OFFSET + $(echo $POD_NAME | sed 's/.*-//') > {dir}/myid",
         dir = STACKABLE_DATA_DIR
@@ -93,14 +89,5 @@ fn create_key_and_trust_store_cmd(
         format!("cat {mount_directory}/ca.crt {mount_directory}/tls.crt > {stackable_directory}/chain.crt"),
         format!("echo [{stackable_directory}] Creating keystore"),
         format!("openssl pkcs12 -export -in {stackable_directory}/chain.crt -inkey {mount_directory}/tls.key -out {stackable_directory}/keystore.p12 --passout pass:${STORE_PASSWORD_ENV}"),
-    ]
-}
-
-/// Generates a shell script to chown and chmod the provided directory.
-fn chown_and_chmod(directory: &str) -> Vec<String> {
-    vec![
-        format!("echo [{dir}] chown and chmod", dir = directory),
-        format!("chown -R stackable:stackable {dir}", dir = directory),
-        format!("chmod -R a=,u=rwX {dir}", dir = directory),
     ]
 }

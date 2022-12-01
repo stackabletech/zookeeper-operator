@@ -11,7 +11,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
         ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder,
-        SecretOperatorVolumeSourceBuilder, SecurityContextBuilder, VolumeBuilder,
+        SecretOperatorVolumeSourceBuilder, VolumeBuilder,
     },
     cluster_resources::ClusterResources,
     commons::{
@@ -643,7 +643,6 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
-        .security_context(SecurityContextBuilder::run_as_root())
         .build();
 
     let container_zk = cb_zookeeper
@@ -712,6 +711,8 @@ fn build_server_rolegroup_statefulset(
             ..Volume::default()
         })
         .security_context(PodSecurityContext {
+            run_as_user: Some(1000),
+            run_as_group: Some(1000),
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
