@@ -889,6 +889,7 @@ fn build_server_rolegroup_statefulset(
             resolved_product_image,
             "config",
             "log",
+            logging.containers.get(&Container::Vector),
         ));
     }
 
