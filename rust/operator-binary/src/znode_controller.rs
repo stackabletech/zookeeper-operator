@@ -93,10 +93,6 @@ pub enum Error {
     },
     #[snafu(display("object has no namespace"))]
     ObjectHasNoNamespace,
-    #[snafu(display("object has no image"))]
-    NoImage {
-        source: stackable_zookeeper_crd::Error,
-    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -140,7 +136,6 @@ impl ReconcilerError for Error {
             Error::ObjectMissingMetadataForOwnerRef { source: _ } => None,
             Error::DeleteOrphans { source: _ } => None,
             Error::ObjectHasNoNamespace => None,
-            Error::NoImage { source: _ } => None,
         }
     }
 }
@@ -175,10 +170,7 @@ pub async fn reconcile_znode(
             match ev {
                 finalizer::Event::Apply(znode) => {
                     let zk = zk?;
-                    let resolved_product_image = zk
-                        .image()
-                        .context(NoImageSnafu)?
-                        .resolve(DOCKER_IMAGE_BASE_NAME);
+                    let resolved_product_image = zk.spec.image.resolve(DOCKER_IMAGE_BASE_NAME);
                     reconcile_apply(client, &znode, Ok(zk), &znode_path, &resolved_product_image)
                         .await
                 }
