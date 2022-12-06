@@ -1,0 +1,43 @@
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: test-zk
+spec:
+  image:
+    productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
+    stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
+    repo: docker.stackable.tech/sandbox/logging
+  vectorAggregatorConfigMapName: vector-aggregator-discovery
+  servers:
+    roleGroups:
+      default:
+        replicas: 3
+        config:
+          logging:
+            enableVectorAgent: true
+            containers:
+              prepare:
+                console:
+                  levelThreshold: INFO
+                file:
+                  levelThreshold: INFO
+                loggers:
+                  ROOT:
+                    level: INFO
+              vector:
+                console:
+                  levelThreshold: INFO
+                file:
+                  levelThreshold: INFO
+                loggers:
+                  ROOT:
+                    level: INFO
+              zookeeper:
+                console:
+                  levelThreshold: INFO
+                file:
+                  levelThreshold: INFO
+                loggers:
+                  ROOT:
+                    level: INFO

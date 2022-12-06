@@ -1,0 +1,27 @@
+role: Aggregator
+customConfig:
+  api:
+    address: 0.0.0.0:8686
+    enabled: true
+  sources:
+    vector:
+      address: 0.0.0.0:6000
+      type: vector
+      version: "2"
+  transforms:
+    containerLogsZookeeper:
+      type: filter
+      inputs: [ vector ]
+      condition: .container == "zookeeper"
+    containerLogsPrepare:
+      type: filter
+      inputs: [ vector ]
+      condition: .container == "prepare"
+    containerLogsVector:
+      type: filter
+      inputs: [ vector ]
+      condition: .container == "vector"
+  sinks:
+    out:
+      type: blackhole
+      inputs: [ containerLogs* ]
