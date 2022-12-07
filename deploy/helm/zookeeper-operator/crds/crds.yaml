@@ -30,7 +30,6 @@ spec:
                     tls:
                       secretClass: tls
                     quorumTlsSecretClass: tls
-                  nullable: true
                   properties:
                     clientAuthentication:
                       description: 'Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs Defaults to `None`'
@@ -66,7 +65,6 @@ spec:
                         - productVersion
                         - stackableVersion
                   description: Desired ZooKeeper version
-                  nullable: true
                   properties:
                     custom:
                       description: Overwrite the docker image. Specify the full docker image name, e.g. `docker.stackable.tech/stackable/superset:1.4.1-stackable2.1.0`
@@ -628,6 +626,8 @@ spec:
                   description: Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)
                   nullable: true
                   type: boolean
+              required:
+                - image
               type: object
             status:
               nullable: true

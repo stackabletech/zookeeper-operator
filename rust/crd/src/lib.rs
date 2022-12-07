@@ -48,8 +48,6 @@ const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
 pub enum Error {
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
-    #[snafu(display("object defines no image"))]
-    ObjectHasNoImage,
     #[snafu(display("unknown ZooKeeper role found {role}. Should be one of {roles:?}"))]
     UnknownZookeeperRole { role: String, roles: Vec<String> },
     #[snafu(display("fragment validation failure"))]
@@ -72,40 +70,27 @@ pub enum Error {
         schemars = "stackable_operator::schemars"
     )
 )]
-#[serde(default, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterSpec {
     /// Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stopped: Option<bool>,
     /// Desired ZooKeeper version
-    #[serde(skip_serializing_if = "Option::is_none")]
-    // `image` is optional, as this is needed by the Default trait on ZookeeperClusterSpec
-    pub image: Option<ProductImage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub config: Option<GlobalZookeeperConfig>,
+    pub image: ProductImage,
+    #[serde(default = "global_config_default")]
+    pub config: GlobalZookeeperConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub servers: Option<Role<ZookeeperConfig>>,
 }
 
-impl Default for ZookeeperClusterSpec {
-    fn default() -> Self {
-        Self {
-            config: Some(GlobalZookeeperConfig::default()),
-            stopped: Default::default(),
-            image: None,
-            servers: Default::default(),
-        }
-    }
-}
-
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(default, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct GlobalZookeeperConfig {
     /// Only affects client connections. This setting controls:
     /// - If TLS encryption is used at all
     /// - Which cert the servers should use to authenticate themselves against the client
     /// Defaults to `TlsSecretClass` { secret_class: "tls".to_string() }.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default = "tls_default", skip_serializing_if = "Option::is_none")]
     pub tls: Option<TlsSecretClass>,
     /// Only affects client connections. This setting controls:
     /// - If clients need to authenticate themselves against the server via TLS
@@ -117,16 +102,28 @@ pub struct GlobalZookeeperConfig {
     /// (mandatory). This setting controls:
     /// - Which cert the servers should use to authenticate themselves against other servers
     /// - Which ca.crt to use when validating the other server
+    #[serde(default = "quorum_tls_default")]
     pub quorum_tls_secret_class: String,
 }
 
-impl Default for GlobalZookeeperConfig {
-    fn default() -> Self {
-        Self {
-            tls: Some(TlsSecretClass::default()),
-            client_authentication: None,
-            quorum_tls_secret_class: TLS_DEFAULT_SECRET_CLASS.to_string(),
-        }
+/// This is to have the GlobalZookeeperConfig.tls default if e.g. only client_authentication is set
+fn tls_default() -> Option<TlsSecretClass> {
+    Some(TlsSecretClass {
+        secret_class: TLS_DEFAULT_SECRET_CLASS.into(),
+    })
+}
+
+/// This is to set the quorum if e.g. only GlobalZookeeperConfig.tls is set
+fn quorum_tls_default() -> String {
+    TLS_DEFAULT_SECRET_CLASS.to_string()
+}
+
+/// This is to set defaults if the config is left out completely
+fn global_config_default() -> GlobalZookeeperConfig {
+    GlobalZookeeperConfig {
+        tls: tls_default(),
+        client_authentication: None,
+        quorum_tls_secret_class: quorum_tls_default(),
     }
 }
 
@@ -134,14 +131,6 @@ impl Default for GlobalZookeeperConfig {
 #[serde(rename_all = "camelCase")]
 pub struct TlsSecretClass {
     pub secret_class: String,
-}
-
-impl Default for TlsSecretClass {
-    fn default() -> Self {
-        Self {
-            secret_class: TLS_DEFAULT_SECRET_CLASS.into(),
-        }
-    }
 }
 
 #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -400,11 +389,6 @@ pub struct ZookeeperClusterStatus {
 }
 
 impl ZookeeperCluster {
-    /// The image provided in the `spec.image` field
-    pub fn image(&self) -> Result<&ProductImage, Error> {
-        self.spec.image.as_ref().context(ObjectHasNoImageSnafu)
-    }
-
     /// The name of the role-level load-balanced Kubernetes `Service`
     pub fn server_role_service_name(&self) -> Option<String> {
         self.metadata.name.clone()
@@ -470,7 +454,7 @@ impl ZookeeperCluster {
     /// Returns the secret class for client connection encryption. Defaults to `tls`.
     pub fn client_tls_secret_class(&self) -> Option<&TlsSecretClass> {
         let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.config.as_ref().and_then(|c| c.tls.as_ref())
+        spec.config.tls.as_ref()
     }
 
     /// Checks if we should use TLS to encrypt client connections.
@@ -482,18 +466,14 @@ impl ZookeeperCluster {
     pub fn client_tls_authentication_class(&self) -> Option<&str> {
         let spec: &ZookeeperClusterSpec = &self.spec;
         spec.config
+            .client_authentication
             .as_ref()
-            .and_then(|c| c.client_authentication.as_ref())
-            .map(|tls| tls.authentication_class.as_ref())
+            .map(|auth| auth.authentication_class.as_ref())
     }
 
     /// Returns the secret class for internal server encryption
     pub fn quorum_tls_secret_class(&self) -> &str {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.config
-            .as_ref()
-            .map(|c| c.quorum_tls_secret_class.as_ref())
-            .unwrap_or_default()
+        &self.spec.config.quorum_tls_secret_class
     }
 
     /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
@@ -623,7 +603,10 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec: {}
+        spec: 
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"        
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
@@ -641,6 +624,9 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"   
           config:
             tls:
               secretClass: simple-zookeeper-client-tls
@@ -662,6 +648,9 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"           
           config:
             tls: null
         "#;
@@ -678,6 +667,9 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"           
           config:
             quorumTlsSecretClass: simple-zookeeper-quorum-tls
         "#;
@@ -699,7 +691,10 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec: {}
+        spec: 
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"         
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
@@ -717,6 +712,9 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"         
           config:
             quorumTlsSecretClass: simple-zookeeper-quorum-tls
         "#;
@@ -736,6 +734,9 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"    
           config:
             tls:
               secretClass: simple-zookeeper-client-tls
