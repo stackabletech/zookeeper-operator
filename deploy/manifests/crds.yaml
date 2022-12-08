@@ -131,7 +131,7 @@ spec:
                                   console:
                                     nullable: true
                                     properties:
-                                      levelThreshold:
+                                      level:
                                         enum:
                                           - TRACE
                                           - DEBUG
@@ -152,7 +152,7 @@ spec:
                                   file:
                                     nullable: true
                                     properties:
-                                      levelThreshold:
+                                      level:
                                         enum:
                                           - TRACE
                                           - DEBUG
@@ -452,7 +452,7 @@ spec:
                                         console:
                                           nullable: true
                                           properties:
-                                            levelThreshold:
+                                            level:
                                               enum:
                                                 - TRACE
                                                 - DEBUG
@@ -473,7 +473,7 @@ spec:
                                         file:
                                           nullable: true
                                           properties:
-                                            levelThreshold:
+                                            level:
                                               enum:
                                                 - TRACE
                                                 - DEBUG
