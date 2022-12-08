@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 import requests
 
+
 def check_processed_events():
     response = requests.post(
         'http://vector-aggregator:8686/graphql',
-        json = {
+        json={
             'query': """
                 {
                     transforms {
@@ -29,11 +30,11 @@ def check_processed_events():
 
     transforms = result['data']['transforms']['nodes']
     for transform in transforms:
-        processedEvents = transform \
-            ['metrics']['processedEventsTotal']['processedEventsTotal']
+        processedEvents = transform['metrics']['processedEventsTotal']['processedEventsTotal']
         componentId = transform['componentId']
         assert processedEvents > 0, \
             f'No events were processed in "{componentId}".'
+
 
 if __name__ == '__main__':
     check_processed_events()

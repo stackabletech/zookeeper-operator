@@ -1,3 +1,4 @@
+---
 role: Aggregator
 customConfig:
   api:
@@ -11,17 +12,17 @@ customConfig:
   transforms:
     containerLogsZookeeper:
       type: filter
-      inputs: [ vector ]
+      inputs: [vector]
       condition: .container == "zookeeper"
     containerLogsPrepare:
       type: filter
-      inputs: [ vector ]
+      inputs: [vector]
       condition: .container == "prepare"
     containerLogsVector:
       type: filter
-      inputs: [ vector ]
+      inputs: [vector]
       condition: .container == "vector"
   sinks:
     out:
       type: blackhole
-      inputs: [ containerLogs* ]
+      inputs: [containerLogs*]
