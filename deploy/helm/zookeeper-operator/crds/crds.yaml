@@ -126,11 +126,13 @@ spec:
                                   - required:
                                       - custom
                                   - {}
+                                description: Fragment derived from `ContainerLogConfigChoice`
                                 properties:
                                   console:
                                     nullable: true
                                     properties:
                                       level:
+                                        description: Log levels
                                         enum:
                                           - TRACE
                                           - DEBUG
@@ -143,6 +145,7 @@ spec:
                                         type: string
                                     type: object
                                   custom:
+                                    description: Custom log configuration provided in a ConfigMap
                                     properties:
                                       configMap:
                                         nullable: true
@@ -152,6 +155,7 @@ spec:
                                     nullable: true
                                     properties:
                                       level:
+                                        description: Log levels
                                         enum:
                                           - TRACE
                                           - DEBUG
@@ -167,6 +171,7 @@ spec:
                                     additionalProperties:
                                       properties:
                                         level:
+                                          description: Log levels
                                           enum:
                                             - TRACE
                                             - DEBUG
@@ -447,11 +452,13 @@ spec:
                                         - required:
                                             - custom
                                         - {}
+                                      description: Fragment derived from `ContainerLogConfigChoice`
                                       properties:
                                         console:
                                           nullable: true
                                           properties:
                                             level:
+                                              description: Log levels
                                               enum:
                                                 - TRACE
                                                 - DEBUG
@@ -464,6 +471,7 @@ spec:
                                               type: string
                                           type: object
                                         custom:
+                                          description: Custom log configuration provided in a ConfigMap
                                           properties:
                                             configMap:
                                               nullable: true
@@ -473,6 +481,7 @@ spec:
                                           nullable: true
                                           properties:
                                             level:
+                                              description: Log levels
                                               enum:
                                                 - TRACE
                                                 - DEBUG
@@ -488,6 +497,7 @@ spec:
                                           additionalProperties:
                                             properties:
                                               level:
+                                                description: Log levels
                                                 enum:
                                                   - TRACE
                                                   - DEBUG
