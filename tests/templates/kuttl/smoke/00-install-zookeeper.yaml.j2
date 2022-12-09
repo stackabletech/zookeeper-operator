@@ -8,6 +8,7 @@ spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
+    repo: docker.stackable.tech/sandbox/logging
   config:
 {% if test_scenario['values']['use-client-tls'] == 'true' %}
     tls:
@@ -22,6 +23,8 @@ spec:
     quorumTlsSecretClass: tls
   servers:
     config:
+      logging:
+        enableVectorAgent: false
       resources:
         storage:
           data:
