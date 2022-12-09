@@ -10,19 +10,37 @@ customConfig:
       type: vector
       version: "2"
   transforms:
-    containerLogsZookeeper:
+    automaticLogConfigPrepare:
       type: filter
       inputs: [vector]
-      condition: .container == "zookeeper"
-    containerLogsPrepare:
+      condition: |-
+        .pod == "test-zk-server-automatic-log-config-0" && .container == "prepare"
+    automaticLogConfigVector:
       type: filter
       inputs: [vector]
-      condition: .container == "prepare"
-    containerLogsVector:
+      condition: |-
+        .pod == "test-zk-server-automatic-log-config-0" && .container == "vector"
+    automaticLogConfigZookeeper:
       type: filter
       inputs: [vector]
-      condition: .container == "vector"
+      condition: |-
+        .pod == "test-zk-server-automatic-log-config-0" && .container == "zookeeper"
+    customLogConfigPrepare:
+      type: filter
+      inputs: [vector]
+      condition: |-
+        .pod == "test-zk-server-custom-log-config-0" && .container == "prepare"
+    customLogConfigVector:
+      type: filter
+      inputs: [vector]
+      condition: |-
+        .pod == "test-zk-server-custom-log-config-0" && .container == "vector"
+    customLogConfigZookeeper:
+      type: filter
+      inputs: [vector]
+      condition: |-
+        .pod == "test-zk-server-custom-log-config-0" && .container == "zookeeper"
   sinks:
     out:
       type: blackhole
-      inputs: [containerLogs*]
+      inputs: [automaticLogConfig*, customLogConfig*]

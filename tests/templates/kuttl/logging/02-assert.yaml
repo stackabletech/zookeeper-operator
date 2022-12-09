@@ -2,13 +2,13 @@
 apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
 metadata:
-  name: install-vector-aggregator
-timeout: 600
+  name: install-zk-test-helper
+timeout: 300
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: vector-aggregator
+  name: zk-test-helper
 status:
   readyReplicas: 1
   replicas: 1
