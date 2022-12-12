@@ -7,7 +7,6 @@ spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
-    repo: docker.stackable.tech/sandbox/logging
   config:
     tls: null
     quorumTlsSecretClass: tls
