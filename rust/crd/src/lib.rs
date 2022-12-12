@@ -16,10 +16,10 @@ use stackable_operator::{
         apimachinery::pkg::api::resource::Quantity,
     },
     kube::{runtime::reflector::ObjectRef, CustomResource},
-    logging::{self, spec::Logging},
     memory::to_java_heap_value,
     memory::BinaryMultiple,
     product_config_utils::{ConfigError, Configuration},
+    product_logging::{self, spec::Logging},
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
@@ -270,7 +270,7 @@ impl ZookeeperConfig {
                     },
                 },
             },
-            logging: logging::spec::default_logging(),
+            logging: product_logging::spec::default_logging(),
         }
     }
 }

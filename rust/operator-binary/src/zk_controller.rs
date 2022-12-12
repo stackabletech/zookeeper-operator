@@ -33,18 +33,18 @@ use stackable_operator::{
     },
     kube::{api::DynamicObject, runtime::controller, Resource, ResourceExt},
     labels::{role_group_selector_labels, role_selector_labels},
-    logging,
-    logging::{
-        controller::ReconcilerError,
+    logging::controller::ReconcilerError,
+    product_config::{
+        types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
+    },
+    product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
+    product_logging::{
+        self,
         spec::{
             ConfigMapLogConfig, ContainerLogConfig, ContainerLogConfigChoice,
             CustomContainerLogConfig,
         },
     },
-    product_config::{
-        types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
-    },
-    product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{
@@ -68,6 +68,8 @@ pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
 const VECTOR_AGGREGATOR_CM_ENTRY: &str = "ADDRESS";
+const CONSOLE_CONVERSION_PATTERN: &str =
+    "%d{{ISO8601}} [myid:%X{{myid}}] - %-5p [%t:%C{{1}}@%L] - %m%n";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -571,10 +573,11 @@ fn build_server_rolegroup_config_map(
             LoggingFramework::LOG4J => {
                 cm_builder.add_data(
                     LOG4J_CONFIG_FILE,
-                    logging::framework::create_log4j_config(
+                    product_logging::framework::create_log4j_config(
                         &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                         ZOOKEEPER_LOG_FILE,
                         MAX_LOG_FILE_SIZE_IN_MB,
+                        CONSOLE_CONVERSION_PATTERN,
                         log_config,
                     ),
                 );
@@ -582,10 +585,11 @@ fn build_server_rolegroup_config_map(
             LoggingFramework::LOGBACK => {
                 cm_builder.add_data(
                     LOGBACK_CONFIG_FILE,
-                    logging::framework::create_logback_config(
+                    product_logging::framework::create_logback_config(
                         &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                         ZOOKEEPER_LOG_FILE,
                         MAX_LOG_FILE_SIZE_IN_MB,
+                        CONSOLE_CONVERSION_PATTERN,
                         log_config,
                     ),
                 );
@@ -604,8 +608,8 @@ fn build_server_rolegroup_config_map(
 
     if logging.enable_vector_agent {
         cm_builder.add_data(
-            logging::framework::VECTOR_CONFIG_FILE,
-            logging::framework::create_vector_config(
+            product_logging::framework::VECTOR_CONFIG_FILE,
+            product_logging::framework::create_vector_config(
                 vector_aggregator_address.context(MissingVectorAggregatorAddressSnafu)?,
                 vector_log_config,
             ),
@@ -744,7 +748,7 @@ fn build_server_rolegroup_statefulset(
         choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
     }) = logging.containers.get(&Container::Prepare)
     {
-        args.push(logging::framework::capture_shell_output(
+        args.push(product_logging::framework::capture_shell_output(
             STACKABLE_LOG_DIR,
             "prepare",
             log_config,
@@ -884,7 +888,7 @@ fn build_server_rolegroup_statefulset(
     }
 
     if logging.enable_vector_agent {
-        pod_builder.add_container(logging::framework::vector_container(
+        pod_builder.add_container(product_logging::framework::vector_container(
             resolved_product_image,
             "config",
             "log",
