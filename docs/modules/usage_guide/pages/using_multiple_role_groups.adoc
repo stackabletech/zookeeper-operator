@@ -1,0 +1,26 @@
+= Using multiple role groups
+
+// abstract/summary
+When using multiple xref:home:concepts:roles-and-role-groups.adoc[role groups], every role group except one needs to be configured with an offset for the IDs of the ZooKeeper servers in that role group.
+
+ZooKeeper uses a unique ID called _myid_ to uniquely identify the servers in the cluster. The Stackable Operator uses the number of replicas in a role group to number the servers in the role group. If there is more than one role group, the other role groups need to be with an offset for the myid to prevent two servers from getting the same myid assigned.
+
+The offset is configured with the `myidOffset` config option on a role group:
+
+```yaml
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: zookeeper
+spec:
+  servers:
+    roleGroups:
+      primary:
+        replicas: 2
+      secondary:
+        replicas: 1
+        config:
+          myidOffset: 10  # <1>
+```
+
+<1> The `myidOffset` property set to 10 for the secondary role group
