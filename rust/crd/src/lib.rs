@@ -49,7 +49,10 @@ pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
 
 pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
 
-pub const MAX_LOG_FILE_SIZE_IN_MB: i32 = 1000;
+pub const MAX_ZK_LOG_FILES_SIZE_IN_MB: u32 = 10;
+const MAX_PREPARE_LOG_FILE_SIZE_IN_MB: u32 = 1;
+pub const LOG_VOLUME_SIZE_IN_MB: u32 =
+    MAX_ZK_LOG_FILES_SIZE_IN_MB + MAX_PREPARE_LOG_FILE_SIZE_IN_MB;
 const JVM_HEAP_FACTOR: f32 = 0.8;
 const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
 
