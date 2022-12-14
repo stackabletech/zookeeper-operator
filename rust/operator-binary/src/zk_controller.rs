@@ -50,7 +50,7 @@ use stackable_operator::{
 use stackable_zookeeper_crd::{
     Container, LoggingFramework, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig,
     ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, DOCKER_IMAGE_BASE_NAME, LOG4J_CONFIG_FILE,
-    LOGBACK_CONFIG_FILE, LOG_VOLUME_SIZE_IN_MB, MAX_ZK_LOG_FILES_SIZE_IN_MB, QUORUM_TLS_DIR,
+    LOGBACK_CONFIG_FILE, LOG_VOLUME_SIZE_IN_MIB, MAX_ZK_LOG_FILES_SIZE_IN_MIB, QUORUM_TLS_DIR,
     QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
     STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
 };
@@ -576,7 +576,7 @@ fn build_server_rolegroup_config_map(
                     product_logging::framework::create_log4j_config(
                         &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                         ZOOKEEPER_LOG_FILE,
-                        MAX_ZK_LOG_FILES_SIZE_IN_MB,
+                        MAX_ZK_LOG_FILES_SIZE_IN_MIB,
                         CONSOLE_CONVERSION_PATTERN,
                         log_config,
                     ),
@@ -588,7 +588,7 @@ fn build_server_rolegroup_config_map(
                     product_logging::framework::create_logback_config(
                         &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                         ZOOKEEPER_LOG_FILE,
-                        MAX_ZK_LOG_FILES_SIZE_IN_MB,
+                        MAX_ZK_LOG_FILES_SIZE_IN_MIB,
                         CONSOLE_CONVERSION_PATTERN,
                         log_config,
                     ),
@@ -849,7 +849,7 @@ fn build_server_rolegroup_statefulset(
             name: "log".to_string(),
             empty_dir: Some(EmptyDirVolumeSource {
                 medium: None,
-                size_limit: Some(Quantity(format!("{LOG_VOLUME_SIZE_IN_MB}M"))),
+                size_limit: Some(Quantity(format!("{LOG_VOLUME_SIZE_IN_MIB}Mi"))),
             }),
             ..Volume::default()
         })
