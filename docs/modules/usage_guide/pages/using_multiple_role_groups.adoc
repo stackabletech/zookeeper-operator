@@ -1,11 +1,13 @@
 = Using multiple role groups
 
 // abstract/summary
-When using multiple xref:home:concepts:roles-and-role-groups.adoc[role groups], every role group except one needs to be configured with an offset for the IDs of the ZooKeeper servers in that role group.
+ZooKeeper uses a unique ID called _myid_ to identify each server in the cluster. Per default in the Stackable Operator for Apache ZooKeeper, the _myid_ is extracted from the Pod name and uses the assigned StatefulSet identifier (e.g. the Pod `zookeeper-server-default-0` will have a _myid_ of `0`). 
 
-ZooKeeper uses a unique ID called _myid_ to uniquely identify the servers in the cluster. The Stackable Operator uses the number of replicas in a role group to number the servers in the role group. If there is more than one role group, the other role groups need to be with an offset for the myid to prevent two servers from getting the same myid assigned.
+When using multiple xref:home:concepts:roles-and-role-groups.adoc[role groups] in a cluster, this will lead to different ZooKeeper Pods using the same _myid_. Each role group is represented by its own StatefulSet, and therefore always identified starting with `0`.
 
-The offset is configured with the `myidOffset` config option on a role group:
+In order to avoid this _myid_ conflict, a property `myidOffset` can be specified in each rolegroup. The `myidOffset` defaults to zero, but if specified will be added to the id extracted from the StatefulSet identifier.
+
+In the example below, the `secondary` role group _myid_ starts from id `10`. The `primary` role group will start from `0`. This means, the replicas of the role group `primary` should not be scaled higher than `10` which results in `10` `primary` Pods using a _myid_ from `0` to `9`, followed by the `secondary` Pods starting at _myid_ `10`. 
 
 ```yaml
 apiVersion: zookeeper.stackable.tech/v1alpha1
