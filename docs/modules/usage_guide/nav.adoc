@@ -1,6 +1,7 @@
 * xref:index.adoc[]
 ** xref:encryption.adoc[]
 ** xref:authentication.adoc[]
+** xref:resource_configuration.adoc[]
 ** xref:monitoring.adoc[]
 ** xref:using_multiple_role_groups.adoc[]
 ** xref:configuration_environment_overrides.adoc[]
