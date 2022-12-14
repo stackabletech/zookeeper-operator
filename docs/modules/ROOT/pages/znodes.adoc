@@ -33,4 +33,4 @@ ZNodes however can have different access control and might be configured to be c
 
 == What's next
 
-Have a look at the usage guide for ZNodes: xref:usage_guide:using_znodes.adoc[]
+Have a look at the usage guide for ZNodes: xref:usage_guide:isolating_clients_with_znodes.adoc[]
