@@ -1,0 +1,10 @@
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperZnode
+metadata:
+  name: druid-znode    # <1>
+  namespace: druid-ns  # <2>
+spec:
+  clusterRef:          # <1>
+    name: my-zookeeper
+    namespace: data

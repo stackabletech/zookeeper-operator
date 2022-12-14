@@ -1,0 +1,9 @@
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperZnode
+metadata:
+  name: kafka-znode  # <1>
+  namespace: data    # <2>
+spec:
+  clusterRef:        # <3>
+    name: my-zookeeper
