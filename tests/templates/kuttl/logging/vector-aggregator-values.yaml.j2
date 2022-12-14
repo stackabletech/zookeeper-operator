@@ -1,5 +1,15 @@
 ---
 role: Aggregator
+service:
+  ports:
+  - name: api
+    port: 8686
+    protocol: TCP
+    targetPort: 8686
+  - name: vector
+    port: 6123
+    protocol: TCP
+    targetPort: 6000
 customConfig:
   api:
     address: 0.0.0.0:8686
@@ -42,5 +52,10 @@ customConfig:
         .pod == "test-zk-server-custom-log-config-0" && .container == "zookeeper"
   sinks:
     out:
-      type: blackhole
       inputs: [automaticLogConfig*, customLogConfig*]
+{% if lookup('env', 'VECTOR_AGGREGATOR') %}
+      type: vector
+      address: {{ lookup('env', 'VECTOR_AGGREGATOR') }}
+{% else %}
+      type: blackhole
+{% endif %}

@@ -3,7 +3,7 @@ apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
   - script: kubectl cp -n $NAMESPACE ./test_zookeeper.py  zk-test-helper-0:/tmp
-  - script: kubectl cp -n $NAMESPACE ./test_heap.sh test-zk-server-primary-0:/tmp
+  - script: kubectl cp -n $NAMESPACE ./test_heap.sh test-zk-server-primary-0:/tmp --container='zookeeper'
 {% if test_scenario['values']['use-client-auth-tls'] == 'true' or test_scenario['values']['use-client-tls'] == 'true' %}
-  - script: kubectl cp -n $NAMESPACE ./test_tls.sh test-zk-server-primary-0:/tmp
+  - script: kubectl cp -n $NAMESPACE ./test_tls.sh test-zk-server-primary-0:/tmp --container='zookeeper'
 {% endif %}
