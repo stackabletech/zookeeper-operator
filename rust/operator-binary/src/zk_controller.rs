@@ -610,6 +610,7 @@ fn build_server_rolegroup_config_map(
         cm_builder.add_data(
             product_logging::framework::VECTOR_CONFIG_FILE,
             product_logging::framework::create_vector_config(
+                rolegroup,
                 vector_aggregator_address.context(MissingVectorAggregatorAddressSnafu)?,
                 vector_log_config,
             ),
