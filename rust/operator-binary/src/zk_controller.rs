@@ -68,8 +68,7 @@ pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
 const VECTOR_AGGREGATOR_CM_ENTRY: &str = "ADDRESS";
-const CONSOLE_CONVERSION_PATTERN: &str =
-    "%d{{ISO8601}} [myid:%X{{myid}}] - %-5p [%t:%C{{1}}@%L] - %m%n";
+const CONSOLE_CONVERSION_PATTERN: &str = "%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
