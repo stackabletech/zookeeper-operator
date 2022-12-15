@@ -94,4 +94,4 @@ Great! This step concludes the Getting started guide. You have installed the Zoo
 
 == What's next
 
-Have a look at the xref:ROOT:usage.adoc[] page to learn more about configuration options for your ZooKeeper cluster like setting up encryption or authentication. You can also have a look at the xref:ROOT:znodes.adoc[] page to learn more about ZNodes.
+Have a look at the xref:usage_guide:index.adoc[] to learn more about configuration options for your ZooKeeper cluster like setting up encryption or authentication. You can also have a look at the xref:ROOT:znodes.adoc[] page to learn more about ZNodes.
