@@ -798,6 +798,7 @@ spec:
                   nullable: true
                   type: boolean
                 vectorAggregatorConfigMapName:
+                  description: Name of the Vector discovery ConfigMap. It must contain the key `ADDRESS` with the address of the Vector aggregator.
                   nullable: true
                   type: string
               required:

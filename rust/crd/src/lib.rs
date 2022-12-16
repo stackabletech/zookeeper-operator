@@ -97,6 +97,8 @@ pub struct ZookeeperClusterSpec {
     pub config: GlobalZookeeperConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub servers: Option<Role<ZookeeperConfigFragment>>,
+    /// Name of the Vector discovery ConfigMap.
+    /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vector_aggregator_config_map_name: Option<String>,
 }
