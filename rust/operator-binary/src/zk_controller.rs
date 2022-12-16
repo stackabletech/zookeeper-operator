@@ -2,6 +2,7 @@
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
+    product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
     utils::build_recommended_labels,
     ObjectRef, APP_NAME, OPERATOR_NAME,
 };
@@ -48,11 +49,11 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{
-    Container, LoggingFramework, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig,
-    ZookeeperRole, CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, DOCKER_IMAGE_BASE_NAME, LOG4J_CONFIG_FILE,
-    LOGBACK_CONFIG_FILE, LOG_VOLUME_SIZE_IN_MIB, MAX_ZK_LOG_FILES_SIZE_IN_MIB, QUORUM_TLS_DIR,
-    QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
-    STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_LOG_FILE, ZOOKEEPER_PROPERTIES_FILE,
+    Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole,
+    CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, DOCKER_IMAGE_BASE_NAME, LOG_VOLUME_SIZE_IN_MIB,
+    QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+    STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+    ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -67,9 +68,6 @@ use strum::{EnumDiscriminants, IntoStaticStr};
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
-const VECTOR_AGGREGATOR_CM_ENTRY: &str = "ADDRESS";
-const CONSOLE_CONVERSION_PATTERN: &str = "%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n";
-
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
     pub product_config: ProductConfigManager,
@@ -79,8 +77,6 @@ pub struct Ctx {
 #[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
-    #[snafu(display("object has no namespace"))]
-    ObjectHasNoNamespace,
     #[snafu(display("crd validation failure"))]
     CrdValidationFailure {
         source: stackable_zookeeper_crd::Error,
@@ -180,18 +176,15 @@ pub enum Error {
     DeleteOrphans {
         source: stackable_operator::error::Error,
     },
-    #[snafu(display("failed to retrieve the ConfigMap {cm_name}"))]
-    ConfigMapNotFound {
-        source: stackable_operator::error::Error,
+    #[snafu(display("failed to resolve the Vector aggregator address"))]
+    ResolveVectorAggregatorAddress {
+        source: crate::product_logging::Error,
+    },
+    #[snafu(display("failed to add the logging configuration to the ConfigMap {cm_name}"))]
+    InvalidLoggingConfig {
+        source: crate::product_logging::Error,
         cm_name: String,
     },
-    #[snafu(display("failed to retrieve the entry {entry} for ConfigMap {cm_name}"))]
-    MissingConfigMapEntry {
-        entry: &'static str,
-        cm_name: String,
-    },
-    #[snafu(display("vectorAggregatorConfigMapName must be set"))]
-    MissingVectorAggregatorAddress,
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -201,7 +194,6 @@ impl ReconcilerError for Error {
     }
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
-            Error::ObjectHasNoNamespace => None,
             Error::CrdValidationFailure { .. } => None,
             Error::NoServerRole => None,
             Error::RoleParseFailure { .. } => None,
@@ -231,9 +223,8 @@ impl ReconcilerError for Error {
             Error::ApplyServiceAccount { .. } => None,
             Error::ApplyRoleBinding { .. } => None,
             Error::DeleteOrphans { .. } => None,
-            Error::ConfigMapNotFound { .. } => None,
-            Error::MissingConfigMapEntry { .. } => None,
-            Error::MissingVectorAggregatorAddress => None,
+            Error::ResolveVectorAggregatorAddress { .. } => None,
+            Error::InvalidLoggingConfig { .. } => None,
         }
     }
 }
@@ -280,30 +271,9 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
-    let vector_aggregator_address = if let Some(vector_aggregator_config_map_name) =
-        &zk.spec.vector_aggregator_config_map_name
-    {
-        let vector_aggregator_address = client
-            .get::<ConfigMap>(
-                vector_aggregator_config_map_name,
-                zk.namespace()
-                    .as_deref()
-                    .context(ObjectHasNoNamespaceSnafu)?,
-            )
-            .await
-            .context(ConfigMapNotFoundSnafu {
-                cm_name: vector_aggregator_config_map_name.to_string(),
-            })?
-            .data
-            .and_then(|mut data| data.remove(VECTOR_AGGREGATOR_CM_ENTRY))
-            .context(MissingConfigMapEntrySnafu {
-                entry: VECTOR_AGGREGATOR_CM_ENTRY,
-                cm_name: vector_aggregator_config_map_name.to_string(),
-            })?;
-        Some(vector_aggregator_address)
-    } else {
-        None
-    };
+    let vector_aggregator_address = resolve_vector_aggregator_address(&zk, client)
+        .await
+        .context(ResolveVectorAggregatorAddressSnafu)?;
 
     let client_authentication_class = if let Some(auth_class) = zk.client_tls_authentication_class()
     {
@@ -529,9 +499,6 @@ fn build_server_rolegroup_config_map(
         ZookeeperRole::from_str(&rolegroup.role).with_context(|_| RoleParseFailureSnafu {
             role: rolegroup.role.to_string(),
         })?;
-    let logging = zk
-        .logging(&role, rolegroup)
-        .context(CrdValidationFailureSnafu)?;
 
     let zoo_cfg = zoo_cfg
         .into_iter()
@@ -564,57 +531,16 @@ fn build_server_rolegroup_config_map(
             })?,
         );
 
-    if let Some(ContainerLogConfig {
-        choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
-    }) = logging.containers.get(&Container::Zookeeper)
-    {
-        match zk.logging_framework().context(CrdValidationFailureSnafu)? {
-            LoggingFramework::LOG4J => {
-                cm_builder.add_data(
-                    LOG4J_CONFIG_FILE,
-                    product_logging::framework::create_log4j_config(
-                        &format!("{STACKABLE_LOG_DIR}/zookeeper"),
-                        ZOOKEEPER_LOG_FILE,
-                        MAX_ZK_LOG_FILES_SIZE_IN_MIB,
-                        CONSOLE_CONVERSION_PATTERN,
-                        log_config,
-                    ),
-                );
-            }
-            LoggingFramework::LOGBACK => {
-                cm_builder.add_data(
-                    LOGBACK_CONFIG_FILE,
-                    product_logging::framework::create_logback_config(
-                        &format!("{STACKABLE_LOG_DIR}/zookeeper"),
-                        ZOOKEEPER_LOG_FILE,
-                        MAX_ZK_LOG_FILES_SIZE_IN_MIB,
-                        CONSOLE_CONVERSION_PATTERN,
-                        log_config,
-                    ),
-                );
-            }
-        }
-    }
-
-    let vector_log_config = if let Some(ContainerLogConfig {
-        choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
-    }) = logging.containers.get(&Container::Vector)
-    {
-        Some(log_config)
-    } else {
-        None
-    };
-
-    if logging.enable_vector_agent {
-        cm_builder.add_data(
-            product_logging::framework::VECTOR_CONFIG_FILE,
-            product_logging::framework::create_vector_config(
-                rolegroup,
-                vector_aggregator_address.context(MissingVectorAggregatorAddressSnafu)?,
-                vector_log_config,
-            ),
-        );
-    }
+    extend_role_group_config_map(
+        zk,
+        role,
+        rolegroup,
+        vector_aggregator_address,
+        &mut cm_builder,
+    )
+    .context(InvalidLoggingConfigSnafu {
+        cm_name: rolegroup.object_name(),
+    })?;
 
     cm_builder
         .build()

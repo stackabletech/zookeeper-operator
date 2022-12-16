@@ -51,6 +51,8 @@ pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
 
 pub const MAX_ZK_LOG_FILES_SIZE_IN_MIB: u32 = 10;
 const MAX_PREPARE_LOG_FILE_SIZE_IN_MIB: u32 = 1;
+// Additional buffer space is not needed, as the `prepare` container already has sufficient buffer
+// space and all containers share a single volume.
 pub const LOG_VOLUME_SIZE_IN_MIB: u32 =
     MAX_ZK_LOG_FILES_SIZE_IN_MIB + MAX_PREPARE_LOG_FILE_SIZE_IN_MIB;
 const JVM_HEAP_FACTOR: f32 = 0.8;
