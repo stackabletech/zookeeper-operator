@@ -837,7 +837,9 @@ fn build_server_rolegroup_statefulset(
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
             ))
-            .with_label("restarter.stackable.tech/enabled", "true")
+            // The initial restart muddles up the integration tests. This can be re-enabled as soon
+            // as https://github.com/stackabletech/commons-operator/issues/111 is implemented.
+            // .with_label("restarter.stackable.tech/enabled", "true")
             .build(),
         spec: Some(StatefulSetSpec {
             pod_management_policy: Some("Parallel".to_string()),
