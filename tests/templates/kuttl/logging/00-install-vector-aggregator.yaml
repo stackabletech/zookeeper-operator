@@ -5,7 +5,7 @@ commands:
   - script: >-
       helm install vector-aggregator vector
       --namespace $NAMESPACE
-      --version 0.16.3
+      --version 0.18.0
       --repo https://helm.vector.dev
       --values vector-aggregator-values.yaml
 ---
