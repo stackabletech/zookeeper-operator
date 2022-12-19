@@ -31,7 +31,7 @@ spec:
                     tls:
                       quorumSecretClass: tls
                       serverSecretClass: tls
-                  description: Global ZooKeeper cluster configuration that applies to all role and role groups.
+                  description: Global ZooKeeper cluster configuration that applies to all roles and role groups.
                   properties:
                     authentication:
                       description: Authentication class settings for ZooKeeper like mTLS authentication.
@@ -83,7 +83,7 @@ spec:
                     - required:
                         - productVersion
                         - stackableVersion
-                  description: Desired ZooKeeper version.
+                  description: Desired ZooKeeper image to use.
                   properties:
                     custom:
                       description: Overwrite the docker image. Specify the full docker image name, e.g. `docker.stackable.tech/stackable/superset:1.4.1-stackable2.1.0`

@@ -88,10 +88,10 @@ pub enum Error {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterSpec {
-    /// Global ZooKeeper cluster configuration that applies to all role and role groups.
+    /// Global ZooKeeper cluster configuration that applies to all roles and role groups.
     #[serde(default = "cluster_config_default")]
     pub cluster_config: ZookeeperClusterConfig,
-    /// Desired ZooKeeper version.
+    /// Desired ZooKeeper image to use.
     pub image: ProductImage,
     /// ZooKeeper server configuration.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.
 - Operator-rs: 0.25.3 -> 0.27.1 ([#591]).
 - Fixed bug where ZNode ConfigMaps were not created due to labeling issues ([#592]).
 - Don't run init container as root and avoid chmod and chowning ([#603]).
-- [BREAKING] Moved `spec.authentication`, `spec.tls` and `spec.logging` to `spec.clusterConfig`. Consolidated sub field names like `tls.client` to `tls.server` ([#612]).
+- [BREAKING] Moved `spec.authentication`, `spec.tls` and `spec.logging` to `spec.clusterConfig`. Consolidated sub field names like `tls.client.secretClass` to `tls.serverSecretClass` ([#612]).
 
 [#586]: https://github.com/stackabletech/zookeeper-operator/pull/586
 [#591]: https://github.com/stackabletech/zookeeper-operator/pull/591
