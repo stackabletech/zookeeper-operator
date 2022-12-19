@@ -31,7 +31,7 @@ One reason for the design of using multiple resources to configure the ZNodes in
 
 The ZookeeperCluster might be under the responsibility of a cluster administrator, and access control might prevent anyone from creating or modifying the ZookeeperCluster.
 
-ZNodes however can have different access control and might be configured to be created by a different team which manages product instances using ZooKeeper. Since the ZNode objects are typically used in a one-per-client way, this will allow the people managing the clients to also manage their ZNodes.
+ZNodes however are product specific and need to be managed by product teams that do not have cluster wide administration rights.
 
 == What's next
 
