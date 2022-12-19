@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Fixed the RoleGroup `selector`. It was not used before. ([#611])
+
+[#611]: https://github.com/stackabletech/zookeeper-operator/pull/611
+
 ### Added
 
 - Log aggregation added ([#588]).
