@@ -16,7 +16,9 @@ include::example$example-znode.yaml[]
 <2> Refererence to the `ZookeeperCluster` object where the ZNode should be created.
 <3> The namespace of the `ZookeeperCluster`. Can be omitted and will default to the namespace of the ZNode object.
 
-Typically, you would use one ZNode for each client that is using the ZooKeeper instance. Creating this resource will create a ZNode in the referenced ZooKeeper cluster and also create a xref:home:concepts:service_discovery.adoc[discovery ConfigMap] with a xref:discovery.adoc[] for this ZNode. This discovery ConfigMap can then be used in the configuration of the client product to access the specific ZNode created for it. 
+NOTE: It is the responsibility of the user to ensure that ZNodes are not shared between products. For example, a Kafka and a Hadoop cluster should not share the same ZNode.
+
+When a ZNode is created, the operator creates the required tree in ZooKeeper and a xref:home:concepts:service_discovery.adoc[discovery ConfigMap] with a xref:discovery.adoc[] for this ZNode. This discovery ConfigMap is used by other operators to configure clients with access to the ZNode. 
 
 The operator _does not_ manage the contents of the ZNode.
 
