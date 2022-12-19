@@ -2,8 +2,8 @@
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperZnode
 metadata:
-  name: example-znode
+  name: example-znode        # <1>
 spec:
-  clusterRef: # <1>
-    name: zookeeper-cluster
-    namespace: my-namespace # <2>
+  clusterRef:
+    name: zookeeper-cluster  # <2>
+    namespace: my-namespace  # <3>

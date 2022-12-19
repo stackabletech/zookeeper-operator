@@ -4,4 +4,5 @@
 ** xref:resource_configuration.adoc[]
 ** xref:monitoring.adoc[]
 ** xref:using_multiple_role_groups.adoc[]
+** xref:isolating_clients_with_znodes.adoc[]
 ** xref:configuration_environment_overrides.adoc[]
