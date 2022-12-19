@@ -6,7 +6,7 @@ which act as both files (they can have data associated with them) and folders (t
 In order to isolate different clients using the same ZooKeeper cluster, each client application should be assigned a unique root ZNode, which it can then organize
 as it sees fit. This can be thought of like a namespace for that client, and prevents clashes between different clients.
 
-In the Stackable Operator for Apache ZooKeeper, we manage ZNodes using the _ZookeeperZnode_ resource. 
+The Stackable Operator for Apache ZooKeeper manages ZNodes using the _ZookeeperZnode_ resource. 
 
 [source,yaml]
 ----
