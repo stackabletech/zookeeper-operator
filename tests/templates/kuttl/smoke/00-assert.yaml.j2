@@ -21,6 +21,9 @@ spec:
             requests:
               cpu: 250m
               memory: 512Mi
+{% if lookup('env', 'VECTOR_AGGREGATOR') %}
+        - name: vector
+{% endif %}
 status:
   readyReplicas: 2
   replicas: 2
@@ -41,6 +44,9 @@ spec:
             requests:
               cpu: 250m
               memory: 512Mi
+{% if lookup('env', 'VECTOR_AGGREGATOR') %}
+        - name: vector
+{% endif %}
 status:
   readyReplicas: 1
   replicas: 1

@@ -19,11 +19,12 @@ use stackable_operator::{
     memory::to_java_heap_value,
     memory::BinaryMultiple,
     product_config_utils::{ConfigError, Configuration},
+    product_logging::{self, spec::Logging},
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
 use std::collections::BTreeMap;
-use strum::{Display, EnumString};
+use strum::{Display, EnumIter, EnumString};
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 
@@ -33,6 +34,8 @@ pub const METRICS_PORT: u16 = 9505;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
+pub const STACKABLE_LOG_CONFIG_DIR: &str = "/stackable/log_config";
+pub const STACKABLE_LOG_DIR: &str = "/stackable/log";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
 
 pub const QUORUM_TLS_DIR: &str = "/stackable/quorum_tls";
@@ -41,8 +44,21 @@ pub const CLIENT_TLS_DIR: &str = "/stackable/client_tls";
 pub const CLIENT_TLS_MOUNT_DIR: &str = "/stackable/client_tls_mount";
 pub const SYSTEM_TRUST_STORE_DIR: &str = "/etc/pki/java/cacerts";
 
+pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
+pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
+
+pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
+
+pub const MAX_ZK_LOG_FILES_SIZE_IN_MIB: u32 = 10;
+const MAX_PREPARE_LOG_FILE_SIZE_IN_MIB: u32 = 1;
+// Additional buffer space is not needed, as the `prepare` container already has sufficient buffer
+// space and all containers share a single volume.
+pub const LOG_VOLUME_SIZE_IN_MIB: u32 =
+    MAX_ZK_LOG_FILES_SIZE_IN_MIB + MAX_PREPARE_LOG_FILE_SIZE_IN_MIB;
 const JVM_HEAP_FACTOR: f32 = 0.8;
 const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
+
+pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -80,7 +96,11 @@ pub struct ZookeeperClusterSpec {
     #[serde(default = "global_config_default")]
     pub config: GlobalZookeeperConfig,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub servers: Option<Role<ZookeeperConfig>>,
+    pub servers: Option<Role<ZookeeperConfigFragment>>,
+    /// Name of the Vector discovery ConfigMap.
+    /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector_aggregator_config_map_name: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -139,14 +159,29 @@ pub struct ClientAuthenticationClass {
     pub authentication_class: String,
 }
 
-#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
+#[fragment_attrs(
+    derive(
+        Clone,
+        Debug,
+        Default,
+        Deserialize,
+        Merge,
+        JsonSchema,
+        PartialEq,
+        Serialize
+    ),
+    serde(rename_all = "camelCase")
+)]
 pub struct ZookeeperConfig {
     pub init_limit: Option<u32>,
     pub sync_limit: Option<u32>,
     pub tick_time: Option<u32>,
-    pub myid_offset: Option<u16>,
-    pub resources: Option<ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits>>,
+    pub myid_offset: u16,
+    #[fragment_attrs(serde(default))]
+    pub resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits>,
+    #[fragment_attrs(serde(default))]
+    pub logging: Logging<Container>,
 }
 
 #[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
@@ -166,6 +201,26 @@ pub struct ZookeeperConfig {
 pub struct ZookeeperStorageConfig {
     #[fragment_attrs(serde(default))]
     pub data: PvcConfig,
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Display,
+    Eq,
+    EnumIter,
+    JsonSchema,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum Container {
+    Prepare,
+    Vector,
+    Zookeeper,
 }
 
 impl ZookeeperConfig {
@@ -199,46 +254,66 @@ impl ZookeeperConfig {
     pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
 
-    fn myid_offset(&self) -> u16 {
-        self.myid_offset.unwrap_or(1)
-    }
-
-    fn default_resources() -> ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> {
-        ResourcesFragment {
-            cpu: CpuLimitsFragment {
-                min: Some(Quantity("500m".to_owned())),
-                max: Some(Quantity("4".to_owned())),
-            },
-            memory: MemoryLimitsFragment {
-                limit: Some(Quantity("512Mi".to_owned())),
-                runtime_limits: NoRuntimeLimitsFragment {},
-            },
-            storage: ZookeeperStorageConfigFragment {
-                data: PvcConfigFragment {
-                    capacity: Some(Quantity("1Gi".to_owned())),
-                    storage_class: None,
-                    selectors: None,
+    fn default_server_config() -> ZookeeperConfigFragment {
+        ZookeeperConfigFragment {
+            init_limit: None,
+            sync_limit: None,
+            tick_time: None,
+            myid_offset: Some(1),
+            resources: ResourcesFragment {
+                cpu: CpuLimitsFragment {
+                    min: Some(Quantity("500m".to_owned())),
+                    max: Some(Quantity("4".to_owned())),
+                },
+                memory: MemoryLimitsFragment {
+                    limit: Some(Quantity("512Mi".to_owned())),
+                    runtime_limits: NoRuntimeLimitsFragment {},
+                },
+                storage: ZookeeperStorageConfigFragment {
+                    data: PvcConfigFragment {
+                        capacity: Some(Quantity("1Gi".to_owned())),
+                        storage_class: None,
+                        selectors: None,
+                    },
                 },
             },
+            logging: product_logging::spec::default_logging(),
         }
     }
 }
 
-impl Configuration for ZookeeperConfig {
+impl Configuration for ZookeeperConfigFragment {
     type Configurable = ZookeeperCluster;
 
     fn compute_env(
         &self,
-        _resource: &Self::Configurable,
+        resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let jvm_flags = format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml");
+        let logging_framework =
+            resource
+                .logging_framework()
+                .map_err(|e| ConfigError::InvalidConfiguration {
+                    reason: e.to_string(),
+                })?;
+        let jvm_flags = [
+            format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
+            match logging_framework {
+                LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
+                LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
+            }
+        ].join(" ");
         Ok([
             (
-                Self::MYID_OFFSET.to_string(),
-                Some(self.myid_offset().to_string()),
+                ZookeeperConfig::MYID_OFFSET.to_string(),
+                self.myid_offset
+                    .or(ZookeeperConfig::default_server_config().myid_offset)
+                    .map(|myid_offset| myid_offset.to_string()),
             ),
-            (Self::SERVER_JVMFLAGS.to_string(), Some(jvm_flags)),
+            (
+                ZookeeperConfig::SERVER_JVMFLAGS.to_string(),
+                Some(jvm_flags),
+            ),
         ]
         .into())
     }
@@ -259,45 +334,57 @@ impl Configuration for ZookeeperConfig {
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         let mut result = BTreeMap::new();
         if let Some(init_limit) = self.init_limit {
-            result.insert(Self::INIT_LIMIT.to_string(), Some(init_limit.to_string()));
+            result.insert(
+                ZookeeperConfig::INIT_LIMIT.to_string(),
+                Some(init_limit.to_string()),
+            );
         }
         if let Some(sync_limit) = self.sync_limit {
-            result.insert(Self::SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
+            result.insert(
+                ZookeeperConfig::SYNC_LIMIT.to_string(),
+                Some(sync_limit.to_string()),
+            );
         }
         if let Some(tick_time) = self.tick_time {
-            result.insert(Self::TICK_TIME.to_string(), Some(tick_time.to_string()));
+            result.insert(
+                ZookeeperConfig::TICK_TIME.to_string(),
+                Some(tick_time.to_string()),
+            );
         }
         result.insert(
-            Self::DATA_DIR.to_string(),
+            ZookeeperConfig::DATA_DIR.to_string(),
             Some(STACKABLE_DATA_DIR.to_string()),
         );
 
         // Quorum TLS
-        result.insert(Self::SSL_QUORUM.to_string(), Some("true".to_string()));
         result.insert(
-            Self::SSL_QUORUM_HOST_NAME_VERIFICATION.to_string(),
+            ZookeeperConfig::SSL_QUORUM.to_string(),
             Some("true".to_string()),
         );
         result.insert(
-            Self::SSL_QUORUM_CLIENT_AUTH.to_string(),
+            ZookeeperConfig::SSL_QUORUM_HOST_NAME_VERIFICATION.to_string(),
+            Some("true".to_string()),
+        );
+        result.insert(
+            ZookeeperConfig::SSL_QUORUM_CLIENT_AUTH.to_string(),
             Some("need".to_string()),
         );
         result.insert(
-            Self::SERVER_CNXN_FACTORY.to_string(),
+            ZookeeperConfig::SERVER_CNXN_FACTORY.to_string(),
             Some("org.apache.zookeeper.server.NettyServerCnxnFactory".to_string()),
         );
         result.insert(
-            Self::SSL_AUTH_PROVIDER_X509.to_string(),
+            ZookeeperConfig::SSL_AUTH_PROVIDER_X509.to_string(),
             Some("org.apache.zookeeper.server.auth.X509AuthenticationProvider".to_string()),
         );
         // The keystore and truststore passwords should not be in the configmap and are generated
         // and written later via script in the init container
         result.insert(
-            Self::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
+            ZookeeperConfig::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
             Some(format!("{dir}/keystore.p12", dir = QUORUM_TLS_DIR)),
         );
         result.insert(
-            Self::SSL_QUORUM_TRUST_STORE_LOCATION.to_string(),
+            ZookeeperConfig::SSL_QUORUM_TRUST_STORE_LOCATION.to_string(),
             Some(format!("{dir}/truststore.p12", dir = QUORUM_TLS_DIR)),
         );
 
@@ -310,25 +397,25 @@ impl Configuration for ZookeeperConfig {
             // 1) Set clientPort and secureClientPort will fail with
             // "static.config different from dynamic config .. "
             // result.insert(
-            //     Self::CLIENT_PORT.to_string(),
+            //     ZookeeperConfig::CLIENT_PORT.to_string(),
             //     Some(CLIENT_PORT.to_string()),
             // );
             // result.insert(
-            //     Self::SECURE_CLIENT_PORT.to_string(),
+            //     ZookeeperConfig::SECURE_CLIENT_PORT.to_string(),
             //     Some(SECURE_CLIENT_PORT.to_string()),
             // );
 
             // 2) Setting only secureClientPort will result in the above mentioned bind exception.
             // The NettyFactory tries to bind multiple times on the secureClientPort.
             // result.insert(
-            //     Self::SECURE_CLIENT_PORT.to_string(),
+            //     ZookeeperConfig::SECURE_CLIENT_PORT.to_string(),
             //     Some(resource.client_port().to_string()),
             // );
 
             // 3) Using the clientPort and portUnification still allows plaintext connection without
             // authentication, but at least TLS and authentication works when connecting securely.
             result.insert(
-                Self::CLIENT_PORT.to_string(),
+                ZookeeperConfig::CLIENT_PORT.to_string(),
                 Some(resource.client_port().to_string()),
             );
             result.insert(
@@ -337,32 +424,35 @@ impl Configuration for ZookeeperConfig {
             );
             // TODO: Remove clientPort and portUnification (above) in favor of secureClientPort once the bug is fixed
             // result.insert(
-            //     Self::SECURE_CLIENT_PORT.to_string(),
+            //     ZookeeperConfig::SECURE_CLIENT_PORT.to_string(),
             //     Some(resource.client_port().to_string()),
             // );
             // END TICKET
 
             result.insert(
-                Self::SSL_HOST_NAME_VERIFICATION.to_string(),
+                ZookeeperConfig::SSL_HOST_NAME_VERIFICATION.to_string(),
                 Some("true".to_string()),
             );
             // The keystore and truststore passwords should not be in the configmap and are generated
             // and written later via script in the init container
             result.insert(
-                Self::SSL_KEY_STORE_LOCATION.to_string(),
+                ZookeeperConfig::SSL_KEY_STORE_LOCATION.to_string(),
                 Some(format!("{dir}/keystore.p12", dir = CLIENT_TLS_DIR)),
             );
             result.insert(
-                Self::SSL_TRUST_STORE_LOCATION.to_string(),
+                ZookeeperConfig::SSL_TRUST_STORE_LOCATION.to_string(),
                 Some(format!("{dir}/truststore.p12", dir = CLIENT_TLS_DIR)),
             );
             // Check if we need to enable authentication
             if resource.client_tls_authentication_class().is_some() {
-                result.insert(Self::SSL_CLIENT_AUTH.to_string(), Some("need".to_string()));
+                result.insert(
+                    ZookeeperConfig::SSL_CLIENT_AUTH.to_string(),
+                    Some("need".to_string()),
+                );
             }
         } else {
             result.insert(
-                Self::CLIENT_PORT.to_string(),
+                ZookeeperConfig::CLIENT_PORT.to_string(),
                 Some(resource.client_port().to_string()),
             );
         }
@@ -388,7 +478,34 @@ pub struct ZookeeperClusterStatus {
     pub discovery_hash: Option<String>,
 }
 
+pub enum LoggingFramework {
+    LOG4J,
+    LOGBACK,
+}
+
 impl ZookeeperCluster {
+    pub fn logging_framework(&self) -> Result<LoggingFramework, Error> {
+        let version = self
+            .spec
+            .image
+            .resolve(DOCKER_IMAGE_BASE_NAME)
+            .product_version;
+        let zookeeper_versions_with_log4j = [
+            "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
+        ];
+
+        let framework = if zookeeper_versions_with_log4j
+            .into_iter()
+            .any(|prefix| version.starts_with(prefix))
+        {
+            LoggingFramework::LOG4J
+        } else {
+            LoggingFramework::LOGBACK
+        };
+
+        Ok(framework)
+    }
+
     /// The name of the role-level load-balanced Kubernetes `Service`
     pub fn server_role_service_name(&self) -> Option<String> {
         self.metadata.name.clone()
@@ -423,24 +540,30 @@ impl ZookeeperCluster {
     /// the pods have inconsistent snapshots of which servers they should expect to be in quorum.
     pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, Error> {
         let ns = self.metadata.namespace.clone().context(NoNamespaceSnafu)?;
-        Ok(self
+        let role_groups = self
             .spec
             .servers
             .iter()
             .flat_map(|role| &role.role_groups)
             // Order rolegroups consistently, to avoid spurious downstream rewrites
-            .collect::<BTreeMap<_, _>>()
-            .into_iter()
-            .flat_map(move |(rolegroup_name, rolegroup)| {
-                let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
-                let ns = ns.clone();
-                (0..rolegroup.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
+            .collect::<BTreeMap<_, _>>();
+        let mut pod_refs = Vec::new();
+        for (rolegroup_name, rolegroup) in role_groups {
+            let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
+            let myid_offset = self
+                .merged_config(&ZookeeperRole::Server, &rolegroup_ref)?
+                .myid_offset;
+            let ns = ns.clone();
+            for i in 0..rolegroup.replicas.unwrap_or(0) {
+                pod_refs.push(ZookeeperPodRef {
                     namespace: ns.clone(),
                     role_group_service_name: rolegroup_ref.object_name(),
                     pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
-                    zookeeper_myid: i + rolegroup.config.config.myid_offset(),
-                })
-            }))
+                    zookeeper_myid: i + myid_offset,
+                });
+            }
+        }
+        Ok(pod_refs.into_iter())
     }
 
     pub fn client_port(&self) -> u16 {
@@ -476,19 +599,13 @@ impl ZookeeperCluster {
         &self.spec.config.quorum_tls_secret_class
     }
 
-    /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
-    /// These can be defined at the role or rolegroup level and as usual, the
-    /// following precedence rules are implemented:
-    /// 1. group pvc
-    /// 2. role pvc
-    /// 3. a default PVC with 1Gi capacity
-    pub fn resources(
+    pub fn merged_config(
         &self,
         role: &ZookeeperRole,
-        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
-    ) -> Result<(Vec<PersistentVolumeClaim>, ResourceRequirements), Error> {
+        rolegroup_ref: &RoleGroupRef<Self>,
+    ) -> Result<ZookeeperConfig, Error> {
         // Initialize the result with all default values as baseline
-        let conf_defaults = ZookeeperConfig::default_resources();
+        let conf_defaults = ZookeeperConfig::default_server_config();
 
         let role = match role {
             ZookeeperRole::Server => {
@@ -503,14 +620,13 @@ impl ZookeeperCluster {
         };
 
         // Retrieve role resource config
-        let mut conf_role: ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> =
-            role.config.config.resources.clone().unwrap_or_default();
+        let mut conf_role = role.config.config.to_owned();
 
         // Retrieve rolegroup specific resource config
-        let mut conf_rolegroup: ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> = role
+        let mut conf_rolegroup = role
             .role_groups
             .get(&rolegroup_ref.role_group)
-            .and_then(|rg| rg.config.config.resources.clone())
+            .map(|rg| rg.config.config.clone())
             .unwrap_or_default();
 
         // Merge more specific configs into default config
@@ -521,8 +637,31 @@ impl ZookeeperCluster {
         conf_role.merge(&conf_defaults);
         conf_rolegroup.merge(&conf_role);
 
-        let resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits> =
-            fragment::validate(conf_rolegroup).context(FragmentValidationFailureSnafu)?;
+        fragment::validate(conf_rolegroup).context(FragmentValidationFailureSnafu)
+    }
+
+    pub fn logging(
+        &self,
+        role: &ZookeeperRole,
+        rolegroup_ref: &RoleGroupRef<Self>,
+    ) -> Result<Logging<Container>, Error> {
+        let config = self.merged_config(role, rolegroup_ref)?;
+        Ok(config.logging)
+    }
+
+    /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
+    /// These can be defined at the role or rolegroup level and as usual, the
+    /// following precedence rules are implemented:
+    /// 1. group pvc
+    /// 2. role pvc
+    /// 3. a default PVC with 1Gi capacity
+    pub fn resources(
+        &self,
+        role: &ZookeeperRole,
+        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
+    ) -> Result<(Vec<PersistentVolumeClaim>, ResourceRequirements), Error> {
+        let config = self.merged_config(role, rolegroup_ref)?;
+        let resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits> = config.resources;
 
         let data_pvc = resources
             .storage

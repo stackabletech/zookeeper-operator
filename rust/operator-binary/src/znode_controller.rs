@@ -6,7 +6,6 @@ use std::{convert::Infallible, sync::Arc, time::Duration};
 
 use crate::{
     discovery::{self, build_discovery_configmaps},
-    zk_controller::DOCKER_IMAGE_BASE_NAME,
     APP_NAME, OPERATOR_NAME,
 };
 use snafu::{OptionExt, ResultExt, Snafu};
@@ -23,7 +22,7 @@ use stackable_operator::{
     },
     logging::controller::ReconcilerError,
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
+use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode, DOCKER_IMAGE_BASE_NAME};
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";

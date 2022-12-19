@@ -2,6 +2,7 @@
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
+    product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
     utils::build_recommended_labels,
     ObjectRef, APP_NAME, OPERATOR_NAME,
 };
@@ -29,7 +30,7 @@ use stackable_operator::{
             },
             rbac::v1::{RoleBinding, RoleRef, Subject},
         },
-        apimachinery::pkg::apis::meta::v1::LabelSelector,
+        apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
     },
     kube::{api::DynamicObject, runtime::controller, Resource, ResourceExt},
     labels::{role_group_selector_labels, role_selector_labels},
@@ -38,12 +39,21 @@ use stackable_operator::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
     },
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
+    product_logging::{
+        self,
+        spec::{
+            ConfigMapLogConfig, ContainerLogConfig, ContainerLogConfigChoice,
+            CustomContainerLogConfig,
+        },
+    },
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{
-    ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole, CLIENT_TLS_DIR,
-    CLIENT_TLS_MOUNT_DIR, QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR,
-    STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+    Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole,
+    CLIENT_TLS_DIR, CLIENT_TLS_MOUNT_DIR, DOCKER_IMAGE_BASE_NAME, LOG_VOLUME_SIZE_IN_MIB,
+    QUORUM_TLS_DIR, QUORUM_TLS_MOUNT_DIR, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+    STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+    ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -56,7 +66,6 @@ use std::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
-pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
 
 pub struct Ctx {
@@ -68,8 +77,6 @@ pub struct Ctx {
 #[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
-    #[snafu(display("object has no namespace"))]
-    ObjectHasNoNamespace,
     #[snafu(display("crd validation failure"))]
     CrdValidationFailure {
         source: stackable_zookeeper_crd::Error,
@@ -169,6 +176,15 @@ pub enum Error {
     DeleteOrphans {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("failed to resolve the Vector aggregator address"))]
+    ResolveVectorAggregatorAddress {
+        source: crate::product_logging::Error,
+    },
+    #[snafu(display("failed to add the logging configuration to the ConfigMap {cm_name}"))]
+    InvalidLoggingConfig {
+        source: crate::product_logging::Error,
+        cm_name: String,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -178,7 +194,6 @@ impl ReconcilerError for Error {
     }
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
-            Error::ObjectHasNoNamespace => None,
             Error::CrdValidationFailure { .. } => None,
             Error::NoServerRole => None,
             Error::RoleParseFailure { .. } => None,
@@ -208,6 +223,8 @@ impl ReconcilerError for Error {
             Error::ApplyServiceAccount { .. } => None,
             Error::ApplyRoleBinding { .. } => None,
             Error::DeleteOrphans { .. } => None,
+            Error::ResolveVectorAggregatorAddress { .. } => None,
+            Error::InvalidLoggingConfig { .. } => None,
         }
     }
 }
@@ -229,7 +246,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     let validated_config = validate_all_roles_and_groups_config(
         &resolved_product_image.app_version_label,
         &transform_all_roles_to_config(
-            &*zk,
+            zk.as_ref(),
             [(
                 ZookeeperRole::Server.to_string(),
                 (
@@ -253,6 +270,10 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .get(&ZookeeperRole::Server.to_string())
         .map(Cow::Borrowed)
         .unwrap_or_default();
+
+    let vector_aggregator_address = resolve_vector_aggregator_address(&zk, client)
+        .await
+        .context(ResolveVectorAggregatorAddressSnafu)?;
 
     let client_authentication_class = if let Some(auth_class) = zk.client_tls_authentication_class()
     {
@@ -294,6 +315,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             &rolegroup,
             rolegroup_config,
             &resolved_product_image,
+            vector_aggregator_address.as_deref(),
         )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             &zk,
@@ -458,6 +480,7 @@ fn build_server_rolegroup_config_map(
     rolegroup: &RoleGroupRef<ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     resolved_product_image: &ResolvedProductImage,
+    vector_aggregator_address: Option<&str>,
 ) -> Result<ConfigMap> {
     let mut zoo_cfg = server_config
         .get(&PropertyNameKind::File(
@@ -472,11 +495,18 @@ fn build_server_rolegroup_config_map(
         )
     }));
 
+    let role =
+        ZookeeperRole::from_str(&rolegroup.role).with_context(|_| RoleParseFailureSnafu {
+            role: rolegroup.role.to_string(),
+        })?;
+
     let zoo_cfg = zoo_cfg
         .into_iter()
         .map(|(k, v)| (k, Some(v)))
         .collect::<Vec<_>>();
-    ConfigMapBuilder::new()
+    let mut cm_builder = ConfigMapBuilder::new();
+
+    cm_builder
         .metadata(
             ObjectMetaBuilder::new()
                 .name_and_namespace(zk)
@@ -499,7 +529,20 @@ fn build_server_rolegroup_config_map(
                     rolegroup: rolegroup.clone(),
                 }
             })?,
-        )
+        );
+
+    extend_role_group_config_map(
+        zk,
+        role,
+        rolegroup,
+        vector_aggregator_address,
+        &mut cm_builder,
+    )
+    .context(InvalidLoggingConfigSnafu {
+        cm_name: rolegroup.object_name(),
+    })?;
+
+    cm_builder
         .build()
         .with_context(|_| BuildRoleGroupConfigSnafu {
             rolegroup: rolegroup.clone(),
@@ -580,6 +623,10 @@ fn build_server_rolegroup_statefulset(
         .role_groups
         .get(&rolegroup_ref.role_group);
 
+    let logging = zk
+        .logging(&zk_role, rolegroup_ref)
+        .context(CrdValidationFailureSnafu)?;
+
     let mut env_vars = server_config
         .get(&PropertyNameKind::Env)
         .into_iter()
@@ -621,10 +668,24 @@ fn build_server_rolegroup_statefulset(
         client_authentication_class,
     )?;
 
+    let mut args = Vec::new();
+
+    if let Some(ContainerLogConfig {
+        choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
+    }) = logging.containers.get(&Container::Prepare)
+    {
+        args.push(product_logging::framework::capture_shell_output(
+            STACKABLE_LOG_DIR,
+            "prepare",
+            log_config,
+        ));
+    }
+    args.push(create_init_container_command_args(zk));
+
     let container_prepare = cb_prepare
         .image_from_product_image(resolved_product_image)
-        .command(vec!["sh".to_string(), "-c".to_string()])
-        .args(vec![create_init_container_command_args(zk)])
+        .command(vec!["bash".to_string(), "-c".to_string()])
+        .args(vec![args.join(" && ")])
         .add_env_vars(env_vars.clone())
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
@@ -640,6 +701,7 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .add_volume_mount("log", STACKABLE_LOG_DIR)
         .build();
 
     let container_zk = cb_zookeeper
@@ -674,11 +736,13 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .add_volume_mount("log", STACKABLE_LOG_DIR)
         .resources(resources)
         .build();
 
-    let pod_template = pod_builder
+    pod_builder
         .metadata_builder(|m| {
             m.with_recommended_labels(build_recommended_labels(
                 zk,
@@ -707,14 +771,58 @@ fn build_server_rolegroup_statefulset(
             name: "rwconfig".to_string(),
             ..Volume::default()
         })
+        .add_volume(Volume {
+            name: "log".to_string(),
+            empty_dir: Some(EmptyDirVolumeSource {
+                medium: None,
+                size_limit: Some(Quantity(format!("{LOG_VOLUME_SIZE_IN_MIB}Mi"))),
+            }),
+            ..Volume::default()
+        })
         .security_context(PodSecurityContext {
             run_as_user: Some(1000),
             run_as_group: Some(1000),
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(SERVICE_ACCOUNT)
-        .build_template();
+        .service_account_name(SERVICE_ACCOUNT);
+
+    if let Some(ContainerLogConfig {
+        choice:
+            Some(ContainerLogConfigChoice::Custom(CustomContainerLogConfig {
+                custom: ConfigMapLogConfig { config_map },
+            })),
+    }) = logging.containers.get(&Container::Zookeeper)
+    {
+        pod_builder.add_volume(Volume {
+            name: "log-config".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: Some(config_map.into()),
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        });
+    } else {
+        pod_builder.add_volume(Volume {
+            name: "log-config".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: Some(rolegroup_ref.object_name()),
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        });
+    }
+
+    if logging.enable_vector_agent {
+        pod_builder.add_container(product_logging::framework::vector_container(
+            resolved_product_image,
+            "config",
+            "log",
+            logging.containers.get(&Container::Vector),
+        ));
+    }
+
+    let pod_template = pod_builder.build_template();
 
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
@@ -729,6 +837,9 @@ fn build_server_rolegroup_statefulset(
                 &rolegroup_ref.role,
                 &rolegroup_ref.role_group,
             ))
+            // The initial restart muddles up the integration tests. This can be re-enabled as soon
+            // as https://github.com/stackabletech/commons-operator/issues/111 is implemented.
+            // .with_label("restarter.stackable.tech/enabled", "true")
             .build(),
         spec: Some(StatefulSetSpec {
             pod_management_policy: Some("Parallel".to_string()),

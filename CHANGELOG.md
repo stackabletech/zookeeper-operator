@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Log aggregation added ([#588]).
+
+[#588]: https://github.com/stackabletech/zookeeper-operator/pull/588
+
 ### Changed
 
 - [BREAKING] Use Product image selection instead of version. `spec.version` has been replaced by `spec.image` ([#599]).
