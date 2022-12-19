@@ -62,7 +62,7 @@ include::example$znode/example-znode-discovery.yaml[]
 
 This ConfigMap can then be mounted into other Pods and the `ZOOKEEPER` key can be used to connect to the ZooKeeper instance and the correct ZNode.
 
-Across our product resources, the `zookeeperConfigMapName` property is used to give the name of the ZookeeperZnode object, which is then also the name of the ConfigMap.
+All products that need a ZNode can be configured with a `zookeeperConfigMapName` property. As the name implies, this property  references the discovery ConfigMap for the requested ZNode.
 
 For Kafka:
 
