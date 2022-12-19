@@ -9,7 +9,7 @@ spec:
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
   clusterConfig:
     tls:
-      server: null
+      serverSecretClass: null
   servers:
     config:
       resources:

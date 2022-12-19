@@ -19,11 +19,10 @@ spec:
   clusterConfig:
 {% if test_scenario['values']['use-server-tls'] == 'true' %}
     tls:
-      server:
-        secretClass: zk-client-secret
+      serverSecretClass: zk-client-secret
 {% else %}
     tls:
-      server: null
+      serverSecretClass: null
 {% endif %}
 {% if test_scenario['values']['use-client-auth-tls'] == 'true' %}
     authentication:

@@ -18,7 +18,7 @@ spec:
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
   clusterConfig:
     tls:
-      server: null
+      serverSecretClass: null
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
     logging:
       vectorAggregatorConfigMapName: vector-aggregator-discovery
