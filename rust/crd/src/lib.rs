@@ -792,12 +792,12 @@ mod tests {
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
-            zookeeper.server_tls_secret_class().unwrap().secret_class,
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            zookeeper.server_tls_secret_class().unwrap(),
+            TLS_DEFAULT_SECRET_CLASS
         );
         assert_eq!(
             zookeeper.quorum_tls_secret_class().unwrap(),
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            TLS_DEFAULT_SECRET_CLASS
         );
 
         let input = r#"
@@ -811,14 +811,13 @@ mod tests {
             stackableVersion: "0.8.0"   
           clusterConfig:
             tls:
-              server:
-                secretClass: simple-zookeeper-client-tls
+              serverSecretClass: simple-zookeeper-client-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
 
         assert_eq!(
-            zookeeper.server_tls_secret_class().unwrap().secret_class,
-            "simple-zookeeper-client-tls".to_string()
+            zookeeper.server_tls_secret_class().unwrap(),
+            "simple-zookeeper-client-tls"
         );
         assert_eq!(
             zookeeper.quorum_tls_secret_class().unwrap(),
@@ -836,13 +835,13 @@ mod tests {
             stackableVersion: "0.8.0"           
           clusterConfig:
             tls:
-              server: null
+              serverSecretClass: null
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(zookeeper.server_tls_secret_class(), None);
         assert_eq!(
             zookeeper.quorum_tls_secret_class().unwrap(),
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            TLS_DEFAULT_SECRET_CLASS
         );
 
         let input = r#"
@@ -856,13 +855,12 @@ mod tests {
             stackableVersion: "0.8.0"           
           clusterConfig:
             tls:
-              quorum: 
-                secretClass: simple-zookeeper-quorum-tls
+              quorumSecretClass: simple-zookeeper-quorum-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
-            zookeeper.server_tls_secret_class().unwrap().secret_class,
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            zookeeper.server_tls_secret_class().unwrap(),
+            TLS_DEFAULT_SECRET_CLASS
         );
         assert_eq!(
             zookeeper.quorum_tls_secret_class().unwrap(),
@@ -885,10 +883,10 @@ mod tests {
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             zookeeper.quorum_tls_secret_class().unwrap(),
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            TLS_DEFAULT_SECRET_CLASS
         );
         assert_eq!(
-            zookeeper.server_tls_secret_class().unwrap().secret_class,
+            zookeeper.server_tls_secret_class().unwrap(),
             TLS_DEFAULT_SECRET_CLASS
         );
 
@@ -903,16 +901,15 @@ mod tests {
             stackableVersion: "0.8.0"         
           clusterConfig:
             tls:
-              quorum: 
-                secretClass: simple-zookeeper-quorum-tls
+              quorumSecretClass: simple-zookeeper-quorum-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             zookeeper.quorum_tls_secret_class().unwrap(),
-            "simple-zookeeper-quorum-tls".to_string()
+            "simple-zookeeper-quorum-tls"
         );
         assert_eq!(
-            zookeeper.server_tls_secret_class().unwrap().secret_class,
+            zookeeper.server_tls_secret_class().unwrap(),
             TLS_DEFAULT_SECRET_CLASS
         );
 
@@ -927,16 +924,15 @@ mod tests {
             stackableVersion: "0.8.0"    
           clusterConfig:
             tls:
-              server:
-                secretClass: simple-zookeeper-client-tls
+              serverSecretClass: simple-zookeeper-client-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             zookeeper.quorum_tls_secret_class().unwrap(),
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            TLS_DEFAULT_SECRET_CLASS
         );
         assert_eq!(
-            zookeeper.server_tls_secret_class().unwrap().secret_class,
+            zookeeper.server_tls_secret_class().unwrap(),
             "simple-zookeeper-client-tls"
         );
     }
