@@ -887,8 +887,8 @@ fn tls_volume_mounts(
             }
         }
     } else {
-        zk.client_tls_secret_class()
-            .map(|client_tls| &client_tls.secret_class)
+        zk.server_tls_secret_class()
+            .map(|server_tls| &server_tls.secret_class)
     };
 
     if let Some(secret_class) = tls_secret_class {
@@ -908,21 +908,19 @@ fn tls_volume_mounts(
 
     // quorum
     // mounts for secret volume
-    cb_prepare.add_volume_mount("quorum-tls-mount", QUORUM_TLS_MOUNT_DIR);
-    cb_zookeeper.add_volume_mount("quorum-tls-mount", QUORUM_TLS_MOUNT_DIR);
-    pod_builder.add_volume(create_tls_volume(
-        "quorum-tls-mount",
-        zk.quorum_tls_secret_class(),
-    ));
-    // empty mount for trust and keystore
-    cb_prepare.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
-    cb_zookeeper.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
-    pod_builder.add_volume(
-        VolumeBuilder::new("quorum-tls")
-            .with_empty_dir(Some(""), None)
-            .build(),
-    );
-
+    if let Some(quorum_tls) = zk.quorum_tls_secret_class() {
+        cb_prepare.add_volume_mount("quorum-tls-mount", QUORUM_TLS_MOUNT_DIR);
+        cb_zookeeper.add_volume_mount("quorum-tls-mount", QUORUM_TLS_MOUNT_DIR);
+        pod_builder.add_volume(create_tls_volume("quorum-tls-mount", quorum_tls));
+        // empty mount for trust and keystore
+        cb_prepare.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
+        cb_zookeeper.add_volume_mount("quorum-tls", QUORUM_TLS_DIR);
+        pod_builder.add_volume(
+            VolumeBuilder::new("quorum-tls")
+                .with_empty_dir(Some(""), None)
+                .build(),
+        );
+    }
     Ok(())
 }
 

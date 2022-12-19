@@ -34,8 +34,8 @@ pub fn create_init_container_command_args(zk: &ZookeeperCluster) -> String {
         write_store_password_to_config(ZookeeperConfig::SSL_QUORUM_TRUST_STORE_PASSWORD),
     ]);
 
-    // client-tls and client-auth-tls (only the certificates specified are accepted)
-    if zk.client_tls_enabled() {
+    // server-tls and/or client-auth-tls (only the certificates specified are accepted)
+    if zk.tls_enabled() {
         args.push(generate_password());
 
         args.extend(create_key_and_trust_store_cmd(
