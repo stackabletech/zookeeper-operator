@@ -755,6 +755,7 @@ fn build_server_rolegroup_statefulset(
         .image_pull_secrets_from_product_image(resolved_product_image)
         .add_init_container(container_prepare)
         .add_container(container_zk)
+        .node_selector_opt(rolegroup.and_then(|rg| rg.selector.clone()))
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
