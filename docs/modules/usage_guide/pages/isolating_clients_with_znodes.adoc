@@ -94,7 +94,7 @@ spec:
   ...
 ----
 
-The Stackable Operators for Kafka and Druid will use the discovery ConfigMaps to connect all the Pods in the Kafka and Druid clusters to the ZNode at the shared ZooKeeper cluster.
+The Stackable Operators for Kafka and Druid use the discovery ConfigMaps to connect Kafka and Druid Pods with different ZNodes in a shared ZooKeeper cluster.
 
 == What's next
 
