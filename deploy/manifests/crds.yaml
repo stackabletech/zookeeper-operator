@@ -29,10 +29,8 @@ spec:
                 clusterConfig:
                   default:
                     tls:
-                      server:
-                        secretClass: tls
-                      quorum:
-                        secretClass: tls
+                      quorumSecretClass: tls
+                      serverSecretClass: tls
                   description: Global ZooKeeper cluster configuration that applies to all role and role groups.
                   properties:
                     authentication:
@@ -61,36 +59,20 @@ spec:
                       type: object
                     tls:
                       default:
-                        server:
-                          secretClass: tls
-                        quorum:
-                          secretClass: tls
+                        quorumSecretClass: tls
+                        serverSecretClass: tls
                       description: TLS encryption settings for ZooKeeper (server, quorum).
                       nullable: true
                       properties:
-                        quorum:
-                          default:
-                            secretClass: tls
-                          description: 'Only affects quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server'
-                          properties:
-                            secretClass:
-                              description: The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use.
-                              type: string
-                          required:
-                            - secretClass
-                          type: object
-                        server:
-                          default:
-                            secretClass: tls
-                          description: 'Only affects client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to SecretClass `tls`.'
+                        quorumSecretClass:
+                          default: tls
+                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server'
+                          type: string
+                        serverSecretClass:
+                          default: tls
+                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to SecretClass `tls`.'
                           nullable: true
-                          properties:
-                            secretClass:
-                              description: The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use.
-                              type: string
-                          required:
-                            - secretClass
-                          type: object
+                          type: string
                       type: object
                   type: object
                 image:
