@@ -16,12 +16,13 @@ spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
+  clusterConfig:
+    tls:
+      server: null
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
-  vectorAggregatorConfigMapName: vector-aggregator-discovery
+    logging:
+      vectorAggregatorConfigMapName: vector-aggregator-discovery
 {% endif %}
-  config:
-    tls: null
-    quorumTlsSecretClass: tls
   servers:
     config:
       logging:

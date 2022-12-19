@@ -30,7 +30,9 @@ spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
-  vectorAggregatorConfigMapName: vector-aggregator-discovery
+  clusterConfig:
+    logging:
+      vectorAggregatorConfigMapName: vector-aggregator-discovery
   servers:
     roleGroups:
       automatic-log-config:

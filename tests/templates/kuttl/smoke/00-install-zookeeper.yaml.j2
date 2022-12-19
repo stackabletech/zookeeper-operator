@@ -17,21 +17,24 @@ spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
-{% if lookup('env', 'VECTOR_AGGREGATOR') %}
-  vectorAggregatorConfigMapName: vector-aggregator-discovery
-{% endif %}
-  config:
-{% if test_scenario['values']['use-client-tls'] == 'true' %}
+  clusterConfig:
+{% if test_scenario['values']['use-server-tls'] == 'true' %}
     tls:
-      secretClass: zk-client-secret
+      server:
+        secretClass: zk-client-secret
 {% else %}
-    tls: null
+    tls:
+      server: null
 {% endif %}
 {% if test_scenario['values']['use-client-auth-tls'] == 'true' %}
-    clientAuthentication:
-      authenticationClass: zk-client-auth-tls
+    authentication:
+      tls:
+        authenticationClass: zk-client-auth-tls
 {% endif %}
-    quorumTlsSecretClass: tls
+{% if lookup('env', 'VECTOR_AGGREGATOR') %}
+    logging:
+      vectorAggregatorConfigMapName: vector-aggregator-discovery
+{% endif %}
   servers:
     config:
       logging:
@@ -82,7 +85,7 @@ spec:
           namespace: default
         autoGenerate: true
 {% endif %}
-{% if test_scenario['values']['use-client-tls'] == 'true' %}
+{% if test_scenario['values']['use-server-tls'] == 'true' %}
 ---
 apiVersion: secrets.stackable.tech/v1alpha1
 kind: SecretClass
