@@ -37,7 +37,7 @@ spec:
                       nullable: true
                       properties:
                         tls:
-                          description: 'Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs Defaults to `None` This will override the the server TLS settings (if set) in `spec.clusterConfig.tls`.'
+                          description: 'Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs Defaults to `None` This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.'
                           nullable: true
                           properties:
                             clientAuthenticationClass:
@@ -65,11 +65,11 @@ spec:
                       properties:
                         quorumSecretClass:
                           default: tls
-                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server'
+                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server Defaults to `tls`'
                           type: string
                         serverSecretClass:
                           default: tls
-                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to SecretClass `tls`.'
+                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to `tls`.'
                           nullable: true
                           type: string
                       type: object

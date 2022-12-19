@@ -134,13 +134,14 @@ pub struct ZookeeperTls {
     /// (mandatory). This setting controls:
     /// - Which cert the servers should use to authenticate themselves against other servers
     /// - Which ca.crt to use when validating the other server
+    /// Defaults to `tls`
     #[serde(default = "quorum_tls_default")]
     pub quorum_secret_class: String,
     /// The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for
     /// client connections. This setting controls:
     /// - If TLS encryption is used at all
     /// - Which cert the servers should use to authenticate themselves against the client
-    /// Defaults to SecretClass `tls`.
+    /// Defaults to `tls`.
     #[serde(
         default = "server_tls_default",
         skip_serializing_if = "Option::is_none"
@@ -151,17 +152,15 @@ pub struct ZookeeperTls {
 /// Default TLS settings. Internal and server communication default to "tls" secret class.
 fn default_zookeeper_tls() -> Option<ZookeeperTls> {
     Some(ZookeeperTls {
-        quorum_secret_class: TLS_DEFAULT_SECRET_CLASS.into(),
-        server_secret_class: Some(TLS_DEFAULT_SECRET_CLASS.into()),
+        quorum_secret_class: quorum_tls_default(),
+        server_secret_class: server_tls_default(),
     })
 }
 
-/// This is to have the GlobalZookeeperConfig.tls default if e.g. only client_authentication is set.
 fn server_tls_default() -> Option<String> {
     Some(TLS_DEFAULT_SECRET_CLASS.into())
 }
 
-/// This is to set the quorum if e.g. only GlobalZookeeperConfig.tls is set.
 fn quorum_tls_default() -> String {
     TLS_DEFAULT_SECRET_CLASS.into()
 }
@@ -173,9 +172,16 @@ pub struct ZookeeperAuthentication {
     /// - If clients need to authenticate themselves against the server via TLS
     /// - Which ca.crt to use when validating the provided client certs
     /// Defaults to `None`
-    /// This will override the the server TLS settings (if set) in `spec.clusterConfig.tls`.
+    /// This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tls: Option<ClientAuthenticationClass>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClientAuthenticationClass {
+    /// The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
+    pub client_authentication_class: String,
 }
 
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -185,13 +191,6 @@ pub struct ZookeeperLogging {
     /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vector_aggregator_config_map_name: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientAuthenticationClass {
-    /// The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
-    pub client_authentication_class: String,
 }
 
 #[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
