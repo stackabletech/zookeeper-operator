@@ -12,10 +12,8 @@ spec:
       tls:
         clientAuthenticationClass: zk-client-tls
     tls:
-      server:
-        secretClass: tls
-      quorum:
-        secretClass: tls
+      serverSecretClass: tls
+      quorumSecretClass: tls
   servers:
     config:
       logging:

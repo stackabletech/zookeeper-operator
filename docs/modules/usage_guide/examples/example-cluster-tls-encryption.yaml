@@ -9,10 +9,8 @@ spec:
     stackableVersion: 0.8.0
   clusterConfig:
     tls:
-      server:
-        secretClass: tls # <1>
-      quorum:
-        secretClass: tls # <2>
+      serverSecretClass: tls # <1>
+      quorumSecretClass: tls # <2>
   servers:
     roleGroups:
       default:
