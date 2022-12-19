@@ -16,11 +16,12 @@ If you have not yet set up the Operator and ZookeeperCluster, follow the xref:ge
 
 == Steps
 
+
 This guide assumes the ZookeeperCluster is called `my-zookeeper` and is running in a `data` namespace.
 
 === Setting up the ZNodes
 
-We want to set up a Kafka and Druid instance to use the ZookeeperCluster, so we will create two ZNodes, one for each product. We will assume the Kafka instance is running in the same namespace as the ZooKeeper, while the Druid instance is running in its own namespace called `druid-ns`.
+To set up a Kafka and Druid instance to use the ZookeeperCluster, two ZNodes are required, one for each product. This guide assumes the Kafka instance is running in the same namespace as the ZooKeeper, while the Druid instance is running in its own namespace called `druid-ns`.
 
 First, the Druid ZNode:
 
@@ -39,7 +40,7 @@ And the Kafka ZNode:
 include::example$znode/example-znode-kafka.yaml[]
 ----
 <1> The name of the Kafka ZNode.
-<2> The namespace where the ZNode should be created. In this case we want Kafka to run in the same namespace as the ZooKeeper cluster.
+<2> The namespace where the ZNode should be created. Since Kafka is running in the same namespace as ZooKeeper, this is the namespace of `my-zookeeper`.
 <3> The ZooKeeper cluster reference. The namespace is omitted here because the ZooKeeper is in the same namespace as the ZNode object.
 
 The Stackable Operator for ZooKeeper watches for ZookeeperZnode objects. If one is found it creates the ZNode _inside_ of the ZooKeeper cluster and also creates a xref:home:concepts:service_discovery.adoc[discovery ConfigMap] in the same namespace as the ZookeeperZnode with the same name as the ZookeeperZnode.
