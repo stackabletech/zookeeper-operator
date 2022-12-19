@@ -888,7 +888,6 @@ fn tls_volume_mounts(
         }
     } else {
         zk.server_tls_secret_class()
-            .map(|server_tls| &server_tls.secret_class)
     };
 
     if let Some(secret_class) = tls_secret_class {

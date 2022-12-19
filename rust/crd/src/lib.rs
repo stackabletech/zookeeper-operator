@@ -129,7 +129,15 @@ fn cluster_config_default() -> ZookeeperClusterConfig {
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperTls {
-    /// Only affects client connections. This setting controls:
+    /// The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for
+    /// quorum communication. Use mutual verification between Zookeeper Nodes
+    /// (mandatory). This setting controls:
+    /// - Which cert the servers should use to authenticate themselves against other servers
+    /// - Which ca.crt to use when validating the other server
+    #[serde(default = "quorum_tls_default")]
+    pub quorum_secret_class: String,
+    /// The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for
+    /// client connections. This setting controls:
     /// - If TLS encryption is used at all
     /// - Which cert the servers should use to authenticate themselves against the client
     /// Defaults to SecretClass `tls`.
@@ -137,35 +145,25 @@ pub struct ZookeeperTls {
         default = "server_tls_default",
         skip_serializing_if = "Option::is_none"
     )]
-    pub server: Option<TlsSecretClass>,
-    /// Only affects quorum communication. Use mutual verification between Zookeeper Nodes
-    /// (mandatory). This setting controls:
-    /// - Which cert the servers should use to authenticate themselves against other servers
-    /// - Which ca.crt to use when validating the other server
-    #[serde(default = "quorum_tls_default")]
-    pub quorum: TlsSecretClass,
+    pub server_secret_class: Option<String>,
 }
 
 /// Default TLS settings. Internal and server communication default to "tls" secret class.
 fn default_zookeeper_tls() -> Option<ZookeeperTls> {
     Some(ZookeeperTls {
-        quorum: quorum_tls_default(),
-        server: server_tls_default(),
+        quorum_secret_class: TLS_DEFAULT_SECRET_CLASS.into(),
+        server_secret_class: Some(TLS_DEFAULT_SECRET_CLASS.into()),
     })
 }
 
 /// This is to have the GlobalZookeeperConfig.tls default if e.g. only client_authentication is set.
-fn server_tls_default() -> Option<TlsSecretClass> {
-    Some(TlsSecretClass {
-        secret_class: TLS_DEFAULT_SECRET_CLASS.into(),
-    })
+fn server_tls_default() -> Option<String> {
+    Some(TLS_DEFAULT_SECRET_CLASS.into())
 }
 
 /// This is to set the quorum if e.g. only GlobalZookeeperConfig.tls is set.
-fn quorum_tls_default() -> TlsSecretClass {
-    TlsSecretClass {
-        secret_class: TLS_DEFAULT_SECRET_CLASS.into(),
-    }
+fn quorum_tls_default() -> String {
+    TLS_DEFAULT_SECRET_CLASS.into()
 }
 
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -187,13 +185,6 @@ pub struct ZookeeperLogging {
     /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vector_aggregator_config_map_name: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TlsSecretClass {
-    /// The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use.
-    pub secret_class: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -624,12 +615,12 @@ impl ZookeeperCluster {
     }
 
     /// Returns the secret class used by the server. Defaults to `tls`.
-    pub fn server_tls_secret_class(&self) -> Option<&TlsSecretClass> {
+    pub fn server_tls_secret_class(&self) -> Option<&String> {
         let spec: &ZookeeperClusterSpec = &self.spec;
         spec.cluster_config
             .tls
             .as_ref()
-            .and_then(|tls| tls.server.as_ref())
+            .and_then(|tls| tls.server_secret_class.as_ref())
     }
 
     /// Returns the authentication class used for client authentication.
@@ -648,7 +639,7 @@ impl ZookeeperCluster {
         spec.cluster_config
             .tls
             .as_ref()
-            .map(|tls| tls.quorum.secret_class.as_ref())
+            .map(|tls| tls.quorum_secret_class.as_ref())
     }
 
     pub fn merged_config(
