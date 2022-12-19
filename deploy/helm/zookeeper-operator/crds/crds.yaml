@@ -37,7 +37,7 @@ spec:
                       description: Authentication class settings for ZooKeeper like mTLS authentication.
                       nullable: true
                       properties:
-                        client:
+                        tls:
                           description: 'Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs Defaults to `None` This will override the the server TLS settings (if set) in `spec.clusterConfig.tls`.'
                           nullable: true
                           properties:
