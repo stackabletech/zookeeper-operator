@@ -132,7 +132,7 @@ pub struct ZookeeperTls {
     /// Only affects client connections. This setting controls:
     /// - If TLS encryption is used at all
     /// - Which cert the servers should use to authenticate themselves against the client
-    /// Defaults to SecretClass `tls` }.
+    /// Defaults to SecretClass `tls`.
     #[serde(
         default = "server_tls_default",
         skip_serializing_if = "Option::is_none"
@@ -143,7 +143,7 @@ pub struct ZookeeperTls {
     /// - Which cert the servers should use to authenticate themselves against other servers
     /// - Which ca.crt to use when validating the other server
     #[serde(default = "quorum_tls_default")]
-    pub quorum: String,
+    pub quorum: TlsSecretClass,
 }
 
 /// Default TLS settings. Internal and server communication default to "tls" secret class.
@@ -162,8 +162,10 @@ fn server_tls_default() -> Option<TlsSecretClass> {
 }
 
 /// This is to set the quorum if e.g. only GlobalZookeeperConfig.tls is set.
-fn quorum_tls_default() -> String {
-    TLS_DEFAULT_SECRET_CLASS.to_string()
+fn quorum_tls_default() -> TlsSecretClass {
+    TlsSecretClass {
+        secret_class: TLS_DEFAULT_SECRET_CLASS.into(),
+    }
 }
 
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -194,11 +196,11 @@ pub struct TlsSecretClass {
     pub secret_class: String,
 }
 
-#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientAuthenticationClass {
     /// The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
-    pub authentication_class: String,
+    pub client_authentication_class: String,
 }
 
 #[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
@@ -616,6 +618,11 @@ impl ZookeeperCluster {
         }
     }
 
+    /// Checks if we should use TLS to encrypt client connections.
+    pub fn tls_enabled(&self) -> bool {
+        self.server_tls_secret_class().is_some() || self.client_tls_authentication_class().is_some()
+    }
+
     /// Returns the secret class used by the server. Defaults to `tls`.
     pub fn server_tls_secret_class(&self) -> Option<&TlsSecretClass> {
         let spec: &ZookeeperClusterSpec = &self.spec;
@@ -625,11 +632,6 @@ impl ZookeeperCluster {
             .and_then(|tls| tls.server.as_ref())
     }
 
-    /// Checks if we should use TLS to encrypt client connections.
-    pub fn tls_enabled(&self) -> bool {
-        self.server_tls_secret_class().is_some() || self.client_tls_authentication_class().is_some()
-    }
-
     /// Returns the authentication class used for client authentication.
     pub fn client_tls_authentication_class(&self) -> Option<&str> {
         let spec: &ZookeeperClusterSpec = &self.spec;
@@ -637,7 +639,7 @@ impl ZookeeperCluster {
             .authentication
             .as_ref()
             .and_then(|authentication| authentication.tls.as_ref())
-            .map(|client| client.authentication_class.as_ref())
+            .map(|tls| tls.client_authentication_class.as_ref())
     }
 
     /// Returns the secret class for internal server encryption.
@@ -646,7 +648,7 @@ impl ZookeeperCluster {
         spec.cluster_config
             .tls
             .as_ref()
-            .map(|tls| tls.quorum.as_ref())
+            .map(|tls| tls.quorum.secret_class.as_ref())
     }
 
     pub fn merged_config(
@@ -863,7 +865,8 @@ mod tests {
             stackableVersion: "0.8.0"           
           clusterConfig:
             tls:
-              quorum: simple-zookeeper-quorum-tls
+              quorum: 
+                secretClass: simple-zookeeper-quorum-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
@@ -909,7 +912,8 @@ mod tests {
             stackableVersion: "0.8.0"         
           clusterConfig:
             tls:
-              quorum: simple-zookeeper-quorum-tls
+              quorum: 
+                secretClass: simple-zookeeper-quorum-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(

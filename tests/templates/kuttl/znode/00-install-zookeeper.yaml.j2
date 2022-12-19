@@ -13,12 +13,11 @@ kind: ZookeeperCluster
 metadata:
   name: test-zk
 spec:
-spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper-latest'].split('-stackable')[0] }}"
     stackableVersion: "{{ test_scenario['values']['zookeeper-latest'].split('-stackable')[1] }}"
-  clusterConfig:
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
+  clusterConfig:
     logging:
       vectorAggregatorConfigMapName: vector-aggregator-discovery
 {% endif %}

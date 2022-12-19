@@ -31,7 +31,8 @@ spec:
                     tls:
                       server:
                         secretClass: tls
-                      quorum: tls
+                      quorum:
+                        secretClass: tls
                   description: Global ZooKeeper cluster configuration that applies to all role and role groups.
                   properties:
                     authentication:
@@ -42,11 +43,11 @@ spec:
                           description: 'Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs Defaults to `None` This will override the the server TLS settings (if set) in `spec.clusterConfig.tls`.'
                           nullable: true
                           properties:
-                            authenticationClass:
+                            clientAuthenticationClass:
                               description: The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
                               type: string
                           required:
-                            - authenticationClass
+                            - clientAuthenticationClass
                           type: object
                       type: object
                     logging:
@@ -62,18 +63,26 @@ spec:
                       default:
                         server:
                           secretClass: tls
-                        quorum: tls
+                        quorum:
+                          secretClass: tls
                       description: TLS encryption settings for ZooKeeper (server, quorum).
                       nullable: true
                       properties:
                         quorum:
-                          default: tls
+                          default:
+                            secretClass: tls
                           description: 'Only affects quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server'
-                          type: string
+                          properties:
+                            secretClass:
+                              description: The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use.
+                              type: string
+                          required:
+                            - secretClass
+                          type: object
                         server:
                           default:
                             secretClass: tls
-                          description: 'Only affects client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to SecretClass `tls` }.'
+                          description: 'Only affects client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to SecretClass `tls`.'
                           nullable: true
                           properties:
                             secretClass:

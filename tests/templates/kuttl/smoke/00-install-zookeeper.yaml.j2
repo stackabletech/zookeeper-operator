@@ -13,7 +13,6 @@ kind: ZookeeperCluster
 metadata:
   name: test-zk
 spec:
-spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
@@ -29,7 +28,7 @@ spec:
 {% if test_scenario['values']['use-client-auth-tls'] == 'true' %}
     authentication:
       tls:
-        authenticationClass: zk-client-auth-tls
+        clientAuthenticationClass: zk-client-auth-tls
 {% endif %}
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
     logging:

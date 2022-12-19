@@ -7,12 +7,13 @@ spec:
   image:
     productVersion: 3.8.0
     stackableVersion: 0.8.0
-  config:
+  clusterConfig:
+    authentication:
+      tls:
+        clientAuthenticationClass: zk-client-tls
     tls:
-      secretClass: tls
-    clientAuthentication:
-      authenticationClass: zk-client-tls
-    quorumTlsSecretClass: tls
+      server:
+        secretClass: tls
   servers:
     config:
       logging:
