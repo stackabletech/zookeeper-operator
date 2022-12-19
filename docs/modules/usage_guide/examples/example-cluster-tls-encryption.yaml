@@ -7,10 +7,12 @@ spec:
   image:
     productVersion: 3.8.0
     stackableVersion: 0.8.0
-  config:
+  clusterConfig:
     tls:
-      secretClass: tls # <1>
-    quorumTlsSecretClass: tls # <2>
+      server:
+        secretClass: tls # <1>
+      quorum:
+        secretClass: tls # <2>
   servers:
     roleGroups:
       default:
