@@ -37,7 +37,12 @@ spec:
                     items:
                       properties:
                         authenticationClass:
-                          description: 'The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use. Currently only mTLS supported. Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.'
+                          description: |-
+                            The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
+
+                            ## mTLS
+
+                            Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.
                           type: string
                       required:
                       - authenticationClass
@@ -61,7 +66,7 @@ spec:
                     properties:
                       quorumSecretClass:
                         default: tls
-                        description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server Defaults to `tls`'
+                        description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for internal quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server Defaults to `tls`'
                         type: string
                       serverSecretClass:
                         default: tls
