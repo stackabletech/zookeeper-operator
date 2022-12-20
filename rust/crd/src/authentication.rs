@@ -19,7 +19,7 @@ pub enum Error {
         authentication_class: ObjectRef<AuthenticationClass>,
     },
     // TODO: Adapt message if multiple authentication classes are supported
-    #[snafu(display("only one authentication class is supported. Possible Authentication classes are {SUPPORTED_AUTHENTICATION_CLASS:?}"))]
+    #[snafu(display("only one authentication class is currently supported. Possible Authentication classes are {SUPPORTED_AUTHENTICATION_CLASS:?}"))]
     MultipleAuthenticationClassesProvided,
     #[snafu(display(
         "failed to use authentication method [{method}] for authentication class [{authentication_class}] - supported mechanisms: {SUPPORTED_AUTHENTICATION_CLASS:?}",
@@ -61,7 +61,7 @@ impl ResolvedAuthenticationClasses {
     /// Validates the resolved AuthenticationClasses.
     /// Currently errors out if:
     /// - More than one AuthenticationClass was provided
-    /// - AuthenticationClass could not be resolved
+    /// - AuthenticationClass mechanism was not supported
     pub fn validate(&self) -> Result<Self, Error> {
         if self.resolved_authentication_classes.len() > 1 {
             return Err(Error::MultipleAuthenticationClassesProvided);
@@ -84,6 +84,9 @@ impl ResolvedAuthenticationClasses {
 }
 
 /// Resolve provided AuthenticationClasses via API calls and validate the contents.
+/// Currently errors out if:
+/// - AuthenticationClass could not be resolved
+/// - Validation failed
 pub async fn resolve_authentication_classes(
     client: &Client,
     auth_classes: &Vec<ZookeeperAuthentication>,
