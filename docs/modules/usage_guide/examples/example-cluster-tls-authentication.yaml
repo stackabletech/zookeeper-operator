@@ -9,7 +9,7 @@ spec:
     stackableVersion: 0.8.0
   clusterConfig:
     authentication:
-        - authenticationClass: zk-client-tls # <1>
+      - authenticationClass: zk-client-tls # <1>
   servers:
     roleGroups:
       default:
