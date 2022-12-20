@@ -34,6 +34,7 @@ spec:
                   description: Global ZooKeeper cluster configuration that applies to all roles and role groups.
                   properties:
                     authentication:
+                      default: []
                       description: Authentication class settings for ZooKeeper like mTLS authentication.
                       items:
                         properties:
@@ -70,8 +71,6 @@ spec:
                           nullable: true
                           type: string
                       type: object
-                  required:
-                    - authentication
                   type: object
                 image:
                   anyOf:
