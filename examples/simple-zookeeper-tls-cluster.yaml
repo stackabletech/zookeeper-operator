@@ -15,9 +15,6 @@ spec:
       serverSecretClass: tls
       quorumSecretClass: tls
   servers:
-    config:
-      logging:
-        enableVectorAgent: false
     roleGroups:
       default:
         replicas: 3
