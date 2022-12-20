@@ -1,3 +1,10 @@
+pub mod authentication;
+pub mod security;
+pub mod tls;
+
+use crate::authentication::ZookeeperAuthentication;
+use crate::tls::ZookeeperTls;
+
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -28,8 +35,6 @@ use strum::{Display, EnumIter, EnumString};
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 
-pub const CLIENT_PORT: u16 = 2181;
-pub const SECURE_CLIENT_PORT: u16 = 2282;
 pub const METRICS_PORT: u16 = 9505;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
@@ -37,12 +42,6 @@ pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
 pub const STACKABLE_LOG_CONFIG_DIR: &str = "/stackable/log_config";
 pub const STACKABLE_LOG_DIR: &str = "/stackable/log";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
-
-pub const QUORUM_TLS_DIR: &str = "/stackable/quorum_tls";
-pub const QUORUM_TLS_MOUNT_DIR: &str = "/stackable/quorum_tls_mount";
-pub const CLIENT_TLS_DIR: &str = "/stackable/client_tls";
-pub const CLIENT_TLS_MOUNT_DIR: &str = "/stackable/client_tls_mount";
-pub const SYSTEM_TRUST_STORE_DIR: &str = "/etc/pki/java/cacerts";
 
 pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
 pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
@@ -56,7 +55,6 @@ const MAX_PREPARE_LOG_FILE_SIZE_IN_MIB: u32 = 1;
 pub const LOG_VOLUME_SIZE_IN_MIB: u32 =
     MAX_ZK_LOG_FILES_SIZE_IN_MIB + MAX_PREPARE_LOG_FILE_SIZE_IN_MIB;
 const JVM_HEAP_FACTOR: f32 = 0.8;
-const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
 
 pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 
@@ -105,14 +103,13 @@ pub struct ZookeeperClusterSpec {
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterConfig {
     /// Authentication class settings for ZooKeeper like mTLS authentication.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub authentication: Option<ZookeeperAuthentication>,
+    pub authentication: Vec<ZookeeperAuthentication>,
     /// Logging options for ZooKeeper.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logging: Option<ZookeeperLogging>,
     /// TLS encryption settings for ZooKeeper (server, quorum).
     #[serde(
-        default = "default_zookeeper_tls",
+        default = "tls::default_zookeeper_tls",
         skip_serializing_if = "Option::is_none"
     )]
     pub tls: Option<ZookeeperTls>,
@@ -120,68 +117,10 @@ pub struct ZookeeperClusterConfig {
 
 fn cluster_config_default() -> ZookeeperClusterConfig {
     ZookeeperClusterConfig {
-        authentication: None,
+        authentication: vec![],
         logging: None,
-        tls: default_zookeeper_tls(),
+        tls: tls::default_zookeeper_tls(),
     }
-}
-
-#[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperTls {
-    /// The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for
-    /// quorum communication. Use mutual verification between Zookeeper Nodes
-    /// (mandatory). This setting controls:
-    /// - Which cert the servers should use to authenticate themselves against other servers
-    /// - Which ca.crt to use when validating the other server
-    /// Defaults to `tls`
-    #[serde(default = "quorum_tls_default")]
-    pub quorum_secret_class: String,
-    /// The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for
-    /// client connections. This setting controls:
-    /// - If TLS encryption is used at all
-    /// - Which cert the servers should use to authenticate themselves against the client
-    /// Defaults to `tls`.
-    #[serde(
-        default = "server_tls_default",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub server_secret_class: Option<String>,
-}
-
-/// Default TLS settings. Internal and server communication default to "tls" secret class.
-fn default_zookeeper_tls() -> Option<ZookeeperTls> {
-    Some(ZookeeperTls {
-        quorum_secret_class: quorum_tls_default(),
-        server_secret_class: server_tls_default(),
-    })
-}
-
-fn server_tls_default() -> Option<String> {
-    Some(TLS_DEFAULT_SECRET_CLASS.into())
-}
-
-fn quorum_tls_default() -> String {
-    TLS_DEFAULT_SECRET_CLASS.into()
-}
-
-#[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperAuthentication {
-    /// Only affects client connections. This setting controls:
-    /// - If clients need to authenticate themselves against the server via TLS
-    /// - Which ca.crt to use when validating the provided client certs
-    /// Defaults to `None`
-    /// This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tls: Option<ClientAuthenticationClass>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientAuthenticationClass {
-    /// The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
-    pub client_authentication_class: String,
 }
 
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -268,26 +207,6 @@ impl ZookeeperConfig {
     pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
     pub const CLIENT_PORT: &'static str = "clientPort";
 
-    // Quorum TLS
-    pub const SSL_QUORUM: &'static str = "sslQuorum";
-    pub const SSL_QUORUM_CLIENT_AUTH: &'static str = "ssl.quorum.clientAuth";
-    pub const SSL_QUORUM_HOST_NAME_VERIFICATION: &'static str = "ssl.quorum.hostnameVerification";
-    pub const SSL_QUORUM_KEY_STORE_LOCATION: &'static str = "ssl.quorum.keyStore.location";
-    pub const SSL_QUORUM_KEY_STORE_PASSWORD: &'static str = "ssl.quorum.keyStore.password";
-    pub const SSL_QUORUM_TRUST_STORE_LOCATION: &'static str = "ssl.quorum.trustStore.location";
-    pub const SSL_QUORUM_TRUST_STORE_PASSWORD: &'static str = "ssl.quorum.trustStore.password";
-    // Client TLS
-    pub const SECURE_CLIENT_PORT: &'static str = "secureClientPort";
-    pub const SSL_CLIENT_AUTH: &'static str = "ssl.clientAuth";
-    pub const SSL_HOST_NAME_VERIFICATION: &'static str = "ssl.hostnameVerification";
-    pub const SSL_KEY_STORE_LOCATION: &'static str = "ssl.keyStore.location";
-    pub const SSL_KEY_STORE_PASSWORD: &'static str = "ssl.keyStore.password";
-    pub const SSL_TRUST_STORE_LOCATION: &'static str = "ssl.trustStore.location";
-    pub const SSL_TRUST_STORE_PASSWORD: &'static str = "ssl.trustStore.password";
-    // Common TLS
-    pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
-    pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
-
     fn default_server_config() -> ZookeeperConfigFragment {
         ZookeeperConfigFragment {
             init_limit: None,
@@ -362,7 +281,7 @@ impl Configuration for ZookeeperConfigFragment {
 
     fn compute_files(
         &self,
-        resource: &Self::Configurable,
+        _resource: &Self::Configurable,
         _role_name: &str,
         _file: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
@@ -389,107 +308,6 @@ impl Configuration for ZookeeperConfigFragment {
             ZookeeperConfig::DATA_DIR.to_string(),
             Some(STACKABLE_DATA_DIR.to_string()),
         );
-
-        // Quorum TLS
-        result.insert(
-            ZookeeperConfig::SSL_QUORUM.to_string(),
-            Some("true".to_string()),
-        );
-        result.insert(
-            ZookeeperConfig::SSL_QUORUM_HOST_NAME_VERIFICATION.to_string(),
-            Some("true".to_string()),
-        );
-        result.insert(
-            ZookeeperConfig::SSL_QUORUM_CLIENT_AUTH.to_string(),
-            Some("need".to_string()),
-        );
-        result.insert(
-            ZookeeperConfig::SERVER_CNXN_FACTORY.to_string(),
-            Some("org.apache.zookeeper.server.NettyServerCnxnFactory".to_string()),
-        );
-        result.insert(
-            ZookeeperConfig::SSL_AUTH_PROVIDER_X509.to_string(),
-            Some("org.apache.zookeeper.server.auth.X509AuthenticationProvider".to_string()),
-        );
-        // The keystore and truststore passwords should not be in the configmap and are generated
-        // and written later via script in the init container
-        result.insert(
-            ZookeeperConfig::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
-            Some(format!("{dir}/keystore.p12", dir = QUORUM_TLS_DIR)),
-        );
-        result.insert(
-            ZookeeperConfig::SSL_QUORUM_TRUST_STORE_LOCATION.to_string(),
-            Some(format!("{dir}/truststore.p12", dir = QUORUM_TLS_DIR)),
-        );
-
-        // Client TLS
-        if resource.tls_enabled() {
-            // We set only the clientPort and portUnification here because otherwise there is a port bind exception
-            // See: https://issues.apache.org/jira/browse/ZOOKEEPER-4276
-            // --> Normally we would like to only set the secureClientPort (check out commented code below)
-            // What we tried:
-            // 1) Set clientPort and secureClientPort will fail with
-            // "static.config different from dynamic config .. "
-            // result.insert(
-            //     ZookeeperConfig::CLIENT_PORT.to_string(),
-            //     Some(CLIENT_PORT.to_string()),
-            // );
-            // result.insert(
-            //     ZookeeperConfig::SECURE_CLIENT_PORT.to_string(),
-            //     Some(SECURE_CLIENT_PORT.to_string()),
-            // );
-
-            // 2) Setting only secureClientPort will result in the above mentioned bind exception.
-            // The NettyFactory tries to bind multiple times on the secureClientPort.
-            // result.insert(
-            //     ZookeeperConfig::SECURE_CLIENT_PORT.to_string(),
-            //     Some(resource.client_port().to_string()),
-            // );
-
-            // 3) Using the clientPort and portUnification still allows plaintext connection without
-            // authentication, but at least TLS and authentication works when connecting securely.
-            result.insert(
-                ZookeeperConfig::CLIENT_PORT.to_string(),
-                Some(resource.client_port().to_string()),
-            );
-            result.insert(
-                "client.portUnification".to_string(),
-                Some("true".to_string()),
-            );
-            // TODO: Remove clientPort and portUnification (above) in favor of secureClientPort once the bug is fixed
-            // result.insert(
-            //     ZookeeperConfig::SECURE_CLIENT_PORT.to_string(),
-            //     Some(resource.client_port().to_string()),
-            // );
-            // END TICKET
-
-            result.insert(
-                ZookeeperConfig::SSL_HOST_NAME_VERIFICATION.to_string(),
-                Some("true".to_string()),
-            );
-            // The keystore and truststore passwords should not be in the configmap and are generated
-            // and written later via script in the init container
-            result.insert(
-                ZookeeperConfig::SSL_KEY_STORE_LOCATION.to_string(),
-                Some(format!("{dir}/keystore.p12", dir = CLIENT_TLS_DIR)),
-            );
-            result.insert(
-                ZookeeperConfig::SSL_TRUST_STORE_LOCATION.to_string(),
-                Some(format!("{dir}/truststore.p12", dir = CLIENT_TLS_DIR)),
-            );
-            // Check if we need to enable authentication
-            if resource.client_tls_authentication_class().is_some() {
-                result.insert(
-                    ZookeeperConfig::SSL_CLIENT_AUTH.to_string(),
-                    Some("need".to_string()),
-                );
-            }
-        } else {
-            result.insert(
-                ZookeeperConfig::CLIENT_PORT.to_string(),
-                Some(resource.client_port().to_string()),
-            );
-        }
 
         Ok(result)
     }
@@ -598,38 +416,6 @@ impl ZookeeperCluster {
             }
         }
         Ok(pod_refs.into_iter())
-    }
-
-    pub fn client_port(&self) -> u16 {
-        if self.tls_enabled() {
-            SECURE_CLIENT_PORT
-        } else {
-            CLIENT_PORT
-        }
-    }
-
-    /// Checks if we should use TLS to encrypt client connections.
-    pub fn tls_enabled(&self) -> bool {
-        self.server_tls_secret_class().is_some() || self.client_tls_authentication_class().is_some()
-    }
-
-    /// Returns the secret class used by the server. Defaults to `tls`.
-    pub fn server_tls_secret_class(&self) -> Option<&String> {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.cluster_config
-            .tls
-            .as_ref()
-            .and_then(|tls| tls.server_secret_class.as_ref())
-    }
-
-    /// Returns the authentication class used for client authentication.
-    pub fn client_tls_authentication_class(&self) -> Option<&str> {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.cluster_config
-            .authentication
-            .as_ref()
-            .and_then(|authentication| authentication.tls.as_ref())
-            .map(|tls| tls.client_authentication_class.as_ref())
     }
 
     /// Returns the secret class for internal server encryption.
