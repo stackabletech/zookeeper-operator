@@ -27,6 +27,7 @@ spec:
               properties:
                 clusterConfig:
                   default:
+                    authentication: []
                     tls:
                       quorumSecretClass: tls
                       serverSecretClass: tls
@@ -34,19 +35,15 @@ spec:
                   properties:
                     authentication:
                       description: Authentication class settings for ZooKeeper like mTLS authentication.
-                      nullable: true
-                      properties:
-                        tls:
-                          description: 'Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs Defaults to `None` This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.'
-                          nullable: true
-                          properties:
-                            clientAuthenticationClass:
-                              description: The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
-                              type: string
-                          required:
-                            - clientAuthenticationClass
-                          type: object
-                      type: object
+                      items:
+                        properties:
+                          authenticationClass:
+                            description: 'The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use. Currently only mTLS supported. Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.'
+                            type: string
+                        required:
+                          - authenticationClass
+                        type: object
+                      type: array
                     logging:
                       description: Logging options for ZooKeeper.
                       nullable: true
@@ -73,6 +70,8 @@ spec:
                           nullable: true
                           type: string
                       type: object
+                  required:
+                    - authentication
                   type: object
                 image:
                   anyOf:
