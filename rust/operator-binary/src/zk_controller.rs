@@ -652,7 +652,8 @@ fn build_server_rolegroup_statefulset(
             log_config,
         ));
     }
-    args.push(create_init_container_command_args());
+    args.extend(create_init_container_command_args());
+    args.extend(zookeeper_security.commands());
 
     let container_prepare = cb_prepare
         .image_from_product_image(resolved_product_image)
