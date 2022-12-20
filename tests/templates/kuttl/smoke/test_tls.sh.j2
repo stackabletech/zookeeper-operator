@@ -34,9 +34,9 @@ export CLIENT_JVMFLAGS="
 -Dzookeeper.authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider
 -Dzookeeper.clientCnxnSocket=org.apache.zookeeper.ClientCnxnSocketNetty
 -Dzookeeper.client.secure=true
--Dzookeeper.ssl.keyStore.location=/stackable/client_tls/keystore.p12
+-Dzookeeper.ssl.keyStore.location=/stackable/server_tls/keystore.p12
 -Dzookeeper.ssl.keyStore.password=${CLIENT_STORE_SECRET}
--Dzookeeper.ssl.trustStore.location=/stackable/client_tls/truststore.p12
+-Dzookeeper.ssl.trustStore.location=/stackable/server_tls/truststore.p12
 -Dzookeeper.ssl.trustStore.password=${CLIENT_STORE_SECRET}"
 
 if ! /stackable/zookeeper/bin/zkCli.sh -server "${SERVER}" ls / &> /dev/null;

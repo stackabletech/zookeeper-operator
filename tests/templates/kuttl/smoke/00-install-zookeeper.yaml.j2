@@ -26,8 +26,7 @@ spec:
 {% endif %}
 {% if test_scenario['values']['use-client-auth-tls'] == 'true' %}
     authentication:
-      tls:
-        clientAuthenticationClass: zk-client-auth-tls
+      - authenticationClass: zk-client-auth-tls
 {% endif %}
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
     logging:
