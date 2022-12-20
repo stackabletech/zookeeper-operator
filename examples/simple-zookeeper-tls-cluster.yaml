@@ -9,7 +9,7 @@ spec:
     stackableVersion: 0.9.0
   clusterConfig:
     authentication:
-      - authenticationClass: zk-client-tls
+    - authenticationClass: zk-client-tls
     tls:
       serverSecretClass: tls
       quorumSecretClass: tls
