@@ -249,7 +249,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(ResolveVectorAggregatorAddressSnafu)?;
 
-    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(&client, &zk)
+    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, &zk)
         .await
         .context(FailedToInitializeSecurityContextSnafu)?;
 

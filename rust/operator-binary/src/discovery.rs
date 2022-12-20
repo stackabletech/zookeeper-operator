@@ -46,6 +46,7 @@ pub enum Error {
 }
 
 /// Builds discovery [`ConfigMap`]s for connecting to a [`ZookeeperCluster`] for all expected scenarios
+#[allow(clippy::too_many_arguments)]
 pub async fn build_discovery_configmaps(
     zk: &ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,

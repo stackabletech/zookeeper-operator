@@ -198,7 +198,7 @@ async fn reconcile_apply(
 ) -> Result<controller::Action> {
     let zk = zk?;
 
-    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(&client, &zk)
+    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, &zk)
         .await
         .context(FailedToInitializeSecurityContextSnafu)?;
 
@@ -273,7 +273,7 @@ async fn reconcile_cleanup(
         res => res?,
     };
 
-    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(&client, &zk)
+    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, &zk)
         .await
         .context(FailedToInitializeSecurityContextSnafu)?;
 

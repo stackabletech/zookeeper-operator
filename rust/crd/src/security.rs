@@ -80,7 +80,7 @@ impl ZookeeperSecurity {
                 .tls
                 .as_ref()
                 .map(|tls| tls.quorum_secret_class.clone())
-                .unwrap_or(tls::quorum_tls_default().to_string()),
+                .unwrap_or_else(tls::quorum_tls_default),
         })
     }
 
@@ -160,7 +160,7 @@ impl ZookeeperSecurity {
                 AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.as_ref(),
                 _ => None,
             })
-            .or_else(|| self.server_secret_class.as_ref())
+            .or(self.server_secret_class.as_ref())
     }
 
     pub fn add_volume_mounts(
