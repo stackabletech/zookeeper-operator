@@ -1,7 +1,14 @@
-// TODO: combines TLS and TLS auth for further processing
-use crate::authentication::ResolvedAuthenticationClasses;
-use crate::ZookeeperCluster;
-use crate::{authentication, tls, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE};
+//! A helper module to process Apache ZooKeeper security configuration
+//!
+//! This module merges the `tls` and `authentication` module and offers better accessibility
+//! and helper functions
+//!
+//! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
+
+use crate::{
+    authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster,
+    STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+};
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
@@ -18,6 +25,7 @@ pub enum Error {
     InvalidAuthenticationClassConfiguration { source: authentication::Error },
 }
 
+/// Helper struct combining TLS settings for server and quorum with the resolved AuthenticationClasses
 pub struct ZookeeperSecurity {
     resolved_authentication_classes: ResolvedAuthenticationClasses,
     server_secret_class: Option<String>,
@@ -26,8 +34,8 @@ pub struct ZookeeperSecurity {
 
 impl ZookeeperSecurity {
     // ports
-    pub const CLIENT_PORT_NAME: &'static str = "clientPort";
     pub const CLIENT_PORT: u16 = 2181;
+    pub const CLIENT_PORT_NAME: &'static str = "clientPort";
     pub const SECURE_CLIENT_PORT: u16 = 2282;
     pub const SECURE_CLIENT_PORT_NAME: &'static str = "secureClientPort";
     // directories
@@ -57,6 +65,8 @@ impl ZookeeperSecurity {
     // Mis
     pub const STORE_PASSWORD_ENV: &'static str = "STORE_PASSWORD";
 
+    /// Create a `ZookeeperSecurity` struct from the Zookeeper custom resource and resolve
+    /// all provided `AuthenticationClass` references.
     pub async fn new_from_zookeeper_cluster(
         client: &Client,
         zk: &ZookeeperCluster,
@@ -84,6 +94,11 @@ impl ZookeeperSecurity {
         })
     }
 
+    /// Check if TLS encryption is enabled. This could be due to:
+    /// - A provided server `SecretClass`
+    /// - A provided client `AuthenticationClass`
+    /// This affects init container commands, ZooKeeper configuration, volume mounts and
+    /// the ZooKeeper client port
     pub fn tls_enabled(&self) -> bool {
         // TODO: This must be adapted if other authentication methods are supported and require TLS
         self.server_secret_class.is_some()
@@ -93,6 +108,7 @@ impl ZookeeperSecurity {
                 .is_some()
     }
 
+    /// Return the ZooKeeper (secure) client port depending on tls or authentication settings.
     pub fn client_port(&self) -> u16 {
         if self.tls_enabled() {
             Self::SECURE_CLIENT_PORT
@@ -101,9 +117,10 @@ impl ZookeeperSecurity {
         }
     }
 
+    /// Returns required (init) container commands to generate keystores and truststores
+    /// depending on the tls and authentication settings.
     pub fn commands(&self) -> Vec<String> {
         let mut args = vec![];
-
         // Quorum
         args.push(Self::generate_password(Self::STORE_PASSWORD_ENV));
         args.extend(Self::create_key_and_trust_store_cmd(
@@ -153,16 +170,8 @@ impl ZookeeperSecurity {
         args
     }
 
-    fn get_tls_secret_class(&self) -> Option<&String> {
-        self.resolved_authentication_classes
-            .get_tls_authentication_class()
-            .and_then(|auth_class| match &auth_class.spec.provider {
-                AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.as_ref(),
-                _ => None,
-            })
-            .or(self.server_secret_class.as_ref())
-    }
-
+    /// Adds required volumes and volume mounts to the pod and container builders
+    /// depending on the tls and authentication settings.
     pub fn add_volume_mounts(
         &self,
         pod_builder: &mut PodBuilder,
@@ -204,17 +213,8 @@ impl ZookeeperSecurity {
         );
     }
 
-    fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Volume {
-        VolumeBuilder::new(volume_name)
-            .ephemeral(
-                SecretOperatorVolumeSourceBuilder::new(secret_class_name)
-                    .with_pod_scope()
-                    .with_node_scope()
-                    .build(),
-            )
-            .build()
-    }
-
+    /// Returns required ZooKeeper configuration settings for the `zoo.cfg` properties file
+    /// depending on the tls and authentication settings.
     pub fn config_settings(&self) -> BTreeMap<String, String> {
         let mut config = BTreeMap::new();
         // Quorum TLS
@@ -311,6 +311,29 @@ impl ZookeeperSecurity {
         }
 
         config
+    }
+
+    /// Returns the `SecretClass` provided in a `AuthenticationClass` for TLS.
+    fn get_tls_secret_class(&self) -> Option<&String> {
+        self.resolved_authentication_classes
+            .get_tls_authentication_class()
+            .and_then(|auth_class| match &auth_class.spec.provider {
+                AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.as_ref(),
+                _ => None,
+            })
+            .or(self.server_secret_class.as_ref())
+    }
+
+    /// Creates ephemeral volumes to mount the `SecretClass` into the Pods
+    fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Volume {
+        VolumeBuilder::new(volume_name)
+            .ephemeral(
+                SecretOperatorVolumeSourceBuilder::new(secret_class_name)
+                    .with_pod_scope()
+                    .with_node_scope()
+                    .build(),
+            )
+            .build()
     }
 
     /// Generates the shell script to retrieve a random 20 character password

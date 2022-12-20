@@ -206,7 +206,6 @@ impl ZookeeperConfig {
     pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
     pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
-    pub const CLIENT_PORT: &'static str = "clientPort";
 
     fn default_server_config() -> ZookeeperConfigFragment {
         ZookeeperConfigFragment {
@@ -417,15 +416,6 @@ impl ZookeeperCluster {
             }
         }
         Ok(pod_refs.into_iter())
-    }
-
-    /// Returns the secret class for internal server encryption.
-    pub fn quorum_tls_secret_class(&self) -> Option<&str> {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.cluster_config
-            .tls
-            .as_ref()
-            .map(|tls| tls.quorum_secret_class.as_ref())
     }
 
     pub fn merged_config(

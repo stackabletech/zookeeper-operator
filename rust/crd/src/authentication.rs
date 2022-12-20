@@ -34,7 +34,9 @@ pub enum Error {
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperAuthentication {
     /// The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
-    /// Currently only mTLS supported.
+    ///
+    /// ## mTLS
+    ///
     /// Only affects client connections. This setting controls:
     /// - If clients need to authenticate themselves against the server via TLS
     /// - Which ca.crt to use when validating the provided client certs
@@ -43,17 +45,23 @@ pub struct ZookeeperAuthentication {
 }
 
 #[derive(Clone, Debug)]
+/// Helper struct that contains resolved AuthenticationClasses to reduce network API calls.
 pub struct ResolvedAuthenticationClasses {
     resolved_authentication_classes: Vec<AuthenticationClass>,
 }
 
 impl ResolvedAuthenticationClasses {
+    /// Return the (first) TLS `AuthenticationClass` if available
     pub fn get_tls_authentication_class(&self) -> Option<&AuthenticationClass> {
         self.resolved_authentication_classes
             .iter()
             .find(|auth| matches!(auth.spec.provider, AuthenticationClassProvider::Tls(_)))
     }
 
+    /// Validates the resolved AuthenticationClasses.
+    /// Currently errors out if:
+    /// - More than one AuthenticationClass was provided
+    /// - AuthenticationClass could not be resolved
     pub fn validate(&self) -> Result<Self, Error> {
         if self.resolved_authentication_classes.len() > 1 {
             return Err(Error::MultipleAuthenticationClassesProvided);
@@ -75,6 +83,7 @@ impl ResolvedAuthenticationClasses {
     }
 }
 
+/// Resolve provided AuthenticationClasses via API calls and validate the contents.
 pub async fn resolve_authentication_classes(
     client: &Client,
     auth_classes: &Vec<ZookeeperAuthentication>,

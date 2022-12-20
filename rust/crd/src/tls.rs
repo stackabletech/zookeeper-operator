@@ -7,7 +7,7 @@ const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperTls {
     /// The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for
-    /// quorum communication. Use mutual verification between Zookeeper Nodes
+    /// internal quorum communication. Use mutual verification between Zookeeper Nodes
     /// (mandatory). This setting controls:
     /// - Which cert the servers should use to authenticate themselves against other servers
     /// - Which ca.crt to use when validating the other server
@@ -34,10 +34,12 @@ pub fn default_zookeeper_tls() -> Option<ZookeeperTls> {
     })
 }
 
+/// Helper methods to provide defaults in the CRDs and tests
 pub fn server_tls_default() -> Option<String> {
     Some(TLS_DEFAULT_SECRET_CLASS.into())
 }
 
+/// Helper methods to provide defaults in the CRDs and tests
 pub fn quorum_tls_default() -> String {
     TLS_DEFAULT_SECRET_CLASS.into()
 }
