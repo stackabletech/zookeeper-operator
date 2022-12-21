@@ -7,6 +7,7 @@ use stackable_operator::{
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
     kube::{runtime::reflector::ObjectRef, Resource},
 };
+use stackable_zookeeper_crd::security::ZookeeperSecurity;
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
 use std::{collections::BTreeSet, num::TryFromIntError};
 
@@ -45,6 +46,7 @@ pub enum Error {
 }
 
 /// Builds discovery [`ConfigMap`]s for connecting to a [`ZookeeperCluster`] for all expected scenarios
+#[allow(clippy::too_many_arguments)]
 pub async fn build_discovery_configmaps(
     zk: &ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
@@ -53,6 +55,7 @@ pub async fn build_discovery_configmaps(
     svc: &Service,
     chroot: Option<&str>,
     resolved_product_image: &ResolvedProductImage,
+    zookeeper_security: &ZookeeperSecurity,
 ) -> Result<Vec<ConfigMap>, Error> {
     let name = owner.meta().name.as_deref().context(NoNameSnafu)?;
     Ok(vec![
@@ -62,7 +65,7 @@ pub async fn build_discovery_configmaps(
             name,
             controller_name,
             chroot,
-            pod_hosts(zk)?,
+            pod_hosts(zk, zookeeper_security)?,
             resolved_product_image,
         )?,
         build_discovery_configmap(
@@ -131,12 +134,15 @@ fn build_discovery_configmap(
 }
 
 /// Lists all Pods FQDNs expected to host the [`ZookeeperCluster`]
-fn pod_hosts(zk: &ZookeeperCluster) -> Result<impl IntoIterator<Item = (String, u16)> + '_, Error> {
+fn pod_hosts<'a>(
+    zk: &'a ZookeeperCluster,
+    zookeeper_security: &'a ZookeeperSecurity,
+) -> Result<impl IntoIterator<Item = (String, u16)> + 'a, Error> {
     Ok(zk
         .pods()
         .context(ExpectedPodsSnafu)?
         .into_iter()
-        .map(|pod_ref| (pod_ref.fqdn(), zk.client_port())))
+        .map(|pod_ref| (pod_ref.fqdn(), zookeeper_security.client_port())))
 }
 
 /// Lists all nodes currently hosting Pods participating in the [`Service`]

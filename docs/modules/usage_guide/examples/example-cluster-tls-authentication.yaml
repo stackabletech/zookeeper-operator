@@ -7,10 +7,9 @@ spec:
   image:
     productVersion: 3.8.0
     stackableVersion: 0.8.0
-  config:
-    clientAuthentication:
-      authenticationClass: zk-client-tls # <1>
-    quorumTlsSecretClass: tls
+  clusterConfig:
+    authentication:
+      - authenticationClass: zk-client-tls # <1>
   servers:
     roleGroups:
       default:

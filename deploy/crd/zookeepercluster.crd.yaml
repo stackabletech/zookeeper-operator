@@ -23,35 +23,56 @@ spec:
           spec:
             description: A cluster of ZooKeeper nodes
             properties:
-              config:
+              clusterConfig:
                 default:
+                  authentication: []
                   tls:
-                    secretClass: tls
-                  quorumTlsSecretClass: tls
+                    quorumSecretClass: tls
+                    serverSecretClass: tls
+                description: Global ZooKeeper cluster configuration that applies to all roles and role groups.
                 properties:
-                  clientAuthentication:
-                    description: 'Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs Defaults to `None`'
+                  authentication:
+                    default: []
+                    description: Authentication class settings for ZooKeeper like mTLS authentication.
+                    items:
+                      properties:
+                        authenticationClass:
+                          description: |-
+                            The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
+
+                            ## mTLS
+
+                            Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.
+                          type: string
+                      required:
+                      - authenticationClass
+                      type: object
+                    type: array
+                  logging:
+                    description: Logging options for ZooKeeper.
                     nullable: true
                     properties:
-                      authenticationClass:
+                      vectorAggregatorConfigMapName:
+                        description: Name of the Vector discovery ConfigMap. It must contain the key `ADDRESS` with the address of the Vector aggregator.
+                        nullable: true
                         type: string
-                    required:
-                    - authenticationClass
                     type: object
-                  quorumTlsSecretClass:
-                    default: tls
-                    description: 'Only affects quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server'
-                    type: string
                   tls:
                     default:
-                      secretClass: tls
-                    description: 'Only affects client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to `TlsSecretClass` { secret_class: "tls".to_string() }.'
+                      quorumSecretClass: tls
+                      serverSecretClass: tls
+                    description: TLS encryption settings for ZooKeeper (server, quorum).
                     nullable: true
                     properties:
-                      secretClass:
+                      quorumSecretClass:
+                        default: tls
+                        description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for internal quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server Defaults to `tls`'
                         type: string
-                    required:
-                    - secretClass
+                      serverSecretClass:
+                        default: tls
+                        description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to `tls`.'
+                        nullable: true
+                        type: string
                     type: object
                 type: object
               image:
@@ -62,7 +83,7 @@ spec:
                 - required:
                   - productVersion
                   - stackableVersion
-                description: Desired ZooKeeper version
+                description: Desired ZooKeeper image to use.
                 properties:
                   custom:
                     description: Overwrite the docker image. Specify the full docker image name, e.g. `docker.stackable.tech/stackable/superset:1.4.1-stackable2.1.0`
@@ -98,6 +119,7 @@ spec:
                     type: string
                 type: object
               servers:
+                description: ZooKeeper server configuration.
                 nullable: true
                 properties:
                   cliOverrides:
@@ -791,13 +813,9 @@ spec:
                 - roleGroups
                 type: object
               stopped:
-                description: Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)
+                description: Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would).
                 nullable: true
                 type: boolean
-              vectorAggregatorConfigMapName:
-                description: Name of the Vector discovery ConfigMap. It must contain the key `ADDRESS` with the address of the Vector aggregator.
-                nullable: true
-                type: string
             required:
             - image
             type: object

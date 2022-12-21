@@ -9,7 +9,7 @@ dimensions:
   - name: zookeeper-latest
     values:
       - 3.8.0-stackable0.9.0
-  - name: use-client-tls
+  - name: use-server-tls
     values:
       - "true"
       - "false"
@@ -21,7 +21,7 @@ tests:
   - name: smoke
     dimensions:
       - zookeeper
-      - use-client-tls
+      - use-server-tls
       - use-client-auth-tls
   - name: delete-rolegroup
     dimensions:

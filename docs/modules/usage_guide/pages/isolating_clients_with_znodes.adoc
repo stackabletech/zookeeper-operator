@@ -43,7 +43,7 @@ include::example$znode/example-znode-kafka.yaml[]
 <2> The namespace where the ZNode should be created. Since Kafka is running in the same namespace as ZooKeeper, this is the namespace of `my-zookeeper`.
 <3> The ZooKeeper cluster reference. The namespace is omitted here because the ZooKeeper is in the same namespace as the ZNode object.
 
-The Stackable Operator for ZooKeeper watches for ZookeeperZnode objects. If one is found it creates the ZNode _inside_ of the ZooKeeper cluster and also creates a xref:home:concepts:service_discovery.adoc[discovery ConfigMap] in the same namespace as the ZookeeperZnode with the same name as the ZookeeperZnode.
+The Stackable Operator for ZooKeeper watches for ZookeeperZnode objects. If one is found it creates the ZNode _inside_ the ZooKeeper cluster and also creates a xref:home:concepts:service_discovery.adoc[discovery ConfigMap] in the same namespace as the ZookeeperZnode with the same name as the ZookeeperZnode.
 
 In this example, two ConfigMaps are created:
 

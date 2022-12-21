@@ -7,9 +7,9 @@ spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
-  config:
-    tls: null
-    quorumTlsSecretClass: tls
+  clusterConfig:
+    tls:
+      serverSecretClass: null
   servers:
     config:
       resources:
