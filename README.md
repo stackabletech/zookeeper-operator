@@ -4,7 +4,7 @@
 
 <h1 align="center">Stackable Operator for Apache ZooKeeper</h1>
 
-[https://ci.stackable.tech/buildStatus/icon?job=zookeeper%2doperator%2dit%2dnightly&subject=Integration%20Tests]
+![Integration Tests](https://ci.stackable.tech/buildStatus/icon?job=zookeeper%2doperator%2dit%2dnightly&subject=Integration%20Tests)
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://GitHub.com/stackabletech/zookeeper-operator/graphs/commit-activity)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-green.svg)](https://docs.stackable.tech/home/stable/contributor/index.html)
 [![License OSL3.0](https://img.shields.io/badge/license-OSL3.0-green)](./LICENSE)
