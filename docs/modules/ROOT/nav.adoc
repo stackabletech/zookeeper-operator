@@ -1,4 +1,0 @@
-* xref:configuration.adoc[]
-* Concepts
-** xref:znodes.adoc[]
-** xref:discovery.adoc[]

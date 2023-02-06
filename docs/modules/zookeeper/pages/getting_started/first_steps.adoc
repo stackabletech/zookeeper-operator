@@ -7,16 +7,16 @@ Now that the operator is installed it is time to deploy a ZooKeeper cluster and 
 The ZooKeeper cluster is deployed with a very simple resource definition. Create a file called `zookeeper.yaml`:
 
 [source,yaml]
-include::example$code/zookeeper.yaml[]
+include::example$getting_started/code/zookeeper.yaml[]
 
 and apply it:
 [source,bash]
-include::example$code/getting_started.sh[tag=install-zookeeper]
+include::example$getting_started/code/getting_started.sh[tag=install-zookeeper]
 
 The operator will create a ZooKeeper cluster with two replicas. Use kubectl to observe the status of the cluster:
 
 [source,bash]
-include::example$code/getting_started.sh[tag=watch-zookeeper-rollout]
+include::example$getting_started/code/getting_started.sh[tag=watch-zookeeper-rollout]
 
 The Operator deploys readiness probes to make sure the replicas are ready and established a quorum. Only then will the StefulSet actually be marked as `Ready`. You will see
 
@@ -31,7 +31,7 @@ The ZooKeeper cluster is now ready.
 ZooKeeper manages its data in a hierarchical node system. You can look at the nodes using the zkCli tool. It is included inside the Stackable ZooKeeper container, and you can invoke it using `kubectl run`:
 
 [source,bash]
-include::example$code/getting_started.sh[tag=zkcli-ls]
+include::example$getting_started/code/getting_started.sh[tag=zkcli-ls]
 
 NOTE: You might wonder why the logs are used instead of the output from `kubectl run`. This is because `kubectl run` sometimes loses lines of the output, a link:https://github.com/kubernetes/kubernetes/issues/27264[known issue].
 
@@ -44,21 +44,21 @@ Among the log output you will see the current list of nodes in the root director
 
 The `zookeeper` node contains ZooKeeper configuration data.
 
-It is useful to use different nodes for different applications using ZooKeeper, and the Stackable Operator uses xref:ROOT:znodes.adoc[ZNodes] for this.
+It is useful to use different nodes for different applications using ZooKeeper, and the Stackable Operator uses xref:znodes.adoc[ZNodes] for this.
 ZNodes are created with manifest files of the kind `ZookeeperZnode`. Create a file called `znode.yaml` with the following contents:
 
 [source,yaml]
-include::example$code/znode.yaml[]
+include::example$getting_started/code/znode.yaml[]
 
 And apply it:
 
 [source,bash]
-include::example$code/getting_started.sh[tag=apply-znode]
+include::example$getting_started/code/getting_started.sh[tag=apply-znode]
 
 Use the same command as before to list the nodes:
 
 [source,bash]
-include::example$code/getting_started.sh[tag=zkcli-ls]
+include::example$getting_started/code/getting_started.sh[tag=zkcli-ls]
 
 and the ZNode has appeared in the output:
 
@@ -94,4 +94,4 @@ Great! This step concludes the Getting started guide. You have installed the Zoo
 
 == What's next
 
-Have a look at the xref:usage_guide:index.adoc[] to learn more about configuration options for your ZooKeeper cluster like setting up encryption or authentication. You can also have a look at the xref:ROOT:znodes.adoc[] page to learn more about ZNodes.
+Have a look at the xref:usage_guide/index.adoc[] to learn more about configuration options for your ZooKeeper cluster like setting up encryption or authentication. You can also have a look at the xref:znodes.adoc[] page to learn more about ZNodes.
