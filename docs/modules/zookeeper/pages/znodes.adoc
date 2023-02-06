@@ -18,7 +18,7 @@ include::example$example-znode.yaml[]
 
 NOTE: It is the responsibility of the user to ensure that ZNodes are not shared between products. For example, a Kafka and a Hadoop cluster should not share the same ZNode.
 
-When a ZNode is created, the operator creates the required tree in ZooKeeper and a xref:home:concepts:service_discovery.adoc[discovery ConfigMap] with a xref:discovery.adoc[] for this ZNode. This discovery ConfigMap is used by other operators to configure clients with access to the ZNode. 
+When a ZNode is created, the operator creates the required tree in ZooKeeper and a xref:concepts:service_discovery.adoc[discovery ConfigMap] with a xref:discovery.adoc[] for this ZNode. This discovery ConfigMap is used by other operators to configure clients with access to the ZNode. 
 
 The operator _does not_ manage the contents of the ZNode.
 
@@ -35,4 +35,4 @@ ZNodes however are product specific and need to be managed by product teams that
 
 == What's next
 
-Have a look at the usage guide for ZNodes: xref:usage_guide:isolating_clients_with_znodes.adoc[]
+Have a look at the usage guide for ZNodes: xref:usage_guide/isolating_clients_with_znodes.adoc[]
