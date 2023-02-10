@@ -6,4 +6,4 @@ members = ["rust/crd", "rust/operator-binary"]
 # stackable-operator = { git = "https://github.com/stackabletech//operator-rs.git", branch = "main" }
 
 [patch.crates-io]
-tokio-zookeeper = { git = "https://github.com/stackabletech/tokio-zookeeper.git", branch = "feature/tokio-modernize" }
+# tokio-zookeeper = { git = "https://github.com/stackabletech/tokio-zookeeper.git", branch = "feature/tokio-modernize" }
