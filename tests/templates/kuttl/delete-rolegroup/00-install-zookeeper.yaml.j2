@@ -1,14 +1,32 @@
+{% if lookup('env', 'VECTOR_AGGREGATOR') %}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-aggregator-discovery
+data:
+  ADDRESS: {{ lookup('env', 'VECTOR_AGGREGATOR') }}
+{% endif %}
 ---
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperCluster
 metadata:
   name: test-zk
 spec:
-  config:
-    tls: null
-    quorumTlsSecretClass: tls
+  image:
+    productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
+    stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
+  clusterConfig:
+    tls:
+      serverSecretClass: null
+{% if lookup('env', 'VECTOR_AGGREGATOR') %}
+    logging:
+      vectorAggregatorConfigMapName: vector-aggregator-discovery
+{% endif %}
   servers:
     config:
+      logging:
+        enableVectorAgent: {{ lookup('env', 'VECTOR_AGGREGATOR') | length > 0 }}
       resources:
         storage:
           data:
@@ -27,5 +45,3 @@ spec:
         replicas: 2
         config:
           myidOffset: 20
-  version: {{ test_scenario['values']['zookeeper'] }}
-  stopped: false

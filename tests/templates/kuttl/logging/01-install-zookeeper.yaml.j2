@@ -1,0 +1,76 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zk-log-config
+data:
+  logback.xml: |
+    <configuration>
+      <appender name="FILE" class="ch.qos.logback.core.FileAppender">
+        <file>/stackable/log/zookeeper/zookeeper.log4j.xml</file>
+        <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+          <layout class="ch.qos.logback.classic.log4j.XMLLayout" />
+        </encoder>
+      </appender>
+      <root level="INFO">
+        <appender-ref ref="FILE" />
+      </root>
+    </configuration>
+  log4j.properties: |
+    log4j.rootLogger=INFO, FILE
+    log4j.appender.FILE=org.apache.log4j.FileAppender
+    log4j.appender.FILE.File=/stackable/log/zookeeper/zookeeper.log4j.xml
+    log4j.appender.FILE.layout=org.apache.log4j.xml.XMLLayout
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: test-zk
+spec:
+  image:
+    productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
+    stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
+  clusterConfig:
+    logging:
+      vectorAggregatorConfigMapName: vector-aggregator-discovery
+  servers:
+    roleGroups:
+      automatic-log-config:
+        replicas: 1
+        config:
+          logging:
+            enableVectorAgent: true
+            containers:
+              prepare:
+                console:
+                  level: INFO
+                file:
+                  level: INFO
+                loggers:
+                  ROOT:
+                    level: INFO
+              vector:
+                console:
+                  level: INFO
+                file:
+                  level: INFO
+                loggers:
+                  ROOT:
+                    level: INFO
+              zookeeper:
+                console:
+                  level: INFO
+                file:
+                  level: INFO
+                loggers:
+                  ROOT:
+                    level: INFO
+      custom-log-config:
+        replicas: 1
+        config:
+          logging:
+            enableVectorAgent: true
+            containers:
+              zookeeper:
+                custom:
+                  configMap: zk-log-config

@@ -11,6 +11,7 @@ use crate::{
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cluster_resources::ClusterResources,
+    commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Service},
     kube::{
         self,
@@ -21,7 +22,8 @@ use stackable_operator::{
     },
     logging::controller::ReconcilerError,
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
+use stackable_zookeeper_crd::security::ZookeeperSecurity;
+use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode, DOCKER_IMAGE_BASE_NAME};
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
@@ -91,6 +93,10 @@ pub enum Error {
     },
     #[snafu(display("object has no namespace"))]
     ObjectHasNoNamespace,
+    #[snafu(display("failed to initialize security context"))]
+    FailedToInitializeSecurityContext {
+        source: stackable_zookeeper_crd::security::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -134,6 +140,7 @@ impl ReconcilerError for Error {
             Error::ObjectMissingMetadataForOwnerRef { source: _ } => None,
             Error::DeleteOrphans { source: _ } => None,
             Error::ObjectHasNoNamespace => None,
+            Error::FailedToInitializeSecurityContext { source: _ } => None,
         }
     }
 }
@@ -167,9 +174,14 @@ pub async fn reconcile_znode(
         |ev| async {
             match ev {
                 finalizer::Event::Apply(znode) => {
-                    reconcile_apply(client, &znode, zk, &znode_path).await
+                    let zk = zk?;
+                    let resolved_product_image = zk.spec.image.resolve(DOCKER_IMAGE_BASE_NAME);
+                    reconcile_apply(client, &znode, Ok(zk), &znode_path, &resolved_product_image)
+                        .await
                 }
-                finalizer::Event::Cleanup(_znode) => reconcile_cleanup(zk, &znode_path).await,
+                finalizer::Event::Cleanup(_znode) => {
+                    reconcile_cleanup(client, zk, &znode_path).await
+                }
             }
         },
     )
@@ -182,8 +194,14 @@ async fn reconcile_apply(
     znode: &ZookeeperZnode,
     zk: Result<ZookeeperCluster>,
     znode_path: &str,
+    resolved_product_image: &ResolvedProductImage,
 ) -> Result<controller::Action> {
     let zk = zk?;
+
+    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, &zk)
+        .await
+        .context(FailedToInitializeSecurityContextSnafu)?;
+
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
         OPERATOR_NAME,
@@ -192,7 +210,7 @@ async fn reconcile_apply(
     )
     .unwrap();
 
-    znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk)?, znode_path)
+    znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk, &zookeeper_security)?, znode_path)
         .await
         .with_context(|_| EnsureZnodeSnafu {
             zk: ObjectRef::from_obj(&zk),
@@ -221,6 +239,8 @@ async fn reconcile_apply(
         ZNODE_CONTROLLER_NAME,
         &server_role_service,
         Some(znode_path),
+        resolved_product_image,
+        &zookeeper_security,
     )
     .await
     .context(BuildDiscoveryConfigMapSnafu)?
@@ -241,6 +261,7 @@ async fn reconcile_apply(
 }
 
 async fn reconcile_cleanup(
+    client: &stackable_operator::client::Client,
     zk: Result<ZookeeperCluster>,
     znode_path: &str,
 ) -> Result<controller::Action> {
@@ -251,8 +272,13 @@ async fn reconcile_cleanup(
         }
         res => res?,
     };
+
+    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, &zk)
+        .await
+        .context(FailedToInitializeSecurityContextSnafu)?;
+
     // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
-    znode_mgmt::ensure_znode_missing(&zk_mgmt_addr(&zk)?, znode_path)
+    znode_mgmt::ensure_znode_missing(&zk_mgmt_addr(&zk, &zookeeper_security)?, znode_path)
         .await
         .with_context(|_| EnsureZnodeMissingSnafu {
             zk: ObjectRef::from_obj(&zk),
@@ -262,7 +288,7 @@ async fn reconcile_cleanup(
     Ok(controller::Action::await_change())
 }
 
-fn zk_mgmt_addr(zk: &ZookeeperCluster) -> Result<String> {
+fn zk_mgmt_addr(zk: &ZookeeperCluster, zookeeper_security: &ZookeeperSecurity) -> Result<String> {
     // Rust ZooKeeper client does not support client-side load-balancing, so use
     // (load-balanced) global service instead.
     Ok(format!(
@@ -271,7 +297,7 @@ fn zk_mgmt_addr(zk: &ZookeeperCluster) -> Result<String> {
             .with_context(|| NoZkFqdnSnafu {
                 zk: ObjectRef::from_obj(zk),
             })?,
-        zk.client_port(),
+        zookeeper_security.client_port(),
     ))
 }
 

@@ -1,9 +1,19 @@
+pub mod authentication;
+pub mod security;
+pub mod tls;
+
+use crate::authentication::ZookeeperAuthentication;
+use crate::tls::ZookeeperTls;
+
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    commons::resources::{
-        CpuLimitsFragment, MemoryLimitsFragment, NoRuntimeLimits, NoRuntimeLimitsFragment,
-        PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
+    commons::{
+        product_image_selection::ProductImage,
+        resources::{
+            CpuLimitsFragment, MemoryLimitsFragment, NoRuntimeLimits, NoRuntimeLimitsFragment,
+            PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
+        },
     },
     config::{fragment, fragment::Fragment, fragment::ValidationError, merge::Merge},
     crd::ClusterRef,
@@ -16,37 +26,42 @@ use stackable_operator::{
     memory::to_java_heap_value,
     memory::BinaryMultiple,
     product_config_utils::{ConfigError, Configuration},
+    product_logging::{self, spec::Logging},
     role_utils::{Role, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
 use std::collections::BTreeMap;
-use strum::{Display, EnumString};
+use strum::{Display, EnumIter, EnumString};
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 
-pub const CLIENT_PORT: u16 = 2181;
-pub const SECURE_CLIENT_PORT: u16 = 2282;
 pub const METRICS_PORT: u16 = 9505;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
+pub const STACKABLE_LOG_CONFIG_DIR: &str = "/stackable/log_config";
+pub const STACKABLE_LOG_DIR: &str = "/stackable/log";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
 
-pub const QUORUM_TLS_DIR: &str = "/stackable/quorum_tls";
-pub const QUORUM_TLS_MOUNT_DIR: &str = "/stackable/quorum_tls_mount";
-pub const CLIENT_TLS_DIR: &str = "/stackable/client_tls";
-pub const CLIENT_TLS_MOUNT_DIR: &str = "/stackable/client_tls_mount";
-pub const SYSTEM_TRUST_STORE_DIR: &str = "/etc/pki/java/cacerts";
+pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
+pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
 
+pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
+
+pub const MAX_ZK_LOG_FILES_SIZE_IN_MIB: u32 = 10;
+const MAX_PREPARE_LOG_FILE_SIZE_IN_MIB: u32 = 1;
+// Additional buffer space is not needed, as the `prepare` container already has sufficient buffer
+// space and all containers share a single volume.
+pub const LOG_VOLUME_SIZE_IN_MIB: u32 =
+    MAX_ZK_LOG_FILES_SIZE_IN_MIB + MAX_PREPARE_LOG_FILE_SIZE_IN_MIB;
 const JVM_HEAP_FACTOR: f32 = 0.8;
-const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
+
+pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 
 #[derive(Snafu, Debug)]
 pub enum Error {
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
-    #[snafu(display("object defines no version"))]
-    ObjectHasNoVersion,
     #[snafu(display("unknown ZooKeeper role found {role}. Should be one of {roles:?}"))]
     UnknownZookeeperRole { role: String, roles: Vec<String> },
     #[snafu(display("fragment validation failure"))]
@@ -69,91 +84,78 @@ pub enum Error {
         schemars = "stackable_operator::schemars"
     )
 )]
-#[serde(default, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterSpec {
-    /// Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)
+    /// Global ZooKeeper cluster configuration that applies to all roles and role groups.
+    #[serde(default = "cluster_config_default")]
+    pub cluster_config: ZookeeperClusterConfig,
+    /// Desired ZooKeeper image to use.
+    pub image: ProductImage,
+    /// ZooKeeper server configuration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub servers: Option<Role<ZookeeperConfigFragment>>,
+    /// Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stopped: Option<bool>,
-    /// Desired ZooKeeper version
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub config: Option<GlobalZookeeperConfig>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub servers: Option<Role<ZookeeperConfig>>,
 }
 
-impl Default for ZookeeperClusterSpec {
-    fn default() -> Self {
-        Self {
-            config: Some(GlobalZookeeperConfig::default()),
-            stopped: Default::default(),
-            version: Default::default(),
-            servers: Default::default(),
-        }
+#[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperClusterConfig {
+    /// Authentication class settings for ZooKeeper like mTLS authentication.
+    #[serde(default)]
+    pub authentication: Vec<ZookeeperAuthentication>,
+    /// Logging options for ZooKeeper.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logging: Option<ZookeeperLogging>,
+    /// TLS encryption settings for ZooKeeper (server, quorum).
+    #[serde(
+        default = "tls::default_zookeeper_tls",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub tls: Option<ZookeeperTls>,
+}
+
+fn cluster_config_default() -> ZookeeperClusterConfig {
+    ZookeeperClusterConfig {
+        authentication: vec![],
+        logging: None,
+        tls: tls::default_zookeeper_tls(),
     }
 }
 
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(default, rename_all = "camelCase")]
-pub struct GlobalZookeeperConfig {
-    /// Only affects client connections. This setting controls:
-    /// - If TLS encryption is used at all
-    /// - Which cert the servers should use to authenticate themselves against the client
-    /// Defaults to `TlsSecretClass` { secret_class: "tls".to_string() }.
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperLogging {
+    /// Name of the Vector discovery ConfigMap.
+    /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tls: Option<TlsSecretClass>,
-    /// Only affects client connections. This setting controls:
-    /// - If clients need to authenticate themselves against the server via TLS
-    /// - Which ca.crt to use when validating the provided client certs
-    /// Defaults to `None`
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub client_authentication: Option<ClientAuthenticationClass>,
-    /// Only affects quorum communication. Use mutual verification between Zookeeper Nodes
-    /// (mandatory). This setting controls:
-    /// - Which cert the servers should use to authenticate themselves against other servers
-    /// - Which ca.crt to use when validating the other server
-    pub quorum_tls_secret_class: String,
+    pub vector_aggregator_config_map_name: Option<String>,
 }
 
-impl Default for GlobalZookeeperConfig {
-    fn default() -> Self {
-        Self {
-            tls: Some(TlsSecretClass::default()),
-            client_authentication: None,
-            quorum_tls_secret_class: TLS_DEFAULT_SECRET_CLASS.to_string(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TlsSecretClass {
-    pub secret_class: String,
-}
-
-impl Default for TlsSecretClass {
-    fn default() -> Self {
-        Self {
-            secret_class: TLS_DEFAULT_SECRET_CLASS.into(),
-        }
-    }
-}
-
-#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ClientAuthenticationClass {
-    pub authentication_class: String,
-}
-
-#[derive(Clone, Default, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
+#[fragment_attrs(
+    derive(
+        Clone,
+        Debug,
+        Default,
+        Deserialize,
+        Merge,
+        JsonSchema,
+        PartialEq,
+        Serialize
+    ),
+    serde(rename_all = "camelCase")
+)]
 pub struct ZookeeperConfig {
     pub init_limit: Option<u32>,
     pub sync_limit: Option<u32>,
     pub tick_time: Option<u32>,
-    pub myid_offset: Option<u16>,
-    pub resources: Option<ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits>>,
+    pub myid_offset: u16,
+    #[fragment_attrs(serde(default))]
+    pub resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits>,
+    #[fragment_attrs(serde(default))]
+    pub logging: Logging<Container>,
 }
 
 #[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
@@ -175,6 +177,26 @@ pub struct ZookeeperStorageConfig {
     pub data: PvcConfig,
 }
 
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Display,
+    Eq,
+    EnumIter,
+    JsonSchema,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
+)]
+#[serde(rename_all = "camelCase")]
+pub enum Container {
+    Prepare,
+    Vector,
+    Zookeeper,
+}
+
 impl ZookeeperConfig {
     pub const INIT_LIMIT: &'static str = "initLimit";
     pub const SYNC_LIMIT: &'static str = "syncLimit";
@@ -184,68 +206,67 @@ impl ZookeeperConfig {
     pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
     pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
-    pub const CLIENT_PORT: &'static str = "clientPort";
 
-    // Quorum TLS
-    pub const SSL_QUORUM: &'static str = "sslQuorum";
-    pub const SSL_QUORUM_CLIENT_AUTH: &'static str = "ssl.quorum.clientAuth";
-    pub const SSL_QUORUM_HOST_NAME_VERIFICATION: &'static str = "ssl.quorum.hostnameVerification";
-    pub const SSL_QUORUM_KEY_STORE_LOCATION: &'static str = "ssl.quorum.keyStore.location";
-    pub const SSL_QUORUM_KEY_STORE_PASSWORD: &'static str = "ssl.quorum.keyStore.password";
-    pub const SSL_QUORUM_TRUST_STORE_LOCATION: &'static str = "ssl.quorum.trustStore.location";
-    pub const SSL_QUORUM_TRUST_STORE_PASSWORD: &'static str = "ssl.quorum.trustStore.password";
-    // Client TLS
-    pub const SECURE_CLIENT_PORT: &'static str = "secureClientPort";
-    pub const SSL_CLIENT_AUTH: &'static str = "ssl.clientAuth";
-    pub const SSL_HOST_NAME_VERIFICATION: &'static str = "ssl.hostnameVerification";
-    pub const SSL_KEY_STORE_LOCATION: &'static str = "ssl.keyStore.location";
-    pub const SSL_KEY_STORE_PASSWORD: &'static str = "ssl.keyStore.password";
-    pub const SSL_TRUST_STORE_LOCATION: &'static str = "ssl.trustStore.location";
-    pub const SSL_TRUST_STORE_PASSWORD: &'static str = "ssl.trustStore.password";
-    // Common TLS
-    pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
-    pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
-
-    fn myid_offset(&self) -> u16 {
-        self.myid_offset.unwrap_or(1)
-    }
-
-    fn default_resources() -> ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> {
-        ResourcesFragment {
-            cpu: CpuLimitsFragment {
-                min: Some(Quantity("500m".to_owned())),
-                max: Some(Quantity("4".to_owned())),
-            },
-            memory: MemoryLimitsFragment {
-                limit: Some(Quantity("512Mi".to_owned())),
-                runtime_limits: NoRuntimeLimitsFragment {},
-            },
-            storage: ZookeeperStorageConfigFragment {
-                data: PvcConfigFragment {
-                    capacity: Some(Quantity("1Gi".to_owned())),
-                    storage_class: None,
-                    selectors: None,
+    fn default_server_config() -> ZookeeperConfigFragment {
+        ZookeeperConfigFragment {
+            init_limit: None,
+            sync_limit: None,
+            tick_time: None,
+            myid_offset: Some(1),
+            resources: ResourcesFragment {
+                cpu: CpuLimitsFragment {
+                    min: Some(Quantity("500m".to_owned())),
+                    max: Some(Quantity("4".to_owned())),
+                },
+                memory: MemoryLimitsFragment {
+                    limit: Some(Quantity("512Mi".to_owned())),
+                    runtime_limits: NoRuntimeLimitsFragment {},
+                },
+                storage: ZookeeperStorageConfigFragment {
+                    data: PvcConfigFragment {
+                        capacity: Some(Quantity("1Gi".to_owned())),
+                        storage_class: None,
+                        selectors: None,
+                    },
                 },
             },
+            logging: product_logging::spec::default_logging(),
         }
     }
 }
 
-impl Configuration for ZookeeperConfig {
+impl Configuration for ZookeeperConfigFragment {
     type Configurable = ZookeeperCluster;
 
     fn compute_env(
         &self,
-        _resource: &Self::Configurable,
+        resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let jvm_flags = format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml");
+        let logging_framework =
+            resource
+                .logging_framework()
+                .map_err(|e| ConfigError::InvalidConfiguration {
+                    reason: e.to_string(),
+                })?;
+        let jvm_flags = [
+            format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
+            match logging_framework {
+                LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
+                LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
+            }
+        ].join(" ");
         Ok([
             (
-                Self::MYID_OFFSET.to_string(),
-                Some(self.myid_offset().to_string()),
+                ZookeeperConfig::MYID_OFFSET.to_string(),
+                self.myid_offset
+                    .or(ZookeeperConfig::default_server_config().myid_offset)
+                    .map(|myid_offset| myid_offset.to_string()),
             ),
-            (Self::SERVER_JVMFLAGS.to_string(), Some(jvm_flags)),
+            (
+                ZookeeperConfig::SERVER_JVMFLAGS.to_string(),
+                Some(jvm_flags),
+            ),
         ]
         .into())
     }
@@ -260,119 +281,33 @@ impl Configuration for ZookeeperConfig {
 
     fn compute_files(
         &self,
-        resource: &Self::Configurable,
+        _resource: &Self::Configurable,
         _role_name: &str,
         _file: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         let mut result = BTreeMap::new();
         if let Some(init_limit) = self.init_limit {
-            result.insert(Self::INIT_LIMIT.to_string(), Some(init_limit.to_string()));
+            result.insert(
+                ZookeeperConfig::INIT_LIMIT.to_string(),
+                Some(init_limit.to_string()),
+            );
         }
         if let Some(sync_limit) = self.sync_limit {
-            result.insert(Self::SYNC_LIMIT.to_string(), Some(sync_limit.to_string()));
+            result.insert(
+                ZookeeperConfig::SYNC_LIMIT.to_string(),
+                Some(sync_limit.to_string()),
+            );
         }
         if let Some(tick_time) = self.tick_time {
-            result.insert(Self::TICK_TIME.to_string(), Some(tick_time.to_string()));
+            result.insert(
+                ZookeeperConfig::TICK_TIME.to_string(),
+                Some(tick_time.to_string()),
+            );
         }
         result.insert(
-            Self::DATA_DIR.to_string(),
+            ZookeeperConfig::DATA_DIR.to_string(),
             Some(STACKABLE_DATA_DIR.to_string()),
         );
-
-        // Quorum TLS
-        result.insert(Self::SSL_QUORUM.to_string(), Some("true".to_string()));
-        result.insert(
-            Self::SSL_QUORUM_HOST_NAME_VERIFICATION.to_string(),
-            Some("true".to_string()),
-        );
-        result.insert(
-            Self::SSL_QUORUM_CLIENT_AUTH.to_string(),
-            Some("need".to_string()),
-        );
-        result.insert(
-            Self::SERVER_CNXN_FACTORY.to_string(),
-            Some("org.apache.zookeeper.server.NettyServerCnxnFactory".to_string()),
-        );
-        result.insert(
-            Self::SSL_AUTH_PROVIDER_X509.to_string(),
-            Some("org.apache.zookeeper.server.auth.X509AuthenticationProvider".to_string()),
-        );
-        // The keystore and truststore passwords should not be in the configmap and are generated
-        // and written later via script in the init container
-        result.insert(
-            Self::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
-            Some(format!("{dir}/keystore.p12", dir = QUORUM_TLS_DIR)),
-        );
-        result.insert(
-            Self::SSL_QUORUM_TRUST_STORE_LOCATION.to_string(),
-            Some(format!("{dir}/truststore.p12", dir = QUORUM_TLS_DIR)),
-        );
-
-        // Client TLS
-        if resource.client_tls_enabled() {
-            // We set only the clientPort and portUnification here because otherwise there is a port bind exception
-            // See: https://issues.apache.org/jira/browse/ZOOKEEPER-4276
-            // --> Normally we would like to only set the secureClientPort (check out commented code below)
-            // What we tried:
-            // 1) Set clientPort and secureClientPort will fail with
-            // "static.config different from dynamic config .. "
-            // result.insert(
-            //     Self::CLIENT_PORT.to_string(),
-            //     Some(CLIENT_PORT.to_string()),
-            // );
-            // result.insert(
-            //     Self::SECURE_CLIENT_PORT.to_string(),
-            //     Some(SECURE_CLIENT_PORT.to_string()),
-            // );
-
-            // 2) Setting only secureClientPort will result in the above mentioned bind exception.
-            // The NettyFactory tries to bind multiple times on the secureClientPort.
-            // result.insert(
-            //     Self::SECURE_CLIENT_PORT.to_string(),
-            //     Some(resource.client_port().to_string()),
-            // );
-
-            // 3) Using the clientPort and portUnification still allows plaintext connection without
-            // authentication, but at least TLS and authentication works when connecting securely.
-            result.insert(
-                Self::CLIENT_PORT.to_string(),
-                Some(resource.client_port().to_string()),
-            );
-            result.insert(
-                "client.portUnification".to_string(),
-                Some("true".to_string()),
-            );
-            // TODO: Remove clientPort and portUnification (above) in favor of secureClientPort once the bug is fixed
-            // result.insert(
-            //     Self::SECURE_CLIENT_PORT.to_string(),
-            //     Some(resource.client_port().to_string()),
-            // );
-            // END TICKET
-
-            result.insert(
-                Self::SSL_HOST_NAME_VERIFICATION.to_string(),
-                Some("true".to_string()),
-            );
-            // The keystore and truststore passwords should not be in the configmap and are generated
-            // and written later via script in the init container
-            result.insert(
-                Self::SSL_KEY_STORE_LOCATION.to_string(),
-                Some(format!("{dir}/keystore.p12", dir = CLIENT_TLS_DIR)),
-            );
-            result.insert(
-                Self::SSL_TRUST_STORE_LOCATION.to_string(),
-                Some(format!("{dir}/truststore.p12", dir = CLIENT_TLS_DIR)),
-            );
-            // Check if we need to enable authentication
-            if resource.client_tls_authentication_class().is_some() {
-                result.insert(Self::SSL_CLIENT_AUTH.to_string(), Some("need".to_string()));
-            }
-        } else {
-            result.insert(
-                Self::CLIENT_PORT.to_string(),
-                Some(resource.client_port().to_string()),
-            );
-        }
 
         Ok(result)
     }
@@ -395,13 +330,32 @@ pub struct ZookeeperClusterStatus {
     pub discovery_hash: Option<String>,
 }
 
+pub enum LoggingFramework {
+    LOG4J,
+    LOGBACK,
+}
+
 impl ZookeeperCluster {
-    /// The image version provided in the `spec.version` field
-    pub fn image_version(&self) -> Result<&str, Error> {
-        self.spec
-            .version
-            .as_deref()
-            .context(ObjectHasNoVersionSnafu)
+    pub fn logging_framework(&self) -> Result<LoggingFramework, Error> {
+        let version = self
+            .spec
+            .image
+            .resolve(DOCKER_IMAGE_BASE_NAME)
+            .product_version;
+        let zookeeper_versions_with_log4j = [
+            "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
+        ];
+
+        let framework = if zookeeper_versions_with_log4j
+            .into_iter()
+            .any(|prefix| version.starts_with(prefix))
+        {
+            LoggingFramework::LOG4J
+        } else {
+            LoggingFramework::LOGBACK
+        };
+
+        Ok(framework)
     }
 
     /// The name of the role-level load-balanced Kubernetes `Service`
@@ -438,76 +392,39 @@ impl ZookeeperCluster {
     /// the pods have inconsistent snapshots of which servers they should expect to be in quorum.
     pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, Error> {
         let ns = self.metadata.namespace.clone().context(NoNamespaceSnafu)?;
-        Ok(self
+        let role_groups = self
             .spec
             .servers
             .iter()
             .flat_map(|role| &role.role_groups)
             // Order rolegroups consistently, to avoid spurious downstream rewrites
-            .collect::<BTreeMap<_, _>>()
-            .into_iter()
-            .flat_map(move |(rolegroup_name, rolegroup)| {
-                let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
-                let ns = ns.clone();
-                (0..rolegroup.replicas.unwrap_or(0)).map(move |i| ZookeeperPodRef {
+            .collect::<BTreeMap<_, _>>();
+        let mut pod_refs = Vec::new();
+        for (rolegroup_name, rolegroup) in role_groups {
+            let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
+            let myid_offset = self
+                .merged_config(&ZookeeperRole::Server, &rolegroup_ref)?
+                .myid_offset;
+            let ns = ns.clone();
+            for i in 0..rolegroup.replicas.unwrap_or(0) {
+                pod_refs.push(ZookeeperPodRef {
                     namespace: ns.clone(),
                     role_group_service_name: rolegroup_ref.object_name(),
                     pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
-                    zookeeper_myid: i + rolegroup.config.config.myid_offset(),
-                })
-            }))
-    }
-
-    pub fn client_port(&self) -> u16 {
-        if self.client_tls_enabled() {
-            SECURE_CLIENT_PORT
-        } else {
-            CLIENT_PORT
+                    zookeeper_myid: i + myid_offset,
+                });
+            }
         }
+        Ok(pod_refs.into_iter())
     }
 
-    /// Returns the secret class for client connection encryption. Defaults to `tls`.
-    pub fn client_tls_secret_class(&self) -> Option<&TlsSecretClass> {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.config.as_ref().and_then(|c| c.tls.as_ref())
-    }
-
-    /// Checks if we should use TLS to encrypt client connections.
-    pub fn client_tls_enabled(&self) -> bool {
-        self.client_tls_secret_class().is_some() || self.client_tls_authentication_class().is_some()
-    }
-
-    /// Returns the authentication class used for client authentication
-    pub fn client_tls_authentication_class(&self) -> Option<&str> {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.config
-            .as_ref()
-            .and_then(|c| c.client_authentication.as_ref())
-            .map(|tls| tls.authentication_class.as_ref())
-    }
-
-    /// Returns the secret class for internal server encryption
-    pub fn quorum_tls_secret_class(&self) -> &str {
-        let spec: &ZookeeperClusterSpec = &self.spec;
-        spec.config
-            .as_ref()
-            .map(|c| c.quorum_tls_secret_class.as_ref())
-            .unwrap_or_default()
-    }
-
-    /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
-    /// These can be defined at the role or rolegroup level and as usual, the
-    /// following precedence rules are implemented:
-    /// 1. group pvc
-    /// 2. role pvc
-    /// 3. a default PVC with 1Gi capacity
-    pub fn resources(
+    pub fn merged_config(
         &self,
         role: &ZookeeperRole,
-        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
-    ) -> Result<(Vec<PersistentVolumeClaim>, ResourceRequirements), Error> {
+        rolegroup_ref: &RoleGroupRef<Self>,
+    ) -> Result<ZookeeperConfig, Error> {
         // Initialize the result with all default values as baseline
-        let conf_defaults = ZookeeperConfig::default_resources();
+        let conf_defaults = ZookeeperConfig::default_server_config();
 
         let role = match role {
             ZookeeperRole::Server => {
@@ -522,14 +439,13 @@ impl ZookeeperCluster {
         };
 
         // Retrieve role resource config
-        let mut conf_role: ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> =
-            role.config.config.resources.clone().unwrap_or_default();
+        let mut conf_role = role.config.config.to_owned();
 
         // Retrieve rolegroup specific resource config
-        let mut conf_rolegroup: ResourcesFragment<ZookeeperStorageConfig, NoRuntimeLimits> = role
+        let mut conf_rolegroup = role
             .role_groups
             .get(&rolegroup_ref.role_group)
-            .and_then(|rg| rg.config.config.resources.clone())
+            .map(|rg| rg.config.config.clone())
             .unwrap_or_default();
 
         // Merge more specific configs into default config
@@ -540,8 +456,31 @@ impl ZookeeperCluster {
         conf_role.merge(&conf_defaults);
         conf_rolegroup.merge(&conf_role);
 
-        let resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits> =
-            fragment::validate(conf_rolegroup).context(FragmentValidationFailureSnafu)?;
+        fragment::validate(conf_rolegroup).context(FragmentValidationFailureSnafu)
+    }
+
+    pub fn logging(
+        &self,
+        role: &ZookeeperRole,
+        rolegroup_ref: &RoleGroupRef<Self>,
+    ) -> Result<Logging<Container>, Error> {
+        let config = self.merged_config(role, rolegroup_ref)?;
+        Ok(config.logging)
+    }
+
+    /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
+    /// These can be defined at the role or rolegroup level and as usual, the
+    /// following precedence rules are implemented:
+    /// 1. group pvc
+    /// 2. role pvc
+    /// 3. a default PVC with 1Gi capacity
+    pub fn resources(
+        &self,
+        role: &ZookeeperRole,
+        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
+    ) -> Result<(Vec<PersistentVolumeClaim>, ResourceRequirements), Error> {
+        let config = self.merged_config(role, rolegroup_ref)?;
+        let resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits> = config.resources;
 
         let data_pvc = resources
             .storage
@@ -615,6 +554,24 @@ pub struct ZookeeperZnodeSpec {
 mod tests {
     use super::*;
 
+    fn get_server_secret_class(zk: &ZookeeperCluster) -> Option<&str> {
+        zk.spec
+            .cluster_config
+            .tls
+            .as_ref()
+            .and_then(|tls| tls.server_secret_class.as_deref())
+    }
+
+    fn get_quorum_secret_class(zk: &ZookeeperCluster) -> &str {
+        zk.spec
+            .cluster_config
+            .tls
+            .as_ref()
+            .unwrap()
+            .quorum_secret_class
+            .as_str()
+    }
+
     #[test]
     fn test_client_tls() {
         let input = r#"
@@ -622,17 +579,19 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec:
-          version: abc
+        spec: 
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"        
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
-            zookeeper.client_tls_secret_class().unwrap().secret_class,
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            get_server_secret_class(&zookeeper),
+            tls::server_tls_default().as_deref()
         );
         assert_eq!(
-            zookeeper.quorum_tls_secret_class(),
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            get_quorum_secret_class(&zookeeper),
+            tls::quorum_tls_default().as_str()
         );
 
         let input = r#"
@@ -641,37 +600,22 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
-          version: abc
-          config:
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"   
+          clusterConfig:
             tls:
-              secretClass: simple-zookeeper-client-tls
+              serverSecretClass: simple-zookeeper-client-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
 
         assert_eq!(
-            zookeeper.client_tls_secret_class().unwrap().secret_class,
-            "simple-zookeeper-client-tls".to_string()
+            get_server_secret_class(&zookeeper),
+            Some("simple-zookeeper-client-tls")
         );
         assert_eq!(
-            zookeeper.quorum_tls_secret_class(),
-            TLS_DEFAULT_SECRET_CLASS
-        );
-
-        let input = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          version: abc
-          config:
-            tls: null
-        "#;
-        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
-        assert_eq!(zookeeper.client_tls_secret_class(), None);
-        assert_eq!(
-            zookeeper.quorum_tls_secret_class(),
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            get_quorum_secret_class(&zookeeper),
+            tls::quorum_tls_default().as_str()
         );
 
         let input = r#"
@@ -680,17 +624,40 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
-          version: abc
-          config:
-            quorumTlsSecretClass: simple-zookeeper-quorum-tls
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"           
+          clusterConfig:
+            tls:
+              serverSecretClass: null
+        "#;
+        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        assert_eq!(get_server_secret_class(&zookeeper), None);
+        assert_eq!(
+            get_quorum_secret_class(&zookeeper),
+            tls::quorum_tls_default().as_str()
+        );
+
+        let input = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"           
+          clusterConfig:
+            tls:
+              quorumSecretClass: simple-zookeeper-quorum-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
-            zookeeper.client_tls_secret_class().unwrap().secret_class,
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            get_server_secret_class(&zookeeper),
+            tls::server_tls_default().as_deref()
         );
         assert_eq!(
-            zookeeper.quorum_tls_secret_class(),
+            get_quorum_secret_class(&zookeeper),
             "simple-zookeeper-quorum-tls"
         );
     }
@@ -702,17 +669,20 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec:
-          version: abc
+        spec: 
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"         
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+
         assert_eq!(
-            zookeeper.quorum_tls_secret_class(),
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            get_server_secret_class(&zookeeper),
+            tls::server_tls_default().as_deref()
         );
         assert_eq!(
-            zookeeper.client_tls_secret_class().unwrap().secret_class,
-            TLS_DEFAULT_SECRET_CLASS
+            get_quorum_secret_class(&zookeeper),
+            tls::quorum_tls_default()
         );
 
         let input = r#"
@@ -721,39 +691,44 @@ mod tests {
         metadata:
           name: simple-zookeeper
         spec:
-          version: abc
-          config:
-            quorumTlsSecretClass: simple-zookeeper-quorum-tls
-        "#;
-        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
-        assert_eq!(
-            zookeeper.quorum_tls_secret_class(),
-            "simple-zookeeper-quorum-tls".to_string()
-        );
-        assert_eq!(
-            zookeeper.client_tls_secret_class().unwrap().secret_class,
-            TLS_DEFAULT_SECRET_CLASS
-        );
-
-        let input = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          version: abc
-          config:
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"         
+          clusterConfig:
             tls:
-              secretClass: simple-zookeeper-client-tls
+              quorumSecretClass: simple-zookeeper-quorum-tls
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
-            zookeeper.quorum_tls_secret_class(),
-            TLS_DEFAULT_SECRET_CLASS.to_string()
+            get_server_secret_class(&zookeeper),
+            tls::server_tls_default().as_deref()
         );
         assert_eq!(
-            zookeeper.client_tls_secret_class().unwrap().secret_class,
-            "simple-zookeeper-client-tls"
+            get_quorum_secret_class(&zookeeper),
+            "simple-zookeeper-quorum-tls"
+        );
+
+        let input = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.8.0"
+            stackableVersion: "0.8.0"    
+          clusterConfig:
+            tls:
+              serverSecretClass: simple-zookeeper-server-tls
+        "#;
+        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        assert_eq!(
+            get_server_secret_class(&zookeeper),
+            Some("simple-zookeeper-server-tls")
+        );
+        assert_eq!(
+            get_quorum_secret_class(&zookeeper),
+            tls::quorum_tls_default().as_str()
         );
     }
 }

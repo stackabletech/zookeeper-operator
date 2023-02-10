@@ -18,14 +18,14 @@ semver = "1.0.12"
 serde = "1.0.138"
 snafu = "0.7.1"
 strum = { version = "0.24.1", features = ["derive"] }
-tokio = { version = "1.21.2", features = ["full"] }
+tokio = { version = "1.24.1", features = ["full"] }
 tokio-zookeeper = "0.2.0"
 tracing = "0.1.35"
 pin-project = "1.0.11"
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.27.1" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.30.2" }
 stackable-zookeeper-crd = { path = "../crd" }
 
 [build-dependencies]
 built = { version = "0.5.1", features = ["chrono", "git2"] }
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.27.1" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.30.2" }
 stackable-zookeeper-crd = { path = "../crd" }

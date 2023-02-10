@@ -25,39 +25,103 @@ spec:
             spec:
               description: A cluster of ZooKeeper nodes
               properties:
-                config:
+                clusterConfig:
                   default:
+                    authentication: []
                     tls:
-                      secretClass: tls
-                    quorumTlsSecretClass: tls
-                  nullable: true
+                      quorumSecretClass: tls
+                      serverSecretClass: tls
+                  description: Global ZooKeeper cluster configuration that applies to all roles and role groups.
                   properties:
-                    clientAuthentication:
-                      description: 'Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs Defaults to `None`'
+                    authentication:
+                      default: []
+                      description: Authentication class settings for ZooKeeper like mTLS authentication.
+                      items:
+                        properties:
+                          authenticationClass:
+                            description: |-
+                              The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
+
+                              ## mTLS
+
+                              Only affects client connections. This setting controls: - If clients need to authenticate themselves against the server via TLS - Which ca.crt to use when validating the provided client certs This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.
+                            type: string
+                        required:
+                          - authenticationClass
+                        type: object
+                      type: array
+                    logging:
+                      description: Logging options for ZooKeeper.
                       nullable: true
                       properties:
-                        authenticationClass:
+                        vectorAggregatorConfigMapName:
+                          description: Name of the Vector discovery ConfigMap. It must contain the key `ADDRESS` with the address of the Vector aggregator.
+                          nullable: true
                           type: string
-                      required:
-                        - authenticationClass
                       type: object
-                    quorumTlsSecretClass:
-                      default: tls
-                      description: 'Only affects quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server'
-                      type: string
                     tls:
                       default:
-                        secretClass: tls
-                      description: 'Only affects client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to `TlsSecretClass` { secret_class: "tls".to_string() }.'
+                        quorumSecretClass: tls
+                        serverSecretClass: tls
+                      description: TLS encryption settings for ZooKeeper (server, quorum).
                       nullable: true
                       properties:
-                        secretClass:
+                        quorumSecretClass:
+                          default: tls
+                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for internal quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server Defaults to `tls`'
                           type: string
-                      required:
-                        - secretClass
+                        serverSecretClass:
+                          default: tls
+                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to `tls`.'
+                          nullable: true
+                          type: string
                       type: object
                   type: object
+                image:
+                  anyOf:
+                    - required:
+                        - custom
+                        - productVersion
+                    - required:
+                        - productVersion
+                        - stackableVersion
+                  description: Desired ZooKeeper image to use.
+                  properties:
+                    custom:
+                      description: Overwrite the docker image. Specify the full docker image name, e.g. `docker.stackable.tech/stackable/superset:1.4.1-stackable2.1.0`
+                      type: string
+                    productVersion:
+                      description: Version of the product, e.g. `1.4.1`.
+                      type: string
+                    pullPolicy:
+                      default: IfNotPresent
+                      description: '[Pull policy](https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy) used when pulling the Images'
+                      enum:
+                        - IfNotPresent
+                        - Always
+                        - Never
+                      type: string
+                    pullSecrets:
+                      description: '[Image pull secrets](https://kubernetes.io/docs/concepts/containers/images/#specifying-imagepullsecrets-on-a-pod) to pull images from a private registry'
+                      items:
+                        description: LocalObjectReference contains enough information to let you locate the referenced object inside the same namespace.
+                        properties:
+                          name:
+                            description: 'Name of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names'
+                            type: string
+                        type: object
+                      nullable: true
+                      type: array
+                    repo:
+                      description: Name of the docker repo, e.g. `docker.stackable.tech/stackable`
+                      nullable: true
+                      type: string
+                    stackableVersion:
+                      description: Stackable version of the product, e.g. 2.1.0
+                      type: string
+                  type: object
                 servers:
+                  description: ZooKeeper server configuration.
                   nullable: true
                   properties:
                     cliOverrides:
@@ -73,13 +137,98 @@ spec:
                           minimum: 0.0
                           nullable: true
                           type: integer
+                        logging:
+                          default:
+                            enableVectorAgent: null
+                            containers: {}
+                          properties:
+                            containers:
+                              additionalProperties:
+                                anyOf:
+                                  - required:
+                                      - custom
+                                  - {}
+                                description: Fragment derived from `ContainerLogConfigChoice`
+                                properties:
+                                  console:
+                                    nullable: true
+                                    properties:
+                                      level:
+                                        description: Log levels
+                                        enum:
+                                          - TRACE
+                                          - DEBUG
+                                          - INFO
+                                          - WARN
+                                          - ERROR
+                                          - FATAL
+                                          - NONE
+                                        nullable: true
+                                        type: string
+                                    type: object
+                                  custom:
+                                    description: Custom log configuration provided in a ConfigMap
+                                    properties:
+                                      configMap:
+                                        nullable: true
+                                        type: string
+                                    type: object
+                                  file:
+                                    nullable: true
+                                    properties:
+                                      level:
+                                        description: Log levels
+                                        enum:
+                                          - TRACE
+                                          - DEBUG
+                                          - INFO
+                                          - WARN
+                                          - ERROR
+                                          - FATAL
+                                          - NONE
+                                        nullable: true
+                                        type: string
+                                    type: object
+                                  loggers:
+                                    additionalProperties:
+                                      properties:
+                                        level:
+                                          description: Log levels
+                                          enum:
+                                            - TRACE
+                                            - DEBUG
+                                            - INFO
+                                            - WARN
+                                            - ERROR
+                                            - FATAL
+                                            - NONE
+                                          nullable: true
+                                          type: string
+                                      type: object
+                                    default: {}
+                                    type: object
+                                type: object
+                              type: object
+                            enableVectorAgent:
+                              nullable: true
+                              type: boolean
+                          type: object
                         myidOffset:
                           format: uint16
                           minimum: 0.0
                           nullable: true
                           type: integer
                         resources:
-                          nullable: true
+                          default:
+                            memory:
+                              limit: null
+                              runtimeLimits: {}
+                            cpu:
+                              min: null
+                              max: null
+                            storage:
+                              data:
+                                capacity: null
                           properties:
                             cpu:
                               default:
@@ -314,13 +463,98 @@ spec:
                                 minimum: 0.0
                                 nullable: true
                                 type: integer
+                              logging:
+                                default:
+                                  enableVectorAgent: null
+                                  containers: {}
+                                properties:
+                                  containers:
+                                    additionalProperties:
+                                      anyOf:
+                                        - required:
+                                            - custom
+                                        - {}
+                                      description: Fragment derived from `ContainerLogConfigChoice`
+                                      properties:
+                                        console:
+                                          nullable: true
+                                          properties:
+                                            level:
+                                              description: Log levels
+                                              enum:
+                                                - TRACE
+                                                - DEBUG
+                                                - INFO
+                                                - WARN
+                                                - ERROR
+                                                - FATAL
+                                                - NONE
+                                              nullable: true
+                                              type: string
+                                          type: object
+                                        custom:
+                                          description: Custom log configuration provided in a ConfigMap
+                                          properties:
+                                            configMap:
+                                              nullable: true
+                                              type: string
+                                          type: object
+                                        file:
+                                          nullable: true
+                                          properties:
+                                            level:
+                                              description: Log levels
+                                              enum:
+                                                - TRACE
+                                                - DEBUG
+                                                - INFO
+                                                - WARN
+                                                - ERROR
+                                                - FATAL
+                                                - NONE
+                                              nullable: true
+                                              type: string
+                                          type: object
+                                        loggers:
+                                          additionalProperties:
+                                            properties:
+                                              level:
+                                                description: Log levels
+                                                enum:
+                                                  - TRACE
+                                                  - DEBUG
+                                                  - INFO
+                                                  - WARN
+                                                  - ERROR
+                                                  - FATAL
+                                                  - NONE
+                                                nullable: true
+                                                type: string
+                                            type: object
+                                          default: {}
+                                          type: object
+                                      type: object
+                                    type: object
+                                  enableVectorAgent:
+                                    nullable: true
+                                    type: boolean
+                                type: object
                               myidOffset:
                                 format: uint16
                                 minimum: 0.0
                                 nullable: true
                                 type: integer
                               resources:
-                                nullable: true
+                                default:
+                                  memory:
+                                    limit: null
+                                    runtimeLimits: {}
+                                  cpu:
+                                    min: null
+                                    max: null
+                                  storage:
+                                    data:
+                                      capacity: null
                                 properties:
                                   cpu:
                                     default:
@@ -581,13 +815,11 @@ spec:
                     - roleGroups
                   type: object
                 stopped:
-                  description: Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would)
+                  description: Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would).
                   nullable: true
                   type: boolean
-                version:
-                  description: Desired ZooKeeper version
-                  nullable: true
-                  type: string
+              required:
+                - image
               type: object
             status:
               nullable: true
