@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Updated stackable image versions ([#586]).
 - Operator-rs: 0.25.3 -> 0.27.1 ([#591]).
 - Fixed bug where ZNode ConfigMaps were not created due to labeling issues ([#592]).
+- tokio-zookeeper: 0.1.3 -> 0.2.1 ([#593]).
 - Don't run init container as root and avoid chmod and chowning ([#603]).
 - Fixed the RoleGroup `selector`. It was not used before. ([#611]).
 - [BREAKING] Moved `spec.authentication`, `spec.tls` and `spec.logging` to `spec.clusterConfig`. Consolidated sub field names like `tls.client.secretClass` to `tls.serverSecretClass` ([#612]).
@@ -23,6 +24,7 @@ All notable changes to this project will be documented in this file.
 [#586]: https://github.com/stackabletech/zookeeper-operator/pull/586
 [#591]: https://github.com/stackabletech/zookeeper-operator/pull/591
 [#592]: https://github.com/stackabletech/zookeeper-operator/pull/592
+[#593]: https://github.com/stackabletech/zookeeper-operator/pull/593
 [#599]: https://github.com/stackabletech/zookeeper-operator/pull/599
 [#603]: https://github.com/stackabletech/zookeeper-operator/pull/603
 [#611]: https://github.com/stackabletech/zookeeper-operator/pull/611
