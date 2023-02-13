@@ -337,7 +337,6 @@ pub fn error_policy(
 }
 
 mod znode_mgmt {
-    use futures::compat::Future01CompatExt;
     use snafu::{OptionExt, ResultExt, Snafu};
     use std::{collections::VecDeque, net::SocketAddr};
     use tokio::net::lookup_host;
@@ -399,7 +398,6 @@ mod znode_mgmt {
             .next()
             .context(AddrResolutionSnafu { addr })?;
         let (zk, _) = ZooKeeper::connect(&addr)
-            .compat()
             .await
             .context(ConnectSnafu { addr })?;
         tracing::debug!("Connected to ZooKeeper");
@@ -411,7 +409,7 @@ mod znode_mgmt {
     pub async fn ensure_znode_exists(addr: &str, path: &str) -> Result<(), Error> {
         tracing::info!(znode = path, "Creating ZNode");
         let zk = connect(addr).await?;
-        let (_zk, create_res) = zk
+        let create_res = zk
             .create(
                 path,
                 vec![],
@@ -422,7 +420,6 @@ mod znode_mgmt {
                 }],
                 tokio_zookeeper::CreateMode::Persistent,
             )
-            .compat()
             .await
             .context(CreateZnodeProtocolSnafu { path })?;
         match create_res {
@@ -444,7 +441,7 @@ mod znode_mgmt {
     /// Returns `Ok` if the znode could not be found (for idempotence).
     pub async fn ensure_znode_missing(addr: &str, path: &str) -> Result<(), Error> {
         tracing::info!(znode = path, "Deleting ZNode");
-        let mut zk = connect(addr).await?;
+        let zk = connect(addr).await?;
         let mut queue = VecDeque::new();
         queue.push_front(path.to_string());
         while let Some(curr_path) = queue.pop_front() {
@@ -453,12 +450,10 @@ mod znode_mgmt {
                 ?queue,
                 "Deleting ZNode from queue"
             );
-            let (zk2, children) = zk
+            let children = zk
                 .get_children(&curr_path)
-                .compat()
                 .await
                 .context(DeleteZnodeFindChildrenProtocolSnafu { path: &curr_path })?;
-            zk = zk2;
             match children {
                 None => {
                     tracing::warn!(
@@ -471,12 +466,10 @@ mod znode_mgmt {
                         znode = curr_path.as_str(),
                         "ZNode has no children, deleting..."
                     );
-                    let (zk2, delete_res) = zk
+                    let delete_res = zk
                         .delete(&curr_path, None)
-                        .compat()
                         .await
                         .context(DeleteZnodeProtocolSnafu { path: &curr_path })?;
-                    zk = zk2;
                     match delete_res {
                         Ok(_) => tracing::info!(znode = curr_path.as_str(), "Deleted ZNode"),
                         Err(tokio_zookeeper::error::Delete::NoNode) => tracing::info!(
