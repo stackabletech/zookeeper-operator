@@ -1,0 +1,23 @@
+= Getting started
+
+This guide will get you started with Apache ZooKeeper using the Stackable Operator. It will guide you through the installation of the Operator and its dependencies, setting up your first ZooKeeper cluster and connecting to it as well as setting up your first xref:znodes.adoc[ZNode].
+
+== Prerequisites
+
+You will need:
+
+* a Kubernetes cluster
+* kubectl
+* optional: Helm
+
+Resource sizing depends on cluster type(s), usage and scope, but as a starting point we recommend a minimum of the following resources for this operator:
+
+* 0.2 cores (e.g. i5 or similar)
+* 256MB RAM
+
+== What's next
+
+The Guide is divided into two steps:
+
+* xref:getting_started/installation.adoc[Installing the Operators].
+* xref:getting_started/first_steps.adoc[Setting up the ZooKeeper cluster].

@@ -6,9 +6,9 @@ Currently it is possible to configure a single form of authentication (of type T
 
 [source,yaml]
 ----
-include::example$example-cluster-tls-authentication.yaml[]
-include::example$example-cluster-tls-authentication-class.yaml[]
-include::example$example-cluster-tls-authentication-secret.yaml[]
+include::example$usage_guide/example-cluster-tls-authentication.yaml[]
+include::example$usage_guide/example-cluster-tls-authentication-class.yaml[]
+include::example$usage_guide/example-cluster-tls-authentication-secret.yaml[]
 ----
 <1> The `clusterConfig.authentication.authenticationClass` can be set to use TLS for authentication. This is optional.
 <2> The referenced `AuthenticationClass` that references a `SecretClass` to provide certificates.
