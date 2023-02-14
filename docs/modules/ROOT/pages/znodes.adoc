@@ -17,7 +17,7 @@ CAUTION: The operator automatically deletes the ZNode from the ZooKeeper cluster
 
 The `ZookeeperZnode` object should be created by the user administering the system that will use the ZNode. For example,
 when using Apache ZooKeeper to manage an Apache Kafka cluster, the `ZookeeperZnode` object would be created by the user
-creating the xref:kafka::configuration.adoc[`KafkaCluster`] object.
+creating the xref:0.8@kafka::configuration.adoc[`KafkaCluster`] object.
 
 A basic ZNode can be created like so:
 
