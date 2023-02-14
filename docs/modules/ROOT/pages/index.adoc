@@ -1,0 +1,3 @@
+= Stackable Operator for Apache ZooKeeper
+
+The docs can now be found at: xref:home:zookeeper:index.adoc[]
