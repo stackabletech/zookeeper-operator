@@ -1,19 +1,19 @@
----
-kind: Namespace
-apiVersion: v1
-metadata:
-  name: stackable-operators
-  labels:
-    name: stackable-operators
+#---
+#kind: Namespace
+#apiVersion: v1
+#metadata:
+#  name: stackable-operators
+#  labels:
+#    name: stackable-operators
 ---
 apiVersion: operators.coreos.com/v1alpha1
 kind: CatalogSource
 metadata:
-  name: zookeeper-operator-catalog
+  name: stackable-operators-catalog
   namespace: stackable-operators
 spec:
   sourceType: grpc
-  image: docker.stackable.tech/stackable/zookeeper-operator-catalog:latest
+  image: docker.stackable.tech/sandbox/test/stackable-operators-catalog:23.1.0
   displayName: Stackable Catalog
   publisher: Stackable GmbH
   updateStrategy:

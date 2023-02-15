@@ -2,5 +2,5 @@
 apiVersion: operators.coreos.com/v1
 kind: OperatorGroup
 metadata:
-  name: zookeeper-operator-group
+  name: stackable-operators-group
   namespace: stackable-operators

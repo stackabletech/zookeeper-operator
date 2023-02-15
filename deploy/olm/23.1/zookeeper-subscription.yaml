@@ -1,0 +1,12 @@
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: stackable-subscription
+  namespace: stackable-operators
+spec:
+  channel: preview
+  name: stackable-operators
+  source: stackable-operators-catalog
+  sourceNamespace: stackable-operators
+  installPlanApproval: Automatic
