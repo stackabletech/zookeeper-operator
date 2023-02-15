@@ -15,8 +15,14 @@
 # the operator installs even when the source namespace doesn't match in subscription.yaml
 # the catalog-source deploys the operator w/o the subscription?
 # Tasks:
-#   - try crds.yaml instead of individual files
-#   -
+#   - regenerate charts and then split crds.yaml instead of individual files
+#   - 23.1.0 --> 23.4.0-rc0
+#   - manually prepare a bundle for common and add it to the catalog and see what happens with the subscription
+#   - does deleting the operator also clean up the crds? (no)
+#   - split script into:
+#         prepare operator bundle (operator code: make regenerate-opm)
+#         one-off for catalog (stackable-utils)
+#         packaging for all operators (stackable-utils, iterating over all operators)
 
 set -euo pipefail
 set -x
@@ -80,7 +86,7 @@ main() {
   kubectl apply -f operator-group.yaml
 
   # iterate over operator list to deploy
-  kubectl apply -f zookeeper-subscription.yaml
+  kubectl apply -f stackable-subscription.yaml
 
   echo "Deployment successful!"
 }
