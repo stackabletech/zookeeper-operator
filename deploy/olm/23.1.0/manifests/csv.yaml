@@ -37,7 +37,7 @@ spec:
       type: SingleNamespace
     - supported: false
       type: MultiNamespace
-    - supported: true
+    - supported: false
       type: AllNamespaces
 
   customresourcedefinitions:
@@ -184,6 +184,14 @@ spec:
                 - zookeeperclusters/status
               verbs:
                 - patch
+            - apiGroups:
+                - security.openshift.io
+              resources:
+                - securitycontextconstraints
+              resourceNames:
+                - hostmount-anyuid
+              verbs:
+                - use
 
       deployments:
         - name: zookeeper-operator
