@@ -32,15 +32,20 @@ main() {
 
   # operator-specific, linked to an operator package
   # done each and every time a new release is built
+
+  if [ -d "bundle" ]; then
+    rm -rf bundle
+  fi
+
+  # zookeeper
   opm alpha bundle generate --directory manifests \
-  --package stackable-operators --output-dir bundle \
+  --package zookeeper-operator-package --output-dir bundle \
   --channels stable --default stable
 
   docker build -t "docker.stackable.tech/sandbox/test/zookeeper-operator-bundle:${VERSION}" -f bundle.Dockerfile .
   docker push "docker.stackable.tech/sandbox/test/zookeeper-operator-bundle:${VERSION}"
 
   opm alpha bundle validate --tag "docker.stackable.tech/sandbox/test/zookeeper-operator-bundle:${VERSION}" --image-builder docker
-
 
   echo "Creating Dockerfile..."
   if [ -d "catalog" ]; then
@@ -53,27 +58,42 @@ main() {
   opm generate dockerfile catalog
 
   # operator package: create/init
-  echo "Initiating package..."
-  opm init stackable-operators \
-      --default-channel=preview \
+  echo "Initiating packages..."
+  opm init zookeeper-operator-package \
+      --default-channel=stable \
       --description=./README.md \
-      --output yaml > catalog/stackable-operators.yaml
+      --output yaml > catalog/zookeeper-operator-package.yaml
+
+  opm init commons-operator-package \
+      --default-channel=stable \
+      --description=./README.md \
+      --output yaml > catalog/commons-operator-package.yaml
 
   # operator added to operator package: iterate over operator list
   {
     echo "---"
     echo "schema: olm.channel"
-    echo "package: stackable-operators"
-    echo "name: preview"
-    echo "entries: "
+    echo "package: zookeeper-operator-package"
+    echo "name: stable"
+    echo "entries:"
     echo "- name: zookeeper-operator.v${VERSION}"
-  } >> catalog/stackable-operators.yaml
+  } >> catalog/zookeeper-operator-package.yaml
+
+  {
+    echo "---"
+    echo "schema: olm.channel"
+    echo "package: commons-operator-package"
+    echo "name: stable"
+    echo "entries:"
+    echo "- name: commons-operator.v${VERSION}"
+  } >> catalog/commons-operator-package.yaml
 
   # iterate over operator(-bundle) list
   echo "Rendering operator..."
-  opm render "docker.stackable.tech/sandbox/test/zookeeper-operator-bundle:${VERSION}" --output=yaml >> catalog/stackable-operators.yaml
+  opm render "docker.stackable.tech/sandbox/test/zookeeper-operator-bundle:${VERSION}" --output=yaml >> catalog/zookeeper-operator-package.yaml
+  opm render "docker.stackable.tech/sandbox/test/commons-operator-bundle:${VERSION}" --output=yaml >> catalog/commons-operator-package.yaml
 
-  echo "Validating catalog..."
+  echo "Validating catalog..." # catalog --> package --> channel - 1:1 -> bundle (operator artefact e.g. 23.1.0 of zk etc.)
   opm validate catalog
 
   # build catalog for all operators
@@ -86,7 +106,8 @@ main() {
   kubectl apply -f operator-group.yaml
 
   # iterate over operator list to deploy
-  kubectl apply -f stackable-subscription.yaml
+  #kubectl apply -f zookeeper-subscription.yaml
+  #kubectl apply -f commons-subscription.yaml
 
   echo "Deployment successful!"
 }
