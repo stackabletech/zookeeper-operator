@@ -33,6 +33,8 @@ main() {
   # operator-specific, linked to an operator package
   # done each and every time a new release is built
 
+  kubectl apply -f scc.yaml
+
   if [ -d "bundle" ]; then
     rm -rf bundle
   fi
