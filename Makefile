@@ -76,3 +76,17 @@ publish: build docker-publish helm-publish
 
 run-dev:
 	nix run -f. tilt -- up --port 5444
+
+bundle-clean:
+	rm -rf "deploy/olm/23.1.0/bundle"
+	rm -rf "deploy/olm/23.1.0/bundle.Dockerfile"
+
+build-bundle:
+	pushd deploy/olm/23.1.0/ && \
+	opm alpha bundle generate --directory manifests --package ${OPERATOR_NAME}-package --output-dir bundle --channels stable --default stable && \
+  	docker build -t "docker.stackable.tech/stackable/${OPERATOR_NAME}-bundle:23.1.0" -f bundle.Dockerfile . && \
+  	docker push "docker.stackable.tech/stackable/${OPERATOR_NAME}-bundle:23.1.0" && \
+  	opm alpha bundle validate --tag "docker.stackable.tech/stackable/${OPERATOR_NAME}-bundle:23.1.0" --image-builder docker && \
+  	popd
+
+regenerate-bundle: bundle-clean build-bundle

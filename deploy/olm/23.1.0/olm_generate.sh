@@ -30,25 +30,6 @@ set -x
 main() {
   VERSION="$1";
 
-  # operator-specific, linked to an operator package
-  # done each and every time a new release is built
-
-  kubectl apply -f scc.yaml
-
-  if [ -d "bundle" ]; then
-    rm -rf bundle
-  fi
-
-  # zookeeper
-  opm alpha bundle generate --directory manifests \
-  --package zookeeper-operator-package --output-dir bundle \
-  --channels stable --default stable
-
-  docker build -t "docker.stackable.tech/sandbox/test/zookeeper-operator-bundle:${VERSION}" -f bundle.Dockerfile .
-  docker push "docker.stackable.tech/sandbox/test/zookeeper-operator-bundle:${VERSION}"
-
-  opm alpha bundle validate --tag "docker.stackable.tech/sandbox/test/zookeeper-operator-bundle:${VERSION}" --image-builder docker
-
   echo "Creating Dockerfile..."
   if [ -d "catalog" ]; then
     rm -rf catalog
