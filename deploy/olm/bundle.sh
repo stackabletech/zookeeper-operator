@@ -23,7 +23,7 @@ build-bundle() {
 main() {
   VERSION="$1";
 
-  pushd deploy/olm/${VERSION}
+  pushd "deploy/olm/${VERSION}"
   bundle-clean
   build-bundle
   popd
