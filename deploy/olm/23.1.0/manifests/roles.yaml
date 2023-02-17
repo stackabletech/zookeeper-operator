@@ -23,6 +23,6 @@ rules:
     resources:
       - securitycontextconstraints
     resourceNames:
-      - zookeeper-scc
+      - stackable-platform-scc
     verbs:
       - use

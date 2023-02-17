@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
+# usage: bundle.sh <release>, called from base folder:
+# e.g. ./deploy/olm/bundle.sh 23.1.0
 
 set -euo pipefail
 set -x
 
 OPERATOR_NAME="zookeeper-operator"
-VERSION="23.1.0"
 
 bundle-clean() {
 	rm -rf "deploy/olm/${VERSION}/bundle"
@@ -20,6 +21,8 @@ build-bundle() {
 }
 
 main() {
+  VERSION="$1";
+
   pushd deploy/olm/${VERSION}
   bundle-clean
   build-bundle
