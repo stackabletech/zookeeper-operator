@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Generate OLM bundle ([#645])
+
+[#645]: https://github.com/stackabletech/commons-operator/pull/645
+
+## [23.1.0] - 2023-01-23
+
+### Added
+
 - Log aggregation added ([#588]).
 
 [#588]: https://github.com/stackabletech/zookeeper-operator/pull/588
