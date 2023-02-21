@@ -23,6 +23,6 @@ rules:
     resources:
       - securitycontextconstraints
     resourceNames:
-      - hostmount-anyuid
+      - stackable-platform-scc
     verbs:
       - use
