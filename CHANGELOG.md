@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 - Don't run init container as root and avoid chmod and chowning ([#603]).
 - Fixed the RoleGroup `selector`. It was not used before. ([#611]).
 - [BREAKING] Moved `spec.authentication`, `spec.tls` and `spec.logging` to `spec.clusterConfig`. Consolidated sub field names like `tls.client.secretClass` to `tls.serverSecretClass` ([#612]).
+- Changes to be compatible with crate2nix ([#647]).
 
 [#586]: https://github.com/stackabletech/zookeeper-operator/pull/586
 [#591]: https://github.com/stackabletech/zookeeper-operator/pull/591
@@ -37,6 +38,7 @@ All notable changes to this project will be documented in this file.
 [#603]: https://github.com/stackabletech/zookeeper-operator/pull/603
 [#611]: https://github.com/stackabletech/zookeeper-operator/pull/611
 [#612]: https://github.com/stackabletech/zookeeper-operator/pull/612
+[#647]: https://github.com/stackabletech/zookeeper-operator/pull/647
 
 ## [0.12.0] - 2022-11-07
 
