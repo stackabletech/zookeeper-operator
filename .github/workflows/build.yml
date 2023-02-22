@@ -285,6 +285,8 @@ jobs:
       NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
       HELM_REPO: ${{ needs.select_helm_repo.outputs.helm_repository }}
     if: needs.select_helm_repo.outputs.helm_repository != 'skip'
+    outputs:
+      IMAGE_TAG: ${{ steps.printtag.outputs.IMAGE_TAG }}
     steps:
       - name: Install protoc
         run: |
@@ -316,7 +318,8 @@ jobs:
       # - name: Publish Docker image and Helm chart
       #   run: make -e publish
         # Output the name of the published image to the Job output for later use
-      - name: Output image name and tag
+      - id: printtag
+        name: Output image name and tag
         run: echo "IMAGE_TAG=$(make -e print-docker-tag)" >> $GITHUB_OUTPUT
   openshift_preflight:
     name: Run the OpenShift Preflight check on the published images
