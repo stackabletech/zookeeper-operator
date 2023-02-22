@@ -20,14 +20,12 @@ use stackable_operator::{
     },
     config::{fragment, fragment::Fragment, fragment::ValidationError, merge::Merge},
     crd::ClusterRef,
-    error::OperatorResult,
     k8s_openapi::{
         api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
         apimachinery::pkg::api::resource::Quantity,
     },
     kube::{runtime::reflector::ObjectRef, CustomResource, ResourceExt},
-    memory::to_java_heap_value,
-    memory::BinaryMultiple,
+    memory::{BinaryMultiple, MemoryQuantity},
     product_config_utils::{ConfigError, Configuration},
     product_logging::{self, spec::Logging},
     role_utils::{Role, RoleGroupRef},
@@ -72,6 +70,13 @@ pub enum Error {
     UnknownZookeeperRole { role: String, roles: Vec<String> },
     #[snafu(display("fragment validation failure"))]
     FragmentValidationFailure { source: ValidationError },
+    #[snafu(display("invalid java heap config - missing default or value in crd?"))]
+    InvalidJavaHeapConfig,
+    #[snafu(display("failed to convert java heap config to unit [{unit}]"))]
+    FailedToConvertJavaHeap {
+        source: stackable_operator::error::Error,
+        unit: String,
+    },
 }
 
 /// A cluster of ZooKeeper nodes
@@ -503,15 +508,26 @@ impl ZookeeperCluster {
         Ok((vec![data_pvc], resources.into()))
     }
 
-    pub fn heap_limits(&self, resources: &ResourceRequirements) -> OperatorResult<Option<u32>> {
-        resources
-            .limits
-            .as_ref()
-            .and_then(|limits| limits.get("memory"))
-            .map(|memory_limit| {
-                to_java_heap_value(memory_limit, JVM_HEAP_FACTOR, BinaryMultiple::Mebi)
-            })
-            .transpose()
+    pub fn heap_limits(&self, resources: &ResourceRequirements) -> Result<Option<String>, Error> {
+        let memory_limit = MemoryQuantity::try_from(
+            resources
+                .limits
+                .as_ref()
+                .and_then(|limits| limits.get("memory"))
+                .context(InvalidJavaHeapConfigSnafu)?,
+        )
+        .context(FailedToConvertJavaHeapSnafu {
+            unit: BinaryMultiple::Mebi.to_java_memory_unit(),
+        })?;
+
+        Ok(Some(
+            (memory_limit * JVM_HEAP_FACTOR)
+                .scale_to(BinaryMultiple::Mebi)
+                .format_for_java()
+                .context(FailedToConvertJavaHeapSnafu {
+                    unit: BinaryMultiple::Mebi.to_java_memory_unit(),
+                })?,
+        ))
     }
 }
 
@@ -592,10 +608,10 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec: 
+        spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"        
+            stackableVersion: "0.8.0"
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
@@ -615,7 +631,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"   
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-client-tls
@@ -639,7 +655,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"           
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               serverSecretClass: null
@@ -659,7 +675,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"           
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -682,10 +698,10 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec: 
+        spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"         
+            stackableVersion: "0.8.0"
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
 
@@ -706,7 +722,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"         
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -729,7 +745,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"    
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-server-tls

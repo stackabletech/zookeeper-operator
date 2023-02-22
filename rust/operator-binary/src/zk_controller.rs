@@ -139,7 +139,7 @@ pub enum Error {
     },
     #[snafu(display("invalid java heap config"))]
     InvalidJavaHeapConfig {
-        source: stackable_operator::error::Error,
+        source: stackable_zookeeper_crd::Error,
     },
     #[snafu(display("failed to create RBAC service account"))]
     ApplyServiceAccount {
@@ -636,7 +636,7 @@ fn build_server_rolegroup_statefulset(
     if let Some(heap_limits) = heap_limits {
         env_vars.push(EnvVar {
             name: ZookeeperConfig::ZK_SERVER_HEAP.to_string(),
-            value: Some(heap_limits.to_string()),
+            value: Some(heap_limits),
             ..EnvVar::default()
         });
     }

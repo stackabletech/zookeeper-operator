@@ -31,7 +31,6 @@ mod built_info {
     pub const TARGET_PLATFORM: Option<&str> = option_env!("TARGET");
 }
 
-
 #[derive(clap::Parser)]
 #[clap(about, author)]
 struct Opts {
