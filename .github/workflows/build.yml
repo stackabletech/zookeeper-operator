@@ -313,8 +313,8 @@ jobs:
       # Recreate charts and publish charts and docker image. The "-e" is needed as we want to override the
       # default value in the makefile if called from this action, but not otherwise (i.e. when called locally).
       # This is needed for the HELM_REPO variable.
-      - name: Publish Docker image and Helm chart
-        run: make -e publish
+      # - name: Publish Docker image and Helm chart
+      #   run: make -e publish
   openshift_preflight:
     name: Run the OpenShift Preflight check on the published images
     needs:
@@ -325,6 +325,9 @@ jobs:
       HELM_REPO: ${{ needs.select_helm_repo.outputs.helm_repository }}
     if: needs.select_helm_repo.outputs.helm_repository != 'skip'
     steps:
+      - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
+        with:
+          submodules: recursive
       - name: Install preflight
         run: |
           wget https://github.com/redhat-openshift-ecosystem/openshift-preflight/releases/latest/download/preflight-linux-amd64
