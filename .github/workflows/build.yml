@@ -341,4 +341,11 @@ jobs:
           mv preflight-linux-amd64 preflight
           chmod +x preflight
       - name: Check container
-        run: ./preflight check container $IMAGE_TAG
+        run: ./preflight check container $IMAGE_TAG > preflight.out
+      - name: Extract passed status from preflight JSON result
+        uses: sergeysova/jq-action@v2
+        id: passed
+        with:
+          cmd: 'jq .passed preflight.out -r'
+      - name: Passed?
+        run: '[ ${{ steps.passed.outputs.value }} == true ]'
