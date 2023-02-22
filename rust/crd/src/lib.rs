@@ -36,8 +36,8 @@ use stackable_operator::{
 use std::collections::BTreeMap;
 use strum::{Display, EnumIter, EnumString};
 
-const APP_NAME: &str = "zookeeper";
-const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
+pub const APP_NAME: &str = "zookeeper";
+pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 
@@ -166,7 +166,7 @@ pub struct ZookeeperConfig {
     pub affinity: StackableAffinity,
 }
 
-#[Derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
+#[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
 #[fragment_attrs(
     derive(
         Clone,

@@ -581,12 +581,6 @@ dependencies = [
 
 [[package]]
 name = "futures"
-version = "0.1.31"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a471a38ef8ed83cd6e40aa59c1ffe17db6855c18e3604d9c4ed8c08ebc28678"
-
-[[package]]
-name = "futures"
 version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13e2792b0ff0340399d58445b88fd9770e3489eff258a4cbc1523418f12abf84"
@@ -662,7 +656,6 @@ version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c1d6de3acfef38d2be4b1f543f553131788603495be83da675e180c8d6b7bd1"
 dependencies = [
- "futures 0.1.31",
  "futures-channel",
  "futures-core",
  "futures-io",
@@ -1009,7 +1002,7 @@ dependencies = [
  "chrono",
  "dirs-next",
  "either",
- "futures 0.3.26",
+ "futures",
  "http",
  "http-body",
  "hyper",
@@ -1073,7 +1066,7 @@ dependencies = [
  "ahash",
  "backoff",
  "derivative",
- "futures 0.3.26",
+ "futures",
  "json-patch",
  "k8s-openapi",
  "kube-client",
@@ -1319,7 +1312,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e785d273968748578931e4dc3b4f5ec86b26e09d9e0d66b55adda7fce742f7a"
 dependencies = [
  "async-trait",
- "futures 0.3.26",
+ "futures",
  "futures-executor",
  "once_cell",
  "opentelemetry",
@@ -1868,7 +1861,7 @@ dependencies = [
  "const_format",
  "derivative",
  "either",
- "futures 0.3.26",
+ "futures",
  "json-patch",
  "k8s-openapi",
  "kube",
@@ -1924,7 +1917,7 @@ dependencies = [
  "clap",
  "failure",
  "fnv",
- "futures 0.3.26",
+ "futures",
  "pin-project",
  "semver",
  "serde",
@@ -2152,7 +2145,7 @@ dependencies = [
  "async-trait",
  "byteorder",
  "failure",
- "futures 0.3.26",
+ "futures",
  "once_cell",
  "pin-project",
  "slog",
