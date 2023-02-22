@@ -36,7 +36,7 @@ docker-publish:
 docker: docker-build docker-publish
 
 print-docker-tag:
-	echo "${DOCKER_REPO}/${ORGANIZATION}/${OPERATOR_NAME}:${VERSION}"
+	@echo "${DOCKER_REPO}/${ORGANIZATION}/${OPERATOR_NAME}:${VERSION}"
 
 helm-publish:
 	curl --fail -u "github:${NEXUS_PASSWORD}" --upload-file "${HELM_CHART_ARTIFACT}" "${HELM_REPO}/"
