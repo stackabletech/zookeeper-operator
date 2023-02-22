@@ -310,11 +310,14 @@ jobs:
         if: ${{ github.event_name == 'pull_request' }}
         run: python/cargo_version.py -m pr${{ github.event.pull_request.number }}
 
-      # Recreate charts and publish charts and docker image. The "-e" is needed as we want to override the
-      # default value in the makefile if called from this action, but not otherwise (i.e. when called locally).
-      # This is needed for the HELM_REPO variable.
+        # Recreate charts and publish charts and docker image. The "-e" is needed as we want to override the
+        # default value in the makefile if called from this action, but not otherwise (i.e. when called locally).
+        # This is needed for the HELM_REPO variable.
       # - name: Publish Docker image and Helm chart
       #   run: make -e publish
+        # Output the name of the published image to the Job output for later use
+      - name: Output image name and tag
+        run: echo "IMAGE_TAG=$(make -e print-docker-tag)" >> $GITHUB_OUTPUT
   openshift_preflight:
     name: Run the OpenShift Preflight check on the published images
     needs:
@@ -323,6 +326,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HELM_REPO: ${{ needs.select_helm_repo.outputs.helm_repository }}
+      IMAGE_TAG: ${{ needs.package_and_publish.outputs.IMAGE_TAG }}
     if: needs.select_helm_repo.outputs.helm_repository != 'skip'
     steps:
       - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
@@ -334,4 +338,4 @@ jobs:
           mv preflight-linux-amd64 preflight
           chmod +x preflight
       - name: Check container
-        run: ./preflight check container "$(make -e print-docker-tag)"
+        run: ./preflight check container $IMAGE_TAG
