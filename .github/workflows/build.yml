@@ -315,8 +315,8 @@ jobs:
         # Recreate charts and publish charts and docker image. The "-e" is needed as we want to override the
         # default value in the makefile if called from this action, but not otherwise (i.e. when called locally).
         # This is needed for the HELM_REPO variable.
-      # - name: Publish Docker image and Helm chart
-      #   run: make -e publish
+      - name: Publish Docker image and Helm chart
+        run: make -e publish
         # Output the name of the published image to the Job output for later use
       - id: printtag
         name: Output image name and tag
