@@ -1,3 +1,4 @@
+pub mod affinity;
 pub mod authentication;
 pub mod security;
 pub mod tls;
@@ -5,10 +6,12 @@ pub mod tls;
 use crate::authentication::ZookeeperAuthentication;
 use crate::tls::ZookeeperTls;
 
+use affinity::get_affinity;
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     commons::{
+        affinity::StackableAffinity,
         product_image_selection::ProductImage,
         resources::{
             CpuLimitsFragment, MemoryLimitsFragment, NoRuntimeLimits, NoRuntimeLimitsFragment,
@@ -22,7 +25,7 @@ use stackable_operator::{
         api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
         apimachinery::pkg::api::resource::Quantity,
     },
-    kube::{runtime::reflector::ObjectRef, CustomResource},
+    kube::{runtime::reflector::ObjectRef, CustomResource, ResourceExt},
     memory::to_java_heap_value,
     memory::BinaryMultiple,
     product_config_utils::{ConfigError, Configuration},
@@ -32,6 +35,9 @@ use stackable_operator::{
 };
 use std::collections::BTreeMap;
 use strum::{Display, EnumIter, EnumString};
+
+const APP_NAME: &str = "zookeeper";
+const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 
@@ -156,9 +162,11 @@ pub struct ZookeeperConfig {
     pub resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits>,
     #[fragment_attrs(serde(default))]
     pub logging: Logging<Container>,
+    #[fragment_attrs(serde(default))]
+    pub affinity: StackableAffinity,
 }
 
-#[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
+#[Derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
 #[fragment_attrs(
     derive(
         Clone,
@@ -207,7 +215,7 @@ impl ZookeeperConfig {
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
     pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
 
-    fn default_server_config() -> ZookeeperConfigFragment {
+    fn default_server_config(cluster_name: &str, role: &ZookeeperRole) -> ZookeeperConfigFragment {
         ZookeeperConfigFragment {
             init_limit: None,
             sync_limit: None,
@@ -231,6 +239,7 @@ impl ZookeeperConfig {
                 },
             },
             logging: product_logging::spec::default_logging(),
+            affinity: get_affinity(cluster_name, role),
         }
     }
 }
@@ -260,7 +269,11 @@ impl Configuration for ZookeeperConfigFragment {
             (
                 ZookeeperConfig::MYID_OFFSET.to_string(),
                 self.myid_offset
-                    .or(ZookeeperConfig::default_server_config().myid_offset)
+                    .or(ZookeeperConfig::default_server_config(
+                        &resource.name_any(),
+                        &ZookeeperRole::Server,
+                    )
+                    .myid_offset)
                     .map(|myid_offset| myid_offset.to_string()),
             ),
             (
@@ -424,7 +437,7 @@ impl ZookeeperCluster {
         rolegroup_ref: &RoleGroupRef<Self>,
     ) -> Result<ZookeeperConfig, Error> {
         // Initialize the result with all default values as baseline
-        let conf_defaults = ZookeeperConfig::default_server_config();
+        let conf_defaults = ZookeeperConfig::default_server_config(&self.name_any(), role);
 
         let role = match role {
             ZookeeperRole::Server => {

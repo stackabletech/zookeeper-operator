@@ -23,7 +23,7 @@ use stackable_operator::{
     logging::controller::report_controller_reconciled,
     CustomResourceExt,
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode};
+use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
 use std::sync::Arc;
 
 mod built_info {
@@ -31,8 +31,6 @@ mod built_info {
     pub const TARGET_PLATFORM: Option<&str> = option_env!("TARGET");
 }
 
-const APP_NAME: &str = "zookeeper";
-const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 
 #[derive(clap::Parser)]
 #[clap(about, author)]
