@@ -23,7 +23,7 @@ RUN microdnf install -y yum \
   && yum clean all \
   && microdnf clean all
 
-COPY LICENSE /licenses/LICENSE
+# COPY LICENSE /licenses/LICENSE
 
 COPY --from=builder /app/stackable-zookeeper-operator /
 COPY deploy/config-spec/properties.yaml /etc/stackable/zookeeper-operator/config-spec/properties.yaml
