@@ -331,4 +331,4 @@ jobs:
           mv preflight-linux-amd64 preflight
           chmod +x preflight
       - name: Check container
-        run: ./preflight check container $(make -e print-docker-tag)
+        run: ./preflight check container "$(make -e print-docker-tag)"
