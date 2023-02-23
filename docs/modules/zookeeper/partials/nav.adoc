@@ -2,6 +2,7 @@
 ** xref:zookeeper:getting_started/installation.adoc[]
 ** xref:zookeeper:getting_started/first_steps.adoc[]
 * xref:zookeeper:configuration.adoc[]
+* xref:zookeeper:pod_placement.adoc[]
 * Concepts
 ** xref:zookeeper:znodes.adoc[]
 ** xref:zookeeper:discovery.adoc[]

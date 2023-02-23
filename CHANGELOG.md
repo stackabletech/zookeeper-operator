@@ -8,7 +8,12 @@ All notable changes to this project will be documented in this file.
 
 - Generate OLM bundle ([#645])
 
-[#645]: https://github.com/stackabletech/commons-operator/pull/645
+### Changed
+
+- Deploy default and support custom affinities ([#649]).
+
+[#645]: https://github.com/stackabletech/zookeeper-operator/pull/645
+[#649]: https://github.com/stackabletech/zookeeper-operator/pull/649
 
 ## [23.1.0] - 2023-01-23
 

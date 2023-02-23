@@ -118,6 +118,7 @@ pub fn extend_role_group_config_map(
                         MAX_ZK_LOG_FILES_SIZE_IN_MIB,
                         CONSOLE_CONVERSION_PATTERN,
                         log_config,
+                        None,
                     ),
                 );
             }

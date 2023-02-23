@@ -1,3 +1,4 @@
+pub mod affinity;
 pub mod authentication;
 pub mod security;
 pub mod tls;
@@ -5,10 +6,12 @@ pub mod tls;
 use crate::authentication::ZookeeperAuthentication;
 use crate::tls::ZookeeperTls;
 
+use affinity::get_affinity;
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     commons::{
+        affinity::StackableAffinity,
         product_image_selection::ProductImage,
         resources::{
             CpuLimitsFragment, MemoryLimitsFragment, NoRuntimeLimits, NoRuntimeLimitsFragment,
@@ -17,21 +20,22 @@ use stackable_operator::{
     },
     config::{fragment, fragment::Fragment, fragment::ValidationError, merge::Merge},
     crd::ClusterRef,
-    error::OperatorResult,
     k8s_openapi::{
         api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
         apimachinery::pkg::api::resource::Quantity,
     },
-    kube::{runtime::reflector::ObjectRef, CustomResource},
-    memory::to_java_heap_value,
-    memory::BinaryMultiple,
+    kube::{runtime::reflector::ObjectRef, CustomResource, ResourceExt},
+    memory::{BinaryMultiple, MemoryQuantity},
     product_config_utils::{ConfigError, Configuration},
     product_logging::{self, spec::Logging},
-    role_utils::{Role, RoleGroupRef},
+    role_utils::{Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
 };
 use std::collections::BTreeMap;
 use strum::{Display, EnumIter, EnumString};
+
+pub const APP_NAME: &str = "zookeeper";
+pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 
@@ -66,6 +70,13 @@ pub enum Error {
     UnknownZookeeperRole { role: String, roles: Vec<String> },
     #[snafu(display("fragment validation failure"))]
     FragmentValidationFailure { source: ValidationError },
+    #[snafu(display("invalid java heap config - missing default or value in crd?"))]
+    InvalidJavaHeapConfig,
+    #[snafu(display("failed to convert java heap config to unit [{unit}]"))]
+    FailedToConvertJavaHeap {
+        source: stackable_operator::error::Error,
+        unit: String,
+    },
 }
 
 /// A cluster of ZooKeeper nodes
@@ -156,6 +167,8 @@ pub struct ZookeeperConfig {
     pub resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits>,
     #[fragment_attrs(serde(default))]
     pub logging: Logging<Container>,
+    #[fragment_attrs(serde(default))]
+    pub affinity: StackableAffinity,
 }
 
 #[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
@@ -207,7 +220,7 @@ impl ZookeeperConfig {
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
     pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
 
-    fn default_server_config() -> ZookeeperConfigFragment {
+    fn default_server_config(cluster_name: &str, role: &ZookeeperRole) -> ZookeeperConfigFragment {
         ZookeeperConfigFragment {
             init_limit: None,
             sync_limit: None,
@@ -231,6 +244,7 @@ impl ZookeeperConfig {
                 },
             },
             logging: product_logging::spec::default_logging(),
+            affinity: get_affinity(cluster_name, role),
         }
     }
 }
@@ -260,7 +274,11 @@ impl Configuration for ZookeeperConfigFragment {
             (
                 ZookeeperConfig::MYID_OFFSET.to_string(),
                 self.myid_offset
-                    .or(ZookeeperConfig::default_server_config().myid_offset)
+                    .or(ZookeeperConfig::default_server_config(
+                        &resource.name_any(),
+                        &ZookeeperRole::Server,
+                    )
+                    .myid_offset)
                     .map(|myid_offset| myid_offset.to_string()),
             ),
             (
@@ -424,7 +442,7 @@ impl ZookeeperCluster {
         rolegroup_ref: &RoleGroupRef<Self>,
     ) -> Result<ZookeeperConfig, Error> {
         // Initialize the result with all default values as baseline
-        let conf_defaults = ZookeeperConfig::default_server_config();
+        let conf_defaults = ZookeeperConfig::default_server_config(&self.name_any(), role);
 
         let role = match role {
             ZookeeperRole::Server => {
@@ -447,6 +465,17 @@ impl ZookeeperCluster {
             .get(&rolegroup_ref.role_group)
             .map(|rg| rg.config.config.clone())
             .unwrap_or_default();
+
+        if let Some(RoleGroup {
+            selector: Some(selector),
+            ..
+        }) = role.role_groups.get(&rolegroup_ref.role_group)
+        {
+            // Migrate old `selector` attribute, see ADR 26 affinities.
+            // TODO Can be removed after support for the old `selector` field is dropped.
+            #[allow(deprecated)]
+            conf_rolegroup.affinity.add_legacy_selector(selector);
+        }
 
         // Merge more specific configs into default config
         // Hierarchy is:
@@ -490,15 +519,26 @@ impl ZookeeperCluster {
         Ok((vec![data_pvc], resources.into()))
     }
 
-    pub fn heap_limits(&self, resources: &ResourceRequirements) -> OperatorResult<Option<u32>> {
-        resources
-            .limits
-            .as_ref()
-            .and_then(|limits| limits.get("memory"))
-            .map(|memory_limit| {
-                to_java_heap_value(memory_limit, JVM_HEAP_FACTOR, BinaryMultiple::Mebi)
-            })
-            .transpose()
+    pub fn heap_limits(&self, resources: &ResourceRequirements) -> Result<Option<String>, Error> {
+        let memory_limit = MemoryQuantity::try_from(
+            resources
+                .limits
+                .as_ref()
+                .and_then(|limits| limits.get("memory"))
+                .context(InvalidJavaHeapConfigSnafu)?,
+        )
+        .context(FailedToConvertJavaHeapSnafu {
+            unit: BinaryMultiple::Mebi.to_java_memory_unit(),
+        })?;
+
+        Ok(Some(
+            (memory_limit * JVM_HEAP_FACTOR)
+                .scale_to(BinaryMultiple::Mebi)
+                .format_for_java()
+                .context(FailedToConvertJavaHeapSnafu {
+                    unit: BinaryMultiple::Mebi.to_java_memory_unit(),
+                })?,
+        ))
     }
 }
 
@@ -579,10 +619,10 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec: 
+        spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"        
+            stackableVersion: "0.8.0"
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
@@ -602,7 +642,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"   
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-client-tls
@@ -626,7 +666,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"           
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               serverSecretClass: null
@@ -646,7 +686,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"           
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -669,10 +709,10 @@ mod tests {
         kind: ZookeeperCluster
         metadata:
           name: simple-zookeeper
-        spec: 
+        spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"         
+            stackableVersion: "0.8.0"
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
 
@@ -693,7 +733,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"         
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -716,7 +756,7 @@ mod tests {
         spec:
           image:
             productVersion: "3.8.0"
-            stackableVersion: "0.8.0"    
+            stackableVersion: "0.8.0"
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-server-tls

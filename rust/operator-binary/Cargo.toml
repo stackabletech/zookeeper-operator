@@ -13,7 +13,7 @@ anyhow = "1.0.58"
 clap = "4.0.26"
 failure = "0.1.8"
 fnv = "1.0.7"
-futures = { version = "0.3.21" }
+futures = { version = "0.3.26" }
 semver = "1.0.12"
 serde = "1.0.138"
 snafu = "0.7.1"
@@ -22,10 +22,10 @@ tokio = { version = "1.24.1", features = ["full"] }
 tokio-zookeeper = "0.2.1"
 tracing = "0.1.35"
 pin-project = "1.0.11"
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.30.2" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.36.0" }
 stackable-zookeeper-crd = { path = "../crd" }
 
 [build-dependencies]
 built = { version = "0.5.1", features = ["chrono", "git2"] }
-stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.30.2" }
+stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.36.0" }
 stackable-zookeeper-crd = { path = "../crd" }

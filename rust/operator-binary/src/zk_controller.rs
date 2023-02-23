@@ -139,7 +139,7 @@ pub enum Error {
     },
     #[snafu(display("invalid java heap config"))]
     InvalidJavaHeapConfig {
-        source: stackable_operator::error::Error,
+        source: stackable_zookeeper_crd::Error,
     },
     #[snafu(display("failed to create RBAC service account"))]
     ApplyServiceAccount {
@@ -165,6 +165,10 @@ pub enum Error {
     #[snafu(display("failed to initialize security context"))]
     FailedToInitializeSecurityContext {
         source: stackable_zookeeper_crd::security::Error,
+    },
+    #[snafu(display("failed to resolve and merge config for role and role group"))]
+    FailedToresolveConfig {
+        source: stackable_zookeeper_crd::Error,
     },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -199,6 +203,7 @@ impl ReconcilerError for Error {
             Error::ResolveVectorAggregatorAddress { .. } => None,
             Error::InvalidLoggingConfig { .. } => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
+            Error::FailedToresolveConfig { .. } => None,
         }
     }
 }
@@ -273,6 +278,9 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
 
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
+        let merged_config = zk
+            .merged_config(&ZookeeperRole::Server, &rolegroup)
+            .context(FailedToresolveConfigSnafu)?;
 
         let rg_service = build_server_rolegroup_service(
             &zk,
@@ -294,6 +302,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             rolegroup_config,
             &zookeeper_security,
             &resolved_product_image,
+            &merged_config,
         )?;
         cluster_resources
             .add(client, &rg_service)
@@ -588,6 +597,7 @@ fn build_server_rolegroup_statefulset(
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
+    config: &ZookeeperConfig,
 ) -> Result<StatefulSet> {
     let zk_role =
         ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| RoleParseFailureSnafu {
@@ -626,7 +636,7 @@ fn build_server_rolegroup_statefulset(
     if let Some(heap_limits) = heap_limits {
         env_vars.push(EnvVar {
             name: ZookeeperConfig::ZK_SERVER_HEAP.to_string(),
-            value: Some(heap_limits.to_string()),
+            value: Some(heap_limits),
             ..EnvVar::default()
         });
     }
@@ -728,7 +738,7 @@ fn build_server_rolegroup_statefulset(
         .image_pull_secrets_from_product_image(resolved_product_image)
         .add_init_container(container_prepare)
         .add_container(container_zk)
-        .node_selector_opt(rolegroup.and_then(|rg| rg.selector.clone()))
+        .affinity(&config.affinity)
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
