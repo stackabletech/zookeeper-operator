@@ -29,17 +29,18 @@ mod tests {
 
     use stackable_operator::{
         commons::affinity::{StackableAffinity, StackableNodeSelector},
-        config::fragment::validate,
-        k8s_openapi::api::core::v1::{
-            NodeAffinity, NodeSelector, NodeSelectorRequirement, NodeSelectorTerm,
+        k8s_openapi::{
+            api::core::v1::{
+                NodeAffinity, NodeSelector, NodeSelectorRequirement, NodeSelectorTerm,
+                PodAffinityTerm, PodAntiAffinity, WeightedPodAffinityTerm,
+            },
+            apimachinery::pkg::apis::meta::v1::LabelSelector,
         },
         kube::runtime::reflector::ObjectRef,
         role_utils::RoleGroupRef,
     };
 
     use crate::{ZookeeperCluster, ZookeeperRole};
-
-    use super::get_affinity;
 
     #[test]
     fn test_affinity_defaults() {
@@ -71,8 +72,42 @@ mod tests {
             role_group: "default".to_string(),
         };
 
-        let expected: StackableAffinity =
-            validate(get_affinity("simple-zk", &ZookeeperRole::Server)).unwrap();
+        let expected: StackableAffinity = StackableAffinity {
+            pod_affinity: None,
+            pod_anti_affinity: Some(PodAntiAffinity {
+                required_during_scheduling_ignored_during_execution: None,
+                preferred_during_scheduling_ignored_during_execution: Some(vec![
+                    WeightedPodAffinityTerm {
+                        pod_affinity_term: PodAffinityTerm {
+                            label_selector: Some(LabelSelector {
+                                match_expressions: None,
+                                match_labels: Some(BTreeMap::from([
+                                    (
+                                        "app.kubernetes.io/name".to_string(),
+                                        "zookeeper".to_string(),
+                                    ),
+                                    (
+                                        "app.kubernetes.io/instance".to_string(),
+                                        "simple-zk".to_string(),
+                                    ),
+                                    (
+                                        "app.kubernetes.io/component".to_string(),
+                                        "server".to_string(),
+                                    ),
+                                ])),
+                            }),
+                            namespace_selector: None,
+                            namespaces: None,
+                            topology_key: "kubernetes.io/hostname".to_string(),
+                        },
+                        weight: 70,
+                    },
+                ]),
+            }),
+
+            node_affinity: None,
+            node_selector: None,
+        };
 
         let affinity = zk
             .merged_config(&ZookeeperRole::Server, &rolegroup_ref)
@@ -136,7 +171,37 @@ mod tests {
             node_selector: Some(StackableNodeSelector {
                 node_selector: BTreeMap::from([("disktype".to_string(), "ssd".to_string())]),
             }),
-            ..validate(get_affinity("simple-zk", &ZookeeperRole::Server)).unwrap()
+            pod_affinity: None,
+            pod_anti_affinity: Some(PodAntiAffinity {
+                required_during_scheduling_ignored_during_execution: None,
+                preferred_during_scheduling_ignored_during_execution: Some(vec![
+                    WeightedPodAffinityTerm {
+                        pod_affinity_term: PodAffinityTerm {
+                            label_selector: Some(LabelSelector {
+                                match_expressions: None,
+                                match_labels: Some(BTreeMap::from([
+                                    (
+                                        "app.kubernetes.io/name".to_string(),
+                                        "zookeeper".to_string(),
+                                    ),
+                                    (
+                                        "app.kubernetes.io/instance".to_string(),
+                                        "simple-zk".to_string(),
+                                    ),
+                                    (
+                                        "app.kubernetes.io/component".to_string(),
+                                        "server".to_string(),
+                                    ),
+                                ])),
+                            }),
+                            namespace_selector: None,
+                            namespaces: None,
+                            topology_key: "kubernetes.io/hostname".to_string(),
+                        },
+                        weight: 70,
+                    },
+                ]),
+            }),
         };
 
         let rolegroup_ref = RoleGroupRef {
