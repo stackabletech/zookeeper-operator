@@ -1,5 +1,7 @@
 = Pod Placement
 
-You can configure Pod placement for HDFS nodes as described in xref:concepts:pod_placement.adoc[].
+You can configure the Pod placement of the Zookeeper pods as described in xref:concepts:pod_placement.adoc[].
 
-By default, the operator spreads out Apache Zookeeper Pods across cluster nodes.
+The default affinities created by the operator are:
+
+1. Distribute all the Zookeeper Pods (weight 70)
