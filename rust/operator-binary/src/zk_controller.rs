@@ -636,7 +636,7 @@ fn build_server_rolegroup_statefulset(
     if let Some(heap_limits) = heap_limits {
         env_vars.push(EnvVar {
             name: ZookeeperConfig::ZK_SERVER_HEAP.to_string(),
-            value: Some(heap_limits),
+            value: Some(heap_limits.to_string()),
             ..EnvVar::default()
         });
     }
