@@ -12,8 +12,13 @@ All notable changes to this project will be documented in this file.
 
 - Deploy default and support custom affinities ([#649]).
 
+### Fixed
+
+- Bugfix: java heap format ([#651])
+
 [#645]: https://github.com/stackabletech/zookeeper-operator/pull/645
 [#649]: https://github.com/stackabletech/zookeeper-operator/pull/649
+[#651]: https://github.com/stackabletech/zookeeper-operator/pull/651
 
 ## [23.1.0] - 2023-01-23
 
