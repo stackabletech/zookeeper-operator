@@ -519,7 +519,7 @@ impl ZookeeperCluster {
         Ok((vec![data_pvc], resources.into()))
     }
 
-    pub fn heap_limits(&self, resources: &ResourceRequirements) -> Result<Option<String>, Error> {
+    pub fn heap_limits(&self, resources: &ResourceRequirements) -> Result<Option<u32>, Error> {
         let memory_limit = MemoryQuantity::try_from(
             resources
                 .limits
@@ -534,10 +534,8 @@ impl ZookeeperCluster {
         Ok(Some(
             (memory_limit * JVM_HEAP_FACTOR)
                 .scale_to(BinaryMultiple::Mebi)
-                .format_for_java()
-                .context(FailedToConvertJavaHeapSnafu {
-                    unit: BinaryMultiple::Mebi.to_java_memory_unit(),
-                })?,
+                .floor()
+                .value as u32,
         ))
     }
 }
