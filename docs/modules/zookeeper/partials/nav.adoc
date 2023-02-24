@@ -11,6 +11,7 @@
 ** xref:zookeeper:usage_guide/authentication.adoc[]
 ** xref:zookeeper:usage_guide/resource_configuration.adoc[]
 ** xref:zookeeper:usage_guide/monitoring.adoc[]
+** xref:zookeeper:usage_guide/log_aggregation.adoc[]
 ** xref:zookeeper:usage_guide/using_multiple_role_groups.adoc[]
 ** xref:zookeeper:usage_guide/isolating_clients_with_znodes.adoc[]
 ** xref:zookeeper:usage_guide/configuration_environment_overrides.adoc[]
