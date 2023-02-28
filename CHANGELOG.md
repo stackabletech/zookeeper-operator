@@ -15,10 +15,12 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Bugfix: java heap format ([#651])
+- Fixed operator error when creating the ZNode in a different namespace than the ZookeeperCluster ([#653])
 
 [#645]: https://github.com/stackabletech/zookeeper-operator/pull/645
 [#649]: https://github.com/stackabletech/zookeeper-operator/pull/649
 [#651]: https://github.com/stackabletech/zookeeper-operator/pull/651
+[#653]: https://github.com/stackabletech/zookeeper-operator/pull/653
 
 ## [23.1.0] - 2023-01-23
 
