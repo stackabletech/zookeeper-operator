@@ -5,7 +5,7 @@ use stackable_operator::{
     builder::{ConfigMapBuilder, ObjectMetaBuilder},
     commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
-    kube::{runtime::reflector::ObjectRef, Resource},
+    kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
 };
 use stackable_zookeeper_crd::security::ZookeeperSecurity;
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
@@ -57,12 +57,14 @@ pub async fn build_discovery_configmaps(
     resolved_product_image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<Vec<ConfigMap>, Error> {
-    let name = owner.meta().name.as_deref().context(NoNameSnafu)?;
+    let name = owner.name_unchecked();
+    let namespace = owner.namespace().context(NoNamespaceSnafu)?;
     Ok(vec![
         build_discovery_configmap(
             zk,
             owner,
-            name,
+            name.as_str(),
+            &namespace,
             controller_name,
             chroot,
             pod_hosts(zk, zookeeper_security)?,
@@ -72,6 +74,7 @@ pub async fn build_discovery_configmaps(
             zk,
             owner,
             &format!("{}-nodeport", name),
+            &namespace,
             controller_name,
             chroot,
             nodeport_hosts(client, svc, "zk").await?,
@@ -83,10 +86,12 @@ pub async fn build_discovery_configmaps(
 /// Build a discovery [`ConfigMap`] containing information about how to connect to a certain [`ZookeeperCluster`]
 ///
 /// `hosts` will usually come from either [`pod_hosts`] or [`nodeport_hosts`].
+#[allow(clippy::too_many_arguments)]
 fn build_discovery_configmap(
     zk: &ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
     name: &str,
+    namespace: &str,
     controller_name: &str,
     chroot: Option<&str>,
     hosts: impl IntoIterator<Item = (impl Into<String>, u16)>,
@@ -110,8 +115,8 @@ fn build_discovery_configmap(
     ConfigMapBuilder::new()
         .metadata(
             ObjectMetaBuilder::new()
-                .name_and_namespace(zk)
                 .name(name)
+                .namespace(namespace)
                 .ownerreference_from_resource(owner, None, Some(true))
                 .with_context(|_| ObjectMissingMetadataForOwnerRefSnafu {
                     zk: ObjectRef::from_obj(zk),
