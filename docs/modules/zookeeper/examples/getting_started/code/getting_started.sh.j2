@@ -50,13 +50,13 @@ echo "Creating ZooKeeper cluster"
 kubectl apply -f zookeeper.yaml
 # end::install-zookeeper[]
 
-sleep 5
+sleep 15
 
 ### Connect to cluster
 
 echo "Awaiting ZooKeeper rollout finish"
 # tag::watch-zookeeper-rollout[]
-kubectl rollout status --watch statefulset/simple-zk-server-default
+kubectl rollout status --watch --timeout=5m statefulset/simple-zk-server-default
 # end::watch-zookeeper-rollout[]
 
 # kubectl run sometimes misses log output, which is why we use run/logs/delete.
