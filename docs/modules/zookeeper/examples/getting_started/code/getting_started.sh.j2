@@ -20,6 +20,9 @@ echo "Adding 'stackable-dev' Helm Chart repository"
 # tag::helm-add-repo[]
 helm repo add {{ helm.repo_name }} {{ helm.repo_url }}
 # end::helm-add-repo[]
+echo "Updating Helm repo"
+helm repo update
+
 echo "Installing Operators with Helm"
 # tag::helm-install-operators[]
 helm install --wait commons-operator {{ helm.repo_name }}/commons-operator --version {{ versions.commons }}
@@ -47,13 +50,13 @@ echo "Creating ZooKeeper cluster"
 kubectl apply -f zookeeper.yaml
 # end::install-zookeeper[]
 
-sleep 5
+sleep 15
 
 ### Connect to cluster
 
 echo "Awaiting ZooKeeper rollout finish"
 # tag::watch-zookeeper-rollout[]
-kubectl rollout status --watch statefulset/simple-zk-server-default
+kubectl rollout status --watch --timeout=5m statefulset/simple-zk-server-default
 # end::watch-zookeeper-rollout[]
 
 # kubectl run sometimes misses log output, which is why we use run/logs/delete.

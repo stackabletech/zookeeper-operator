@@ -20,20 +20,23 @@ echo "Adding 'stackable-dev' Helm Chart repository"
 # tag::helm-add-repo[]
 helm repo add stackable-dev https://repo.stackable.tech/repository/helm-dev/
 # end::helm-add-repo[]
+echo "Updating Helm repo"
+helm repo update
+
 echo "Installing Operators with Helm"
 # tag::helm-install-operators[]
-helm install --wait commons-operator stackable-dev/commons-operator --version 0.5.0-nightly
-helm install --wait secret-operator stackable-dev/secret-operator --version 0.7.0-nightly
-helm install --wait zookeeper-operator stackable-dev/zookeeper-operator --version 0.13.0-nightly
+helm install --wait commons-operator stackable-dev/commons-operator --version 0.0.0-dev
+helm install --wait secret-operator stackable-dev/secret-operator --version 0.0.0-dev
+helm install --wait zookeeper-operator stackable-dev/zookeeper-operator --version 0.0.0-dev
 # end::helm-install-operators[]
 ;;
 "stackablectl")
 echo "installing Operators with stackablectl"
 # tag::stackablectl-install-operators[]
 stackablectl operator install \
-  commons=0.5.0-nightly \
-  secret=0.7.0-nightly \
-  zookeeper=0.13.0-nightly
+  commons=0.0.0-dev \
+  secret=0.0.0-dev \
+  zookeeper=0.0.0-dev
 # end::stackablectl-install-operators[]
 ;;
 *)
@@ -47,13 +50,13 @@ echo "Creating ZooKeeper cluster"
 kubectl apply -f zookeeper.yaml
 # end::install-zookeeper[]
 
-sleep 5
+sleep 15
 
 ### Connect to cluster
 
 echo "Awaiting ZooKeeper rollout finish"
 # tag::watch-zookeeper-rollout[]
-kubectl rollout status --watch statefulset/simple-zk-server-default
+kubectl rollout status --watch --timeout=5m statefulset/simple-zk-server-default
 # end::watch-zookeeper-rollout[]
 
 # kubectl run sometimes misses log output, which is why we use run/logs/delete.
