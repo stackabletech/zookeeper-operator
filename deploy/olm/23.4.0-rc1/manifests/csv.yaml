@@ -75,7 +75,9 @@ spec:
         # a short description of the CRDs purpose for rendering in graphical consoles (optional)
         description: Represents a Zookeeper node in a cluster
 
-
+  relatedImages:
+    - name: zookeeper-operator
+      image: docker.stackable.tech/stackable/zookeeper-operator:23.4.0-rc1
   install:
     # strategy indicates what type of deployment artifacts are used
     strategy: deployment
