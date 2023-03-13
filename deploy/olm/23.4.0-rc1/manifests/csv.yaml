@@ -16,7 +16,19 @@ spec:
     description: Apache Zookeeper for the Stackable platform
 
 
-  description: Stackable operator for Apache Zookeeper
+  description: |-
+    This is a Kubernetes operator to manage [Apache ZooKeeper](https://zookeeper.apache.org/) ensembles. The Stackable Apache ZooKeeper Operator
+    is part of the Stackable Data Platform, a curated selection of the best open source data apps like Kafka, Druid, Trino or Spark, all
+    working together seamlessly. Based on Kubernetes, it runs everywhere – on prem or in the cloud.
+
+    You can install the operator using [stackablectl or helm](https://docs.stackable.tech/zookeeper/stable/getting_started/installation.html).
+    See it in action in one of our [demos](https://stackable.tech/en/demos/) or follow this
+    [tutorial](https://docs.stackable.tech/zookeeper/stable/getting_started/first_steps.html).
+
+    N.B. this operator requires the following Stackable internal operators to be installed as well:
+
+    - [Commons Operator](https://github.com/stackabletech/commons-operator)
+    - [Secret Operator](https://github.com/stackabletech/secret-operator)
   displayName: Apache Zookeeper Operator
   keywords:
     - zookeeper
