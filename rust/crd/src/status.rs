@@ -6,7 +6,7 @@ use stackable_operator::k8s_openapi::{
             DaemonSet, DaemonSetStatus, Deployment, DeploymentStatus, StatefulSet,
             StatefulSetStatus,
         },
-        core::v1::PodStatus,
+        core::v1::{Pod, PodStatus},
     },
     apimachinery::pkg::apis::meta::v1::Time,
     chrono::Utc,
@@ -72,19 +72,68 @@ pub struct ClusterCondition {
     pub type_: ClusterConditionType,
 }
 
-impl ClusterCondition {}
+trait ConditionBuilder {
+    fn conditions(&self) -> Vec<ClusterCondition>;
+    //fn paused(&self, cluster_resource: &T) -> Option<ClusterCondition>;
+    //fn stopped(&self, cluster_resource: &T) -> Option<ClusterCondition>;
+}
 
+struct StatefulSetConditionBuilder {
+    resource: &T,
+    stateful_sets: Vec<StatefulSet>
+}
+
+impl StatefulSetConditionBuilder {
+    pub fn new(resource: &T) -> StatefulSetConditionBuilder {
+
+    }
+}
+impl ConditionBuilder for StatefulSetConditionBuilder {
+    fn add(&mut self, sts: &StatefulSet) {
+        self.stateful_sets.push(sts.clone());
+    }
+    fn conditions(&self) -> Vec<ClusterCondition> {
+
+    }
+}
 pub fn compute_conditions(
     zk: &ZookeeperCluster,
-    stateful_sets: &[StatefulSet],
+    condition_builder: &[ConditionBuilder],
 ) -> Vec<ClusterCondition> {
     let mut result = vec![];
 
-    result.push(available(zk, stateful_sets));
-    result
+    let mut current_conditions = HashMap<ClusterConditionType, ClusterCondition>::new();
+    for cb in condition_builder {
+        let cb_conditions: HashMap<lusterConditionType, ClusterCondition> = cb.conditions().iter().map(|c| (c.type_, c)).collect();
+
+        for (current_condition_type, cb_condition) in cb_conditions {
+            let next_condition = if let Some(cb_condition) = cb_conditions.get(current_condition_type) {
+                // take max
+                match (current_condition.status, cb_condition_status) {
+                    True, False => False
+                    False, True => False
+                    Unknown, True => Unknown
+                    Unknown, False => Unknown
+                    True, Unknown => Unknown
+                    False, Unknown => Unknown
+                    _, _ => _
+                }
+            } else {
+                cb_condition
+            }
+
+            current_conditions.insert(current_condition_type, next_condition);
+        }
+    }
+
+    result.values()
 }
 
-fn available(zk: &ZookeeperCluster, stateful_sets: &[StatefulSet]) -> ClusterCondition {
+fn available(
+    zk: &ZookeeperCluster,
+    stateful_sets: &[StatefulSet],
+    pods: &[Pod],
+) -> ClusterCondition {
     let opt_old_available = zk
         .status
         .as_ref()
@@ -99,6 +148,11 @@ fn available(zk: &ZookeeperCluster, stateful_sets: &[StatefulSet]) -> ClusterCon
         sts_available = sts_available && stateful_set_available(sts);
     }
 
+    let message = match sts_available {
+        true => Some("cluster has the requested amount of ready replicas".to_string()),
+        false => Some("cluster does not have the requested amount of ready replicas".to_string()),
+    };
+
     let now = Time(Utc::now());
     if let Some(old_available) = opt_old_available {
         if old_available.status == sts_available.into() {
@@ -111,6 +165,7 @@ fn available(zk: &ZookeeperCluster, stateful_sets: &[StatefulSet]) -> ClusterCon
                 last_update_time: Some(now.clone()),
                 last_transition_time: Some(now),
                 status: sts_available.into(),
+                message,
                 ..old_available
             }
         }
@@ -119,8 +174,8 @@ fn available(zk: &ZookeeperCluster, stateful_sets: &[StatefulSet]) -> ClusterCon
             last_update_time: Some(now.clone()),
             last_transition_time: Some(now),
             status: sts_available.into(),
-            message: Some("first time setting condition".to_string()),
-            reason: Some("first time setting condition".to_string()),
+            message,
+            reason: None,
             type_: ClusterConditionType::Available,
         }
     }
