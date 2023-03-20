@@ -276,6 +276,8 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(ApplyRoleServiceSnafu)?;
 
+    let mut stateful_sets = vec![];
+
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
         let merged_config = zk
@@ -316,12 +318,13 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             .with_context(|_| ApplyRoleGroupConfigSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
-        cluster_resources
+        let sts = cluster_resources
             .add(client, &rg_statefulset)
             .await
             .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
+        stateful_sets.push(sts);
     }
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
@@ -353,6 +356,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
+        conditions: stackable_zookeeper_crd::status::compute_conditions(&zk, &stateful_sets),
     };
     cluster_resources
         .delete_orphaned_resources(client)

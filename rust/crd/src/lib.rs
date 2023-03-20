@@ -1,9 +1,11 @@
 pub mod affinity;
 pub mod authentication;
 pub mod security;
+pub mod status;
 pub mod tls;
 
 use crate::authentication::ZookeeperAuthentication;
+use crate::status::ClusterCondition;
 use crate::tls::ZookeeperTls;
 
 use affinity::get_affinity;
@@ -346,6 +348,7 @@ pub struct ZookeeperClusterStatus {
     /// An opaque value that changes every time a discovery detail does
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub discovery_hash: Option<String>,
+    pub conditions: Vec<ClusterCondition>,
 }
 
 pub enum LoggingFramework {
