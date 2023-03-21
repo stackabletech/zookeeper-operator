@@ -11,7 +11,6 @@ use crate::tls::ZookeeperTls;
 use affinity::get_affinity;
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
-use stackable_operator::kube::core::object::HasStatus;
 use stackable_operator::{
     commons::{
         affinity::StackableAffinity,
@@ -354,7 +353,10 @@ pub struct ZookeeperClusterStatus {
 
 impl HasCondition for ZookeeperCluster {
     fn conditions(&self) -> Vec<ClusterCondition> {
-        self.status.as_ref().unwrap().conditions.clone()
+        match &self.status {
+            Some(status) => status.conditions.clone(),
+            None => vec![],
+        }
     }
 }
 

@@ -1,5 +1,3 @@
-use crate::ZookeeperCluster;
-
 use serde::{Deserialize, Serialize};
 use stackable_operator::{
     k8s_openapi::{
@@ -16,11 +14,22 @@ use stackable_operator::{
     kube::Resource,
     schemars::{self, JsonSchema},
 };
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tracing::info;
 
 #[derive(
-    strum::Display, Clone, Debug, Default, Deserialize, Eq, Hash, JsonSchema, PartialEq, Serialize,
+    strum::Display,
+    Clone,
+    Debug,
+    Default,
+    Deserialize,
+    Eq,
+    Hash,
+    JsonSchema,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
 )]
 #[serde(rename_all = "camelCase")]
 pub enum ClusterConditionType {
@@ -44,7 +53,17 @@ pub enum ClusterConditionType {
 }
 
 #[derive(
-    strum::Display, Clone, Debug, Default, Deserialize, Eq, JsonSchema, PartialEq, Serialize,
+    strum::Display,
+    Clone,
+    Debug,
+    Default,
+    Deserialize,
+    Eq,
+    JsonSchema,
+    Ord,
+    PartialEq,
+    PartialOrd,
+    Serialize,
 )]
 #[serde(rename_all = "camelCase")]
 pub enum ClusterConditionStatus {
@@ -175,33 +194,32 @@ impl<'a, T: HasCondition> ConditionBuilder for StatefulSetConditionBuilder<'a, T
 }
 
 pub fn compute_conditions<T: ConditionBuilder>(condition_builder: &[T]) -> Vec<ClusterCondition> {
-    let mut result = vec![];
+    let mut current_conditions = BTreeMap::<ClusterConditionType, ClusterCondition>::new();
+    for cb in condition_builder {
+        let cb_conditions: HashMap<ClusterConditionType, ClusterCondition> = cb
+            .conditions()
+            .iter()
+            .map(|c| (c.type_.clone(), c.clone()))
+            .collect();
 
-    // let mut current_conditions = HashMap<ClusterConditionType, ClusterCondition>::new();
-    // for cb in condition_builder {
-    //     let cb_conditions: HashMap<lusterConditionType, ClusterCondition> = cb.conditions().iter().map(|c| (c.type_, c)).collect();
-    //
-    //     for (current_condition_type, cb_condition) in cb_conditions {
-    //         let next_condition = if let Some(cb_condition) = cb_conditions.get(current_condition_type) {
-    //             // take max
-    //             match (current_condition.status, cb_condition_status) {
-    //                 True, False => False
-    //                 False, True => False
-    //                 Unknown, True => Unknown
-    //                 Unknown, False => Unknown
-    //                 True, Unknown => Unknown
-    //                 False, Unknown => Unknown
-    //                 _, _ => _
-    //             }
-    //         } else {
-    //             cb_condition
-    //         }
-    //
-    //         current_conditions.insert(current_condition_type, next_condition);
-    //     }
-    // }
+        for (current_condition_type, cb_condition) in cb_conditions {
+            let current_condition = current_conditions.get(&current_condition_type);
 
-    result
+            let next_condition = if let Some(current) = current_condition {
+                if current.status > cb_condition.status {
+                    current
+                } else {
+                    &cb_condition
+                }
+            } else {
+                &cb_condition
+            };
+
+            current_conditions.insert(current_condition_type, next_condition.clone());
+        }
+    }
+
+    current_conditions.values().cloned().collect()
 }
 
 fn stateful_set_available(sts: &StatefulSet) -> bool {

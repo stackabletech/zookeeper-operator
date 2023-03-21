@@ -1534,10 +1534,54 @@ spec:
             status:
               nullable: true
               properties:
+                conditions:
+                  items:
+                    properties:
+                      last_transition_time:
+                        description: Last time the condition transitioned from one status to another.
+                        format: date-time
+                        nullable: true
+                        type: string
+                      last_update_time:
+                        description: The last time this condition was updated.
+                        format: date-time
+                        nullable: true
+                        type: string
+                      message:
+                        description: A human readable message indicating details about the transition.
+                        nullable: true
+                        type: string
+                      reason:
+                        description: The reason for the condition's last transition.
+                        nullable: true
+                        type: string
+                      status:
+                        description: Status of the condition, one of True, False, Unknown.
+                        enum:
+                          - 'true'
+                          - 'false'
+                          - unknown
+                        type: string
+                      type_:
+                        description: Type of deployment condition.
+                        enum:
+                          - available
+                          - degraded
+                          - progressing
+                          - paused
+                          - stopped
+                        type: string
+                    required:
+                      - status
+                      - type_
+                    type: object
+                  type: array
                 discoveryHash:
                   description: An opaque value that changes every time a discovery detail does
                   nullable: true
                   type: string
+              required:
+                - conditions
               type: object
           required:
             - spec
