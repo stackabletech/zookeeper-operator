@@ -5,12 +5,13 @@ pub mod status;
 pub mod tls;
 
 use crate::authentication::ZookeeperAuthentication;
-use crate::status::ClusterCondition;
+use crate::status::{ClusterCondition, HasCondition};
 use crate::tls::ZookeeperTls;
 
 use affinity::get_affinity;
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::kube::core::object::HasStatus;
 use stackable_operator::{
     commons::{
         affinity::StackableAffinity,
@@ -349,6 +350,12 @@ pub struct ZookeeperClusterStatus {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub discovery_hash: Option<String>,
     pub conditions: Vec<ClusterCondition>,
+}
+
+impl HasCondition for ZookeeperCluster {
+    fn conditions(&self) -> Vec<ClusterCondition> {
+        self.status.as_ref().unwrap().conditions.clone()
+    }
 }
 
 pub enum LoggingFramework {

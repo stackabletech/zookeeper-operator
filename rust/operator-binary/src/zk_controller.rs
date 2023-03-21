@@ -42,10 +42,12 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 use stackable_zookeeper_crd::{
-    security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
-    ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, LOG_VOLUME_SIZE_IN_MIB,
-    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
-    STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+    security::ZookeeperSecurity,
+    status::{ConditionBuilder, StatefulSetConditionBuilder},
+    Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole,
+    DOCKER_IMAGE_BASE_NAME, LOG_VOLUME_SIZE_IN_MIB, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+    STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+    ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -276,7 +278,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(ApplyRoleServiceSnafu)?;
 
-    let mut stateful_sets = vec![];
+    let mut ss_cond_builder = StatefulSetConditionBuilder::new(zk.as_ref());
 
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
@@ -318,13 +320,15 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             .with_context(|_| ApplyRoleGroupConfigSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
-        let sts = cluster_resources
-            .add(client, &rg_statefulset)
-            .await
-            .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
-                rolegroup: rolegroup.clone(),
-            })?;
-        stateful_sets.push(sts);
+
+        ss_cond_builder.add(
+            cluster_resources
+                .add(client, &rg_statefulset)
+                .await
+                .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
+                    rolegroup: rolegroup.clone(),
+                })?,
+        );
     }
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
@@ -356,8 +360,9 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
-        conditions: stackable_zookeeper_crd::status::compute_conditions(&zk, &stateful_sets),
+        conditions: stackable_zookeeper_crd::status::compute_conditions(&[ss_cond_builder]),
     };
+
     cluster_resources
         .delete_orphaned_resources(client)
         .await
