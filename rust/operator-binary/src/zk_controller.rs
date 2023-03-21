@@ -40,14 +40,13 @@ use stackable_operator::{
         },
     },
     role_utils::RoleGroupRef,
+    status::condition::statefulset::StatefulSetConditionBuilder,
 };
 use stackable_zookeeper_crd::{
-    security::ZookeeperSecurity,
-    status::{ConditionBuilder, StatefulSetConditionBuilder},
-    Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole,
-    DOCKER_IMAGE_BASE_NAME, LOG_VOLUME_SIZE_IN_MIB, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
-    STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
-    ZOOKEEPER_PROPERTIES_FILE,
+    security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
+    ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, LOG_VOLUME_SIZE_IN_MIB,
+    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
+    STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -360,7 +359,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
-        conditions: stackable_zookeeper_crd::status::compute_conditions(&[ss_cond_builder]),
+        conditions: stackable_operator::status::compute_conditions(&[ss_cond_builder]),
     };
 
     cluster_resources

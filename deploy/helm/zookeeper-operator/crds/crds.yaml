@@ -1537,12 +1537,12 @@ spec:
                 conditions:
                   items:
                     properties:
-                      last_transition_time:
+                      lastTransitionTime:
                         description: Last time the condition transitioned from one status to another.
                         format: date-time
                         nullable: true
                         type: string
-                      last_update_time:
+                      lastUpdateTime:
                         description: The last time this condition was updated.
                         format: date-time
                         nullable: true
@@ -1558,22 +1558,22 @@ spec:
                       status:
                         description: Status of the condition, one of True, False, Unknown.
                         enum:
-                          - 'true'
-                          - 'false'
-                          - unknown
+                          - 'True'
+                          - 'False'
+                          - Unknown
                         type: string
-                      type_:
+                      type:
                         description: Type of deployment condition.
                         enum:
-                          - available
-                          - degraded
-                          - progressing
-                          - paused
-                          - stopped
+                          - Available
+                          - Degraded
+                          - Progressing
+                          - Paused
+                          - Stopped
                         type: string
                     required:
                       - status
-                      - type_
+                      - type
                     type: object
                   type: array
                 discoveryHash:

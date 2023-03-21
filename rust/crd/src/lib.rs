@@ -1,11 +1,9 @@
 pub mod affinity;
 pub mod authentication;
 pub mod security;
-pub mod status;
 pub mod tls;
 
 use crate::authentication::ZookeeperAuthentication;
-use crate::status::{ClusterCondition, HasCondition};
 use crate::tls::ZookeeperTls;
 
 use affinity::get_affinity;
@@ -32,6 +30,7 @@ use stackable_operator::{
     product_logging::{self, spec::Logging},
     role_utils::{Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
+    status::{ClusterCondition, HasStatusCondition},
 };
 use std::collections::BTreeMap;
 use strum::{Display, EnumIter, EnumString};
@@ -351,7 +350,7 @@ pub struct ZookeeperClusterStatus {
     pub conditions: Vec<ClusterCondition>,
 }
 
-impl HasCondition for ZookeeperCluster {
+impl HasStatusCondition for ZookeeperCluster {
     fn conditions(&self) -> Vec<ClusterCondition> {
         match &self.status {
             Some(status) => status.conditions.clone(),
