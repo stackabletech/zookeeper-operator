@@ -277,7 +277,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(ApplyRoleServiceSnafu)?;
 
-    let mut ss_cond_builder = StatefulSetConditionBuilder::new(zk.as_ref());
+    let mut ss_cond_builder = StatefulSetConditionBuilder::default();
 
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
@@ -359,7 +359,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
-        conditions: stackable_operator::status::compute_conditions(&[ss_cond_builder]),
+        conditions: stackable_operator::status::compute_conditions(zk.as_ref(), &[ss_cond_builder]),
     };
 
     cluster_resources
