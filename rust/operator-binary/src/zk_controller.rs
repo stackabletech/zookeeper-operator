@@ -40,7 +40,7 @@ use stackable_operator::{
         },
     },
     role_utils::RoleGroupRef,
-    status::condition::statefulset::StatefulSetConditionBuilder,
+    status::condition::{compute_conditions, statefulset::StatefulSetConditionBuilder},
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
@@ -359,7 +359,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
-        conditions: stackable_operator::status::compute_conditions(zk.as_ref(), &[ss_cond_builder]),
+        conditions: compute_conditions(zk.as_ref(), &[&ss_cond_builder]),
     };
 
     cluster_resources

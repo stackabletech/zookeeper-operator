@@ -30,7 +30,7 @@ use stackable_operator::{
     product_logging::{self, spec::Logging},
     role_utils::{Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
-    status::{ClusterCondition, HasStatusCondition},
+    status::condition::{ClusterCondition, HasStatusCondition},
 };
 use std::collections::BTreeMap;
 use strum::{Display, EnumIter, EnumString};
