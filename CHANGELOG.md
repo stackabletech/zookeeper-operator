@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Generate OLM bundle ([#645])
-- Cluster status conditions ([#xxx])
+- Cluster status conditions ([#658])
 
 ### Changed
 
@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 [#649]: https://github.com/stackabletech/zookeeper-operator/pull/649
 [#651]: https://github.com/stackabletech/zookeeper-operator/pull/651
 [#653]: https://github.com/stackabletech/zookeeper-operator/pull/653
-[#xxx]: https://github.com/stackabletech/zookeeper-operator/pull/xx
+[#658]: https://github.com/stackabletech/zookeeper-operator/pull/658
 
 ## [23.1.0] - 2023-01-23
 
