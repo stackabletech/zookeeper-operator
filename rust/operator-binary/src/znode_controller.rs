@@ -9,6 +9,7 @@ use crate::{
     APP_NAME, OPERATOR_NAME,
 };
 use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::cluster_resources::ClusterResourceApplyStrategy;
 use stackable_operator::{
     cluster_resources::ClusterResources,
     commons::product_image_selection::ResolvedProductImage,
@@ -207,6 +208,7 @@ async fn reconcile_apply(
         OPERATOR_NAME,
         ZNODE_CONTROLLER_NAME,
         &znode.object_ref(&()),
+        ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
     )
     .unwrap();
 
@@ -245,12 +247,11 @@ async fn reconcile_apply(
     .await
     .context(BuildDiscoveryConfigMapSnafu)?
     {
+        let obj_ref = ObjectRef::from_obj(&discovery_cm);
         cluster_resources
-            .add(client, &discovery_cm)
+            .add(client, discovery_cm)
             .await
-            .with_context(|_| ApplyDiscoveryConfigMapSnafu {
-                cm: ObjectRef::from_obj(&discovery_cm),
-            })?;
+            .with_context(|_| ApplyDiscoveryConfigMapSnafu { cm: obj_ref })?;
     }
 
     cluster_resources

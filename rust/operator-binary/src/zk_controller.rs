@@ -9,6 +9,7 @@ use crate::{
 
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::cluster_resources::ClusterResourceApplyStrategy;
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
     cluster_resources::ClusterResources,
@@ -219,6 +220,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         OPERATOR_NAME,
         ZK_CONTROLLER_NAME,
         &zk.object_ref(&()),
+        ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
     )
     .unwrap();
 
@@ -260,18 +262,18 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
 
     let (rbac_sa, rbac_rolebinding) = build_zk_rbac_resources(&zk, &resolved_product_image)?;
     cluster_resources
-        .add(client, &rbac_sa)
+        .add(client, rbac_sa)
         .await
         .with_context(|_| ApplyServiceAccountSnafu)?;
     cluster_resources
-        .add(client, &rbac_rolebinding)
+        .add(client, rbac_rolebinding)
         .await
         .with_context(|_| ApplyRoleBindingSnafu)?;
 
     let server_role_service = cluster_resources
         .add(
             client,
-            &build_server_role_service(&zk, &resolved_product_image, &zookeeper_security)?,
+            build_server_role_service(&zk, &resolved_product_image, &zookeeper_security)?,
         )
         .await
         .context(ApplyRoleServiceSnafu)?;
@@ -305,19 +307,19 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             &merged_config,
         )?;
         cluster_resources
-            .add(client, &rg_service)
+            .add(client, rg_service)
             .await
             .with_context(|_| ApplyRoleGroupServiceSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
         cluster_resources
-            .add(client, &rg_configmap)
+            .add(client, rg_configmap)
             .await
             .with_context(|_| ApplyRoleGroupConfigSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
         cluster_resources
-            .add(client, &rg_statefulset)
+            .add(client, rg_statefulset)
             .await
             .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
                 rolegroup: rolegroup.clone(),
@@ -341,7 +343,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     .context(BuildDiscoveryConfigSnafu)?
     {
         let discovery_cm = cluster_resources
-            .add(client, &discovery_cm)
+            .add(client, discovery_cm)
             .await
             .context(ApplyDiscoveryConfigSnafu)?;
         if let Some(generation) = discovery_cm.metadata.resource_version {

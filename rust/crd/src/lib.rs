@@ -12,6 +12,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     commons::{
         affinity::StackableAffinity,
+        cluster_operation::ClusterOperation,
         product_image_selection::ProductImage,
         resources::{
             CpuLimitsFragment, MemoryLimitsFragment, NoRuntimeLimits, NoRuntimeLimitsFragment,
@@ -100,6 +101,8 @@ pub struct ZookeeperClusterSpec {
     /// Global ZooKeeper cluster configuration that applies to all roles and role groups.
     #[serde(default = "cluster_config_default")]
     pub cluster_config: ZookeeperClusterConfig,
+    /// Cluster operations like pause reconciliation or cluster stop.
+    pub cluster_operation: ClusterOperation,
     /// Desired ZooKeeper image to use.
     pub image: ProductImage,
     /// ZooKeeper server configuration.
