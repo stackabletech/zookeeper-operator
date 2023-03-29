@@ -102,6 +102,7 @@ pub struct ZookeeperClusterSpec {
     #[serde(default = "cluster_config_default")]
     pub cluster_config: ZookeeperClusterConfig,
     /// Cluster operations like pause reconciliation or cluster stop.
+    #[serde(default)]
     pub cluster_operation: ClusterOperation,
     /// Desired ZooKeeper image to use.
     pub image: ProductImage,

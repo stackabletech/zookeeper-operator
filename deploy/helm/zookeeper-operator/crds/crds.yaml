@@ -78,6 +78,9 @@ spec:
                       type: object
                   type: object
                 clusterOperation:
+                  default:
+                    stopped: false
+                    reconciliationPaused: false
                   description: Cluster operations like pause reconciliation or cluster stop.
                   properties:
                     reconciliationPaused:
@@ -1541,7 +1544,6 @@ spec:
                   nullable: true
                   type: boolean
               required:
-                - clusterOperation
                 - image
               type: object
             status:
