@@ -32,3 +32,6 @@ tests:
   - name: logging
     dimensions:
       - zookeeper
+  - name: cluster-operation
+    dimensions:
+      - zookeeper-latest
