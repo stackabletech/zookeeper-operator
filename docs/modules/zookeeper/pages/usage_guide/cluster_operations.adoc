@@ -1,0 +1,13 @@
+
+= Cluster operations
+
+The Stackable Operator for Apache ZooKeeper offers several cluster operations to e.g. stop reconciling or stop the cluster. This can be useful for updating or testing purposes.
+
+[source,yaml]
+----
+include::example$usage_guide/example-cluster-operations.yaml[]
+----
+<1> The `clusterOperation.reconcilePaused` flag stops the operator from reconciling any changes to the cluster spec. The cluster status is still updated.
+<2> The `clusterOperation.stopped` flag stops all pods in the cluster. This is done by setting all deployed `StatefulSet` replicas to 0.
+
+IMPORTANT: When setting `clusterOperation.reconcilePaused` and `clusterOperation.stopped` to true in the same step, `clusterOperation.reconcilePaused` will take precedence. This means the cluster will stop reconciling immediately (and therefore not setting any replicas to 0). To avoid this, the cluster should first be stopped and then paused.
