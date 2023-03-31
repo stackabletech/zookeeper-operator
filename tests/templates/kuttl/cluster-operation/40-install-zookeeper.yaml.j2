@@ -1,12 +1,3 @@
-{% if lookup('env', 'VECTOR_AGGREGATOR') %}
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vector-aggregator-discovery
-data:
-  ADDRESS: {{ lookup('env', 'VECTOR_AGGREGATOR') }}
-{% endif %}
 ---
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperCluster
@@ -20,6 +11,9 @@ spec:
     logging:
       vectorAggregatorConfigMapName: vector-aggregator-discovery
 {% endif %}
+  clusterOperation:
+    stopped: false
+    reconciliationPaused: false
   servers:
     config:
       logging:
@@ -27,11 +21,3 @@ spec:
     roleGroups:
       default:
         replicas: 1
----
-apiVersion: zookeeper.stackable.tech/v1alpha1
-kind: ZookeeperZnode
-metadata:
-  name: test-znode
-spec:
-  clusterRef:
-    name: test-zk
