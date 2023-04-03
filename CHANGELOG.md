@@ -6,8 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Generate OLM bundle ([#645])
-- Extend cluster resources for status and cluster operation (paused, stopped) ([#660])
+- Generate OLM bundle ([#645]).
+- Extend cluster resources for status and cluster operation (paused, stopped) ([#660]).
 
 ### Changed
 
@@ -15,8 +15,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Bugfix: java heap format ([#651])
-- Fixed operator error when creating the ZNode in a different namespace than the ZookeeperCluster ([#653])
+- Bugfix: java heap format ([#651]).
+- Fixed operator error when creating the ZNode in a different namespace than the ZookeeperCluster ([#653]).
 
 [#645]: https://github.com/stackabletech/zookeeper-operator/pull/645
 [#649]: https://github.com/stackabletech/zookeeper-operator/pull/649
