@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Deploy default and support custom affinities ([#649]).
+- Operator-rs: 0.36.0 -> 0.39.0 ([#660]).
 
 ### Fixed
 
