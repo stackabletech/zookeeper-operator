@@ -1,4 +1,4 @@
 
 = Cluster Operation
 
-xref:concepts:cluster_operations.adoc[].
+The managed ZooKeeper instances can be configured with different cluster operations. See xref:concepts:cluster_operations.adoc[] for more details.
