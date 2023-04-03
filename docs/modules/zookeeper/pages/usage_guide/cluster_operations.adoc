@@ -1,4 +1,4 @@
 
 = Cluster Operation
 
-The managed ZooKeeper instances can be configured with different cluster operations. See xref:concepts:cluster_operations.adoc[] for more details.
+The managed ZooKeeper instances can be configured with different cluster operations like pausing reconciliation or stopping the cluster. See xref:concepts:cluster_operations.adoc[] for more details.
