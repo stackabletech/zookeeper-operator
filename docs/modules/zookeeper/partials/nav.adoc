@@ -15,3 +15,4 @@
 ** xref:zookeeper:usage_guide/using_multiple_role_groups.adoc[]
 ** xref:zookeeper:usage_guide/isolating_clients_with_znodes.adoc[]
 ** xref:zookeeper:usage_guide/configuration_environment_overrides.adoc[]
+** xref:zookeeper:usage_guide/cluster_operations.adoc[]
