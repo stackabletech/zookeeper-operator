@@ -8,10 +8,14 @@ All notable changes to this project will be documented in this file.
 
 - Generate OLM bundle ([#645]).
 - Extend cluster resources for status and cluster operation (paused, stopped) ([#660]).
-- Support specifying Service type. This enables us to later switch non-breaking to using `ListenerClasses` for the exposition of Services ([#661]).
 
 ### Changed
 
+- [BREAKING] Support specifying Service type.
+  This enables us to later switch non-breaking to using `ListenerClasses` for the exposition of Services.
+  This change is breaking, because - for security reasons - we default to the `cluster-internal` `ListenerClass`.
+  If you need you cluster to be accessible from outside of Kubernetes you need to set `clusterConfig.listenerClass`
+  to either `external-unstable` or `external-stable` ([#661]).
 - Deploy default and support custom affinities ([#649]).
 - Operator-rs: 0.36.0 -> 0.39.0 ([#660]).
 
