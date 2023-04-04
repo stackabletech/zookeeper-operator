@@ -11,7 +11,7 @@ use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
-    cluster_resources::{ClusterResources,ClusterResourceApplyStrategy},
+    cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::{
         api::{
@@ -40,7 +40,10 @@ use stackable_operator::{
         },
     },
     role_utils::RoleGroupRef,
-    status::condition::{compute_conditions, statefulset::StatefulSetConditionBuilder},
+    status::condition::{
+        compute_conditions, operations::ClusterOperationsConditionBuilder,
+        statefulset::StatefulSetConditionBuilder,
+    },
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
@@ -356,11 +359,17 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         }
     }
 
+    let cluster_operation_cond_builder =
+        ClusterOperationsConditionBuilder::new(&zk.spec.cluster_operation);
+
     let status = ZookeeperClusterStatus {
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
-        conditions: compute_conditions(zk.as_ref(), &[&ss_cond_builder]),
+        conditions: compute_conditions(
+            zk.as_ref(),
+            &[&ss_cond_builder, &cluster_operation_cond_builder],
+        ),
     };
 
     cluster_resources
