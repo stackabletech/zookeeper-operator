@@ -28,11 +28,3 @@ spec:
     roleGroups:
       default:
         replicas: 1
----
-apiVersion: zookeeper.stackable.tech/v1alpha1
-kind: ZookeeperZnode
-metadata:
-  name: test-znode
-spec:
-  clusterRef:
-    name: test-zk
