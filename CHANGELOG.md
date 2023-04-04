@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - Generate OLM bundle ([#645]).
 - Extend cluster resources for status and cluster operation (paused, stopped) ([#660]).
+- Support specifying Service type. This enables us to later switch non-breaking to using `ListenerClasses` for the exposition of Services ([#661]).
 
 ### Changed
 
@@ -24,6 +25,7 @@ All notable changes to this project will be documented in this file.
 [#651]: https://github.com/stackabletech/zookeeper-operator/pull/651
 [#653]: https://github.com/stackabletech/zookeeper-operator/pull/653
 [#660]: https://github.com/stackabletech/zookeeper-operator/pull/660
+[#661]: https://github.com/stackabletech/zookeeper-operator/pull/661
 
 ## [23.1.0] - 2023-01-23
 
