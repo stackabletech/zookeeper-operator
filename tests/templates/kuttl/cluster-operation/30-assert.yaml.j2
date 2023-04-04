@@ -2,6 +2,8 @@
 apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
 timeout: 600
+commands:
+  - script: kubectl -n $NAMESPACE wait --for=condition=reconciliationPaused zookeeperclusters.zookeeper.stackable.tech/test-zk --timeout 301s
 ---
 apiVersion: apps/v1
 kind: StatefulSet
