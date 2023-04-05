@@ -138,8 +138,6 @@ pub struct ZookeeperClusterConfig {
     /// * cluster-internal: Use a ClusterIP service
     ///
     /// * external-unstable: Use a NodePort service
-    ///
-    /// * external-stable: Use a LoadBalancer service
     #[serde(default)]
     pub listener_class: CurrentlySupportedListenerClasses,
 }
@@ -162,8 +160,6 @@ pub enum CurrentlySupportedListenerClasses {
     ClusterInternal,
     #[serde(rename = "external-unstable")]
     ExternalUnstable,
-    #[serde(rename = "external-stable")]
-    ExternalStable,
 }
 
 impl CurrentlySupportedListenerClasses {
@@ -171,7 +167,6 @@ impl CurrentlySupportedListenerClasses {
         match self {
             CurrentlySupportedListenerClasses::ClusterInternal => "ClusterIP".to_string(),
             CurrentlySupportedListenerClasses::ExternalUnstable => "NodePort".to_string(),
-            CurrentlySupportedListenerClasses::ExternalStable => "LoadBalancer".to_string(),
         }
     }
 }
@@ -465,7 +460,8 @@ impl ZookeeperCluster {
                 .merged_config(&ZookeeperRole::Server, &rolegroup_ref)?
                 .myid_offset;
             let ns = ns.clone();
-            for i in 0..rolegroup.replicas.unwrap_or(0) {
+            // In case no replicas are specified we default to 1
+            for i in 0..rolegroup.replicas.unwrap_or(1) {
                 pod_refs.push(ZookeeperPodRef {
                     namespace: ns.clone(),
                     role_group_service_name: rolegroup_ref.object_name(),
