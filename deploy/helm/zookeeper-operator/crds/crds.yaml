@@ -31,6 +31,7 @@ spec:
                     tls:
                       quorumSecretClass: tls
                       serverSecretClass: tls
+                    listenerClass: cluster-internal
                   description: Global ZooKeeper cluster configuration that applies to all roles and role groups.
                   properties:
                     authentication:
@@ -50,6 +51,18 @@ spec:
                           - authenticationClass
                         type: object
                       type: array
+                    listenerClass:
+                      default: cluster-internal
+                      description: |-
+                        In the future this setting will control, which ListenerClass <https://docs.stackable.tech/home/stable/listener-operator/listenerclass.html> will be used to expose the service. Currently only a subset of the ListenerClasses are supported by choosing the type of the created Services by looking at the ListenerClass name specified, In a future release support for custom ListenerClasses will be introduced without a breaking change:
+
+                        * cluster-internal: Use a ClusterIP service
+
+                        * external-unstable: Use a NodePort service
+                      enum:
+                        - cluster-internal
+                        - external-unstable
+                      type: string
                     logging:
                       description: Logging options for ZooKeeper.
                       nullable: true

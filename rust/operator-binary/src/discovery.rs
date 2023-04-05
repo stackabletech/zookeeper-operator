@@ -59,18 +59,21 @@ pub async fn build_discovery_configmaps(
 ) -> Result<Vec<ConfigMap>, Error> {
     let name = owner.name_unchecked();
     let namespace = owner.namespace().context(NoNamespaceSnafu)?;
-    Ok(vec![
-        build_discovery_configmap(
-            zk,
-            owner,
-            name.as_str(),
-            &namespace,
-            controller_name,
-            chroot,
-            pod_hosts(zk, zookeeper_security)?,
-            resolved_product_image,
-        )?,
-        build_discovery_configmap(
+
+    let mut discovery_configmaps = vec![build_discovery_configmap(
+        zk,
+        owner,
+        name.as_str(),
+        &namespace,
+        controller_name,
+        chroot,
+        pod_hosts(zk, zookeeper_security)?,
+        resolved_product_image,
+    )?];
+    if zk.spec.cluster_config.listener_class
+        == stackable_zookeeper_crd::CurrentlySupportedListenerClasses::ExternalUnstable
+    {
+        discovery_configmaps.push(build_discovery_configmap(
             zk,
             owner,
             &format!("{}-nodeport", name),
@@ -79,8 +82,10 @@ pub async fn build_discovery_configmaps(
             chroot,
             nodeport_hosts(client, svc, "zk").await?,
             resolved_product_image,
-        )?,
-    ])
+        )?);
+    }
+
+    Ok(discovery_configmaps)
 }
 
 /// Build a discovery [`ConfigMap`] containing information about how to connect to a certain [`ZookeeperCluster`]
