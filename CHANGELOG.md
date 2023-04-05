@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - [BREAKING] Support specifying Service type.
-  This enables us to later switch non-breaking to using `ListenerClasses` for the exposition of Services.
+  This enables us to later switch non-breaking to using `ListenerClasses` for the exposure of Services.
   This change is breaking, because - for security reasons - we default to the `cluster-internal` `ListenerClass`.
   If you need you cluster to be accessible from outside of Kubernetes you need to set `clusterConfig.listenerClass`
   to either `external-unstable` or `external-stable` ([#661]).
