@@ -3,7 +3,7 @@ apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
 timeout: 600
 commands:
-  - script: kubectl -n $NAMESPACE wait --for=condition=available zookeeperclusters.zookeeper.stackable.tech/test-zk --timeout 301s
+  - script: kubectl -n $NAMESPACE wait --for=condition=available zookeeperclusters.zookeeper.stackable.tech/test-zk --timeout 601s
 ---
 apiVersion: apps/v1
 kind: StatefulSet

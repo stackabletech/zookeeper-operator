@@ -1,7 +1,7 @@
 ---
 apiVersion: kuttl.dev/v1beta1
 kind: TestAssert
-timeout: 600
+timeout: 300
 commands:
   - script: kubectl -n $NAMESPACE wait --for=condition=available zookeeperclusters.zookeeper.stackable.tech/test-zk --timeout 301s
 ---

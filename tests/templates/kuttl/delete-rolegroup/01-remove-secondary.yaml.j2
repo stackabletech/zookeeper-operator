@@ -10,8 +10,14 @@ spec:
   clusterConfig:
     tls:
       serverSecretClass: null
+{% if lookup('env', 'VECTOR_AGGREGATOR') %}
+    logging:
+      vectorAggregatorConfigMapName: vector-aggregator-discovery
+{% endif %}
   servers:
     config:
+      logging:
+        enableVectorAgent: {{ lookup('env', 'VECTOR_AGGREGATOR') | length > 0 }}
       resources:
         storage:
           data:
