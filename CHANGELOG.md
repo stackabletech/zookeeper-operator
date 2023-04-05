@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Generate OLM bundle ([#645]).
+- Cluster status conditions ([#658])
 - Extend cluster resources for status and cluster operation (paused, stopped) ([#660]).
 
 ### Changed
@@ -28,6 +29,7 @@ All notable changes to this project will be documented in this file.
 [#649]: https://github.com/stackabletech/zookeeper-operator/pull/649
 [#651]: https://github.com/stackabletech/zookeeper-operator/pull/651
 [#653]: https://github.com/stackabletech/zookeeper-operator/pull/653
+[#658]: https://github.com/stackabletech/zookeeper-operator/pull/658
 [#660]: https://github.com/stackabletech/zookeeper-operator/pull/660
 [#661]: https://github.com/stackabletech/zookeeper-operator/pull/661
 

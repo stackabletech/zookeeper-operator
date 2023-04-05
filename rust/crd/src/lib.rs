@@ -31,6 +31,7 @@ use stackable_operator::{
     product_logging::{self, spec::Logging},
     role_utils::{Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
+    status::condition::{ClusterCondition, HasStatusCondition},
 };
 use std::collections::BTreeMap;
 use strum::{Display, EnumIter, EnumString};
@@ -382,6 +383,16 @@ pub struct ZookeeperClusterStatus {
     /// An opaque value that changes every time a discovery detail does
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub discovery_hash: Option<String>,
+    pub conditions: Vec<ClusterCondition>,
+}
+
+impl HasStatusCondition for ZookeeperCluster {
+    fn conditions(&self) -> Vec<ClusterCondition> {
+        match &self.status {
+            Some(status) => status.conditions.clone(),
+            None => vec![],
+        }
+    }
 }
 
 pub enum LoggingFramework {

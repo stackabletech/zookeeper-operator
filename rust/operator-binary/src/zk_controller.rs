@@ -9,10 +9,9 @@ use crate::{
 
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
-use stackable_operator::cluster_resources::ClusterResourceApplyStrategy;
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
-    cluster_resources::ClusterResources,
+    cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::{
         api::{
@@ -41,6 +40,10 @@ use stackable_operator::{
         },
     },
     role_utils::RoleGroupRef,
+    status::condition::{
+        compute_conditions, operations::ClusterOperationsConditionBuilder,
+        statefulset::StatefulSetConditionBuilder,
+    },
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
@@ -278,6 +281,8 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(ApplyRoleServiceSnafu)?;
 
+    let mut ss_cond_builder = StatefulSetConditionBuilder::default();
+
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
         let merged_config = zk
@@ -318,12 +323,15 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             .with_context(|_| ApplyRoleGroupConfigSnafu {
                 rolegroup: rolegroup.clone(),
             })?;
-        cluster_resources
-            .add(client, rg_statefulset)
-            .await
-            .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
-                rolegroup: rolegroup.clone(),
-            })?;
+
+        ss_cond_builder.add(
+            cluster_resources
+                .add(client, rg_statefulset)
+                .await
+                .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
+                    rolegroup: rolegroup.clone(),
+                })?,
+        );
     }
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
@@ -351,11 +359,19 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         }
     }
 
+    let cluster_operation_cond_builder =
+        ClusterOperationsConditionBuilder::new(&zk.spec.cluster_operation);
+
     let status = ZookeeperClusterStatus {
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
+        conditions: compute_conditions(
+            zk.as_ref(),
+            &[&ss_cond_builder, &cluster_operation_cond_builder],
+        ),
     };
+
     cluster_resources
         .delete_orphaned_resources(client)
         .await
