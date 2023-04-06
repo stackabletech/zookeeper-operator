@@ -33,10 +33,12 @@ def check_processed_events():
         componentId = transform['componentId']
         processedEvents = transform['metrics']['processedEventsTotal']
         if componentId == 'filteredInvalidEvents':
-            assert processedEvents is None, \
+            assert processedEvents is None or \
+                processedEvents['processedEventsTotal'] == 0, \
                 'Invalid log events were processed.'
         else:
-            assert processedEvents['processedEventsTotal'] > 0, \
+            assert processedEvents is not None and \
+                processedEvents['processedEventsTotal'] > 0, \
                 f'No events were processed in "{componentId}".'
 
 
