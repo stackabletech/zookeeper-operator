@@ -3,15 +3,15 @@ apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
   - script: >-
-      helm install vector-aggregator vector
+      helm install zookeeper-vector-aggregator vector
       --namespace $NAMESPACE
       --version 0.18.0
       --repo https://helm.vector.dev
-      --values vector-aggregator-values.yaml
+      --values zookeeper-vector-aggregator-values.yaml
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: vector-aggregator-discovery
+  name: zookeeper-vector-aggregator-discovery
 data:
-  ADDRESS: vector-aggregator:6123
+  ADDRESS: zookeeper-vector-aggregator:6123

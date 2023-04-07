@@ -4,7 +4,7 @@ import requests
 
 def check_processed_events():
     response = requests.post(
-        'http://vector-aggregator:8686/graphql',
+        'http://zookeeper-vector-aggregator:8686/graphql',
         json={
             'query': """
                 {
