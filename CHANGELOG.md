@@ -18,7 +18,7 @@ All notable changes to this project will be documented in this file.
   If you need your cluster to be accessible from outside of Kubernetes you need to set `clusterConfig.listenerClass`
   to `external-unstable` ([#661]).
 - Deploy default and support custom affinities ([#649]).
-- Operator-rs: 0.36.0 -> 0.39.0 ([#660]).
+- Operator-rs: 0.36.0 -> 0.39.1 ([#660], [#663]).
 
 ### Fixed
 
