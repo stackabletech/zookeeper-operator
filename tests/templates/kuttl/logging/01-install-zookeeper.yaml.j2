@@ -32,7 +32,7 @@ spec:
     stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
   clusterConfig:
     logging:
-      vectorAggregatorConfigMapName: vector-aggregator-discovery
+      vectorAggregatorConfigMapName: zookeeper-vector-aggregator-discovery
   servers:
     roleGroups:
       automatic-log-config:

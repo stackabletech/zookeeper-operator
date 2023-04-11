@@ -18,12 +18,14 @@ All notable changes to this project will be documented in this file.
   If you need your cluster to be accessible from outside of Kubernetes you need to set `clusterConfig.listenerClass`
   to `external-unstable` ([#661]).
 - Deploy default and support custom affinities ([#649]).
-- Operator-rs: 0.36.0 -> 0.39.0 ([#660]).
+- Operator-rs: 0.36.0 -> 0.39.1 ([#660], [#663]).
 
 ### Fixed
 
 - Bugfix: java heap format ([#651]).
 - Fixed operator error when creating the ZNode in a different namespace than the ZookeeperCluster ([#653]).
+- Avoid empty log events dated to 1970-01-01 and improve the precision of the
+  log event timestamps ([#663]).
 
 [#645]: https://github.com/stackabletech/zookeeper-operator/pull/645
 [#649]: https://github.com/stackabletech/zookeeper-operator/pull/649
@@ -32,6 +34,7 @@ All notable changes to this project will be documented in this file.
 [#658]: https://github.com/stackabletech/zookeeper-operator/pull/658
 [#660]: https://github.com/stackabletech/zookeeper-operator/pull/660
 [#661]: https://github.com/stackabletech/zookeeper-operator/pull/661
+[#663]: https://github.com/stackabletech/zookeeper-operator/pull/663
 
 ## [23.1.0] - 2023-01-23
 
