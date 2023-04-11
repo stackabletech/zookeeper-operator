@@ -12,20 +12,19 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::product_image_selection::ResolvedProductImage,
+    commons::{product_image_selection::ResolvedProductImage, rbac::build_rbac_resources},
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service,
-                ServiceAccount, ServicePort, ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service, ServicePort,
+                ServiceSpec, Volume,
             },
-            rbac::v1::{RoleBinding, RoleRef, Subject},
         },
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
     },
-    kube::{api::DynamicObject, runtime::controller, Resource, ResourceExt},
+    kube::{api::DynamicObject, runtime::controller, Resource},
     labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
     product_config::{
@@ -62,7 +61,8 @@ use std::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
-const SERVICE_ACCOUNT: &str = "zookeeper-serviceaccount";
+// Do not change the account name, its entangled with operator-rs
+const SERVICE_ACCOUNT: &str = "zookeeper-sa";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -153,6 +153,10 @@ pub enum Error {
     ApplyRoleBinding {
         source: stackable_operator::error::Error,
     },
+    #[snafu(display("failed to build RBAC resources"))]
+    BuildRbacResources {
+        source: stackable_operator::error::Error,
+    },
     #[snafu(display("failed to delete orphaned resources"))]
     DeleteOrphans {
         source: stackable_operator::error::Error,
@@ -203,6 +207,7 @@ impl ReconcilerError for Error {
             Error::InvalidJavaHeapConfig { .. } => None,
             Error::ApplyServiceAccount { .. } => None,
             Error::ApplyRoleBinding { .. } => None,
+            Error::BuildRbacResources { .. } => None,
             Error::DeleteOrphans { .. } => None,
             Error::ResolveVectorAggregatorAddress { .. } => None,
             Error::InvalidLoggingConfig { .. } => None,
@@ -263,15 +268,20 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(FailedToInitializeSecurityContextSnafu)?;
 
-    let (rbac_sa, rbac_rolebinding) = build_zk_rbac_resources(&zk, &resolved_product_image)?;
+    let (rbac_sa, rbac_rolebinding) = build_rbac_resources(
+        zk.as_ref(),
+        APP_NAME,
+        cluster_resources.get_required_labels(),
+    )
+    .context(BuildRbacResourcesSnafu)?;
     cluster_resources
         .add(client, rbac_sa)
         .await
-        .with_context(|_| ApplyServiceAccountSnafu)?;
+        .context(ApplyServiceAccountSnafu)?;
     cluster_resources
         .add(client, rbac_rolebinding)
         .await
-        .with_context(|_| ApplyRoleBindingSnafu)?;
+        .context(ApplyRoleBindingSnafu)?;
 
     let server_role_service = cluster_resources
         .add(
@@ -382,53 +392,6 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .context(ApplyStatusSnafu)?;
 
     Ok(controller::Action::await_change())
-}
-
-pub fn build_zk_rbac_resources(
-    zk: &ZookeeperCluster,
-    resolved_product_image: &ResolvedProductImage,
-) -> Result<(ServiceAccount, RoleBinding)> {
-    let service_account = ServiceAccount {
-        metadata: ObjectMetaBuilder::new()
-            .name_and_namespace(zk)
-            .name(SERVICE_ACCOUNT.to_string())
-            .with_recommended_labels(build_recommended_labels(
-                zk,
-                ZK_CONTROLLER_NAME,
-                &resolved_product_image.app_version_label,
-                "global",
-                "global",
-            ))
-            .build(),
-        ..ServiceAccount::default()
-    };
-
-    let role_binding = RoleBinding {
-        metadata: ObjectMetaBuilder::new()
-            .name_and_namespace(zk)
-            .name("zookeeper-rolebinding".to_string())
-            .with_recommended_labels(build_recommended_labels(
-                zk,
-                ZK_CONTROLLER_NAME,
-                &resolved_product_image.app_version_label,
-                "global",
-                "global",
-            ))
-            .build(),
-        role_ref: RoleRef {
-            kind: "ClusterRole".to_string(),
-            name: "zookeeper-clusterrole".to_string(),
-            api_group: "rbac.authorization.k8s.io".to_string(),
-        },
-        subjects: Some(vec![Subject {
-            kind: "ServiceAccount".to_string(),
-            name: SERVICE_ACCOUNT.to_string(),
-            namespace: zk.namespace(),
-            ..Subject::default()
-        }]),
-    };
-
-    Ok((service_account, role_binding))
 }
 
 /// The server-role service is the primary endpoint that should be used by clients that do not perform internal load balancing,
