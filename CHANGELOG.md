@@ -18,7 +18,8 @@ All notable changes to this project will be documented in this file.
   If you need your cluster to be accessible from outside of Kubernetes you need to set `clusterConfig.listenerClass`
   to `external-unstable` ([#661]).
 - Deploy default and support custom affinities ([#649]).
-- Operator-rs: 0.36.0 -> 0.39.1 ([#660], [#663]).
+- Operator-rs: `0.36.0` -> `0.40.0` ([#660], [#663], [#665]).
+- Use operator-rs `build_rbac_resources` method ([#665]).
 
 ### Fixed
 
@@ -35,6 +36,7 @@ All notable changes to this project will be documented in this file.
 [#660]: https://github.com/stackabletech/zookeeper-operator/pull/660
 [#661]: https://github.com/stackabletech/zookeeper-operator/pull/661
 [#663]: https://github.com/stackabletech/zookeeper-operator/pull/663
+[#665]: https://github.com/stackabletech/zookeeper-operator/pull/665
 
 ## [23.1.0] - 2023-01-23
 
