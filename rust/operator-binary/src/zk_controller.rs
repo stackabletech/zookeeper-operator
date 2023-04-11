@@ -12,7 +12,10 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::{product_image_selection::ResolvedProductImage, rbac::build_rbac_resources},
+    commons::{
+        product_image_selection::ResolvedProductImage,
+        rbac::{build_rbac_resources, service_account_name},
+    },
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
@@ -61,8 +64,6 @@ use std::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
-// Do not change the account name, its entangled with operator-rs
-const SERVICE_ACCOUNT: &str = "zookeeper-sa";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -752,7 +753,7 @@ fn build_server_rolegroup_statefulset(
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(SERVICE_ACCOUNT);
+        .service_account_name(service_account_name(APP_NAME));
 
     if let Some(ContainerLogConfig {
         choice:
