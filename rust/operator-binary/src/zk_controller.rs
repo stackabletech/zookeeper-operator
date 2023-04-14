@@ -811,11 +811,7 @@ fn build_server_rolegroup_statefulset(
             .build(),
         spec: Some(StatefulSetSpec {
             pod_management_policy: Some("Parallel".to_string()),
-            replicas: if zk.spec.stopped.unwrap_or(false) {
-                Some(0)
-            } else {
-                rolegroup.and_then(|rg| rg.replicas).map(i32::from)
-            },
+            replicas: rolegroup.and_then(|rg| rg.replicas).map(i32::from),
             selector: LabelSelector {
                 match_labels: Some(role_group_selector_labels(
                     zk,
