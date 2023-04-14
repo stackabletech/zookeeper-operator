@@ -110,9 +110,6 @@ pub struct ZookeeperClusterSpec {
     /// ZooKeeper server configuration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub servers: Option<Role<ZookeeperConfigFragment>>,
-    /// Emergency stop button, if `true` then all pods are stopped without affecting configuration (as setting `replicas` to `0` would).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stopped: Option<bool>,
 }
 
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
