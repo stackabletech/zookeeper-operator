@@ -26,6 +26,6 @@ stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git",
 stackable-zookeeper-crd = { path = "../crd" }
 
 [build-dependencies]
-built = { version = "0.5.1", features = ["chrono", "git2"] }
+built = { version = "0.6.0", features = ["chrono", "git2"] }
 stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", tag = "0.40.2" }
 stackable-zookeeper-crd = { path = "../crd" }
