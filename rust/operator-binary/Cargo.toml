@@ -10,7 +10,7 @@ publish = false
 
 [dependencies]
 anyhow = "1.0.58"
-clap = "4.0.26"
+clap = "4.2.3"
 failure = "0.1.8"
 fnv = "1.0.7"
 futures = { version = "0.3.26" }
