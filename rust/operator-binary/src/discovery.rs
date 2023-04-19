@@ -151,7 +151,6 @@ fn pod_hosts<'a>(
     Ok(zk
         .pods()
         .context(ExpectedPodsSnafu)?
-        .into_iter()
         .map(|pod_ref| (pod_ref.fqdn(), zookeeper_security.client_port())))
 }
 
