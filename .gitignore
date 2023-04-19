@@ -15,8 +15,3 @@ result
 image.tar
 
 tilt_options.json
-
-catalog/
-bundle/
-**/bundle.Dockerfile
-**/catalog.Dockerfile
