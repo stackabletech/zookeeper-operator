@@ -2,9 +2,9 @@
 dependencies:
   - type: olm.package
     value:
-      packageName: stackable-commons-operator
+      packageName: commons-operator-package
       version: "23.4.0"
   - type: olm.package
     value:
-      packageName: stackable-secret-operator
+      packageName: secret-operator-package
       version: "23.4.0"
