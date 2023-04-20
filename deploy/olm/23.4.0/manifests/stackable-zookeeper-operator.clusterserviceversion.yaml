@@ -9,11 +9,11 @@ spec:
     olm.properties: '[]'
     categories: Storage
     capabilities: Full Lifecycle
-    description: Apache Zookeeper for the Stackable platform
+    description: Stackable Operator for Apache ZooKeeper
     repository: https://github.com/stackabletech/zookeeper-operator
     containerImage: docker.stackable.tech/stackable/zookeeper-operator:23.4.0
 
-  displayName: Apache Zookeeper Operator
+  displayName: Stackable Operator for Apache ZooKeeper
   description: |-
     This is a Kubernetes operator to manage [Apache ZooKeeper](https://zookeeper.apache.org/) ensembles. The Stackable Apache ZooKeeper Operator
     is part of the Stackable Data Platform, a curated selection of the best open source data apps like Kafka, Druid, Trino or Spark, all
