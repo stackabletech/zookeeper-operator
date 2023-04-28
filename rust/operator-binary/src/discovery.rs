@@ -63,6 +63,7 @@ pub async fn build_discovery_configmaps(
     let mut discovery_configmaps = vec![build_discovery_configmap(
         zk,
         owner,
+        zookeeper_security,
         name.as_str(),
         &namespace,
         controller_name,
@@ -76,6 +77,7 @@ pub async fn build_discovery_configmaps(
         discovery_configmaps.push(build_discovery_configmap(
             zk,
             owner,
+            zookeeper_security,
             &format!("{}-nodeport", name),
             &namespace,
             controller_name,
@@ -95,6 +97,7 @@ pub async fn build_discovery_configmaps(
 fn build_discovery_configmap(
     zk: &ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
+    zookeeper_security: &ZookeeperSecurity,
     name: &str,
     namespace: &str,
     controller_name: &str,
@@ -138,6 +141,10 @@ fn build_discovery_configmap(
         .add_data("ZOOKEEPER", conn_str)
         // Some clients don't support ZooKeeper's merged `hosts/chroot` format, so export them separately for these clients
         .add_data("ZOOKEEPER_HOSTS", hosts)
+        .add_data(
+            "ZOOKEEPER_PORT",
+            zookeeper_security.client_port().to_string(),
+        )
         .add_data("ZOOKEEPER_CHROOT", chroot.unwrap_or("/"))
         .build()
         .context(BuildConfigMapSnafu)
