@@ -142,7 +142,7 @@ fn build_discovery_configmap(
         // Some clients don't support ZooKeeper's merged `hosts/chroot` format, so export them separately for these clients
         .add_data("ZOOKEEPER_HOSTS", hosts)
         .add_data(
-            "ZOOKEEPER_PORT",
+            "ZOOKEEPER_CLIENT_PORT",
             zookeeper_security.client_port().to_string(),
         )
         .add_data("ZOOKEEPER_CHROOT", chroot.unwrap_or("/"))
