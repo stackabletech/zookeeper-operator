@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Generate OLM bundle for Release 23.4.0 ([#672]).
+- Expose `ZOOKEEPER_PORT` in discovery CM ([#675]).
 
 ### Changed
 
@@ -17,6 +18,7 @@ All notable changes to this project will be documented in this file.
 [#672]: https://github.com/stackabletech/zookeeper-operator/pull/672
 [#673]: https://github.com/stackabletech/zookeeper-operator/pull/673
 [#674]: https://github.com/stackabletech/zookeeper-operator/pull/674
+[#675]: https://github.com/stackabletech/zookeeper-operator/pull/675
 
 ## [23.4.0] - 2023-04-17
 
