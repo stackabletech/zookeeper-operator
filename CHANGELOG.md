@@ -14,12 +14,14 @@ All notable changes to this project will be documented in this file.
 - Operator-rs: `0.40.2` -> `0.41.0` ([#673]).
 - Use 0.0.0-dev product images for testing ([#674])
 - Use testing-tools 0.2.0 ([#674])
+- Run as root group ([#680])
 
 [#672]: https://github.com/stackabletech/zookeeper-operator/pull/672
 [#673]: https://github.com/stackabletech/zookeeper-operator/pull/673
 [#674]: https://github.com/stackabletech/zookeeper-operator/pull/674
 [#675]: https://github.com/stackabletech/zookeeper-operator/pull/675
 [#676]: https://github.com/stackabletech/zookeeper-operator/pull/676
+[#680]: https://github.com/stackabletech/zookeeper-operator/pull/680
 
 ## [23.4.0] - 2023-04-17
 
