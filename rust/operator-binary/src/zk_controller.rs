@@ -64,7 +64,7 @@ use std::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
-
+pub const ZK_UID: i64 = 1000;
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
     pub product_config: ProductConfigManager,
@@ -748,8 +748,8 @@ fn build_server_rolegroup_statefulset(
             ..Volume::default()
         })
         .security_context(PodSecurityContext {
-            run_as_user: Some(1000),
-            run_as_group: Some(1000),
+            run_as_user: Some(ZK_UID),
+            run_as_group: Some(0),
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
