@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [23.4.1] - 2023-05-17
+
+### Changed
+
+- Run as root group ([#680])
+
+[#680]: https://github.com/stackabletech/zookeeper-operator/pull/680
+
 ## [23.4.0] - 2023-04-17
 
 ### Added
