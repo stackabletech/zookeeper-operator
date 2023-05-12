@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - Generate OLM bundle for Release 23.4.0 ([#672]).
 - Expose `ZOOKEEPER_CLIENT_PORT` in discovery CM ([#675], [#676]).
-- Missing CRD defaults for `status.conditions` field ([#682]). 
+- Missing CRD defaults for `status.conditions` field ([#682]).
 
 ### Changed
 
