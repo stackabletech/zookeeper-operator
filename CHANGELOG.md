@@ -6,11 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ## [23.4.1] - 2023-05-17
 
+### Added
+
+- Missing CRD defaults for `status.conditions` field ([#682]).
+
 ### Changed
 
 - Run as root group ([#680])
 
 [#680]: https://github.com/stackabletech/zookeeper-operator/pull/680
+[#682]: https://github.com/stackabletech/zookeeper-operator/pull/682
 
 ## [23.4.0] - 2023-04-17
 
