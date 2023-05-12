@@ -380,6 +380,7 @@ pub struct ZookeeperClusterStatus {
     /// An opaque value that changes every time a discovery detail does
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub discovery_hash: Option<String>,
+    #[serde(default)]
     pub conditions: Vec<ClusterCondition>,
 }
 
