@@ -51,7 +51,7 @@ mod tests {
           name: simple-zk
         spec:
           image:
-            productVersion: 3.8.0
+            productVersion: 3.8.1
             stackableVersion: 0.9.0
           clusterConfig:
             authentication:
@@ -126,7 +126,7 @@ mod tests {
           name: simple-zk
         spec:
           image:
-            productVersion: 3.8.0
+            productVersion: 3.8.1
             stackableVersion: 0.9.0
           clusterConfig:
             authentication:
