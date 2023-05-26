@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Generate OLM bundle for Release 23.4.0 ([#672]).
 - Expose `ZOOKEEPER_CLIENT_PORT` in discovery CM ([#675], [#676]).
 - Missing CRD defaults for `status.conditions` field ([#682]).
+- Support for ZooKeeper `3.8.1` ([#689]).
 
 ### Changed
 
@@ -24,6 +25,7 @@ All notable changes to this project will be documented in this file.
 [#676]: https://github.com/stackabletech/zookeeper-operator/pull/676
 [#680]: https://github.com/stackabletech/zookeeper-operator/pull/680
 [#682]: https://github.com/stackabletech/zookeeper-operator/pull/682
+[#689]: https://github.com/stackabletech/zookeeper-operator/pull/689
 
 ## [23.4.0] - 2023-04-17
 
