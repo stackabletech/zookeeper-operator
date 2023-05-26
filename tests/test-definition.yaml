@@ -5,10 +5,10 @@ dimensions:
       - 3.5.8-stackable0.0.0-dev
       - 3.6.3-stackable0.0.0-dev
       - 3.7.0-stackable0.0.0-dev
-      - 3.8.0-stackable0.0.0-dev
+      - 3.8.1-stackable0.0.0-dev
   - name: zookeeper-latest
     values:
-      - 3.8.0-stackable0.0.0-dev
+      - 3.8.1-stackable0.0.0-dev
   - name: use-server-tls
     values:
       - "true"

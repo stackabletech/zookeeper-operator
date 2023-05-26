@@ -298,7 +298,7 @@ impl Configuration for ZookeeperConfigFragment {
                     reason: e.to_string(),
                 })?;
         let jvm_flags = [
-            format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent-0.16.1.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
+            format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
             match logging_framework {
                 LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
                 LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
@@ -665,8 +665,8 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.0"
-            stackableVersion: "0.8.0"
+            productVersion: "3.8.1"
+            stackableVersion: "0.0.0-dev"
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
@@ -685,8 +685,8 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.0"
-            stackableVersion: "0.8.0"
+            productVersion: "3.8.1"
+            stackableVersion: "0.0.0-dev"
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-client-tls
@@ -709,8 +709,8 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.0"
-            stackableVersion: "0.8.0"
+            productVersion: "3.8.1"
+            stackableVersion: "0.0.0-dev"
           clusterConfig:
             tls:
               serverSecretClass: null
@@ -729,8 +729,8 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.0"
-            stackableVersion: "0.8.0"
+            productVersion: "3.8.1"
+            stackableVersion: "0.0.0-dev"
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -755,8 +755,8 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.0"
-            stackableVersion: "0.8.0"
+            productVersion: "3.8.1"
+            stackableVersion: "0.0.0-dev"
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
 
@@ -776,8 +776,8 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.0"
-            stackableVersion: "0.8.0"
+            productVersion: "3.8.1"
+            stackableVersion: "0.0.0-dev"
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -799,8 +799,8 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.0"
-            stackableVersion: "0.8.0"
+            productVersion: "3.8.1"
+            stackableVersion: "0.0.0-dev"
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-server-tls
