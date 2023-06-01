@@ -1,3 +1,8 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: kubectl apply -n $NAMESPACE -f resource-quota.yaml
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
 ---
 apiVersion: v1
