@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 - Expose `ZOOKEEPER_CLIENT_PORT` in discovery CM ([#675], [#676]).
 - Missing CRD defaults for `status.conditions` field ([#682]).
 - Support for ZooKeeper `3.8.1` ([#689]).
-
+- Resource requests to all containers and resource quotas smoke tests ([#691]).
 ### Changed
 
 - Operator-rs: `0.40.2` -> `0.41.0` ([#673]).
@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 [#680]: https://github.com/stackabletech/zookeeper-operator/pull/680
 [#682]: https://github.com/stackabletech/zookeeper-operator/pull/682
 [#689]: https://github.com/stackabletech/zookeeper-operator/pull/689
+[#691]: https://github.com/stackabletech/zookeeper-operator/pull/691
 
 ## [23.4.0] - 2023-04-17
 

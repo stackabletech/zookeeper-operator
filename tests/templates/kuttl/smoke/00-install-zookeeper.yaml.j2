@@ -60,6 +60,11 @@ spec:
         config:
           myidOffset: 20
           resources:
+            cpu:
+              max: '500m'
+              min: '250m'
+            memory:
+              limit: '0.5Gi'
             storage:
               data:
                 capacity: '2Gi'

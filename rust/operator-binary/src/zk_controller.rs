@@ -21,8 +21,8 @@ use stackable_operator::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service, ServicePort,
-                ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, ResourceRequirements,
+                Service, ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
@@ -674,6 +674,17 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
         .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .resources(ResourceRequirements {
+            limits: Some(BTreeMap::from([
+                ("cpu".to_string(), Quantity("1".to_string())),
+                ("memory".to_string(), Quantity("1Gi".to_string())),
+            ])),
+            requests: Some(BTreeMap::from([
+                ("cpu".to_string(), Quantity("100m".to_string())),
+                ("memory".to_string(), Quantity("512Mi".to_string())),
+            ])),
+            ..ResourceRequirements::default()
+        })
         .build();
 
     let container_zk = cb_zookeeper
