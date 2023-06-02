@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - Missing CRD defaults for `status.conditions` field ([#682]).
 - Support for ZooKeeper `3.8.1` ([#689]).
 - Resource requests to all containers and resource quotas smoke tests ([#691]).
+
 ### Changed
 
 - Operator-rs: `0.40.2` -> `0.41.0` ([#673]).
