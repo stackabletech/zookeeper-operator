@@ -179,6 +179,10 @@ pub enum Error {
     FailedToresolveConfig {
         source: stackable_zookeeper_crd::Error,
     },
+    #[snafu(display("failed to build pod template"))]
+    BuildTemplate {
+        source: stackable_operator::error::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -214,6 +218,7 @@ impl ReconcilerError for Error {
             Error::InvalidLoggingConfig { .. } => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
             Error::FailedToresolveConfig { .. } => None,
+            Error::BuildTemplate { .. } => None,
         }
     }
 }
@@ -790,7 +795,7 @@ fn build_server_rolegroup_statefulset(
         ));
     }
 
-    let pod_template = pod_builder.build_template();
+    let pod_template = pod_builder.build_template().context(BuildTemplateSnafu)?;
 
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
