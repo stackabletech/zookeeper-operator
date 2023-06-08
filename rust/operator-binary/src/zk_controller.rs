@@ -789,10 +789,10 @@ fn build_server_rolegroup_statefulset(
 
     if logging.enable_vector_agent {
         let resources = ResourceRequirementsBuilder::new()
-            .with_cpu_limit("100m")
-            .with_cpu_request("500m")
-            .with_memory_limit("8Mi")
-            .with_memory_request("40Mi")
+            .with_cpu_limit("500m")
+            .with_cpu_request("100m")
+            .with_memory_limit("40Mi")
+            .with_memory_request("8Mi")
             .build();
         pod_builder.add_container(product_logging::framework::vector_container(
             resolved_product_image,
