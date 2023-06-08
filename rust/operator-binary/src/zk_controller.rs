@@ -9,6 +9,7 @@ use crate::{
 
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
+use stackable_operator::builder::resources::ResourceRequirementsBuilder;
 use stackable_operator::{
     builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
@@ -711,7 +712,7 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
         .add_volume_mount("log", STACKABLE_LOG_DIR)
-        .resources(resources)
+        .with_resources(resources)
         .build();
 
     pod_builder
@@ -787,11 +788,18 @@ fn build_server_rolegroup_statefulset(
     }
 
     if logging.enable_vector_agent {
+        let resources = ResourceRequirementsBuilder::new()
+            .with_cpu_limit("100m")
+            .with_cpu_request("500m")
+            .with_memory_limit("8Mi")
+            .with_memory_request("40Mi")
+            .build();
         pod_builder.add_container(product_logging::framework::vector_container(
             resolved_product_image,
             "config",
             "log",
             logging.containers.get(&Container::Vector),
+            resources,
         ));
     }
 
