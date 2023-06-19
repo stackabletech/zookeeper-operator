@@ -10,7 +10,10 @@ use crate::{
 use fnv::FnvHasher;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::{ConfigMapBuilder, ContainerBuilder, ObjectMetaBuilder, PodBuilder},
+    builder::{
+        resources::ResourceRequirementsBuilder, ConfigMapBuilder, ContainerBuilder,
+        ObjectMetaBuilder, PodBuilder,
+    },
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::{
         product_image_selection::ResolvedProductImage,
@@ -782,11 +785,18 @@ fn build_server_rolegroup_statefulset(
     }
 
     if logging.enable_vector_agent {
+        let resources = ResourceRequirementsBuilder::new()
+            .with_cpu_request("100m")
+            .with_cpu_limit("200m")
+            .with_memory_request("64Mi")
+            .with_memory_limit("64Mi")
+            .build();
         pod_builder.add_container(product_logging::framework::vector_container(
             resolved_product_image,
             "config",
             "log",
             logging.containers.get(&Container::Vector),
+            resources,
         ));
     }
 
