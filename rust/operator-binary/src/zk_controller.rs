@@ -672,6 +672,14 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
         .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .resources(
+            ResourceRequirementsBuilder::new()
+                .with_cpu_request("100m")
+                .with_cpu_limit("400m")
+                .with_memory_request("512Mi")
+                .with_memory_limit("512Mi")
+                .build(),
+        )
         .build();
 
     let container_zk = cb_zookeeper
