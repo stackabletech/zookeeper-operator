@@ -16,7 +16,8 @@ fn read_auth_class(file_path: &str) -> AuthenticationClass {
     let file_content = fs::read_to_string(file_path).expect("Could not open file");
     let deserializer = serde_yaml::Deserializer::from_str(&file_content);
 
-    serde_yaml::with::singleton_map_recursive::deserialize(deserializer).unwrap()
+    serde_yaml::with::singleton_map_recursive::deserialize(deserializer)
+        .expect("Could not read file content")
 }
 
 const USAGE_GUIDE_EXAMPLE_PATH: &str = "../../docs/modules/zookeeper/examples/usage_guide";
