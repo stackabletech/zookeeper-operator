@@ -1,0 +1,19 @@
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: simple-zk
+spec:
+  image:
+    productVersion: 3.8.1
+    stackableVersion: 0.0.0-dev
+  clusterConfig:
+    authentication:
+      - authenticationClass: zk-client-tls
+    tls:
+      serverSecretClass: tls
+      quorumSecretClass: tls
+  servers:
+    roleGroups:
+      default:
+        replicas: 3
