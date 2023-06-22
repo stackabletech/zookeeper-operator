@@ -14,9 +14,10 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Operator-rs: `0.40.2` -> `0.41.0` ([#673]).
-- Use 0.0.0-dev product images for testing ([#674])
-- Use testing-tools 0.2.0 ([#674])
-- Run as root group ([#680])
+- Use 0.0.0-dev product images for testing ([#674]).
+- Use testing-tools 0.2.0 ([#674]).
+- Run as root group ([#680]).
+- Let secret-operator handle certificate conversion ([#695]).
 
 [#672]: https://github.com/stackabletech/zookeeper-operator/pull/672
 [#673]: https://github.com/stackabletech/zookeeper-operator/pull/673
@@ -26,6 +27,7 @@ All notable changes to this project will be documented in this file.
 [#680]: https://github.com/stackabletech/zookeeper-operator/pull/680
 [#682]: https://github.com/stackabletech/zookeeper-operator/pull/682
 [#689]: https://github.com/stackabletech/zookeeper-operator/pull/689
+[#695]: https://github.com/stackabletech/zookeeper-operator/pull/695
 
 ## [23.4.0] - 2023-04-17
 
