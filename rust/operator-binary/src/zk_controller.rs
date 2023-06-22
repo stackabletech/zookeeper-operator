@@ -674,8 +674,8 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("log", STACKABLE_LOG_DIR)
         .resources(
             ResourceRequirementsBuilder::new()
-                .with_cpu_request("100m")
-                .with_cpu_limit("400m")
+                .with_cpu_request("200m")
+                .with_cpu_limit("800m")
                 .with_memory_request("512Mi")
                 .with_memory_limit("512Mi")
                 .build(),
@@ -793,18 +793,17 @@ fn build_server_rolegroup_statefulset(
     }
 
     if logging.enable_vector_agent {
-        let resources = ResourceRequirementsBuilder::new()
-            .with_cpu_request("100m")
-            .with_cpu_limit("200m")
-            .with_memory_request("64Mi")
-            .with_memory_limit("64Mi")
-            .build();
         pod_builder.add_container(product_logging::framework::vector_container(
             resolved_product_image,
             "config",
             "log",
             logging.containers.get(&Container::Vector),
-            resources,
+            ResourceRequirementsBuilder::new()
+                .with_cpu_request("250m")
+                .with_cpu_limit("500m")
+                .with_memory_request("128Mi")
+                .with_memory_limit("128Mi")
+                .build(),
         ));
     }
 

@@ -24,9 +24,9 @@ include::home:concepts:stackable_resource_requests.adoc[]
 
 A minimal HA setup consisting of 3 ZooKeeper instances has the following https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/[resource requirements]:
 
-* `600m` CPU request
-* `1800m` CPU limit
-* `1728m` memory request and limit
+* `1350m` CPU request
+* `3900m` CPU limit
+* `1920m` memory request and limit
 * `750Mi` persistent storage
 
 Corresponding to the values above, the operator uses the following resource defaults:
@@ -41,8 +41,8 @@ servers:
           memory:
             limit: '512Mi'
           cpu:
-            min: '100m'
-            max: '400m'
+            min: '200m'
+            max: '800m'
           storage:
             data:
               capacity: '250Mi'
