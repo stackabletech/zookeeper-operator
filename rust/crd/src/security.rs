@@ -5,10 +5,7 @@
 //!
 //! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
 
-use crate::{
-    authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster,
-    STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
-};
+use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
