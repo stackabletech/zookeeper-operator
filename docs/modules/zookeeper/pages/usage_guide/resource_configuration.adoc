@@ -18,16 +18,18 @@ servers:
 
 In the above example, all ZooKeeper nodes in the default group will store data (the location of the property `dataDir`) on a `2Gi` volume.
 
-By default, in case nothing is configured in the custom resource for a certain role group, each Pod will have a `1Gi` large local volume mount for the data location.
-
 == Resource requests
 
-// The "nightly" version is needed because the "include" directive searches for
-// files in the "stable" version by default.
-// TODO: remove the "nightly" version after the next platform release (current: 22.09)
-include::nightly@home:concepts:stackable_resource_requests.adoc[]
+include::home:concepts:stackable_resource_requests.adoc[]
 
-If no resource requests are configured explicitly, the ZooKeeper operator uses the following defaults:
+A minimal HA setup consisting of 3 ZooKeeper instances has the following https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/[resource requirements]:
+
+* `1350m` CPU request
+* `3900m` CPU limit
+* `1920m` memory request and limit
+* `750Mi` persistent storage
+
+Corresponding to the values above, the operator uses the following resource defaults:
 
 [source,yaml]
 ----
@@ -39,9 +41,9 @@ servers:
           memory:
             limit: '512Mi'
           cpu:
-            max: '4'
-            min: '500m'
+            min: '200m'
+            max: '800m'
           storage:
             data:
-              capacity: '1Gi'
+              capacity: '250Mi'
 ----
