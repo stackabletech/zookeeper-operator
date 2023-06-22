@@ -12,7 +12,10 @@ use crate::{
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
-    builder::{ContainerBuilder, PodBuilder, SecretOperatorVolumeSourceBuilder, VolumeBuilder},
+    builder::{
+        ContainerBuilder, PodBuilder, SecretFormat, SecretOperatorVolumeSourceBuilder,
+        VolumeBuilder,
+    },
     client::Client,
     commons::authentication::AuthenticationClassProvider,
     k8s_openapi::api::core::v1::Volume,
@@ -117,100 +120,26 @@ impl ZookeeperSecurity {
         }
     }
 
-    /// Returns required (init) container commands to generate keystores and truststores
-    /// depending on the tls and authentication settings.
-    pub fn commands(&self) -> Vec<String> {
-        let mut args = vec![];
-        // Quorum
-        args.push(Self::generate_password(Self::STORE_PASSWORD_ENV));
-        args.extend(Self::create_key_and_trust_store_cmd(
-            Self::QUORUM_TLS_MOUNT_DIR,
-            Self::QUORUM_TLS_DIR,
-            "quorum-tls",
-            Self::STORE_PASSWORD_ENV,
-        ));
-        args.extend(vec![
-            Self::write_store_password_to_config(
-                Self::SSL_QUORUM_KEY_STORE_PASSWORD,
-                STACKABLE_RW_CONFIG_DIR,
-                Self::STORE_PASSWORD_ENV,
-            ),
-            Self::write_store_password_to_config(
-                Self::SSL_QUORUM_TRUST_STORE_PASSWORD,
-                STACKABLE_RW_CONFIG_DIR,
-                Self::STORE_PASSWORD_ENV,
-            ),
-        ]);
-
-        // server-tls or client-auth-tls (only the certificates specified are accepted)
-        if self.tls_enabled() {
-            args.push(Self::generate_password(Self::STORE_PASSWORD_ENV));
-
-            args.extend(Self::create_key_and_trust_store_cmd(
-                Self::SERVER_TLS_MOUNT_DIR,
-                Self::SERVER_TLS_DIR,
-                "server-tls",
-                Self::STORE_PASSWORD_ENV,
-            ));
-
-            args.extend(vec![
-                Self::write_store_password_to_config(
-                    Self::SSL_KEY_STORE_PASSWORD,
-                    STACKABLE_RW_CONFIG_DIR,
-                    Self::STORE_PASSWORD_ENV,
-                ),
-                Self::write_store_password_to_config(
-                    Self::SSL_TRUST_STORE_PASSWORD,
-                    STACKABLE_RW_CONFIG_DIR,
-                    Self::STORE_PASSWORD_ENV,
-                ),
-            ]);
-        }
-
-        args
-    }
-
     /// Adds required volumes and volume mounts to the pod and container builders
     /// depending on the tls and authentication settings.
     pub fn add_volume_mounts(
         &self,
         pod_builder: &mut PodBuilder,
-        cb_prepare: &mut ContainerBuilder,
         cb_zookeeper: &mut ContainerBuilder,
     ) {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
-            // mounts for secret volume
-            cb_prepare.add_volume_mount("server-tls-mount", Self::SERVER_TLS_MOUNT_DIR);
-            cb_zookeeper.add_volume_mount("server-tls-mount", Self::SERVER_TLS_MOUNT_DIR);
-            pod_builder.add_volume(Self::create_tls_volume("server-tls-mount", secret_class));
-            // empty mount for trust and keystore
-            cb_prepare.add_volume_mount("server-tls", Self::SERVER_TLS_DIR);
             cb_zookeeper.add_volume_mount("server-tls", Self::SERVER_TLS_DIR);
-            pod_builder.add_volume(
-                VolumeBuilder::new("server-tls")
-                    .with_empty_dir(Some(""), None)
-                    .build(),
-            );
+            pod_builder.add_volume(Self::create_tls_volume("server-tls", secret_class));
         }
 
         // quorum
-        // mounts for secret volume
-        cb_prepare.add_volume_mount("quorum-tls-mount", Self::QUORUM_TLS_MOUNT_DIR);
-        cb_zookeeper.add_volume_mount("quorum-tls-mount", Self::QUORUM_TLS_MOUNT_DIR);
+        cb_zookeeper.add_volume_mount("quorum-tls", Self::QUORUM_TLS_DIR);
         pod_builder.add_volume(Self::create_tls_volume(
-            "quorum-tls-mount",
+            "quorum-tls",
             &self.quorum_secret_class,
         ));
-        // empty mount for trust and keystore
-        cb_prepare.add_volume_mount("quorum-tls", Self::QUORUM_TLS_DIR);
-        cb_zookeeper.add_volume_mount("quorum-tls", Self::QUORUM_TLS_DIR);
-        pod_builder.add_volume(
-            VolumeBuilder::new("quorum-tls")
-                .with_empty_dir(Some(""), None)
-                .build(),
-        );
     }
 
     /// Returns required ZooKeeper configuration settings for the `zoo.cfg` properties file
@@ -331,47 +260,9 @@ impl ZookeeperSecurity {
                 SecretOperatorVolumeSourceBuilder::new(secret_class_name)
                     .with_pod_scope()
                     .with_node_scope()
+                    .with_format(SecretFormat::TlsPkcs12)
                     .build(),
             )
             .build()
-    }
-
-    /// Generates the shell script to retrieve a random 20 character password
-    fn generate_password(store_password_env_var: &str) -> String {
-        format!(
-            "export {store_password_env_var}=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 20 ; echo '')",
-        )
-    }
-
-    /// Generates the shell script to append the generated password from `generate_password()`
-    /// to the zoo.cfg to set key and truststore passwords.
-    fn write_store_password_to_config(
-        property: &str,
-        rw_conf_dir: &str,
-        store_password_env_var: &str,
-    ) -> String {
-        format!(
-            "echo {property}=${store_password_env_var} >> {rw_conf_dir}/{ZOOKEEPER_PROPERTIES_FILE}",
-        )
-    }
-
-    /// Generates the shell script to create key and trust stores from the certificates provided
-    /// by the secret operator
-    fn create_key_and_trust_store_cmd(
-        mount_directory: &str,
-        stackable_directory: &str,
-        alias_name: &str,
-        store_password_env_var: &str,
-    ) -> Vec<String> {
-        vec![
-            format!("echo [{stackable_directory}] Cleaning up truststore - just in case"),
-            format!("rm -f {stackable_directory}/truststore.p12"),
-            format!("echo [{stackable_directory}] Creating truststore"),
-            format!("keytool -importcert -file {mount_directory}/ca.crt -keystore {stackable_directory}/truststore.p12 -storetype pkcs12 -noprompt -alias {alias_name} -storepass ${store_password_env_var}"),
-            format!("echo [{stackable_directory}] Creating certificate chain"),
-            format!("cat {mount_directory}/ca.crt {mount_directory}/tls.crt > {stackable_directory}/chain.crt"),
-            format!("echo [{stackable_directory}] Creating keystore"),
-            format!("openssl pkcs12 -export -in {stackable_directory}/chain.crt -inkey {mount_directory}/tls.key -out {stackable_directory}/keystore.p12 --passout pass:${store_password_env_var}"),
-        ]
     }
 }

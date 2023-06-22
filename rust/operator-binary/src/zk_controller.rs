@@ -632,7 +632,7 @@ fn build_server_rolegroup_statefulset(
     let mut pod_builder = PodBuilder::new();
 
     // add volumes and mounts depending on tls / auth settings
-    zookeeper_security.add_volume_mounts(&mut pod_builder, &mut cb_prepare, &mut cb_zookeeper);
+    zookeeper_security.add_volume_mounts(&mut pod_builder, &mut cb_zookeeper);
 
     let mut args = Vec::new();
 
@@ -647,7 +647,6 @@ fn build_server_rolegroup_statefulset(
         ));
     }
     args.extend(create_init_container_command_args());
-    args.extend(zookeeper_security.commands());
 
     let container_prepare = cb_prepare
         .image_from_product_image(resolved_product_image)
