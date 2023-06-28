@@ -10,7 +10,8 @@ All notable changes to this project will be documented in this file.
 - Expose `ZOOKEEPER_CLIENT_PORT` in discovery CM ([#675], [#676]).
 - Support for ZooKeeper `3.8.1` ([#689]).
 - Set explicit resources on all containers ([#693]).
-- Added kuttl test suites ([#696])
+- Added kuttl test suites ([#696]).
+- Support podOverrides ([#698]).
 
 ### Fixed
 
@@ -33,6 +34,7 @@ All notable changes to this project will be documented in this file.
 [#689]: https://github.com/stackabletech/zookeeper-operator/pull/689
 [#693]: https://github.com/stackabletech/zookeeper-operator/pull/693
 [#696]: https://github.com/stackabletech/zookeeper-operator/pull/696
+[#698]: https://github.com/stackabletech/zookeeper-operator/pull/698
 
 ## [23.4.0] - 2023-04-17
 
