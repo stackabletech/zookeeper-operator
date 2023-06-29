@@ -89,7 +89,7 @@ pub enum Error {
         source: strum::ParseError,
         role: String,
     },
-    #[snafu(display("internal operator failure: {source}"))]
+    #[snafu(display("internal operator failure"))]
     InternalOperatorFailure {
         source: stackable_zookeeper_crd::Error,
     },
