@@ -45,5 +45,5 @@ servers:
             max: '800m'
           storage:
             data:
-              capacity: '250Mi'
+              capacity: '1Gi'
 ----
