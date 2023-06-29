@@ -27,7 +27,7 @@ A minimal HA setup consisting of 3 ZooKeeper instances has the following https:/
 * `1350m` CPU request
 * `3900m` CPU limit
 * `1920m` memory request and limit
-* `750Mi` persistent storage
+* `3072Mi` persistent storage
 
 Corresponding to the values above, the operator uses the following resource defaults:
 
@@ -45,5 +45,5 @@ servers:
             max: '800m'
           storage:
             data:
-              capacity: '250Mi'
+              capacity: '1Gi'
 ----
