@@ -262,8 +262,8 @@ impl ZookeeperConfig {
             myid_offset: Some(1),
             resources: ResourcesFragment {
                 cpu: CpuLimitsFragment {
-                    min: Some(Quantity("500m".to_owned())),
-                    max: Some(Quantity("4".to_owned())),
+                    min: Some(Quantity("200m".to_owned())),
+                    max: Some(Quantity("800m".to_owned())),
                 },
                 memory: MemoryLimitsFragment {
                     limit: Some(Quantity("512Mi".to_owned())),

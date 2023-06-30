@@ -8,8 +8,13 @@ All notable changes to this project will be documented in this file.
 
 - Generate OLM bundle for Release 23.4.0 ([#672]).
 - Expose `ZOOKEEPER_CLIENT_PORT` in discovery CM ([#675], [#676]).
-- Missing CRD defaults for `status.conditions` field ([#682]).
 - Support for ZooKeeper `3.8.1` ([#689]).
+- Set explicit resources on all containers ([#693], [#699]).
+- Added kuttl test suites ([#696])
+
+### Fixed
+
+- Missing CRD defaults for `status.conditions` field ([#682]).
 
 ### Changed
 
@@ -27,6 +32,9 @@ All notable changes to this project will be documented in this file.
 [#680]: https://github.com/stackabletech/zookeeper-operator/pull/680
 [#682]: https://github.com/stackabletech/zookeeper-operator/pull/682
 [#689]: https://github.com/stackabletech/zookeeper-operator/pull/689
+[#693]: https://github.com/stackabletech/zookeeper-operator/pull/693
+[#696]: https://github.com/stackabletech/zookeeper-operator/pull/696
+[#699]: https://github.com/stackabletech/zookeeper-operator/pull/699
 [#695]: https://github.com/stackabletech/zookeeper-operator/pull/695
 
 ## [23.4.0] - 2023-04-17
