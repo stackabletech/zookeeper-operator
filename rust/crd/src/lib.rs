@@ -279,7 +279,7 @@ impl ZookeeperConfig {
                 },
                 storage: ZookeeperStorageConfigFragment {
                     data: PvcConfigFragment {
-                        capacity: Some(Quantity("250Mi".to_owned())),
+                        capacity: Some(Quantity("1Gi".to_owned())),
                         storage_class: None,
                         selectors: None,
                     },
