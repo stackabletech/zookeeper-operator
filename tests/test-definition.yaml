@@ -36,17 +36,31 @@ tests:
     dimensions:
       - zookeeper-latest
 suites:
-  - name: latest
+  - name: nightly
+    patch:
+      - dimensions:
+          - name: zookeeper
+            expr: last
+          - name: use-server-tls
+            expr: "true"
+          - name: use-client-auth-tls
+            expr: "true"
+  - name: smoke-latest
+    select:
+      - smoke
     patch:
       - dimensions:
           - expr: last
-  - name: smoke
-    select:
-      - smoke
   - name: openshift
     patch:
       - dimensions:
           - expr: last
       - dimensions:
+          - name: zookeeper
+            expr: last
+          - name: use-server-tls
+            expr: "true"
+          - name: use-client-auth-tls
+            expr: "true"
           - name: openshift
             expr: "true"
