@@ -29,6 +29,7 @@ use stackable_operator::{
             },
         },
         apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
+        DeepMerge,
     },
     kube::{api::DynamicObject, runtime::controller, Resource},
     labels::{role_group_selector_labels, role_selector_labels},
@@ -87,6 +88,10 @@ pub enum Error {
     RoleParseFailure {
         source: strum::ParseError,
         role: String,
+    },
+    #[snafu(display("internal operator failure"))]
+    InternalOperatorFailure {
+        source: stackable_zookeeper_crd::Error,
     },
     #[snafu(display("failed to calculate global service name"))]
     GlobalServiceNameNotFound,
@@ -179,7 +184,7 @@ pub enum Error {
         source: stackable_zookeeper_crd::security::Error,
     },
     #[snafu(display("failed to resolve and merge config for role and role group"))]
-    FailedToresolveConfig {
+    FailedToResolveConfig {
         source: stackable_zookeeper_crd::Error,
     },
 }
@@ -194,6 +199,7 @@ impl ReconcilerError for Error {
             Error::CrdValidationFailure { .. } => None,
             Error::NoServerRole => None,
             Error::RoleParseFailure { .. } => None,
+            Error::InternalOperatorFailure { .. } => None,
             Error::GlobalServiceNameNotFound => None,
             Error::RoleGroupServiceNameNotFound { .. } => None,
             Error::ApplyRoleService { .. } => None,
@@ -216,7 +222,7 @@ impl ReconcilerError for Error {
             Error::ResolveVectorAggregatorAddress { .. } => None,
             Error::InvalidLoggingConfig { .. } => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
-            Error::FailedToresolveConfig { .. } => None,
+            Error::FailedToResolveConfig { .. } => None,
         }
     }
 }
@@ -297,11 +303,12 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
 
     let mut ss_cond_builder = StatefulSetConditionBuilder::default();
 
+    let zk_role = ZookeeperRole::Server;
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
         let merged_config = zk
             .merged_config(&ZookeeperRole::Server, &rolegroup)
-            .context(FailedToresolveConfigSnafu)?;
+            .context(FailedToResolveConfigSnafu)?;
 
         let rg_service = build_server_rolegroup_service(
             &zk,
@@ -319,6 +326,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             &zk,
+            &zk_role,
             &rolegroup,
             rolegroup_config,
             &zookeeper_security,
@@ -580,26 +588,20 @@ fn build_server_rolegroup_service(
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_server_rolegroup_service`]).
 fn build_server_rolegroup_statefulset(
     zk: &ZookeeperCluster,
+    zk_role: &ZookeeperRole,
     rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
     config: &ZookeeperConfig,
 ) -> Result<StatefulSet> {
-    let zk_role =
-        ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| RoleParseFailureSnafu {
-            role: rolegroup_ref.role.to_string(),
-        })?;
+    let role = zk.role(zk_role).context(InternalOperatorFailureSnafu)?;
     let rolegroup = zk
-        .spec
-        .servers
-        .as_ref()
-        .context(NoServerRoleSnafu)?
-        .role_groups
-        .get(&rolegroup_ref.role_group);
+        .rolegroup(rolegroup_ref)
+        .context(InternalOperatorFailureSnafu)?;
 
     let logging = zk
-        .logging(&zk_role, rolegroup_ref)
+        .logging(zk_role, rolegroup_ref)
         .context(CrdValidationFailureSnafu)?;
 
     let mut env_vars = server_config
@@ -614,7 +616,7 @@ fn build_server_rolegroup_statefulset(
         .collect::<Vec<_>>();
 
     let (pvc, resources) = zk
-        .resources(&zk_role, rolegroup_ref)
+        .resources(zk_role, rolegroup_ref)
         .context(CrdValidationFailureSnafu)?;
     // set heap size if available
     let heap_limits = zk
@@ -807,7 +809,9 @@ fn build_server_rolegroup_statefulset(
         ));
     }
 
-    let pod_template = pod_builder.build_template();
+    let mut pod_template = pod_builder.build_template();
+    pod_template.merge_from(role.config.pod_overrides.clone());
+    pod_template.merge_from(rolegroup.config.pod_overrides.clone());
 
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
@@ -828,7 +832,7 @@ fn build_server_rolegroup_statefulset(
             .build(),
         spec: Some(StatefulSetSpec {
             pod_management_policy: Some("Parallel".to_string()),
-            replicas: rolegroup.and_then(|rg| rg.replicas).map(i32::from),
+            replicas: rolegroup.replicas.map(i32::from),
             selector: LabelSelector {
                 match_labels: Some(role_group_selector_labels(
                     zk,

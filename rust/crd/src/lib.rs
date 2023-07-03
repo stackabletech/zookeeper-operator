@@ -33,8 +33,8 @@ use stackable_operator::{
     schemars::{self, JsonSchema},
     status::condition::{ClusterCondition, HasStatusCondition},
 };
-use std::collections::BTreeMap;
-use strum::{Display, EnumIter, EnumString};
+use std::{collections::BTreeMap, str::FromStr};
+use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
 pub const APP_NAME: &str = "zookeeper";
 pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
@@ -68,8 +68,16 @@ pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 pub enum Error {
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
-    #[snafu(display("unknown ZooKeeper role found {role}. Should be one of {roles:?}"))]
-    UnknownZookeeperRole { role: String, roles: Vec<String> },
+    #[snafu(display("unknown role {role}. Should be one of {roles:?}"))]
+    UnknownZookeeperRole {
+        source: strum::ParseError,
+        role: String,
+        roles: Vec<String>,
+    },
+    #[snafu(display("the role {role} is not defined"))]
+    CannotRetrieveZookeeperRole { role: String },
+    #[snafu(display("the role group {role_group} is not defined"))]
+    CannotRetrieveZookeeperRoleGroup { role_group: String },
     #[snafu(display("fragment validation failure"))]
     FragmentValidationFailure { source: ValidationError },
     #[snafu(display("invalid java heap config - missing default or value in crd?"))]
@@ -366,12 +374,32 @@ impl Configuration for ZookeeperConfigFragment {
 }
 
 #[derive(
-    Clone, Debug, Deserialize, Display, EnumString, Eq, Hash, JsonSchema, PartialEq, Serialize,
+    Clone,
+    Debug,
+    Deserialize,
+    Display,
+    EnumIter,
+    Eq,
+    Hash,
+    JsonSchema,
+    PartialEq,
+    Serialize,
+    EnumString,
 )]
 #[strum(serialize_all = "camelCase")]
 pub enum ZookeeperRole {
     #[strum(serialize = "server")]
     Server,
+}
+
+impl ZookeeperRole {
+    pub fn roles() -> Vec<String> {
+        let mut roles = vec![];
+        for role in Self::iter() {
+            roles.push(role.to_string())
+        }
+        roles
+    }
 }
 
 #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -435,6 +463,39 @@ impl ZookeeperCluster {
         ))
     }
 
+    /// Returns a reference to the role. Raises an error if the role is not defined.
+    pub fn role(
+        &self,
+        role_variant: &ZookeeperRole,
+    ) -> Result<&Role<ZookeeperConfigFragment>, Error> {
+        match role_variant {
+            ZookeeperRole::Server => self.spec.servers.as_ref(),
+        }
+        .with_context(|| CannotRetrieveZookeeperRoleSnafu {
+            role: role_variant.to_string(),
+        })
+    }
+
+    /// Returns a reference to the role group. Raises an error if the role or role group are not defined.
+    pub fn rolegroup(
+        &self,
+        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
+    ) -> Result<RoleGroup<ZookeeperConfigFragment>, Error> {
+        let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
+            UnknownZookeeperRoleSnafu {
+                role: rolegroup_ref.role.to_owned(),
+                roles: ZookeeperRole::roles(),
+            }
+        })?;
+        let role = self.role(&role_variant)?;
+        role.role_groups
+            .get(&rolegroup_ref.role_group)
+            .with_context(|| CannotRetrieveZookeeperRoleGroupSnafu {
+                role_group: rolegroup_ref.role_group.to_owned(),
+            })
+            .cloned()
+    }
+
     /// Metadata about a server rolegroup
     pub fn server_rolegroup_ref(
         &self,
@@ -490,27 +551,13 @@ impl ZookeeperCluster {
         // Initialize the result with all default values as baseline
         let conf_defaults = ZookeeperConfig::default_server_config(&self.name_any(), role);
 
-        let role = match role {
-            ZookeeperRole::Server => {
-                self.spec
-                    .servers
-                    .as_ref()
-                    .context(UnknownZookeeperRoleSnafu {
-                        role: role.to_string(),
-                        roles: vec![role.to_string()],
-                    })?
-            }
-        };
-
         // Retrieve role resource config
+        let role = self.role(role)?;
         let mut conf_role = role.config.config.to_owned();
 
         // Retrieve rolegroup specific resource config
-        let mut conf_rolegroup = role
-            .role_groups
-            .get(&rolegroup_ref.role_group)
-            .map(|rg| rg.config.config.clone())
-            .unwrap_or_default();
+        let role_group = self.rolegroup(rolegroup_ref)?;
+        let mut conf_role_group = role_group.config.config;
 
         if let Some(RoleGroup {
             selector: Some(selector),
@@ -520,7 +567,7 @@ impl ZookeeperCluster {
             // Migrate old `selector` attribute, see ADR 26 affinities.
             // TODO Can be removed after support for the old `selector` field is dropped.
             #[allow(deprecated)]
-            conf_rolegroup.affinity.add_legacy_selector(selector);
+            conf_role_group.affinity.add_legacy_selector(selector);
         }
 
         // Merge more specific configs into default config
@@ -529,9 +576,9 @@ impl ZookeeperCluster {
         // 2. Role
         // 3. Default
         conf_role.merge(&conf_defaults);
-        conf_rolegroup.merge(&conf_role);
+        conf_role_group.merge(&conf_role);
 
-        fragment::validate(conf_rolegroup).context(FragmentValidationFailureSnafu)
+        fragment::validate(conf_role_group).context(FragmentValidationFailureSnafu)
     }
 
     pub fn logging(
