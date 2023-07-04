@@ -39,10 +39,10 @@ spec:
         - name: zookeeper
           resources:
             limits:
-              cpu: 500m
+              cpu: 600m # From podOverrides
               memory: 512Mi
             requests:
-              cpu: 250m
+              cpu: 300m # From podOverrides
               memory: 512Mi
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
         - name: vector
