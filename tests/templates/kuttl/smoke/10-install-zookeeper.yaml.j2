@@ -44,7 +44,7 @@ spec:
           max: '500m'
           min: '250m'
         memory:
-          limit: '0.5Gi'
+          limit: '512Mi'
     roleGroups:
       primary:
         replicas: 2
@@ -58,6 +58,15 @@ spec:
             storage:
               data:
                 capacity: '2Gi'
+        podOverrides:
+          spec:
+            containers:
+              - name: zookeeper
+                resources:
+                  requests:
+                    cpu: 300m
+                  limits:
+                    cpu: 600m
 {% if test_scenario['values']['use-client-auth-tls'] == 'true' %}
 ---
 apiVersion: authentication.stackable.tech/v1alpha1
