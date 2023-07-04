@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 - Support for ZooKeeper `3.8.1` ([#689]).
 - Set explicit resources on all containers ([#693], [#699]).
 - Added kuttl test suites ([#696]).
-- Support podOverrides ([#698]).
+- Support podOverrides ([#698], [#702]).
 
 ### Fixed
 
@@ -36,6 +36,7 @@ All notable changes to this project will be documented in this file.
 [#696]: https://github.com/stackabletech/zookeeper-operator/pull/696
 [#698]: https://github.com/stackabletech/zookeeper-operator/pull/698
 [#699]: https://github.com/stackabletech/zookeeper-operator/pull/699
+[#702]: https://github.com/stackabletech/zookeeper-operator/pull/702
 
 ## [23.4.0] - 2023-04-17
 
