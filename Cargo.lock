@@ -1861,7 +1861,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator"
 version = "0.43.0"
-source = "git+https://github.com/stackabletech//operator-rs.git?branch=calc-log-vol-size-limit#73d02ef34b15cb280b06f8716f99ba8f50def602"
+source = "git+https://github.com/stackabletech//operator-rs.git?branch=calc-log-vol-size-limit#1dda71b22fbfb3aba30cb654afb65e4437cb3d90"
 dependencies = [
  "chrono",
  "clap",
@@ -1895,7 +1895,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator-derive"
 version = "0.43.0"
-source = "git+https://github.com/stackabletech//operator-rs.git?branch=calc-log-vol-size-limit#73d02ef34b15cb280b06f8716f99ba8f50def602"
+source = "git+https://github.com/stackabletech//operator-rs.git?branch=calc-log-vol-size-limit#1dda71b22fbfb3aba30cb654afb65e4437cb3d90"
 dependencies = [
  "darling 0.20.1",
  "proc-macro2",
