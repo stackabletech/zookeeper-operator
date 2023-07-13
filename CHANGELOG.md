@@ -16,10 +16,11 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Missing CRD defaults for `status.conditions` field ([#682]).
+- Increase the size limit of the log volume ([#704]).
 
 ### Changed
 
-- Operator-rs: `0.40.2` -> `0.41.0` ([#673]).
+- Operator-rs: `0.40.2` -> `0.44.0` ([#673], [#693], [#697], [#704]).
 - Use 0.0.0-dev product images for testing ([#674])
 - Use testing-tools 0.2.0 ([#674])
 - Run as root group ([#680])
@@ -34,9 +35,11 @@ All notable changes to this project will be documented in this file.
 [#689]: https://github.com/stackabletech/zookeeper-operator/pull/689
 [#693]: https://github.com/stackabletech/zookeeper-operator/pull/693
 [#696]: https://github.com/stackabletech/zookeeper-operator/pull/696
+[#697]: https://github.com/stackabletech/zookeeper-operator/pull/697
 [#698]: https://github.com/stackabletech/zookeeper-operator/pull/698
 [#699]: https://github.com/stackabletech/zookeeper-operator/pull/699
 [#702]: https://github.com/stackabletech/zookeeper-operator/pull/702
+[#704]: https://github.com/stackabletech/zookeeper-operator/pull/704
 
 ## [23.4.0] - 2023-04-17
 

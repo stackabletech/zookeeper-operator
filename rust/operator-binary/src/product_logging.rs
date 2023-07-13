@@ -4,6 +4,7 @@ use stackable_operator::{
     client::Client,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::ResourceExt,
+    memory::BinaryMultiple,
     product_logging::{
         self,
         spec::{ContainerLogConfig, ContainerLogConfigChoice},
@@ -12,7 +13,7 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{
     Container, LoggingFramework, ZookeeperCluster, ZookeeperRole, LOG4J_CONFIG_FILE,
-    LOGBACK_CONFIG_FILE, MAX_ZK_LOG_FILES_SIZE_IN_MIB, STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE,
+    LOGBACK_CONFIG_FILE, MAX_ZK_LOG_FILES_SIZE, STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE,
 };
 
 #[derive(Snafu, Debug)]
@@ -103,7 +104,10 @@ pub fn extend_role_group_config_map(
                     product_logging::framework::create_log4j_config(
                         &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                         ZOOKEEPER_LOG_FILE,
-                        MAX_ZK_LOG_FILES_SIZE_IN_MIB,
+                        MAX_ZK_LOG_FILES_SIZE
+                            .scale_to(BinaryMultiple::Mebi)
+                            .floor()
+                            .value as u32,
                         CONSOLE_CONVERSION_PATTERN,
                         log_config,
                     ),
@@ -115,7 +119,10 @@ pub fn extend_role_group_config_map(
                     product_logging::framework::create_logback_config(
                         &format!("{STACKABLE_LOG_DIR}/zookeeper"),
                         ZOOKEEPER_LOG_FILE,
-                        MAX_ZK_LOG_FILES_SIZE_IN_MIB,
+                        MAX_ZK_LOG_FILES_SIZE
+                            .scale_to(BinaryMultiple::Mebi)
+                            .floor()
+                            .value as u32,
                         CONSOLE_CONVERSION_PATTERN,
                         log_config,
                         None,

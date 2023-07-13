@@ -28,7 +28,7 @@ use stackable_operator::{
                 ServiceSpec, Volume,
             },
         },
-        apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
+        apimachinery::pkg::apis::meta::v1::LabelSelector,
         DeepMerge,
     },
     kube::{api::DynamicObject, runtime::controller, Resource},
@@ -53,9 +53,9 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
-    ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, LOG_VOLUME_SIZE_IN_MIB,
-    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
-    STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+    ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, MAX_PREPARE_LOG_FILE_SIZE,
+    MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
+    STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -752,14 +752,12 @@ fn build_server_rolegroup_statefulset(
             name: "rwconfig".to_string(),
             ..Volume::default()
         })
-        .add_volume(Volume {
-            name: "log".to_string(),
-            empty_dir: Some(EmptyDirVolumeSource {
-                medium: None,
-                size_limit: Some(Quantity(format!("{LOG_VOLUME_SIZE_IN_MIB}Mi"))),
-            }),
-            ..Volume::default()
-        })
+        .add_empty_dir_volume(
+            "log",
+            Some(product_logging::framework::calculate_log_volume_size_limit(
+                &[MAX_ZK_LOG_FILES_SIZE, MAX_PREPARE_LOG_FILE_SIZE],
+            )),
+        )
         .security_context(PodSecurityContext {
             run_as_user: Some(ZK_UID),
             run_as_group: Some(0),
