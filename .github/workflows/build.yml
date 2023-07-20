@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@1.68.2
+      - uses: dtolnay/rust-toolchain@1.71.0
       - uses: Swatinem/rust-cache@359a70e43a0bb8a13953b04a90f76428b4959bb6 # v2.2.0
         with:
           key: udeps
@@ -116,7 +116,7 @@ jobs:
       - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@1.68.2
+      - uses: dtolnay/rust-toolchain@1.71.0
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@1.68.2
+      - uses: dtolnay/rust-toolchain@1.71.0
         with:
           components: clippy
       - uses: Swatinem/rust-cache@359a70e43a0bb8a13953b04a90f76428b4959bb6 # v2.2.0
@@ -164,7 +164,7 @@ jobs:
       - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@1.68.2
+      - uses: dtolnay/rust-toolchain@1.71.0
         with:
           components: rustfmt
       - uses: Swatinem/rust-cache@359a70e43a0bb8a13953b04a90f76428b4959bb6 # v2.2.0
@@ -183,7 +183,7 @@ jobs:
       - uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@1.68.2
+      - uses: dtolnay/rust-toolchain@1.71.0
       - uses: Swatinem/rust-cache@359a70e43a0bb8a13953b04a90f76428b4959bb6 # v2.2.0
         with:
           key: test
@@ -244,7 +244,7 @@ jobs:
         with:
           version: v3.6.2
       - name: Set up cargo
-        uses: dtolnay/rust-toolchain@1.68.2
+        uses: dtolnay/rust-toolchain@1.71.0
       - name: Set up rust-cache
         uses: Swatinem/rust-cache@359a70e43a0bb8a13953b04a90f76428b4959bb6 # v2.2.0
         with:
@@ -299,7 +299,7 @@ jobs:
         uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c # v3.3.0
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@1.68.2
+      - uses: dtolnay/rust-toolchain@1.71.0
         with:
           components: rustfmt
         # This step checks if the current run was triggered by a push to a pr (or a pr being created).
