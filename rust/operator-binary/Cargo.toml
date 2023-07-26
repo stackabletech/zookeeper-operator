@@ -17,7 +17,7 @@ futures = { version = "0.3" }
 semver = "1.0"
 serde = "1.0"
 snafu = "0.7"
-strum = { version = "0.24", features = ["derive"] }
+strum = { version = "0.25", features = ["derive"] }
 tokio = { version = "1.28", features = ["full"] }
 tokio-zookeeper = "0.2"
 tracing = "0.1"
