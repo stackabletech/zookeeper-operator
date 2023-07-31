@@ -30,10 +30,17 @@ def check_received_events():
 
     transforms = result['data']['transforms']['nodes']
     for transform in transforms:
-        receivedEvents = transform['metrics']['receivedEventsTotal']['receivedEventsTotal']
+        receivedEvents = transform['metrics']['receivedEventsTotal']
         componentId = transform['componentId']
-        assert receivedEvents > 0, \
-            f'No events were received in "{componentId}".'
+
+        if componentId == 'filteredInvalidEvents':
+            assert receivedEvents is None or \
+                receivedEvents['receivedEventsTotal'] == 0, \
+                'Invalid log events were processed.'
+        else:
+            assert receivedEvents is not None and \
+                receivedEvents['receivedEventsTotal'] > 0, \
+                f'No events were processed in "{componentId}".'
 
 
 if __name__ == '__main__':
