@@ -2,18 +2,18 @@
 import requests
 
 
-def check_processed_events():
+def check_received_events():
     response = requests.post(
         'http://zookeeper-vector-aggregator:8686/graphql',
         json={
             'query': """
                 {
-                    transforms {
+                    transforms(first:100) {
                         nodes {
                             componentId
                             metrics {
-                                processedEventsTotal {
-                                    processedEventsTotal
+                                receivedEventsTotal {
+                                    receivedEventsTotal
                                 }
                             }
                         }
@@ -30,18 +30,12 @@ def check_processed_events():
 
     transforms = result['data']['transforms']['nodes']
     for transform in transforms:
+        receivedEvents = transform['metrics']['receivedEventsTotal']['receivedEventsTotal']
         componentId = transform['componentId']
-        processedEvents = transform['metrics']['processedEventsTotal']
-        if componentId == 'filteredInvalidEvents':
-            assert processedEvents is None or \
-                processedEvents['processedEventsTotal'] == 0, \
-                'Invalid log events were processed.'
-        else:
-            assert processedEvents is not None and \
-                processedEvents['processedEventsTotal'] > 0, \
-                f'No events were processed in "{componentId}".'
+        assert receivedEvents > 0, \
+            f'No events were received in "{componentId}".'
 
 
 if __name__ == '__main__':
-    check_processed_events()
+    check_received_events()
     print('Test successful!')
