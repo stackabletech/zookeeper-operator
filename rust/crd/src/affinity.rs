@@ -52,7 +52,6 @@ mod tests {
         spec:
           image:
             productVersion: 3.8.1
-            stackableVersion: 0.9.0
           clusterConfig:
             authentication:
               - authenticationClass: zk-client-tls
@@ -127,7 +126,6 @@ mod tests {
         spec:
           image:
             productVersion: 3.8.1
-            stackableVersion: 0.9.0
           clusterConfig:
             authentication:
               - authenticationClass: zk-client-tls
