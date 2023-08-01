@@ -231,7 +231,10 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     tracing::info!("Starting reconcile");
     let client = &ctx.client;
 
-    let resolved_product_image = zk.spec.image.resolve(DOCKER_IMAGE_BASE_NAME);
+    let resolved_product_image = zk
+        .spec
+        .image
+        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::CARGO_PKG_VERSION);
 
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,

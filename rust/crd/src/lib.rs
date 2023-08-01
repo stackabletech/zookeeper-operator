@@ -67,6 +67,10 @@ const JVM_HEAP_FACTOR: f32 = 0.8;
 
 pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 
+mod built_info {
+    pub const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+}
+
 #[derive(Snafu, Debug)]
 pub enum Error {
     #[snafu(display("object has no namespace associated"))]
@@ -434,7 +438,7 @@ impl ZookeeperCluster {
         let version = self
             .spec
             .image
-            .resolve(DOCKER_IMAGE_BASE_NAME)
+            .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::CARGO_PKG_VERSION)
             .product_version;
         let zookeeper_versions_with_log4j = [
             "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
