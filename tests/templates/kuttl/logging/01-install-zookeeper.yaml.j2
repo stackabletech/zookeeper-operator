@@ -28,8 +28,7 @@ metadata:
   name: test-zk
 spec:
   image:
-    productVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[0] }}"
-    stackableVersion: "{{ test_scenario['values']['zookeeper'].split('-stackable')[1] }}"
+    productVersion: "{{ test_scenario['values']['zookeeper'] }}"
   clusterConfig:
     logging:
       vectorAggregatorConfigMapName: zookeeper-vector-aggregator-discovery
