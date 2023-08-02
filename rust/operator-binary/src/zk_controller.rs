@@ -28,7 +28,8 @@ use stackable_operator::{
                 ServiceSpec, Volume,
             },
         },
-        apimachinery::pkg::{api::resource::Quantity, apis::meta::v1::LabelSelector},
+        apimachinery::pkg::apis::meta::v1::LabelSelector,
+        DeepMerge,
     },
     kube::{api::DynamicObject, runtime::controller, Resource},
     labels::{role_group_selector_labels, role_selector_labels},
@@ -52,9 +53,9 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
-    ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, LOG_VOLUME_SIZE_IN_MIB,
-    STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
-    STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+    ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, MAX_PREPARE_LOG_FILE_SIZE,
+    MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
+    STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -87,6 +88,10 @@ pub enum Error {
     RoleParseFailure {
         source: strum::ParseError,
         role: String,
+    },
+    #[snafu(display("internal operator failure"))]
+    InternalOperatorFailure {
+        source: stackable_zookeeper_crd::Error,
     },
     #[snafu(display("failed to calculate global service name"))]
     GlobalServiceNameNotFound,
@@ -179,7 +184,7 @@ pub enum Error {
         source: stackable_zookeeper_crd::security::Error,
     },
     #[snafu(display("failed to resolve and merge config for role and role group"))]
-    FailedToresolveConfig {
+    FailedToResolveConfig {
         source: stackable_zookeeper_crd::Error,
     },
 }
@@ -194,6 +199,7 @@ impl ReconcilerError for Error {
             Error::CrdValidationFailure { .. } => None,
             Error::NoServerRole => None,
             Error::RoleParseFailure { .. } => None,
+            Error::InternalOperatorFailure { .. } => None,
             Error::GlobalServiceNameNotFound => None,
             Error::RoleGroupServiceNameNotFound { .. } => None,
             Error::ApplyRoleService { .. } => None,
@@ -216,7 +222,7 @@ impl ReconcilerError for Error {
             Error::ResolveVectorAggregatorAddress { .. } => None,
             Error::InvalidLoggingConfig { .. } => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
-            Error::FailedToresolveConfig { .. } => None,
+            Error::FailedToResolveConfig { .. } => None,
         }
     }
 }
@@ -225,7 +231,10 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     tracing::info!("Starting reconcile");
     let client = &ctx.client;
 
-    let resolved_product_image = zk.spec.image.resolve(DOCKER_IMAGE_BASE_NAME);
+    let resolved_product_image = zk
+        .spec
+        .image
+        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::CARGO_PKG_VERSION);
 
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
@@ -297,11 +306,12 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
 
     let mut ss_cond_builder = StatefulSetConditionBuilder::default();
 
+    let zk_role = ZookeeperRole::Server;
     for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
         let merged_config = zk
             .merged_config(&ZookeeperRole::Server, &rolegroup)
-            .context(FailedToresolveConfigSnafu)?;
+            .context(FailedToResolveConfigSnafu)?;
 
         let rg_service = build_server_rolegroup_service(
             &zk,
@@ -319,6 +329,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             &zk,
+            &zk_role,
             &rolegroup,
             rolegroup_config,
             &zookeeper_security,
@@ -580,26 +591,20 @@ fn build_server_rolegroup_service(
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_server_rolegroup_service`]).
 fn build_server_rolegroup_statefulset(
     zk: &ZookeeperCluster,
+    zk_role: &ZookeeperRole,
     rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
     config: &ZookeeperConfig,
 ) -> Result<StatefulSet> {
-    let zk_role =
-        ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| RoleParseFailureSnafu {
-            role: rolegroup_ref.role.to_string(),
-        })?;
+    let role = zk.role(zk_role).context(InternalOperatorFailureSnafu)?;
     let rolegroup = zk
-        .spec
-        .servers
-        .as_ref()
-        .context(NoServerRoleSnafu)?
-        .role_groups
-        .get(&rolegroup_ref.role_group);
+        .rolegroup(rolegroup_ref)
+        .context(InternalOperatorFailureSnafu)?;
 
     let logging = zk
-        .logging(&zk_role, rolegroup_ref)
+        .logging(zk_role, rolegroup_ref)
         .context(CrdValidationFailureSnafu)?;
 
     let mut env_vars = server_config
@@ -614,7 +619,7 @@ fn build_server_rolegroup_statefulset(
         .collect::<Vec<_>>();
 
     let (pvc, resources) = zk
-        .resources(&zk_role, rolegroup_ref)
+        .resources(zk_role, rolegroup_ref)
         .context(CrdValidationFailureSnafu)?;
     // set heap size if available
     let heap_limits = zk
@@ -749,14 +754,12 @@ fn build_server_rolegroup_statefulset(
             name: "rwconfig".to_string(),
             ..Volume::default()
         })
-        .add_volume(Volume {
-            name: "log".to_string(),
-            empty_dir: Some(EmptyDirVolumeSource {
-                medium: None,
-                size_limit: Some(Quantity(format!("{LOG_VOLUME_SIZE_IN_MIB}Mi"))),
-            }),
-            ..Volume::default()
-        })
+        .add_empty_dir_volume(
+            "log",
+            Some(product_logging::framework::calculate_log_volume_size_limit(
+                &[MAX_ZK_LOG_FILES_SIZE, MAX_PREPARE_LOG_FILE_SIZE],
+            )),
+        )
         .security_context(PodSecurityContext {
             run_as_user: Some(ZK_UID),
             run_as_group: Some(0),
@@ -806,7 +809,9 @@ fn build_server_rolegroup_statefulset(
         ));
     }
 
-    let pod_template = pod_builder.build_template();
+    let mut pod_template = pod_builder.build_template();
+    pod_template.merge_from(role.config.pod_overrides.clone());
+    pod_template.merge_from(rolegroup.config.pod_overrides.clone());
 
     Ok(StatefulSet {
         metadata: ObjectMetaBuilder::new()
@@ -827,7 +832,7 @@ fn build_server_rolegroup_statefulset(
             .build(),
         spec: Some(StatefulSetSpec {
             pod_management_policy: Some("Parallel".to_string()),
-            replicas: rolegroup.and_then(|rg| rg.replicas).map(i32::from),
+            replicas: rolegroup.replicas.map(i32::from),
             selector: LabelSelector {
                 match_labels: Some(role_group_selector_labels(
                     zk,

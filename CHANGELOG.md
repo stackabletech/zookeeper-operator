@@ -6,23 +6,34 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Default stackableVersion to operator version ([#711]).
+- Let secret-operator handle certificate conversion ([#695]).
+
+[#695]: https://github.com/stackabletech/zookeeper-operator/pull/695
+[#711]: https://github.com/stackabletech/zookeeper-operator/pull/711
+
+## [23.7.0] - 2023-07-14
+
+### Added
+
 - Generate OLM bundle for Release 23.4.0 ([#672]).
 - Expose `ZOOKEEPER_CLIENT_PORT` in discovery CM ([#675], [#676]).
 - Support for ZooKeeper `3.8.1` ([#689]).
 - Set explicit resources on all containers ([#693], [#699]).
-- Added kuttl test suites ([#696])
+- Added kuttl test suites ([#696]).
+- Support podOverrides ([#698], [#702]).
 
 ### Fixed
 
 - Missing CRD defaults for `status.conditions` field ([#682]).
+- Increase the size limit of the log volume ([#704]).
 
 ### Changed
 
-- Operator-rs: `0.40.2` -> `0.41.0` ([#673]).
-- Use 0.0.0-dev product images for testing ([#674]).
-- Use testing-tools 0.2.0 ([#674]).
-- Run as root group ([#680]).
-- Let secret-operator handle certificate conversion ([#695]).
+- Operator-rs: `0.40.2` -> `0.44.0` ([#673], [#693], [#697], [#704]).
+- Use 0.0.0-dev product images for testing ([#674])
+- Use testing-tools 0.2.0 ([#674])
+- Run as root group ([#680])
 
 [#672]: https://github.com/stackabletech/zookeeper-operator/pull/672
 [#673]: https://github.com/stackabletech/zookeeper-operator/pull/673
@@ -34,8 +45,11 @@ All notable changes to this project will be documented in this file.
 [#689]: https://github.com/stackabletech/zookeeper-operator/pull/689
 [#693]: https://github.com/stackabletech/zookeeper-operator/pull/693
 [#696]: https://github.com/stackabletech/zookeeper-operator/pull/696
+[#697]: https://github.com/stackabletech/zookeeper-operator/pull/697
+[#698]: https://github.com/stackabletech/zookeeper-operator/pull/698
 [#699]: https://github.com/stackabletech/zookeeper-operator/pull/699
-[#695]: https://github.com/stackabletech/zookeeper-operator/pull/695
+[#702]: https://github.com/stackabletech/zookeeper-operator/pull/702
+[#704]: https://github.com/stackabletech/zookeeper-operator/pull/704
 
 ## [23.4.0] - 2023-04-17
 

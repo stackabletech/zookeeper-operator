@@ -2,13 +2,13 @@
 dimensions:
   - name: zookeeper
     values:
-      - 3.5.8-stackable0.0.0-dev
-      - 3.6.3-stackable0.0.0-dev
-      - 3.7.0-stackable0.0.0-dev
-      - 3.8.1-stackable0.0.0-dev
+      - 3.5.8
+      - 3.6.3
+      - 3.7.0
+      - 3.8.1
   - name: zookeeper-latest
     values:
-      - 3.8.1-stackable0.0.0-dev
+      - 3.8.1
   - name: use-server-tls
     values:
       - "true"
@@ -36,17 +36,31 @@ tests:
     dimensions:
       - zookeeper-latest
 suites:
-  - name: latest
+  - name: nightly
+    patch:
+      - dimensions:
+          - name: zookeeper
+            expr: last
+          - name: use-server-tls
+            expr: "true"
+          - name: use-client-auth-tls
+            expr: "true"
+  - name: smoke-latest
+    select:
+      - smoke
     patch:
       - dimensions:
           - expr: last
-  - name: smoke
-    select:
-      - smoke
   - name: openshift
     patch:
       - dimensions:
           - expr: last
       - dimensions:
+          - name: zookeeper
+            expr: last
+          - name: use-server-tls
+            expr: "true"
+          - name: use-client-auth-tls
+            expr: "true"
           - name: openshift
             expr: "true"
