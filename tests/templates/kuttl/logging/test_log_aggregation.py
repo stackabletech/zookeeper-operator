@@ -35,12 +35,12 @@ def check_sent_events():
 
         if componentId == 'filteredInvalidEvents':
             assert sentEvents is None or \
-                sentEvents['sentEventsTotal'] == 0, \
-                'Invalid log events were sent.'
+                   sentEvents['sentEventsTotal'] == 0, \
+                   'Invalid log events were sent.'
         else:
             assert sentEvents is not None and \
-                sentEvents['sentEventsTotal'] > 0, \
-                f'No events were sent in "{componentId}".'
+                   sentEvents['sentEventsTotal'] > 0, \
+                   f'No events were sent in "{componentId}".'
 
 
 if __name__ == '__main__':
