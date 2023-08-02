@@ -2,13 +2,13 @@
 dimensions:
   - name: zookeeper
     values:
-      - 3.5.8-stackable0.0.0-dev
-      - 3.6.3-stackable0.0.0-dev
-      - 3.7.0-stackable0.0.0-dev
-      - 3.8.1-stackable0.0.0-dev
+      - 3.5.8
+      - 3.6.3
+      - 3.7.0
+      - 3.8.1
   - name: zookeeper-latest
     values:
-      - 3.8.1-stackable0.0.0-dev
+      - 3.8.1
   - name: use-server-tls
     values:
       - "true"
