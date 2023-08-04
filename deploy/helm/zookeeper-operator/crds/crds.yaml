@@ -51,6 +51,17 @@ spec:
                           - authenticationClass
                         type: object
                       type: array
+                    jvmSecurity:
+                      nullable: true
+                      properties:
+                        properties:
+                          additionalProperties:
+                            nullable: true
+                            type: string
+                          type: object
+                      required:
+                        - properties
+                      type: object
                     listenerClass:
                       default: cluster-internal
                       description: |-
