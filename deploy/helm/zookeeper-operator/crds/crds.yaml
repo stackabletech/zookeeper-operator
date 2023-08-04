@@ -52,6 +52,7 @@ spec:
                         type: object
                       type: array
                     jvmSecurity:
+                      description: 'TODO: This is a preliminary interface. Operators should be ignorant to the actual structure. Structure that holds Java security properties.'
                       nullable: true
                       properties:
                         properties:
