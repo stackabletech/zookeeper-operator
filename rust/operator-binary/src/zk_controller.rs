@@ -33,7 +33,7 @@ use stackable_operator::{
         DeepMerge,
     },
     kube::{api::DynamicObject, runtime::controller, Resource},
-    labels::{role_group_selector_labels, role_selector_labels},
+    labels::{get_recommended_labels, role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
     product_config::{
         types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
@@ -308,7 +308,17 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(ApplyRoleBindingSnafu)?;
 
-    let jvm_security_cm = build_java_security_config_map(&zk)?;
+    let jvm_security_cm = build_java_security_config_map(
+        &zk,
+        get_recommended_labels(build_recommended_labels(
+            zk.as_ref(),
+            ZK_CONTROLLER_NAME,
+            &resolved_product_image.app_version_label,
+            "default",
+            "default",
+        )),
+    )?;
+
     cluster_resources
         .add(client, jvm_security_cm.clone())
         .await
@@ -639,16 +649,6 @@ fn build_server_rolegroup_statefulset(
         })
         .collect::<Vec<_>>();
 
-    // Add SERVER_JVMFLAGS to env vars in case java security properties have been defined.
-    env_vars.push(EnvVar {
-        name: "SERVER_JVMFLAGS".to_string(),
-        value: Some(jvm::security_system_property(
-            &jvm_security_cm_name,
-            STACKABLE_JVM_CONFIG_DIR,
-        )),
-        ..EnvVar::default()
-    });
-
     let (pvc, resources) = zk
         .resources(zk_role, rolegroup_ref)
         .context(CrdValidationFailureSnafu)?;
@@ -752,7 +752,7 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
         .add_volume_mount("log", STACKABLE_LOG_DIR)
-        .add_volume_mount("jvm-security", STACKABLE_JVM_CONFIG_DIR)
+        .add_volume_mount("jvm-config", STACKABLE_JVM_CONFIG_DIR)
         .resources(resources)
         .build();
 
@@ -779,7 +779,7 @@ fn build_server_rolegroup_statefulset(
             ..Volume::default()
         })
         .add_volume(Volume {
-            name: "jvm-security".to_string(),
+            name: "jvm-config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
                 name: Some(jvm_security_cm_name),
                 ..ConfigMapVolumeSource::default()
@@ -891,10 +891,15 @@ fn build_server_rolegroup_statefulset(
     })
 }
 
-fn build_java_security_config_map(zk: &ZookeeperCluster) -> Result<ConfigMap> {
+fn build_java_security_config_map(
+    zk: &ZookeeperCluster,
+    labels: BTreeMap<String, String>,
+) -> Result<ConfigMap> {
     match zk.spec.cluster_config.jvm_security.as_ref() {
-        Some(jvm_sec) => Ok(jvm::security_config_map(zk, jvm_sec).context(JvmSecuritySnafu)?),
-        _ => Ok(jvm::default_security_config_map(zk).context(JvmSecuritySnafu)?),
+        Some(jvm_sec) => {
+            Ok(jvm::security_config_map(zk, labels, jvm_sec).context(JvmSecuritySnafu)?)
+        }
+        _ => Ok(jvm::default_security_config_map(zk, labels).context(JvmSecuritySnafu)?),
     }
 }
 

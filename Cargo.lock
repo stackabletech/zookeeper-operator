@@ -1729,9 +1729,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.181"
+version = "1.0.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d3e73c93c3240c0bda063c239298e633114c69a888c3e37ca8bb33f343e9890"
+checksum = "30e27d1e4fd7659406c492fd6cfaf2066ba8773de45ca75e855590f856dc34a9"
 dependencies = [
  "serde_derive",
 ]
@@ -1748,9 +1748,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.181"
+version = "1.0.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be02f6cb0cd3a5ec20bbcfbcbd749f57daddb1a0882dc2e46a6c236c90b977ed"
+checksum = "389894603bd18c46fa56231694f8d827779c0951a667087194cf9de94ed24682"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1888,7 +1888,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator"
 version = "0.45.1"
-source = "git+https://github.com/stackabletech//operator-rs.git?branch=feat/java-security#99f5f1e288740851b712d10b1b3f770d8af9be63"
+source = "git+https://github.com/stackabletech//operator-rs.git?branch=feat/java-security#f923647ca1130924107da8cb7bd8619aa896299c"
 dependencies = [
  "chrono",
  "clap",
@@ -1922,7 +1922,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator-derive"
 version = "0.45.1"
-source = "git+https://github.com/stackabletech//operator-rs.git?branch=feat/java-security#99f5f1e288740851b712d10b1b3f770d8af9be63"
+source = "git+https://github.com/stackabletech//operator-rs.git?branch=feat/java-security#f923647ca1130924107da8cb7bd8619aa896299c"
 dependencies = [
  "darling 0.20.3",
  "proc-macro2",

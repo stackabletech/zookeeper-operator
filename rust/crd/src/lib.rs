@@ -322,7 +322,8 @@ impl Configuration for ZookeeperConfigFragment {
             match logging_framework {
                 LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
                 LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
-            }
+            },
+            jvm::security_system_property(  STACKABLE_JVM_CONFIG_DIR),
         ].join(" ");
         Ok([
             (

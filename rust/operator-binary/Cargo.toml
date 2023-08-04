@@ -15,7 +15,9 @@ failure = "0.1"
 fnv = "1.0"
 futures = { version = "0.3" }
 semver = "1.0"
-serde = "1.0"
+# Newer versions of serde brake the Nix builds. Pin to an older version
+# until this issue is fixed: https://github.com/serde-rs/serde/issues/2538
+serde = "=1.0.171"
 snafu = "0.7"
 strum = { version = "0.24", features = ["derive"] }
 tokio = { version = "1.28", features = ["full"] }
