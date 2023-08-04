@@ -308,8 +308,8 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(ApplyRoleBindingSnafu)?;
 
-    let jvm_security_cm = build_java_security_config_map(
-        &zk,
+    let jvm_security_cm = jvm::security_config_map(
+        zk.as_ref(),
         get_recommended_labels(build_recommended_labels(
             zk.as_ref(),
             ZK_CONTROLLER_NAME,
@@ -317,8 +317,9 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             "default",
             "default",
         )),
-    )?;
-
+        zk.spec.cluster_config.jvm_security.as_ref(),
+    )
+    .context(JvmSecuritySnafu)?;
     cluster_resources
         .add(client, jvm_security_cm.clone())
         .await
@@ -889,18 +890,6 @@ fn build_server_rolegroup_statefulset(
         }),
         status: None,
     })
-}
-
-fn build_java_security_config_map(
-    zk: &ZookeeperCluster,
-    labels: BTreeMap<String, String>,
-) -> Result<ConfigMap> {
-    match zk.spec.cluster_config.jvm_security.as_ref() {
-        Some(jvm_sec) => {
-            Ok(jvm::security_config_map(zk, labels, jvm_sec).context(JvmSecuritySnafu)?)
-        }
-        _ => Ok(jvm::default_security_config_map(zk, labels).context(JvmSecuritySnafu)?),
-    }
 }
 
 pub fn error_policy(

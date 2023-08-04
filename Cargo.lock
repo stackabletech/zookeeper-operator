@@ -1888,7 +1888,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator"
 version = "0.45.1"
-source = "git+https://github.com/stackabletech//operator-rs.git?branch=feat/java-security#f923647ca1130924107da8cb7bd8619aa896299c"
+source = "git+https://github.com/stackabletech//operator-rs.git?branch=feat/java-security#2f017e4e3bf304650e77682c76091ebe34d9a4e9"
 dependencies = [
  "chrono",
  "clap",
@@ -1922,7 +1922,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator-derive"
 version = "0.45.1"
-source = "git+https://github.com/stackabletech//operator-rs.git?branch=feat/java-security#f923647ca1130924107da8cb7bd8619aa896299c"
+source = "git+https://github.com/stackabletech//operator-rs.git?branch=feat/java-security#2f017e4e3bf304650e77682c76091ebe34d9a4e9"
 dependencies = [
  "darling 0.20.3",
  "proc-macro2",
