@@ -19,6 +19,7 @@ use stackable_operator::{
         product_image_selection::ResolvedProductImage,
         rbac::{build_rbac_resources, service_account_name},
     },
+    jvm,
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
@@ -54,8 +55,9 @@ use stackable_operator::{
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
     ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, MAX_PREPARE_LOG_FILE_SIZE,
-    MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
-    STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+    MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_JVM_CONFIG_DIR,
+    STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+    ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -187,6 +189,14 @@ pub enum Error {
     FailedToResolveConfig {
         source: stackable_zookeeper_crd::Error,
     },
+    #[snafu(display("failed to render java security config map"))]
+    JvmSecurity {
+        source: stackable_operator::error::Error,
+    },
+    #[snafu(display("failed to create the jvm security config map"))]
+    ApplyJvmSecurityConfigMap {
+        source: stackable_operator::error::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -223,6 +233,8 @@ impl ReconcilerError for Error {
             Error::InvalidLoggingConfig { .. } => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
             Error::FailedToResolveConfig { .. } => None,
+            Error::JvmSecurity { .. } => None,
+            Error::ApplyJvmSecurityConfigMap { .. } => None,
         }
     }
 }
@@ -296,6 +308,12 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(ApplyRoleBindingSnafu)?;
 
+    let jvm_security_cm = build_java_security_config_map(&zk)?;
+    cluster_resources
+        .add(client, jvm_security_cm.clone())
+        .await
+        .context(ApplyJvmSecurityConfigMapSnafu)?;
+
     let server_role_service = cluster_resources
         .add(
             client,
@@ -335,6 +353,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             &zookeeper_security,
             &resolved_product_image,
             &merged_config,
+            jvm_security_cm.metadata.name.clone().unwrap(),
         )?;
         cluster_resources
             .add(client, rg_service)
@@ -589,6 +608,7 @@ fn build_server_rolegroup_service(
 /// The rolegroup [`StatefulSet`] runs the rolegroup, as configured by the administrator.
 ///
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_server_rolegroup_service`]).
+#[allow(clippy::too_many_arguments)]
 fn build_server_rolegroup_statefulset(
     zk: &ZookeeperCluster,
     zk_role: &ZookeeperRole,
@@ -597,6 +617,7 @@ fn build_server_rolegroup_statefulset(
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
     config: &ZookeeperConfig,
+    jvm_security_cm_name: String,
 ) -> Result<StatefulSet> {
     let role = zk.role(zk_role).context(InternalOperatorFailureSnafu)?;
     let rolegroup = zk
@@ -617,6 +638,16 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         })
         .collect::<Vec<_>>();
+
+    // Add SERVER_JVMFLAGS to env vars in case java security properties have been defined.
+    env_vars.push(EnvVar {
+        name: "SERVER_JVMFLAGS".to_string(),
+        value: Some(jvm::security_system_property(
+            &jvm_security_cm_name,
+            STACKABLE_JVM_CONFIG_DIR,
+        )),
+        ..EnvVar::default()
+    });
 
     let (pvc, resources) = zk
         .resources(zk_role, rolegroup_ref)
@@ -721,6 +752,7 @@ fn build_server_rolegroup_statefulset(
         .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
         .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .add_volume_mount("jvm-security", STACKABLE_JVM_CONFIG_DIR)
         .resources(resources)
         .build();
 
@@ -742,6 +774,14 @@ fn build_server_rolegroup_statefulset(
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
                 name: Some(rolegroup_ref.object_name()),
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        })
+        .add_volume(Volume {
+            name: "jvm-security".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: Some(jvm_security_cm_name),
                 ..ConfigMapVolumeSource::default()
             }),
             ..Volume::default()
@@ -849,6 +889,13 @@ fn build_server_rolegroup_statefulset(
         }),
         status: None,
     })
+}
+
+fn build_java_security_config_map(zk: &ZookeeperCluster) -> Result<ConfigMap> {
+    match zk.spec.cluster_config.jvm_security.as_ref() {
+        Some(jvm_sec) => Ok(jvm::security_config_map(zk, jvm_sec).context(JvmSecuritySnafu)?),
+        _ => Ok(jvm::default_security_config_map(zk).context(JvmSecuritySnafu)?),
+    }
 }
 
 pub fn error_policy(

@@ -21,6 +21,7 @@ use stackable_operator::{
     },
     config::{fragment, fragment::Fragment, fragment::ValidationError, merge::Merge},
     crd::ClusterRef,
+    jvm,
     k8s_openapi::{
         api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
         apimachinery::pkg::api::resource::Quantity,
@@ -48,6 +49,7 @@ pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
 pub const STACKABLE_LOG_CONFIG_DIR: &str = "/stackable/log_config";
 pub const STACKABLE_LOG_DIR: &str = "/stackable/log";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
+pub const STACKABLE_JVM_CONFIG_DIR: &str = "/stackable/jvm-config";
 
 pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
 pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
@@ -153,6 +155,8 @@ pub struct ZookeeperClusterConfig {
     /// * external-unstable: Use a NodePort service
     #[serde(default)]
     pub listener_class: CurrentlySupportedListenerClasses,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jvm_security: Option<jvm::Security>,
 }
 
 fn cluster_config_default() -> ZookeeperClusterConfig {
@@ -161,6 +165,7 @@ fn cluster_config_default() -> ZookeeperClusterConfig {
         logging: None,
         tls: tls::default_zookeeper_tls(),
         listener_class: CurrentlySupportedListenerClasses::default(),
+        jvm_security: None,
     }
 }
 
