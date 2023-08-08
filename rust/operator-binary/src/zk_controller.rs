@@ -314,8 +314,8 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             zk.as_ref(),
             ZK_CONTROLLER_NAME,
             &resolved_product_image.app_version_label,
-            "default",
-            "default",
+            "global",
+            "global",
         )),
         zk.spec.cluster_config.jvm_security.as_ref(),
     )
