@@ -876,28 +876,3 @@ pub fn error_policy(
 ) -> controller::Action {
     controller::Action::requeue(Duration::from_secs(5))
 }
-
-#[cfg(test)]
-mod tests {
-
-    #[test]
-    fn test_jvm_config_overrides() {
-        let input = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple
-        spec:
-          image:
-            productVersion: 3.8.1
-          servers:
-            roleGroups:
-              default:
-                configOverrides:
-                  security.properties:
-                    neworkaddress.cache.ttl: '1'
-                    neworkaddress.cache.negative.ttl: '2'
-        "#;
-        //        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
-    }
-}
