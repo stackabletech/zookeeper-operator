@@ -40,6 +40,7 @@ pub const APP_NAME: &str = "zookeeper";
 pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
+pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
 
 pub const METRICS_PORT: u16 = 9505;
 
@@ -317,7 +318,8 @@ impl Configuration for ZookeeperConfigFragment {
             match logging_framework {
                 LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
                 LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
-            }
+            },
+            format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
         ].join(" ");
         Ok([
             (
@@ -350,31 +352,33 @@ impl Configuration for ZookeeperConfigFragment {
         &self,
         _resource: &Self::Configurable,
         _role_name: &str,
-        _file: &str,
+        file: &str,
     ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
         let mut result = BTreeMap::new();
-        if let Some(init_limit) = self.init_limit {
+        if file == ZOOKEEPER_PROPERTIES_FILE {
+            if let Some(init_limit) = self.init_limit {
+                result.insert(
+                    ZookeeperConfig::INIT_LIMIT.to_string(),
+                    Some(init_limit.to_string()),
+                );
+            }
+            if let Some(sync_limit) = self.sync_limit {
+                result.insert(
+                    ZookeeperConfig::SYNC_LIMIT.to_string(),
+                    Some(sync_limit.to_string()),
+                );
+            }
+            if let Some(tick_time) = self.tick_time {
+                result.insert(
+                    ZookeeperConfig::TICK_TIME.to_string(),
+                    Some(tick_time.to_string()),
+                );
+            }
             result.insert(
-                ZookeeperConfig::INIT_LIMIT.to_string(),
-                Some(init_limit.to_string()),
+                ZookeeperConfig::DATA_DIR.to_string(),
+                Some(STACKABLE_DATA_DIR.to_string()),
             );
         }
-        if let Some(sync_limit) = self.sync_limit {
-            result.insert(
-                ZookeeperConfig::SYNC_LIMIT.to_string(),
-                Some(sync_limit.to_string()),
-            );
-        }
-        if let Some(tick_time) = self.tick_time {
-            result.insert(
-                ZookeeperConfig::TICK_TIME.to_string(),
-                Some(tick_time.to_string()),
-            );
-        }
-        result.insert(
-            ZookeeperConfig::DATA_DIR.to_string(),
-            Some(STACKABLE_DATA_DIR.to_string()),
-        );
 
         Ok(result)
     }
