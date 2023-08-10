@@ -480,6 +480,8 @@ fn build_server_rolegroup_config_map(
         )
     }));
 
+    zoo_cfg.extend(zookeeper_security.config_settings());
+
     let jvm_sec_props: BTreeMap<String, Option<String>> = server_config
         .get(&PropertyNameKind::File(
             JVM_SECURITY_PROPERTIES_FILE.to_string(),
