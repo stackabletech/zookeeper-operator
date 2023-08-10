@@ -45,7 +45,7 @@ For a full list of configuration options we refer to the Apache ZooKeeper https:
 
 The `security.properties` file is used to configure JVM security properties. It is very seldom that users need to tweak any of these, but there is one use-case that stands out and that users need to be aware of: the JVM DNS cache.
 
-The JVM manages it's own cache of successfully resolved host names as well as a cache of host names that cannot be resolved. Some products of the Stackable stack are very sensible to the contents of these caches and their performance is heavily affected by them. Apache Zookeeper always requires up-to-date IP adreses to maintain it's quorum. To gurantee this, the JVM caches need to be effectively disabled. This can be achieved by setting the TTL of the cache entries to zero, like this:
+The JVM manages it's own cache of successfully resolved host names as well as a cache of host names that cannot be resolved. Some products of the Stackable stack are very sensible to the contents of these caches and their performance is heavily affected by them. Apache Zookeeper always requires up-to-date IP adreses to maintain it's quorum. To guarantee this, the JVM caches need to be effectively disabled. This can be achieved by setting the TTL of the cache entries to zero, like this:
 
 [source,yaml]
 ----
@@ -59,7 +59,7 @@ servers:
       replicas: 1
 ----
 
-NOTE: The operator already disables DNS caching by default for Zookeeper, so users don't need to do it explicitely.
+NOTE: The operator already disables DNS caching by default for Zookeeper, so users don't need to do it explicitly.
 
 For details on the JVM security see https://docs.oracle.com/en/java/javase/11/security/java-security-overview1.html
 
