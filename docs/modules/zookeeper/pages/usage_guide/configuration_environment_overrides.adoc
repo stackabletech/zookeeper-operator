@@ -49,14 +49,11 @@ The JVM manages it's own cache of successfully resolved host names as well as a 
 
 [source,yaml]
 ----
-servers:
-  configOverrides:
-    security.properties
-      networkaddress.cache.ttl: '0'
-      networkaddress.cache.negative.ttl: '0'
-  roleGroups:
-    default:
-      replicas: 1
+  servers:
+    configOverrides:
+      security.properties:
+        networkaddress.cache.ttl: "0"
+        networkaddress.cache.negative.ttl: "0"
 ----
 
 NOTE: The operator already disables DNS caching by default for Zookeeper.
