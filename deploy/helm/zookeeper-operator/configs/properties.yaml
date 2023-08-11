@@ -22,7 +22,7 @@ properties:
         min: "0"
       recommendedValues:
         - fromVersion: "0.0.0"
-          value: "0"
+          value: "5"
       roles:
         - name: "server"
           required: true
