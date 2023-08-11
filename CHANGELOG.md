@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Default stackableVersion to operator version ([#711]).
-- Configuration overrides for the JVM security properties ([#715]).
+- Configuration overrides for the JVM security properties, such as DNS caching ([#715]).
 
 ### Changed
 
