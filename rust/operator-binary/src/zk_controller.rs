@@ -53,9 +53,10 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
-    ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, MAX_PREPARE_LOG_FILE_SIZE,
-    MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
-    STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+    ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE,
+    MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+    STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+    ZOOKEEPER_PROPERTIES_FILE,
 };
 use std::{
     borrow::Cow,
@@ -255,6 +256,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
                     vec![
                         PropertyNameKind::Env,
                         PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
+                        PropertyNameKind::File(JVM_SECURITY_PROPERTIES_FILE.to_string()),
                     ],
                     zk.spec.servers.clone().context(NoServerRoleSnafu)?,
                 ),
@@ -480,6 +482,16 @@ fn build_server_rolegroup_config_map(
 
     zoo_cfg.extend(zookeeper_security.config_settings());
 
+    let jvm_sec_props: BTreeMap<String, Option<String>> = server_config
+        .get(&PropertyNameKind::File(
+            JVM_SECURITY_PROPERTIES_FILE.to_string(),
+        ))
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(k, v)| (k, Some(v)))
+        .collect();
+
     let role =
         ZookeeperRole::from_str(&rolegroup.role).with_context(|_| RoleParseFailureSnafu {
             role: rolegroup.role.to_string(),
@@ -505,6 +517,14 @@ fn build_server_rolegroup_config_map(
                     &rolegroup.role_group,
                 ))
                 .build(),
+        )
+        .add_data(
+            JVM_SECURITY_PROPERTIES_FILE,
+            to_java_properties_string(jvm_sec_props.iter()).with_context(|_| {
+                SerializeZooCfgSnafu {
+                    rolegroup: rolegroup.clone(),
+                }
+            })?,
         )
         .add_data(
             ZOOKEEPER_PROPERTIES_FILE,

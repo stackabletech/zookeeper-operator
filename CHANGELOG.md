@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Default stackableVersion to operator version ([#711]).
+- Configuration overrides for the JVM security properties, such as DNS caching ([#715]).
 
 ### Changed
 
@@ -17,6 +18,7 @@ All notable changes to this project will be documented in this file.
 [#695]: https://github.com/stackabletech/zookeeper-operator/pull/695
 [#709]: https://github.com/stackabletech/zookeeper-operator/pull/709
 [#711]: https://github.com/stackabletech/zookeeper-operator/pull/711
+[#715]: https://github.com/stackabletech/zookeeper-operator/pull/715
 
 ## [23.7.0] - 2023-07-14
 
