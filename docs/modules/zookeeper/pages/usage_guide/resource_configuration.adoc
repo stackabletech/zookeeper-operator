@@ -18,6 +18,8 @@ servers:
 
 In the above example, all ZooKeeper nodes in the default group will store data (the location of the property `dataDir`) on a `2Gi` volume.
 
+You can also configure which StorageClass to use, consult the xref:concepts:resources.adoc#storageclass[resources docs] to learn more.
+
 == Resource requests
 
 include::home:concepts:stackable_resource_requests.adoc[]
