@@ -27,7 +27,7 @@ Apache ZooKeeper has no dependencies.
 Apache ZooKeeper is a dependency of xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka] and xref:nifi:index.adoc[Apache NiFi], thus any demo that uses one or more of these components will also deploy a ZooKeeper ensemble. Here is the list of the demos that include ZooKeeper:
 
 * xref:stackablectl::demos/data-lakehouse-iceberg-trino-spark.adoc[]
-* xref:stackablectl::demos/hbase-hdfs-cycling-data.adoc[]
+* xref:stackablectl::demos/hbase-hdfs-load-cycling-data.adoc[]
 * xref:stackablectl::demos/jupyterhub-pyspark-hdfs-anomaly-detection-taxi-data.adoc[]
 * xref:stackablectl::demos/logging.adoc[]
 * xref:stackablectl::demos/nifi-kafka-druid-earthquake-data.adoc[]
