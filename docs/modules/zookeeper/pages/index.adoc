@@ -8,6 +8,12 @@ ZooKeeper is often used for these tasks in the Apache Hadoop ecosystem. On the S
 
 Get started with Apache ZooKeeper and the Stackable Operator by following the xref:getting_started/index.adoc[Getting started] guide, it will guide you through the xref:getting_started/installation.adoc[installation] process. Afterwards consult the xref:usage_guide/index.adoc[Usage guide] to learn more about configuring ZooKeeper for your needs. You can also deploy a <<demos, demo>> to see an example deployment of ZooKeeper together with other data products.
 
+== Operator model
+
+image::zookeeper_overview.drawio.svg[A diagram depicting the Kubernetes resources created by the Stackable Operator for Apache ZooKeeper]
+
+=== ZNodes
+
 == Dependencies
 
 Apache ZooKeeper has no dependencies.
