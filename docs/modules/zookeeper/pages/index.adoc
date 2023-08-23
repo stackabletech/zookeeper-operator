@@ -4,6 +4,13 @@ The Stackable Operator for Apache ZooKeeper is a Kubernetes Operator for deployi
 Apache ZooKeeper is an open-source distributed coordination service that facilitates synchronization, configuration management, and leader election in distributed systems.
 ZooKeeper is often used for these tasks in the Apache Hadoop ecosystem. On the Stackable Platform, the Stackable Operators for xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka] and xref:nifi:index.adoc[Apache NiFi] depend on the ZooKeeper Operator.
 
+== Getting started
+
+Get started with Apache ZooKeeper and the Stackable Operator by following the xref:getting_started/index.adoc[Getting started] guide, it will guide you through the xref:getting_started/installation.adoc[installation] process. Afterwards consult the xref:usage_guide/index.adoc[Usage guide] to learn more about configuring ZooKeeper for your needs. You can also deploy a <<demos, demo>> to see an example deployment of ZooKeeper together with other data products.
+
+[#demos]
+== Demos
+
 == Supported Versions
 
 The Stackable Operator for Apache ZooKeeper currently supports the following versions of ZooKeeper:
