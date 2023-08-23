@@ -11,6 +11,15 @@ Get started with Apache ZooKeeper and the Stackable Operator by following the xr
 [#demos]
 == Demos
 
+Apache ZooKeeper is a dependency of xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka] and xref:nifi:index.adoc[Apache NiFi], thus any demo that uses one or more of these components will also deploy a ZooKeeper ensemble. Here is the list of the demos that include ZooKeeper:
+
+* xref:stackablectl::demos/data-lakehouse-iceberg-trino-spark.adoc[]
+* xref:stackablectl::demos/hbase-hdfs-cycling-data.adoc[]
+* xref:stackablectl::demos/jupyterhub-pyspark-hdfs-anomaly-detection-taxi-data.adoc[]
+* xref:stackablectl::demos/logging.adoc[]
+* xref:stackablectl::demos/nifi-kafka-druid-earthquake-data.adoc[]
+* xref:stackablectl::demos/nifi-kafka-druid-water-level-data.adoc[]
+
 == Supported Versions
 
 The Stackable Operator for Apache ZooKeeper currently supports the following versions of ZooKeeper:
