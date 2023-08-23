@@ -6,7 +6,7 @@ ZooKeeper is often used for these tasks in the Apache Hadoop ecosystem. Within t
 
 == Getting started
 
-Get started with Apache ZooKeeper and the Stackable Operator by following the xref:getting_started/index.adoc[Getting started] guide, it will guide you through the xref:getting_started/installation.adoc[installation] process. Afterwards consult the xref:usage_guide/index.adoc[Usage guide] to learn more about configuring ZooKeeper for your needs. You can also deploy a <<demos, demo>> to see an example deployment of ZooKeeper together with other data products.
+Get started with Apache ZooKeeper and the Stackable Operator by following the xref:getting_started/index.adoc[Getting started] guide, it will guide you through the xref:getting_started/installation.adoc[installation] process. Afterwards, consult the xref:usage_guide/index.adoc[Usage guide] to learn more about configuring ZooKeeper for your needs. You can also deploy a <<demos, demo>> to see an example deployment of ZooKeeper together with other data products.
 
 == Operator model
 
