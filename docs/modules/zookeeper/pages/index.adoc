@@ -14,7 +14,7 @@ The Operator manages two custom resources: _ZookeeperCluster_ and _ZookeeperZnod
 
 image::zookeeper_overview.drawio.svg[A diagram depicting the Kubernetes resources created by the Stackable Operator for Apache ZooKeeper]
 
-For every role group the Operator creates a ConfigMap and StatefulSet which can have multiple replicas (Pods). Every role group is accessible through it’s own Service, and there is a Service for the whole Cluster.
+For every role group the Operator creates a ConfigMap and StatefulSet which can have multiple replicas (Pods). Every role group is accessible through its own Service, and there is a Service for the whole Cluster.
 
 The operator creates a xref:concepts:service_discovery.adoc[service discovery ConfigMap] for the ZooKeeper instance, as well as for each ZNode. The discovery ConfigMaps contain information on how to connect to ZooKeeper. The ZNode discovery ConfigMap give access information for the ZNode. xref:zookeeper:znodes.adoc[learn more about ZNodes].
 
