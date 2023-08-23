@@ -20,7 +20,7 @@ The Operator creates a xref:concepts:service_discovery.adoc[service discovery Co
 
 == Dependencies
 
-Apache ZooKeeper has no dependencies.
+Apache ZooKeeper and the Stackable Operator have no dependencies besides the xref:commons-operator:index.adoc[] and xref:secret-operator:index.adoc[].
 
 == [[demos]]Demos
 
