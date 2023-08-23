@@ -10,16 +10,19 @@ Get started with Apache ZooKeeper and the Stackable Operator by following the xr
 
 == Operator model
 
+The Operator manages two custom resources: _ZookeeperCluster_ and _ZookeeperZnode_. ZooKeeper only has a single process that it runs, so the cluster resource only has a single corresponding xref:concepts:roles-and-role-groups.adoc[role] called _server_.
+
 image::zookeeper_overview.drawio.svg[A diagram depicting the Kubernetes resources created by the Stackable Operator for Apache ZooKeeper]
 
-=== ZNodes
+For every role group the Operator creates a ConfigMap and StatefulSet which can have multiple replicas (Pods). Every role group is accessible through it’s own Service, and there is a Service for the whole Cluster.
+
+The operator creates a xref:concepts:service_discovery.adoc[service discovery ConfigMap] for the ZooKeeper instance, as well as for each ZNode. The discovery ConfigMaps contain information on how to connect to ZooKeeper. The ZNode discovery ConfigMap give access information for the ZNode. xref:zookeeper:znodes.adoc[learn more about ZNodes].
 
 == Dependencies
 
 Apache ZooKeeper has no dependencies.
 
-[#demos]
-== Demos
+== [[demos]]Demos
 
 Apache ZooKeeper is a dependency of xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka] and xref:nifi:index.adoc[Apache NiFi], thus any demo that uses one or more of these components will also deploy a ZooKeeper ensemble. Here is the list of the demos that include ZooKeeper:
 
