@@ -1,12 +1,11 @@
 * xref:zookeeper:getting_started/index.adoc[]
 ** xref:zookeeper:getting_started/installation.adoc[]
 ** xref:zookeeper:getting_started/first_steps.adoc[]
-* xref:zookeeper:configuration.adoc[]
-* xref:zookeeper:pod_placement.adoc[]
 * Concepts
 ** xref:zookeeper:znodes.adoc[]
 ** xref:zookeeper:discovery.adoc[]
 * xref:zookeeper:usage_guide/index.adoc[]
+** xref:zookeeper:usage_guide/pod_placement.adoc[]
 ** xref:zookeeper:usage_guide/encryption.adoc[]
 ** xref:zookeeper:usage_guide/authentication.adoc[]
 ** xref:zookeeper:usage_guide/resource_configuration.adoc[]
@@ -16,3 +15,4 @@
 ** xref:zookeeper:usage_guide/isolating_clients_with_znodes.adoc[]
 ** xref:zookeeper:usage_guide/configuration_environment_overrides.adoc[]
 ** xref:zookeeper:usage_guide/cluster_operations.adoc[]
+* xref:zookeeper:configuration.adoc[]
