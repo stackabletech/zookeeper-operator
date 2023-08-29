@@ -1,7 +1,7 @@
 = Pod Placement
 
-You can configure the Pod placement of the Zookeeper pods as described in xref:concepts:pod_placement.adoc[].
+You can configure the Pod placement of the ZooKeeper pods as described in xref:concepts:pod_placement.adoc[].
 
 The default affinities created by the operator are:
 
-1. Distribute all the Zookeeper Pods (weight 70)
+1. Distribute all the ZooKeeper Pods (weight 70)
