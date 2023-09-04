@@ -1,10 +1,15 @@
 = Service exposition with ListenerClasses
 
-xref:concepts:service-exposition.adoc[]
+Apache ZooKeeper offers an API. The Operator deploys a service called `<name>` (where `<name>` is the name of the ZookeeperCluster) through which ZooKeeper can be reached.
 
-TODO
+This service can have either the `cluster-internal` or `external-unstable` type. `external-stable` is not supported for ZooKeeper at the moment. Read more about the types in the xref:concepts:service-exposition.adoc[service exposition] documentation at platform level.
 
-is this listenerclass used by all the services? There are the role group services and then there is the overall service
+This is how the listener class is configured:
 
-
-Okay, so the listenerclass only affects the "main" SVC, not the role group services. But the discovery configmaps point to the role group configmaps!
+[source,yaml]
+----
+spec:
+  clusterConfig:
+    listenerClass: cluster-internal  # <1>
+----
+<1> The default `cluster-internal` setting. 
