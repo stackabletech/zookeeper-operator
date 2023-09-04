@@ -6,6 +6,7 @@
 ** xref:zookeeper:discovery.adoc[]
 * xref:zookeeper:usage_guide/index.adoc[]
 ** xref:zookeeper:usage_guide/pod_placement.adoc[]
+** xref:zookeeper:usage_guide/listenerclass.adoc[]
 ** xref:zookeeper:usage_guide/encryption.adoc[]
 ** xref:zookeeper:usage_guide/authentication.adoc[]
 ** xref:zookeeper:usage_guide/resource_configuration.adoc[]
