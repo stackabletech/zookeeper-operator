@@ -1,0 +1,10 @@
+= Service exposition with ListenerClasses
+
+xref:concepts:service-exposition.adoc[]
+
+TODO
+
+is this listenerclass used by all the services? There are the role group services and then there is the overall service
+
+
+Okay, so the listenerclass only affects the "main" SVC, not the role group services. But the discovery configmaps point to the role group configmaps!
