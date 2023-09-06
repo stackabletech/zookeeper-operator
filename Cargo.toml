@@ -30,6 +30,9 @@ tokio = { version = "1.29", features = ["full"] }
 tokio-zookeeper = "0.2"
 tracing = "0.1"
 
+[patch."https://github.com/stackabletech/operator-rs.git"]
+stackable-operator = { git = "https://github.com/stackabletech//operator-rs.git", branch = "fix-product-image-selection" }
+
 # [patch."https://github.com/stackabletech/operator-rs.git"]
 # stackable-operator = { git = "https://github.com/stackabletech//operator-rs.git", branch = "main" }
 

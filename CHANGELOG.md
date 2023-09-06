@@ -12,13 +12,19 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - `vector` `0.26.0` -> `0.31.0` ([#709]).
-- `operator-rs` `0.44.0` -> `0.45.1` ([#711]).
+- `operator-rs` `0.44.0` -> `0.49.0` ([#711], [#723]).
 - Let secret-operator handle certificate conversion ([#695]).
+
+### Fixed
+
+- Fix the error "data did not match any variant of untagged enum
+  ProductImageSelection" on OpenShift ([#646]).
 
 [#695]: https://github.com/stackabletech/zookeeper-operator/pull/695
 [#709]: https://github.com/stackabletech/zookeeper-operator/pull/709
 [#711]: https://github.com/stackabletech/zookeeper-operator/pull/711
 [#715]: https://github.com/stackabletech/zookeeper-operator/pull/715
+[#723]: https://github.com/stackabletech/zookeeper-operator/pull/723
 
 ## [23.7.0] - 2023-07-14
 
