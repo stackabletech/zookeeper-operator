@@ -6,16 +6,15 @@ On this page you will install the Stackable ZooKeeper Operator.
 
 There are 2 ways to run Stackable Operators
 
-1. Using xref:stackablectl::index.adoc[] (recommended)
-
-2. Using Helm
+. Using xref:management:stackablectl:index.adoc[] (recommended)
+. Using Helm
 
 === stackablectl
 
-stackablectl is the command line tool to interact with Stackable operators and our recommended way to install Operators.
-Follow the xref:stackablectl::installation.adoc[installation steps] for your platform.
+`stackablectl` is the command line tool to interact with Stackable operators and our recommended way to install
+Operators. Follow the xref:management:stackablectl:installation.adoc[installation steps] for your platform.
 
-After you have installed stackablectl, use it to install the ZooKeeper Operator and its dependencies:
+After you have installed `stackablectl`, use it to install the ZooKeeper Operator and its dependencies:
 
 [source,bash]
 ----
@@ -27,7 +26,8 @@ The tool will show
 [source]
 include::example$getting_started/code/install_output.txt[]
 
-TIP: Consult the xref:stackablectl::quickstart.adoc[] to learn more about how to use stackablectl. For example, you can use the `-k` flag to create a Kubernetes cluster with link:https://kind.sigs.k8s.io/[kind].
+TIP: Consult the xref:management:stackablectl:quickstart.adoc[] to learn more about how to use `stackablectl`. For
+example, you can use the `--cluster kind` flag to create a Kubernetes cluster with link:https://kind.sigs.k8s.io/[kind].
 
 === Helm
 
@@ -43,7 +43,8 @@ Then install the Stackable Operators:
 include::example$getting_started/code/getting_started.sh[tag=helm-install-operators]
 ----
 
-Helm will deploy the Operators in a Kubernetes Deployment and apply the CRDs for the ZooKeeper cluster. You are now ready to deploy Apache ZooKeeper in Kubernetes.
+Helm will deploy the Operators in a Kubernetes Deployment and apply the CRDs for the ZooKeeper cluster. You are now
+ready to deploy Apache ZooKeeper in Kubernetes.
 
 == What's next
 
