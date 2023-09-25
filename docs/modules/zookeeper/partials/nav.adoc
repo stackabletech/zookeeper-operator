@@ -1,6 +1,7 @@
 * xref:zookeeper:getting_started/index.adoc[]
 ** xref:zookeeper:getting_started/installation.adoc[]
 ** xref:zookeeper:getting_started/first_steps.adoc[]
+* xref:zookeeper:configuration.adoc[]
 * Concepts
 ** xref:zookeeper:znodes.adoc[]
 ** xref:zookeeper:discovery.adoc[]
@@ -14,8 +15,7 @@
 ** xref:zookeeper:usage_guide/using_multiple_role_groups.adoc[]
 ** xref:zookeeper:usage_guide/isolating_clients_with_znodes.adoc[]
 ** xref:zookeeper:usage_guide/configuration_environment_overrides.adoc[]
-* xref:zookeeper:configuration.adoc[]
 ** Operations
-*** xref:hdfs:usage-guide/operations/cluster_operations.adoc[]
-*** xref:hdfs:usage-guide/operations/pod_placement.adoc[]
-*** xref:hdfs:usage-guide/operations/pod_disruptions.adoc[]
+*** xref:zookeeper:usage-guide/operations/cluster_operations.adoc[]
+*** xref:zookeeper:usage-guide/operations/pod_placement.adoc[]
+*** xref:zookeeper:usage-guide/operations/pod_disruptions.adoc[]
