@@ -1,5 +1,6 @@
 mod command;
 mod discovery;
+mod operations;
 mod product_logging;
 mod utils;
 mod zk_controller;

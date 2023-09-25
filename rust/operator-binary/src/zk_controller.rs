@@ -2,6 +2,7 @@
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
+    operations::pdb::add_pdbs,
     product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
     utils::build_recommended_labels,
     ObjectRef, APP_NAME, OPERATOR_NAME,
@@ -45,7 +46,7 @@ use stackable_operator::{
             CustomContainerLogConfig,
         },
     },
-    role_utils::RoleGroupRef,
+    role_utils::{RoleConfig, RoleGroupRef},
     status::condition::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
@@ -123,6 +124,10 @@ pub enum Error {
     ApplyRoleGroupStatefulSet {
         source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef<ZookeeperCluster>,
+    },
+    #[snafu(display("failed to create PodDisruptionBudget"))]
+    CreatePdb {
+        source: crate::operations::pdb::Error,
     },
     #[snafu(display("failed to generate product config"))]
     GenerateProductConfig {
@@ -208,6 +213,7 @@ impl ReconcilerError for Error {
             Error::BuildRoleGroupConfig { .. } => None,
             Error::ApplyRoleGroupConfig { .. } => None,
             Error::ApplyRoleGroupStatefulSet { .. } => None,
+            Error::CreatePdb { .. } => None,
             Error::GenerateProductConfig { .. } => None,
             Error::InvalidProductConfig { .. } => None,
             Error::SerializeZooCfg { .. } => None,
@@ -359,6 +365,16 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
                     rolegroup: rolegroup.clone(),
                 })?,
         );
+    }
+
+    let role_config = zk.role_config(&zk_role);
+    if let Some(RoleConfig {
+        pod_disruption_budget: pdb,
+    }) = role_config
+    {
+        add_pdbs(pdb, &zk, &zk_role, client, &mut cluster_resources)
+            .await
+            .context(CreatePdbSnafu)?;
     }
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
