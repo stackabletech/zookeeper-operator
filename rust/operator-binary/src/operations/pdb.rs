@@ -69,7 +69,9 @@ fn max_unavailable_servers(num_servers: u16) -> u16 {
 }
 
 fn quorum_size(num_servers: u16) -> u16 {
-    max((num_servers as f32 / 2.0).ceil() as u16, 1)
+    // Same as max((num_servers / 2) + 1, 1), but without the need for floating point arithmetics,
+    // which are subject to rounding errors.
+    max((num_servers + 2) / 2, 1)
 }
 
 #[cfg(test)]
@@ -80,17 +82,17 @@ mod test {
     #[rstest]
     #[case(0, 1, 1)]
     #[case(1, 1, 1)]
-    #[case(2, 1, 1)]
+    #[case(2, 2, 1)]
     #[case(3, 2, 1)]
-    #[case(4, 2, 1)]
+    #[case(4, 3, 1)]
     #[case(5, 3, 1)]
-    #[case(6, 3, 2)]
+    #[case(6, 4, 1)]
     #[case(7, 4, 2)]
-    #[case(8, 4, 3)]
+    #[case(8, 5, 2)]
     #[case(9, 5, 3)]
-    #[case(10, 5, 4)]
-    #[case(20, 10, 9)]
-    #[case(100, 50, 49)]
+    #[case(10, 6, 3)]
+    #[case(20, 11, 8)]
+    #[case(100, 51, 48)]
 
     fn test_max_unavailable_servers(
         #[case] num_servers: u16,
