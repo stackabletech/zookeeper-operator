@@ -64,7 +64,7 @@ fn max_unavailable_servers(num_servers: u16) -> u16 {
     // Subtract once to not cause a single point of failure
     let max_unavailable = num_servers.saturating_sub(quorum_size).saturating_sub(1);
 
-    // Clamp to at least a single node allowed to being, to not block Kubernetes nodes from draining.
+    // Clamp to at least a single node allowed to be offline, so we don't block Kubernetes nodes from draining.
     max(max_unavailable, 1)
 }
 

@@ -1,0 +1,78 @@
+= Allowed Pod disruptions
+
+You can configure the allowed Pod disruptions for Zookeeper nodes as described in xref:concepts:operations/pod_disruptions.adoc[].
+
+Unless you configure something else or disable our PodDisruptionBudgets (PDBs), we write the following PDBs:
+
+== Servers
+
+Zookeeper servers need a certain number of nodes to be available to form a quorum to serve client requests.
+
+Taking this into consideration, our operator uses the following algorithm to determine the maximum number of servers allowed to be unavailable at the same time:
+
+`num_servers` is the number of server in the Zookeeper cluster, summed over all `roleGroups`.
+
+[source,rust]
+----
+// Minimum required amount of servers to form quorum.
+let quorum_size = quorum_size(num_servers);
+
+// Subtract once to not cause a single point of failure
+let max_unavailable = num_servers.saturating_sub(quorum_size).saturating_sub(1);
+
+// Clamp to at least a single node allowed to be offline, so we don't block Kubernetes nodes from draining.
+let max_unavailable = max(max_unavailable, 1)
+----
+
+This results e.g. in the following numbers:
+
+[cols="1,1,1"]
+|===
+|Number of servers
+|Quorum size
+|Maximum unavailable servers
+
+|1
+|1
+|1
+
+|2
+|1
+|1
+
+|3
+|2
+|1
+
+|4
+|2
+|1
+
+|5
+|3
+|1
+
+|6
+|3
+|2
+
+|7
+|4
+|2
+
+|8
+|4
+|3
+
+|9
+|5
+|3
+
+|10
+|5
+|4
+
+|20
+|10
+|9
+|===
