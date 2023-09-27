@@ -2,6 +2,7 @@
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
+    operations::pdb::add_pdbs,
     product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
     utils::build_recommended_labels,
     ObjectRef, APP_NAME, OPERATOR_NAME,
@@ -45,7 +46,7 @@ use stackable_operator::{
             CustomContainerLogConfig,
         },
     },
-    role_utils::RoleGroupRef,
+    role_utils::{RoleConfig, RoleGroupRef},
     status::condition::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
@@ -188,7 +189,12 @@ pub enum Error {
     FailedToResolveConfig {
         source: stackable_zookeeper_crd::Error,
     },
+    #[snafu(display("failed to create PodDisruptionBudget"))]
+    FailedToCreatePdb {
+        source: crate::operations::pdb::Error,
+    },
 }
+
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl ReconcilerError for Error {
@@ -224,6 +230,7 @@ impl ReconcilerError for Error {
             Error::InvalidLoggingConfig { .. } => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
             Error::FailedToResolveConfig { .. } => None,
+            Error::FailedToCreatePdb { .. } => None,
         }
     }
 }
@@ -359,6 +366,16 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
                     rolegroup: rolegroup.clone(),
                 })?,
         );
+    }
+
+    let role_config = zk.role_config(&zk_role);
+    if let Some(RoleConfig {
+        pod_disruption_budget: pdb,
+    }) = role_config
+    {
+        add_pdbs(pdb, &zk, &zk_role, client, &mut cluster_resources)
+            .await
+            .context(FailedToCreatePdbSnafu)?;
     }
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
