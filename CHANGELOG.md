@@ -8,11 +8,12 @@ All notable changes to this project will be documented in this file.
 
 - Default stackableVersion to operator version ([#711]).
 - Configuration overrides for the JVM security properties, such as DNS caching ([#715]).
+- Support PodDisruptionBudgets ([#XXX]).
 
 ### Changed
 
 - `vector` `0.26.0` -> `0.31.0` ([#709]).
-- `operator-rs` `0.44.0` -> `0.45.1` ([#711]).
+- `operator-rs` `0.44.0` -> `0.51.1` ([#711], [#XXX]).
 - Let secret-operator handle certificate conversion ([#695]).
 
 [#695]: https://github.com/stackabletech/zookeeper-operator/pull/695

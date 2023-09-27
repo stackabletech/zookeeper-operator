@@ -72,3 +72,12 @@ spec:
       storage: 2Gi
 status:
   phase: Bound
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: test-zk-server
+status:
+  expectedPods: 3
+  currentHealthy: 3
+  disruptionsAllowed: 1
