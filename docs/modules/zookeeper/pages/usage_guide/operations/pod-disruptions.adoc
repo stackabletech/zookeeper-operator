@@ -23,7 +23,7 @@ fn quorum_size(num_servers: u16) -> u16 {
 // Minimum required amount of servers to form quorum.
 let quorum_size = quorum_size(num_servers);
 
-// Subtract once to not cause a single point of failure
+// Subtract one to not cause a single point of failure
 let max_unavailable = num_servers.saturating_sub(quorum_size).saturating_sub(1);
 
 // Clamp to at least a single node allowed to be offline, so we don't block Kubernetes nodes from draining.
@@ -32,7 +32,7 @@ let max_unavailable = max(max_unavailable, 1)
 
 This results e.g. in the following numbers:
 
-TIP: It is strongly recommended to use a odd number of servers (e.g. 3, 5 or 7).
+TIP: It is strongly recommended to use an odd number of servers (e.g. 3, 5 or 7).
 
 [cols="1,1,1"]
 |===
