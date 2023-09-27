@@ -16,7 +16,7 @@ pub enum Error {
         source: stackable_operator::error::Error,
         role: String,
     },
-    #[snafu(display("Cannot apply role group PodDisruptionBudget [{name}]"))]
+    #[snafu(display("Cannot apply PodDisruptionBudget [{name}]"))]
     ApplyPdb {
         source: stackable_operator::error::Error,
         name: String,
