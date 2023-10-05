@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - `vector` `0.26.0` -> `0.31.0` ([#709]).
-- `operator-rs` `0.44.0` -> `0.52.0` ([#711], [#730], [#731]).
+- `operator-rs` `0.44.0` -> `0.52.1` ([#711], [#730], [#731]).
 - Let secret-operator handle certificate conversion ([#695]).
 
 [#695]: https://github.com/stackabletech/zookeeper-operator/pull/695
