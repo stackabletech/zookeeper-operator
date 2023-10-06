@@ -29,7 +29,7 @@ use stackable_operator::{
     memory::{BinaryMultiple, MemoryQuantity},
     product_config_utils::{ConfigError, Configuration},
     product_logging::{self, spec::Logging},
-    role_utils::{Role, RoleConfig, RoleGroup, RoleGroupRef},
+    role_utils::{GenericRoleConfig, Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
     status::condition::{ClusterCondition, HasStatusCondition},
 };
@@ -519,19 +519,10 @@ impl ZookeeperCluster {
         }
     }
 
-    pub fn role_config(&self, role: &ZookeeperRole) -> Option<&RoleConfig> {
+    pub fn role_config(&self, role: &ZookeeperRole) -> Option<&GenericRoleConfig> {
         match role {
             ZookeeperRole::Server => self.spec.servers.as_ref().map(|s| &s.role_config),
         }
-    }
-
-    pub fn num_servers(&self) -> u16 {
-        self.spec
-            .servers
-            .iter()
-            .flat_map(|s| s.role_groups.values())
-            .map(|rg| rg.replicas.unwrap_or(1))
-            .sum()
     }
 
     /// List all pods expected to form the cluster

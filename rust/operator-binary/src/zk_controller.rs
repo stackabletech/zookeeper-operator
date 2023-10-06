@@ -46,7 +46,7 @@ use stackable_operator::{
             CustomContainerLogConfig,
         },
     },
-    role_utils::{RoleConfig, RoleGroupRef},
+    role_utils::{GenericRoleConfig, RoleGroupRef},
     status::condition::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
@@ -369,7 +369,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     }
 
     let role_config = zk.role_config(&zk_role);
-    if let Some(RoleConfig {
+    if let Some(GenericRoleConfig {
         pod_disruption_budget: pdb,
     }) = role_config
     {
