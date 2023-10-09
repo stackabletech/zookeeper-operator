@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Default stackableVersion to operator version ([#711]).
 - Configuration overrides for the JVM security properties, such as DNS caching ([#715]).
 - Support PodDisruptionBudgets ([#730], [#731]).
+- Support for ZooKeeper 3.8.2 added ([#732]).
 
 ### Changed
 
@@ -16,12 +17,17 @@ All notable changes to this project will be documented in this file.
 - `operator-rs` `0.44.0` -> `0.52.1` ([#711], [#730], [#731]).
 - Let secret-operator handle certificate conversion ([#695]).
 
+## Removed
+
+- Support for ZooKeeper 3.5.8, 3.6.3, 3.7.0, 3.8.0 ([#732]).
+
 [#695]: https://github.com/stackabletech/zookeeper-operator/pull/695
 [#709]: https://github.com/stackabletech/zookeeper-operator/pull/709
 [#711]: https://github.com/stackabletech/zookeeper-operator/pull/711
 [#715]: https://github.com/stackabletech/zookeeper-operator/pull/715
 [#730]: https://github.com/stackabletech/zookeeper-operator/pull/730
 [#731]: https://github.com/stackabletech/zookeeper-operator/pull/731
+[#732]: https://github.com/stackabletech/zookeeper-operator/pull/732
 
 ## [23.7.0] - 2023-07-14
 
