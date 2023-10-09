@@ -9,7 +9,7 @@ metadata:
   name: simple
 spec:
   image:
-    productVersion: 3.8.1
+    productVersion: 3.8.2
   servers:
     roleGroups:
       default:

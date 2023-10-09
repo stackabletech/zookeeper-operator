@@ -39,13 +39,13 @@ servers:
 
 All property values must be strings.
 
-For a full list of configuration options we refer to the Apache ZooKeeper https://zookeeper.apache.org/doc/r3.7.0/zookeeperAdmin.html#sc_configuration[Configuration Reference].
+For a full list of configuration options we refer to the Apache ZooKeeper https://zookeeper.apache.org/doc/r3.8.2/zookeeperAdmin.html#sc_configuration[Configuration Reference].
 
 === Overriding entries in security.properties
 
 The `security.properties` file is used to configure JVM security properties. It is very seldom that users need to tweak any of these, but there is one use-case that stands out, and that users need to be aware of: the JVM DNS cache.
 
-The JVM manages its own cache of successfully resolved host names as well as a cache of host names that cannot be resolved. Some products of the Stackable platform are very sensible to the contents of these caches and their performance is heavily affected by them. As of version 3.8.1, Apache ZooKeeper always requires up-to-date IP adreses to maintain its quorum. To guarantee this, the negative DNS cache of the JVM needs to be disabled. This can be achieved by setting the TTL of entries in the negative cache to zero, like this:
+The JVM manages its own cache of successfully resolved host names as well as a cache of host names that cannot be resolved. Some products of the Stackable platform are very sensible to the contents of these caches and their performance is heavily affected by them. As of version 3.8.1, Apache ZooKeeper always requires up-to-date IP addresses to maintain its quorum. To guarantee this, the negative DNS cache of the JVM needs to be disabled. This can be achieved by setting the TTL of entries in the negative cache to zero, like this:
 
 [source,yaml]
 ----
