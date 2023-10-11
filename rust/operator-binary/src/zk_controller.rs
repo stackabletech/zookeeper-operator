@@ -20,6 +20,7 @@ use stackable_operator::{
         product_image_selection::ResolvedProductImage,
         rbac::{build_rbac_resources, service_account_name},
     },
+    duration::Duration,
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
@@ -65,7 +66,6 @@ use std::{
     hash::Hasher,
     str::FromStr,
     sync::Arc,
-    time::Duration,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
@@ -893,5 +893,5 @@ pub fn error_policy(
     _error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {
-    controller::Action::requeue(Duration::from_secs(5))
+    controller::Action::requeue(*Duration::from_secs(5))
 }
