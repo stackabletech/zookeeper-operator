@@ -51,7 +51,7 @@ mod tests {
           name: simple-zk
         spec:
           image:
-            productVersion: 3.8.2
+            productVersion: 3.8.3
           clusterConfig:
             authentication:
               - authenticationClass: zk-client-tls
@@ -125,7 +125,7 @@ mod tests {
           name: simple-zk
         spec:
           image:
-            productVersion: 3.8.2
+            productVersion: 3.8.3
           clusterConfig:
             authentication:
               - authenticationClass: zk-client-tls

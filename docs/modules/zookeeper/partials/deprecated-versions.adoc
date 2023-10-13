@@ -1,5 +1,0 @@
-// The version ranges deprecated by Zookeeper-Operator
-// This is a separate file, since it is used by both the direct ZooKeeper documentation, and the overarching
-// Stackable Platform documentation.
-
-- 3.8.1

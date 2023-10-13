@@ -1,8 +1,0 @@
-// The version ranges not supported anymore by Zookeeper-Operator
-// This is a separate file, since it is used by both the direct ZooKeeper documentation, and the overarching
-// Stackable Platform documentation.
-
-- 3.5.8
-- 3.6.3
-- 3.7.0
-- 3.8.0
