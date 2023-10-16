@@ -2,17 +2,17 @@
 //!
 //! See [`ZookeeperZnode`] for more details.
 
-use std::{convert::Infallible, sync::Arc, time::Duration};
+use std::{convert::Infallible, sync::Arc};
 
 use crate::{
     discovery::{self, build_discovery_configmaps},
     APP_NAME, OPERATOR_NAME,
 };
 use snafu::{OptionExt, ResultExt, Snafu};
-use stackable_operator::cluster_resources::ClusterResourceApplyStrategy;
 use stackable_operator::{
-    cluster_resources::ClusterResources,
+    cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::product_image_selection::ResolvedProductImage,
+    duration::Duration,
     k8s_openapi::api::core::v1::{ConfigMap, Service},
     kube::{
         self,
@@ -23,8 +23,9 @@ use stackable_operator::{
     },
     logging::controller::ReconcilerError,
 };
-use stackable_zookeeper_crd::security::ZookeeperSecurity;
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode, DOCKER_IMAGE_BASE_NAME};
+use stackable_zookeeper_crd::{
+    security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, DOCKER_IMAGE_BASE_NAME,
+};
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
@@ -337,7 +338,7 @@ pub fn error_policy(
     _error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {
-    controller::Action::requeue(Duration::from_secs(5))
+    controller::Action::requeue(*Duration::from_secs(5))
 }
 
 mod znode_mgmt {
