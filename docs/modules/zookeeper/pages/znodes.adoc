@@ -1,6 +1,6 @@
 = ZNodes
 
-Apache ZooKeeper organizes all data into a hierarchical system of https://zookeeper.apache.org/doc/r3.7.0/zookeeperProgrammers.html#ch_zkDataModel[ZNodes],
+Apache ZooKeeper organizes all data into a hierarchical system of https://zookeeper.apache.org/doc/r3.8.3/zookeeperProgrammers.html#ch_zkDataModel[ZNodes],
 which act as both files (they can have data associated with them) and folders (they can contain other ZNodes) when compared to a traditional (POSIX-like) file system.
 
 In order to isolate different clients using the same ZooKeeper cluster, each client application should be assigned a unique root ZNode, which it can then organize
@@ -13,7 +13,7 @@ The Stackable Operator for Apache ZooKeeper manages ZNodes using the _ZookeeperZ
 include::example$example-znode.yaml[]
 ----
 <1> The name of the ZNode in ZooKeeper. It is the same as the name of the Kubernetes resource.
-<2> Refererence to the `ZookeeperCluster` object where the ZNode should be created.
+<2> Reference to the `ZookeeperCluster` object where the ZNode should be created.
 <3> The namespace of the `ZookeeperCluster`. Can be omitted and will default to the namespace of the ZNode object.
 
 NOTE: It is the responsibility of the user to ensure that ZNodes are not shared between products. For example, a Kafka and a Hadoop cluster should not share the same ZNode.
@@ -25,7 +25,7 @@ The operator _does not_ manage the contents of the ZNode.
 CAUTION: The operator automatically deletes the ZNode from the ZooKeeper cluster if the Kubernetes `ZookeeperZnode` object is deleted. Recreating the
 `ZookeeperZnode` object will not restore access to the data.
 
-== Split responsibilites for ZooKeeper and ZNodes
+== Split responsibilities for ZooKeeper and ZNodes
 
 One reason for the design of using multiple resources to configure the ZNodes instead of specifying them inside the ZookeeperCluster itself, was to allow different people in an organization to manage them separately.
 

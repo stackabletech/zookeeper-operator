@@ -729,7 +729,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.1"
+            productVersion: "3.8.3"
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
@@ -748,7 +748,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.1"
+            productVersion: "3.8.3"
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-client-tls
@@ -771,7 +771,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.1"
+            productVersion: "3.8.3"
           clusterConfig:
             tls:
               serverSecretClass: null
@@ -790,7 +790,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.1"
+            productVersion: "3.8.3"
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -815,7 +815,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.1"
+            productVersion: "3.8.3"
         "#;
         let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
 
@@ -835,7 +835,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.1"
+            productVersion: "3.8.3"
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -857,7 +857,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.8.1"
+            productVersion: "3.8.3"
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-server-tls

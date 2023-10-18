@@ -52,4 +52,6 @@ components will also deploy a ZooKeeper ensemble. Here is the list of the demos 
 
 The Stackable Operator for Apache ZooKeeper currently supports the following versions of ZooKeeper:
 
+WARNING: The use of 3.8.1 is strongly discouraged due to https://zookeeper.apache.org/security.html#CVE-2023-44981[Authorization bypass in SASL Quorum Peer Authentication]. Several other versions are affected but not offered by Stackable. Please take this into account when using custom images.
+
 include::partial$supported-versions.adoc[]

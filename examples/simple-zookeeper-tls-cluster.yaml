@@ -5,7 +5,7 @@ metadata:
   name: simple-zk
 spec:
   image:
-    productVersion: 3.8.1
+    productVersion: 3.8.3
   clusterConfig:
     authentication:
       - authenticationClass: zk-client-tls

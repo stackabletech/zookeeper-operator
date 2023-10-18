@@ -12,7 +12,6 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::product_image_selection::ResolvedProductImage,
-    duration::Duration,
     k8s_openapi::api::core::v1::{ConfigMap, Service},
     kube::{
         self,
@@ -22,6 +21,7 @@ use stackable_operator::{
         Resource,
     },
     logging::controller::ReconcilerError,
+    time::Duration,
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, DOCKER_IMAGE_BASE_NAME,
