@@ -14,6 +14,7 @@ pub struct ZookeeperTls {
     /// Defaults to `tls`
     #[serde(default = "quorum_tls_default")]
     pub quorum_secret_class: String,
+
     /// The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for
     /// client connections. This setting controls:
     /// - If TLS encryption is used at all

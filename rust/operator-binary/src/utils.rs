@@ -1,5 +1,6 @@
-use crate::{APP_NAME, OPERATOR_NAME};
 use stackable_operator::labels::ObjectLabels;
+
+use crate::{APP_NAME, OPERATOR_NAME};
 
 /// Creates recommended `ObjectLabels` to be used in deployed resources
 pub fn build_recommended_labels<'a, T>(

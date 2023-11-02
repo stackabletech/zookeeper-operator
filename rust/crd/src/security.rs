@@ -4,8 +4,7 @@
 //! and helper functions
 //!
 //! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
-
-use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
+use std::collections::BTreeMap;
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
@@ -17,7 +16,8 @@ use stackable_operator::{
     commons::authentication::AuthenticationClassProvider,
     k8s_openapi::api::core::v1::Volume,
 };
-use std::collections::BTreeMap;
+
+use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 
 #[derive(Snafu, Debug)]
 pub enum Error {

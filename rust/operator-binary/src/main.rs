@@ -1,13 +1,4 @@
-mod command;
-mod discovery;
-mod operations;
-mod product_logging;
-mod utils;
-mod zk_controller;
-mod znode_controller;
-
-use crate::zk_controller::ZK_CONTROLLER_NAME;
-use crate::znode_controller::ZNODE_CONTROLLER_NAME;
+use std::sync::Arc;
 
 use clap::{crate_description, crate_version, Parser};
 use futures::StreamExt;
@@ -22,7 +13,17 @@ use stackable_operator::{
     CustomResourceExt,
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
-use std::sync::Arc;
+
+use crate::zk_controller::ZK_CONTROLLER_NAME;
+use crate::znode_controller::ZNODE_CONTROLLER_NAME;
+
+mod command;
+mod discovery;
+mod operations;
+mod product_logging;
+mod utils;
+mod zk_controller;
+mod znode_controller;
 
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));

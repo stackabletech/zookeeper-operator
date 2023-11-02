@@ -1,12 +1,5 @@
-pub mod affinity;
-pub mod authentication;
-pub mod security;
-pub mod tls;
+use std::{collections::BTreeMap, str::FromStr};
 
-use crate::authentication::ZookeeperAuthentication;
-use crate::tls::ZookeeperTls;
-
-use affinity::get_affinity;
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -33,8 +26,14 @@ use stackable_operator::{
     schemars::{self, JsonSchema},
     status::condition::{ClusterCondition, HasStatusCondition},
 };
-use std::{collections::BTreeMap, str::FromStr};
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
+
+use crate::{affinity::get_affinity, authentication::ZookeeperAuthentication, tls::ZookeeperTls};
+
+pub mod affinity;
+pub mod authentication;
+pub mod security;
+pub mod tls;
 
 pub const APP_NAME: &str = "zookeeper";
 pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
@@ -76,20 +75,26 @@ mod built_info {
 pub enum Error {
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
+
     #[snafu(display("unknown role {role}. Should be one of {roles:?}"))]
     UnknownZookeeperRole {
         source: strum::ParseError,
         role: String,
         roles: Vec<String>,
     },
+
     #[snafu(display("the role {role} is not defined"))]
     CannotRetrieveZookeeperRole { role: String },
+
     #[snafu(display("the role group {role_group} is not defined"))]
     CannotRetrieveZookeeperRoleGroup { role_group: String },
+
     #[snafu(display("fragment validation failure"))]
     FragmentValidationFailure { source: ValidationError },
+
     #[snafu(display("invalid java heap config - missing default or value in crd?"))]
     InvalidJavaHeapConfig,
+
     #[snafu(display("failed to convert java heap config to unit [{unit}]"))]
     FailedToConvertJavaHeap {
         source: stackable_operator::error::Error,
