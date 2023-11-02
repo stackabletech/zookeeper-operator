@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - `vector` `0.26.0` -> `0.33.0` ([#709], [#732]).
 - `operator-rs` `0.44.0` -> `0.52.1` ([#711], [#730], [#731]).
 - Let secret-operator handle certificate conversion ([#695]).
+- removed the `logging` layer in the `clusterConfig` CRD to make logging config consistent with other operators ([#739]).
 
 ## Removed
 
@@ -28,6 +29,7 @@ All notable changes to this project will be documented in this file.
 [#730]: https://github.com/stackabletech/zookeeper-operator/pull/730
 [#731]: https://github.com/stackabletech/zookeeper-operator/pull/731
 [#732]: https://github.com/stackabletech/zookeeper-operator/pull/732
+[#739]: https://github.com/stackabletech/zookeeper-operator/pull/739
 
 ## [23.7.0] - 2023-07-14
 
