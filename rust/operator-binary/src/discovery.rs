@@ -1,4 +1,4 @@
-use crate::utils::build_recommended_labels;
+use std::{collections::BTreeSet, num::TryFromIntError};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -7,9 +7,9 @@ use stackable_operator::{
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
     kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
 };
-use stackable_zookeeper_crd::security::ZookeeperSecurity;
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole};
-use std::{collections::BTreeSet, num::TryFromIntError};
+use stackable_zookeeper_crd::{security::ZookeeperSecurity, ZookeeperCluster, ZookeeperRole};
+
+use crate::utils::build_recommended_labels;
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -18,27 +18,36 @@ pub enum Error {
         source: stackable_operator::error::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
+
     #[snafu(display("chroot path {} was relative (must be absolute)", chroot))]
     RelativeChroot { chroot: String },
+
     #[snafu(display("object has no name associated"))]
     NoName,
+
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
+
     #[snafu(display("failed to list expected pods"))]
     ExpectedPods {
         source: stackable_zookeeper_crd::Error,
     },
+
     #[snafu(display("could not find service port with name {}", port_name))]
     NoServicePort { port_name: String },
+
     #[snafu(display("service port with name {} does not have a nodePort", port_name))]
     NoNodePort { port_name: String },
+
     #[snafu(display("could not find Endpoints for {}", svc))]
     FindEndpoints {
         source: stackable_operator::error::Error,
         svc: ObjectRef<Service>,
     },
+
     #[snafu(display("nodePort was out of range"))]
     InvalidNodePort { source: TryFromIntError },
+
     #[snafu(display("failed to build ConfigMap"))]
     BuildConfigMap {
         source: stackable_operator::error::Error,

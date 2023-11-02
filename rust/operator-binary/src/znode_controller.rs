@@ -1,13 +1,8 @@
 //! Reconciles state for ZooKeeper znodes between Kubernetes [`ZookeeperZnode`] objects and the ZooKeeper cluster
 //!
 //! See [`ZookeeperZnode`] for more details.
-
 use std::{convert::Infallible, sync::Arc};
 
-use crate::{
-    discovery::{self, build_discovery_configmaps},
-    APP_NAME, OPERATOR_NAME,
-};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
@@ -28,6 +23,11 @@ use stackable_zookeeper_crd::{
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
+use crate::{
+    discovery::{self, build_discovery_configmaps},
+    APP_NAME, OPERATOR_NAME,
+};
+
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
 
 pub struct Ctx {
@@ -42,59 +42,74 @@ pub enum Error {
         "object is missing metadata that should be created by the Kubernetes cluster",
     ))]
     ObjectMissingMetadata,
+
     #[snafu(display("object does not refer to ZookeeperCluster"))]
     InvalidZkReference,
+
     #[snafu(display("could not find {}", zk))]
     FindZk {
         source: stackable_operator::error::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
+
     ZkDoesNotExist {
         source: stackable_operator::error::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
+
     #[snafu(display("could not find server role service name for {}", zk))]
     NoZkSvcName { zk: ObjectRef<ZookeeperCluster> },
+
     #[snafu(display("could not find server role service for {}", zk))]
     FindZkSvc {
         source: stackable_operator::error::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
+
     #[snafu(display("failed to calculate FQDN for {}", zk))]
     NoZkFqdn { zk: ObjectRef<ZookeeperCluster> },
+
     #[snafu(display("failed to ensure that ZNode {} exists in {}", znode_path, zk))]
     EnsureZnode {
         source: znode_mgmt::Error,
         zk: ObjectRef<ZookeeperCluster>,
         znode_path: String,
     },
+
     #[snafu(display("failed to ensure that ZNode {} is missing from {}", znode_path, zk))]
     EnsureZnodeMissing {
         source: znode_mgmt::Error,
         zk: ObjectRef<ZookeeperCluster>,
         znode_path: String,
     },
+
     #[snafu(display("failed to build discovery information"))]
     BuildDiscoveryConfigMap { source: discovery::Error },
+
     #[snafu(display("failed to save discovery information to {}", cm))]
     ApplyDiscoveryConfigMap {
         source: stackable_operator::error::Error,
         cm: ObjectRef<ConfigMap>,
     },
+
     #[snafu(display("error managing finalizer"))]
     Finalizer {
         source: finalizer::Error<Infallible>,
     },
+
     #[snafu(display("object is missing metadata to build owner reference"))]
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("failed to delete orphaned resources"))]
     DeleteOrphans {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("object has no namespace"))]
     ObjectHasNoNamespace,
+
     #[snafu(display("failed to initialize security context"))]
     FailedToInitializeSecurityContext {
         source: stackable_zookeeper_crd::security::Error,

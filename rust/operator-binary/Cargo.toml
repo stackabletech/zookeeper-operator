@@ -26,6 +26,7 @@ tokio-zookeeper.workspace = true
 tracing.workspace = true
 pin-project.workspace = true
 stackable-operator.workspace = true
+product-config.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

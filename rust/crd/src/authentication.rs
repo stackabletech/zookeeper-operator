@@ -1,5 +1,3 @@
-use crate::ObjectRef;
-
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use stackable_operator::commons::authentication::AuthenticationClassProvider;
@@ -8,6 +6,8 @@ use stackable_operator::{
     commons::authentication::AuthenticationClass,
     schemars::{self, JsonSchema},
 };
+
+use crate::ObjectRef;
 
 const SUPPORTED_AUTHENTICATION_CLASS: [&str; 1] = ["TLS"];
 

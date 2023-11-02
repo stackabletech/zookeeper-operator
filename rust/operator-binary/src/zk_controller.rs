@@ -1,14 +1,18 @@
 //! Ensures that `Pod`s are configured and running for each [`ZookeeperCluster`]
-use crate::{
-    command::create_init_container_command_args,
-    discovery::{self, build_discovery_configmaps},
-    operations::pdb::add_pdbs,
-    product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
-    utils::build_recommended_labels,
-    ObjectRef, APP_NAME, OPERATOR_NAME,
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+    hash::Hasher,
+    str::FromStr,
+    sync::Arc,
 };
 
 use fnv::FnvHasher;
+use product_config::{
+    types::PropertyNameKind,
+    writer::{to_java_properties_string, PropertiesWriterError},
+    ProductConfigManager,
+};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
@@ -35,9 +39,6 @@ use stackable_operator::{
     kube::{api::DynamicObject, runtime::controller, Resource},
     labels::{role_group_selector_labels, role_selector_labels},
     logging::controller::ReconcilerError,
-    product_config::{
-        types::PropertyNameKind, writer::to_java_properties_string, ProductConfigManager,
-    },
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
         self,
@@ -60,14 +61,16 @@ use stackable_zookeeper_crd::{
     STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
     ZOOKEEPER_PROPERTIES_FILE,
 };
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-    hash::Hasher,
-    str::FromStr,
-    sync::Arc,
-};
 use strum::{EnumDiscriminants, IntoStaticStr};
+
+use crate::{
+    command::create_init_container_command_args,
+    discovery::{self, build_discovery_configmaps},
+    operations::pdb::add_pdbs,
+    product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
+    utils::build_recommended_labels,
+    ObjectRef, APP_NAME, OPERATOR_NAME,
+};
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 pub const ZK_UID: i64 = 1000;
@@ -84,111 +87,138 @@ pub enum Error {
     CrdValidationFailure {
         source: stackable_zookeeper_crd::Error,
     },
+
     #[snafu(display("object defines no server role"))]
     NoServerRole,
+
     #[snafu(display("could not parse role [{role}]"))]
     RoleParseFailure {
         source: strum::ParseError,
         role: String,
     },
+
     #[snafu(display("internal operator failure"))]
     InternalOperatorFailure {
         source: stackable_zookeeper_crd::Error,
     },
+
     #[snafu(display("failed to calculate global service name"))]
     GlobalServiceNameNotFound,
+
     #[snafu(display("failed to calculate service name for role {}", rolegroup))]
     RoleGroupServiceNameNotFound {
         rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
+
     #[snafu(display("failed to apply global Service"))]
     ApplyRoleService {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("failed to apply Service for {}", rolegroup))]
     ApplyRoleGroupService {
         source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
+
     #[snafu(display("failed to build ConfigMap for {}", rolegroup))]
     BuildRoleGroupConfig {
         source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
+
     #[snafu(display("failed to apply ConfigMap for {}", rolegroup))]
     ApplyRoleGroupConfig {
         source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
+
     #[snafu(display("failed to apply StatefulSet for {}", rolegroup))]
     ApplyRoleGroupStatefulSet {
         source: stackable_operator::error::Error,
         rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
+
     #[snafu(display("failed to generate product config"))]
     GenerateProductConfig {
         source: stackable_operator::product_config_utils::ConfigError,
     },
+
     #[snafu(display("invalid product config"))]
     InvalidProductConfig {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("failed to serialize [{ZOOKEEPER_PROPERTIES_FILE}] for {}", rolegroup))]
     SerializeZooCfg {
-        source: stackable_operator::product_config::writer::PropertiesWriterError,
+        source: PropertiesWriterError,
         rolegroup: RoleGroupRef<ZookeeperCluster>,
     },
+
     #[snafu(display("object is missing metadata to build owner reference"))]
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("failed to build discovery ConfigMap"))]
     BuildDiscoveryConfig { source: discovery::Error },
+
     #[snafu(display("failed to apply discovery ConfigMap"))]
     ApplyDiscoveryConfig {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("failed to update status"))]
     ApplyStatus {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("invalid java heap config"))]
     InvalidJavaHeapConfig {
         source: stackable_zookeeper_crd::Error,
     },
+
     #[snafu(display("failed to create RBAC service account"))]
     ApplyServiceAccount {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("failed to create RBAC role binding"))]
     ApplyRoleBinding {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("failed to build RBAC resources"))]
     BuildRbacResources {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("failed to delete orphaned resources"))]
     DeleteOrphans {
         source: stackable_operator::error::Error,
     },
+
     #[snafu(display("failed to resolve the Vector aggregator address"))]
     ResolveVectorAggregatorAddress {
         source: crate::product_logging::Error,
     },
+
     #[snafu(display("failed to add the logging configuration to the ConfigMap {cm_name}"))]
     InvalidLoggingConfig {
         source: crate::product_logging::Error,
         cm_name: String,
     },
+
     #[snafu(display("failed to initialize security context"))]
     FailedToInitializeSecurityContext {
         source: stackable_zookeeper_crd::security::Error,
     },
+
     #[snafu(display("failed to resolve and merge config for role and role group"))]
     FailedToResolveConfig {
         source: stackable_zookeeper_crd::Error,
     },
+
     #[snafu(display("failed to create PodDisruptionBudget"))]
     FailedToCreatePdb {
         source: crate::operations::pdb::Error,
