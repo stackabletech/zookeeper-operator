@@ -1,25 +1,14 @@
 = Graceful shutdown
 
-Graceful shutdown of Zookeeper nodes is either not supported by the product itself
-or we have not implemented it yet.
+You can configure the graceful shutdown as described in xref:concepts:operations/graceful_shutdown.adoc[].
 
-The efforts of implementing graceful shutdown for all products that have this functionality is tracked in
-https://github.com/stackabletech/issues/issues/357
+== Servers
 
+As a default, server have `2 minutes` to shut down gracefully.
 
+The Zookeeper server process will receive a `SIGTERM` signal when Kubernetes wants to terminate the Pod.
+After the graceful shutdown timeout runs out, and the process still didn't exit, Kubernetes will issue a `SIGKILL` signal.
 
-bin/zkServer.sh stop
+This is equivalent to executing the `bin/zkServer.sh stop` command, which internally executes `kill <zookeeper-pid>` (https://github.com/apache/zookeeper/blob/74db005175a4ec545697012f9069cb9dcc8cdda7/bin/zkServer.sh#L219[code]).
 
-stop)
-    echo -n "Stopping zookeeper ... "
-    if [ ! -f "$ZOOPIDFILE" ]
-    then
-      echo "no zookeeper to stop (could not find file $ZOOPIDFILE)"
-    else
-      $KILL $(cat "$ZOOPIDFILE")
-      rm "$ZOOPIDFILE"
-      sleep 1
-      echo STOPPED
-    fi
-    exit 0
-    ;;
+However, there is no acknowledge message in the log indicating a graceful shutdown.
