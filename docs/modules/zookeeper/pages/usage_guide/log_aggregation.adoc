@@ -7,8 +7,7 @@ ConfigMap for the aggregator and by enabling the log agent:
 ----
 spec:
   clusterConfig:
-    logging:
-      vectorAggregatorConfigMapName: vector-aggregator-discovery
+    vectorAggregatorConfigMapName: vector-aggregator-discovery
   servers:
     config:
       logging:
