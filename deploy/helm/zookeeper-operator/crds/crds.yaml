@@ -65,15 +65,6 @@ spec:
                         - cluster-internal
                         - external-unstable
                       type: string
-                    logging:
-                      description: Logging options for ZooKeeper.
-                      nullable: true
-                      properties:
-                        vectorAggregatorConfigMapName:
-                          description: Name of the Vector discovery ConfigMap. It must contain the key `ADDRESS` with the address of the Vector aggregator.
-                          nullable: true
-                          type: string
-                      type: object
                     tls:
                       default:
                         quorumSecretClass: tls
@@ -91,6 +82,10 @@ spec:
                           nullable: true
                           type: string
                       type: object
+                    vectorAggregatorConfigMapName:
+                      description: Name of the Vector aggregator discovery ConfigMap. It must contain the key `ADDRESS` with the address of the Vector aggregator.
+                      nullable: true
+                      type: string
                   type: object
                 clusterOperation:
                   default:
