@@ -8,6 +8,7 @@ use std::{
 };
 
 use fnv::FnvHasher;
+use indoc::formatdoc;
 use product_config::{
     types::PropertyNameKind,
     writer::{to_java_properties_string, PropertiesWriterError},
@@ -776,20 +777,19 @@ fn build_server_rolegroup_statefulset(
             "pipefail".to_string(),
             "-c".to_string(),
         ])
-        .args(vec![format!(
-            "\
-{COMMON_BASH_TRAP_FUNCTIONS}
-{remove_vector_shutdown_file_command}
-prepare_signal_handlers
-bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/zoo.cfg &
-wait_for_termination $!
-{create_vector_shutdown_file_command}
-",
+        .args(vec![formatdoc! {"
+            {COMMON_BASH_TRAP_FUNCTIONS}
+            {remove_vector_shutdown_file_command}
+            prepare_signal_handlers
+            bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/zoo.cfg &
+            wait_for_termination $!
+            {create_vector_shutdown_file_command}
+            ",
             remove_vector_shutdown_file_command =
                 remove_vector_shutdown_file_command(STACKABLE_LOG_DIR),
             create_vector_shutdown_file_command =
                 create_vector_shutdown_file_command(STACKABLE_LOG_DIR),
-        )])
+        }])
         .add_env_vars(env_vars)
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
         // This also acts as a hint to the StatefulSet controller to wait for each pod to enter quorum before taking down the next
