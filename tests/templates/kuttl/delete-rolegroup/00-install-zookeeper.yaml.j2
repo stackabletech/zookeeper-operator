@@ -19,8 +19,7 @@ spec:
     tls:
       serverSecretClass: null
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
-    logging:
-      vectorAggregatorConfigMapName: vector-aggregator-discovery
+    vectorAggregatorConfigMapName: vector-aggregator-discovery
 {% endif %}
   servers:
     config:
