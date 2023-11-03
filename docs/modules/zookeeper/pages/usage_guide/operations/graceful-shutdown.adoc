@@ -5,3 +5,21 @@ or we have not implemented it yet.
 
 The efforts of implementing graceful shutdown for all products that have this functionality is tracked in
 https://github.com/stackabletech/issues/issues/357
+
+
+
+bin/zkServer.sh stop
+
+stop)
+    echo -n "Stopping zookeeper ... "
+    if [ ! -f "$ZOOPIDFILE" ]
+    then
+      echo "no zookeeper to stop (could not find file $ZOOPIDFILE)"
+    else
+      $KILL $(cat "$ZOOPIDFILE")
+      rm "$ZOOPIDFILE"
+      sleep 1
+      echo STOPPED
+    fi
+    exit 0
+    ;;

@@ -25,6 +25,7 @@ use stackable_operator::{
     role_utils::{GenericRoleConfig, Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
     status::condition::{ClusterCondition, HasStatusCondition},
+    time::Duration,
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
@@ -66,6 +67,8 @@ pub const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
 const JVM_HEAP_FACTOR: f32 = 0.8;
 
 pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
+
+const DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_minutes_unchecked(2);
 
 mod built_info {
     pub const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -218,12 +221,19 @@ pub struct ZookeeperConfig {
     pub sync_limit: Option<u32>,
     pub tick_time: Option<u32>,
     pub myid_offset: u16,
+
     #[fragment_attrs(serde(default))]
     pub resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits>,
+
     #[fragment_attrs(serde(default))]
     pub logging: Logging<Container>,
+
     #[fragment_attrs(serde(default))]
     pub affinity: StackableAffinity,
+
+    /// Time period Pods have to gracefully shut down, e.g. `30m`, `1h` or `2d`. Consult the operator documentation for details.
+    #[fragment_attrs(serde(default))]
+    pub graceful_shutdown_timeout: Option<Duration>,
 }
 
 #[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
@@ -300,6 +310,7 @@ impl ZookeeperConfig {
             },
             logging: product_logging::spec::default_logging(),
             affinity: get_affinity(cluster_name, role),
+            graceful_shutdown_timeout: Some(DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT),
         }
     }
 }

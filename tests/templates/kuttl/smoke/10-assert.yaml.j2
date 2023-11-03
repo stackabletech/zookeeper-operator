@@ -24,6 +24,7 @@ spec:
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
         - name: vector
 {% endif %}
+      terminationGracePeriodSeconds: 120
 status:
   readyReplicas: 2
   replicas: 2
@@ -47,6 +48,7 @@ spec:
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
         - name: vector
 {% endif %}
+      terminationGracePeriodSeconds: 120
 status:
   readyReplicas: 1
   replicas: 1
