@@ -16,7 +16,7 @@ All notable changes to this project will be documented in this file.
 - `vector` `0.26.0` -> `0.33.0` ([#709], [#732]).
 - `operator-rs` `0.44.0` -> `0.52.1` ([#711], [#730], [#731]).
 - Let secret-operator handle certificate conversion ([#695]).
-- removed the `logging` layer in the `clusterConfig` CRD to make logging config consistent with other operators ([#739]).
+- [BREAKING]: removed the `logging` layer in the `clusterConfig` CRD to make logging config consistent with other operators ([#739]).
 
 ## Removed
 
