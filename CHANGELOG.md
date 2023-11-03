@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 - Configuration overrides for the JVM security properties, such as DNS caching ([#715]).
 - Support PodDisruptionBudgets ([#730], [#731]).
 - Support for ZooKeeper 3.8.3 added ([#732]).
-- Support graceful shutdown ([#XXX]).
+- Support graceful shutdown ([#740]).
 
 ### Changed
 
@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 [#730]: https://github.com/stackabletech/zookeeper-operator/pull/730
 [#731]: https://github.com/stackabletech/zookeeper-operator/pull/731
 [#732]: https://github.com/stackabletech/zookeeper-operator/pull/732
+[#740]: https://github.com/stackabletech/zookeeper-operator/pull/740
 
 ## [23.7.0] - 2023-07-14
 
