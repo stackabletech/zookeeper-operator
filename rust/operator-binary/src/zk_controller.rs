@@ -8,6 +8,7 @@ use std::{
 };
 
 use fnv::FnvHasher;
+use indoc::formatdoc;
 use product_config::{
     types::PropertyNameKind,
     writer::{to_java_properties_string, PropertiesWriterError},
@@ -42,6 +43,7 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
         self,
+        framework::{create_vector_shutdown_file_command, remove_vector_shutdown_file_command},
         spec::{
             ConfigMapLogConfig, ContainerLogConfig, ContainerLogConfigChoice,
             CustomContainerLogConfig,
@@ -53,6 +55,7 @@ use stackable_operator::{
         statefulset::StatefulSetConditionBuilder,
     },
     time::Duration,
+    utils::COMMON_BASH_TRAP_FUNCTIONS,
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
@@ -66,7 +69,7 @@ use strum::{EnumDiscriminants, IntoStaticStr};
 use crate::{
     command::create_init_container_command_args,
     discovery::{self, build_discovery_configmaps},
-    operations::pdb::add_pdbs,
+    operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
     product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
     utils::build_recommended_labels,
     ObjectRef, APP_NAME, OPERATOR_NAME,
@@ -223,6 +226,11 @@ pub enum Error {
     FailedToCreatePdb {
         source: crate::operations::pdb::Error,
     },
+
+    #[snafu(display("failed to configure graceful shutdown"))]
+    GracefulShutdown {
+        source: crate::operations::graceful_shutdown::Error,
+    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -261,6 +269,7 @@ impl ReconcilerError for Error {
             Error::FailedToInitializeSecurityContext { .. } => None,
             Error::FailedToResolveConfig { .. } => None,
             Error::FailedToCreatePdb { .. } => None,
+            Error::GracefulShutdown { .. } => None,
         }
     }
 }
@@ -725,8 +734,14 @@ fn build_server_rolegroup_statefulset(
 
     let container_prepare = cb_prepare
         .image_from_product_image(resolved_product_image)
-        .command(vec!["bash".to_string(), "-c".to_string()])
-        .args(vec![args.join(" && ")])
+        .command(vec![
+            "/bin/bash".to_string(),
+            "-x".to_string(),
+            "-euo".to_string(),
+            "pipefail".to_string(),
+            "-c".to_string(),
+        ])
+        .args(vec![args.join("\n")])
         .add_env_vars(env_vars.clone())
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
@@ -755,11 +770,26 @@ fn build_server_rolegroup_statefulset(
 
     let container_zk = cb_zookeeper
         .image_from_product_image(resolved_product_image)
-        .args(vec![
-            "bin/zkServer.sh".to_string(),
-            "start-foreground".to_string(),
-            format!("{dir}/zoo.cfg", dir = STACKABLE_RW_CONFIG_DIR),
+        .command(vec![
+            "/bin/bash".to_string(),
+            "-x".to_string(),
+            "-euo".to_string(),
+            "pipefail".to_string(),
+            "-c".to_string(),
         ])
+        .args(vec![formatdoc! {"
+            {COMMON_BASH_TRAP_FUNCTIONS}
+            {remove_vector_shutdown_file_command}
+            prepare_signal_handlers
+            bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/zoo.cfg &
+            wait_for_termination $!
+            {create_vector_shutdown_file_command}
+            ",
+            remove_vector_shutdown_file_command =
+                remove_vector_shutdown_file_command(STACKABLE_LOG_DIR),
+            create_vector_shutdown_file_command =
+                create_vector_shutdown_file_command(STACKABLE_LOG_DIR),
+        }])
         .add_env_vars(env_vars)
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
         // This also acts as a hint to the StatefulSet controller to wait for each pod to enter quorum before taking down the next
@@ -875,6 +905,8 @@ fn build_server_rolegroup_statefulset(
                 .build(),
         ));
     }
+
+    add_graceful_shutdown_config(config, &mut pod_builder).context(GracefulShutdownSnafu)?;
 
     let mut pod_template = pod_builder.build_template();
     pod_template.merge_from(role.config.pod_overrides.clone());
