@@ -142,9 +142,10 @@ pub struct ZookeeperClusterConfig {
     /// Authentication class settings for ZooKeeper like mTLS authentication.
     #[serde(default)]
     pub authentication: Vec<ZookeeperAuthentication>,
-    /// Logging options for ZooKeeper.
+    /// Name of the Vector aggregator discovery ConfigMap.
+    /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub logging: Option<ZookeeperLogging>,
+    pub vector_aggregator_config_map_name: Option<String>,
     /// TLS encryption settings for ZooKeeper (server, quorum).
     #[serde(
         default = "tls::default_zookeeper_tls",
@@ -167,7 +168,7 @@ pub struct ZookeeperClusterConfig {
 fn cluster_config_default() -> ZookeeperClusterConfig {
     ZookeeperClusterConfig {
         authentication: vec![],
-        logging: None,
+        vector_aggregator_config_map_name: None,
         tls: tls::default_zookeeper_tls(),
         listener_class: CurrentlySupportedListenerClasses::default(),
     }
@@ -191,15 +192,6 @@ impl CurrentlySupportedListenerClasses {
             CurrentlySupportedListenerClasses::ExternalUnstable => "NodePort".to_string(),
         }
     }
-}
-
-#[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperLogging {
-    /// Name of the Vector discovery ConfigMap.
-    /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vector_aggregator_config_map_name: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]

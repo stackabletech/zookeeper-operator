@@ -56,9 +56,8 @@ pub async fn resolve_vector_aggregator_address(
     let vector_aggregator_address = if let Some(vector_aggregator_config_map_name) = &zk
         .spec
         .cluster_config
-        .logging
+        .vector_aggregator_config_map_name
         .as_ref()
-        .and_then(|logging| logging.vector_aggregator_config_map_name.as_ref())
     {
         let vector_aggregator_address = client
             .get::<ConfigMap>(

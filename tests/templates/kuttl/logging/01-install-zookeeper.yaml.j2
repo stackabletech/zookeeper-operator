@@ -30,8 +30,7 @@ spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper'] }}"
   clusterConfig:
-    logging:
-      vectorAggregatorConfigMapName: zookeeper-vector-aggregator-discovery
+    vectorAggregatorConfigMapName: zookeeper-vector-aggregator-discovery
   servers:
     roleGroups:
       automatic-log-config:
