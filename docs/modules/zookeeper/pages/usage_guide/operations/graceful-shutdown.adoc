@@ -4,7 +4,7 @@ You can configure the graceful shutdown as described in xref:concepts:operations
 
 == Servers
 
-As a default, server have `2 minutes` to shut down gracefully.
+As a default, ZooKeeper servers have `2 minutes` to shut down gracefully.
 
 The ZooKeeper server process will receive a `SIGTERM` signal when Kubernetes wants to terminate the Pod.
 After the graceful shutdown timeout runs out, and the process still didn't exit, Kubernetes will issue a `SIGKILL` signal.
