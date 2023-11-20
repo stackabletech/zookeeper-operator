@@ -33,7 +33,7 @@ ConfigMap give access information for the ZNode. xref:zookeeper:znodes.adoc[lear
 
 == Dependencies
 
-Apache ZooKeeper and the Stackable Operator have no dependencies besides the xref:commons-operator:index.adoc[] and xref:secret-operator:index.adoc[].
+Apache ZooKeeper and the Stackable Operator have no dependencies besides the xref:commons-operator:index.adoc[], xref:secret-operator:index.adoc[] and xref:listener-operator:index.adoc[].
 
 == [[demos]]Demos
 
