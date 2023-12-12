@@ -105,7 +105,9 @@ pub enum Error {
     },
 }
 
-/// A cluster of ZooKeeper nodes
+/// A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper.
+/// Find more information on how to use it and the resources that the operator generates in the
+/// [operator documentation](DOCS_BASE_URL_PLACEHOLDER/zookeeper/).
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[kube(
     group = "zookeeper.stackable.tech",
@@ -123,15 +125,16 @@ pub enum Error {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterSpec {
-    /// Global ZooKeeper cluster configuration that applies to all roles and role groups.
+    /// Settings that affect all roles and role groups.
+    /// The settings in the `clusterConfig` are cluster wide settings that do not need to be configurable at role or role group level.
     #[serde(default = "cluster_config_default")]
     pub cluster_config: ZookeeperClusterConfig,
-    /// Cluster operations like pause reconciliation or cluster stop.
+    // no doc - it's in the struct.
     #[serde(default)]
     pub cluster_operation: ClusterOperation,
-    /// Desired ZooKeeper image to use.
+    // no doc - it's in the struct.
     pub image: ProductImage,
-    /// ZooKeeper server configuration.
+    // no doc - it's in the struct.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub servers: Option<Role<ZookeeperConfigFragment>>,
 }
@@ -139,19 +142,26 @@ pub struct ZookeeperClusterSpec {
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperClusterConfig {
-    /// Authentication class settings for ZooKeeper like mTLS authentication.
+    /// Authentication settings for ZooKeeper like mTLS authentication.
+    /// Read more in the [authentication usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/authentication).
     #[serde(default)]
     pub authentication: Vec<ZookeeperAuthentication>,
-    /// Name of the Vector aggregator discovery ConfigMap.
+
+    /// Name of the Vector aggregator [discovery ConfigMap](DOCS_BASE_URL_PLACEHOLDER/concepts/service_discovery).
     /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
+    /// Follow the [logging tutorial](DOCS_BASE_URL_PLACEHOLDER/tutorials/logging-vector-aggregator)
+    /// to learn how to configure log aggregation with Vector.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vector_aggregator_config_map_name: Option<String>,
+
     /// TLS encryption settings for ZooKeeper (server, quorum).
+    /// Read more in the [encryption usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/encryption).
     #[serde(
         default = "tls::default_zookeeper_tls",
         skip_serializing_if = "Option::is_none"
     )]
     pub tls: Option<ZookeeperTls>,
+
     /// This field controls which type of Service the Operator creates for this ZookeeperCluster:
     ///
     /// * cluster-internal: Use a ClusterIP service
@@ -159,7 +169,7 @@ pub struct ZookeeperClusterConfig {
     /// * external-unstable: Use a NodePort service
     ///
     /// This is a temporary solution with the goal to keep yaml manifests forward compatible.
-    /// In the future, this setting will control which ListenerClass <https://docs.stackable.tech/home/stable/listener-operator/listenerclass.html>
+    /// In the future, this setting will control which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html)
     /// will be used to expose the service, and ListenerClass names will stay the same, allowing for a non-breaking change.
     #[serde(default)]
     pub listener_class: CurrentlySupportedListenerClasses,
@@ -677,14 +687,17 @@ impl ZookeeperPodRef {
     }
 }
 
-/// A claim for a single ZooKeeper ZNode tree (filesystem node)
+/// A claim for a single ZooKeeper ZNode tree (filesystem node).
 ///
-/// A `ConfigMap` will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`.
-/// Each `ZookeeperZnode` gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains.
+/// A ConfigMap will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`.
+/// Each ZookeeperZnode gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains.
 /// All data inside of this chroot will be deleted when the corresponding `ZookeeperZnode` is.
 ///
 /// `ZookeeperZnode` is *not* designed to manage the contents of this ZNode. Instead, it should be used to create a chroot
 /// for an installation of an application to work inside. Initializing the contents is the responsibility of the application.
+///
+/// You can learn more about this in the
+/// [Isolating clients with ZNodes usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/isolating_clients_with_znodes).
 #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
 #[kube(
     group = "zookeeper.stackable.tech",
@@ -702,6 +715,7 @@ impl ZookeeperPodRef {
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperZnodeSpec {
+    /// The reference to the ZookeeperCluster that this ZNode belongs to.
     #[serde(default)]
     pub cluster_ref: ClusterRef<ZookeeperCluster>,
 }

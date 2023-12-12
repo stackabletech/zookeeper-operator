@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- More CRD documentation ([#749]).
+
+[#749]: https://github.com/stackabletech/zookeeper-operator/pull/749
+
 ## [23.11.0] - 2023-11-24
 
 ### Added

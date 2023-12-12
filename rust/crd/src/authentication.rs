@@ -33,7 +33,7 @@ pub enum Error {
 #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperAuthentication {
-    /// The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
+    /// The [AuthenticationClass](https://docs.stackable.tech/home/stable/concepts/authentication) to use.
     ///
     /// ## mTLS
     ///
