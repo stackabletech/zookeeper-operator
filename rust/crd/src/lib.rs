@@ -687,7 +687,7 @@ impl ZookeeperPodRef {
     }
 }
 
-/// A claim for a single ZooKeeper ZNode tree (filesystem node)
+/// A claim for a single ZooKeeper ZNode tree (filesystem node).
 ///
 /// A ConfigMap will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`.
 /// Each ZookeeperZnode gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains.
