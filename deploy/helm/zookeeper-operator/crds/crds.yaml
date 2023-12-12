@@ -23,7 +23,7 @@ spec:
           description: Auto-generated derived type for ZookeeperClusterSpec via `CustomResource`
           properties:
             spec:
-              description: A cluster of ZooKeeper nodes
+              description: A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper. Find more information on how to use it and the resources that the operator generates in the [operator documentation](https://docs.stackable.tech/home/nightly/zookeeper/).
               properties:
                 clusterConfig:
                   default:
@@ -32,16 +32,16 @@ spec:
                       quorumSecretClass: tls
                       serverSecretClass: tls
                     listenerClass: cluster-internal
-                  description: Global ZooKeeper cluster configuration that applies to all roles and role groups.
+                  description: Settings that affect all roles and role groups. The settings in the `clusterConfig` are cluster wide settings that do not need to be configurable at role or role group level.
                   properties:
                     authentication:
                       default: []
-                      description: Authentication class settings for ZooKeeper like mTLS authentication.
+                      description: Authentication settings for ZooKeeper like mTLS authentication. Read more in the [authentication usage guide](https://docs.stackable.tech/home/nightly/zookeeper/usage_guide/authentication).
                       items:
                         properties:
                           authenticationClass:
                             description: |-
-                              The AuthenticationClass <https://docs.stackable.tech/home/nightly/concepts/authenticationclass.html> to use.
+                              The [AuthenticationClass](https://docs.stackable.tech/home/stable/concepts/authentication) to use.
 
                               ## mTLS
 
@@ -60,7 +60,7 @@ spec:
 
                         * external-unstable: Use a NodePort service
 
-                        This is a temporary solution with the goal to keep yaml manifests forward compatible. In the future, this setting will control which ListenerClass <https://docs.stackable.tech/home/stable/listener-operator/listenerclass.html> will be used to expose the service, and ListenerClass names will stay the same, allowing for a non-breaking change.
+                        This is a temporary solution with the goal to keep yaml manifests forward compatible. In the future, this setting will control which [ListenerClass](https://docs.stackable.tech/home/nightly/listener-operator/listenerclass.html) will be used to expose the service, and ListenerClass names will stay the same, allowing for a non-breaking change.
                       enum:
                         - cluster-internal
                         - external-unstable
@@ -69,21 +69,21 @@ spec:
                       default:
                         quorumSecretClass: tls
                         serverSecretClass: tls
-                      description: TLS encryption settings for ZooKeeper (server, quorum).
+                      description: TLS encryption settings for ZooKeeper (server, quorum). Read more in the [encryption usage guide](https://docs.stackable.tech/home/nightly/zookeeper/usage_guide/encryption).
                       nullable: true
                       properties:
                         quorumSecretClass:
                           default: tls
-                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for internal quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server Defaults to `tls`'
+                          description: 'The [SecretClass](https://docs.stackable.tech/home/nightly/secret-operator/secretclass) to use for internal quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server Defaults to `tls`'
                           type: string
                         serverSecretClass:
                           default: tls
-                          description: 'The <https://docs.stackable.tech/secret-operator/stable/secretclass.html> to use for client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to `tls`.'
+                          description: 'The [SecretClass](https://docs.stackable.tech/home/nightly/secret-operator/secretclass) to use for client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client Defaults to `tls`.'
                           nullable: true
                           type: string
                       type: object
                     vectorAggregatorConfigMapName:
-                      description: Name of the Vector aggregator discovery ConfigMap. It must contain the key `ADDRESS` with the address of the Vector aggregator.
+                      description: Name of the Vector aggregator [discovery ConfigMap](https://docs.stackable.tech/home/nightly/concepts/service_discovery). It must contain the key `ADDRESS` with the address of the Vector aggregator. Follow the [logging tutorial](https://docs.stackable.tech/home/nightly/tutorials/logging-vector-aggregator) to learn how to configure log aggregation with Vector.
                       nullable: true
                       type: string
                   type: object
@@ -91,7 +91,7 @@ spec:
                   default:
                     stopped: false
                     reconciliationPaused: false
-                  description: Cluster operations like pause reconciliation or cluster stop.
+                  description: '[Cluster operations](https://docs.stackable.tech/home/nightly/concepts/operations/cluster_operations) properties, allow stopping the product instance as well as pausing reconciliation.'
                   properties:
                     reconciliationPaused:
                       default: false
@@ -109,7 +109,10 @@ spec:
                         - productVersion
                     - required:
                         - productVersion
-                  description: Desired ZooKeeper image to use.
+                  description: |-
+                    Specify which image to use, the easiest way is to only configure the `productVersion`. You can also configure a custom image registry to pull from, as well as completely custom images.
+
+                    Consult the [Product image selection documentation](https://docs.stackable.tech/home/nightly/concepts/product_image_selection) for details.
                   properties:
                     custom:
                       description: Overwrite the docker image. Specify the full docker image name, e.g. `docker.stackable.tech/stackable/superset:1.4.1-stackable2.1.0`
@@ -146,7 +149,7 @@ spec:
                       type: string
                   type: object
                 servers:
-                  description: ZooKeeper server configuration.
+                  description: This struct represents a role - e.g. HDFS datanodes or Trino workers. It has a [`HashMap`] containing all the roleGroups that are part of this role. Additionally, there is a `config`, which is configurable at the role *and* roleGroup level. Everything at roleGroup level is merged on top of what is configured on role level using the [`Merge`] trait. There is also a second form of config, which can only be configured at role level, the `roleConfig`.
                   nullable: true
                   properties:
                     cliOverrides:
@@ -7284,18 +7287,17 @@ spec:
               description: |-
                 A claim for a single ZooKeeper ZNode tree (filesystem node)
 
-                A `ConfigMap` will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`. Each `ZookeeperZnode` gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains. All data inside of this chroot will be deleted when the corresponding `ZookeeperZnode` is.
+                A ConfigMap will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`. Each ZookeeperZnode gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains. All data inside of this chroot will be deleted when the corresponding `ZookeeperZnode` is.
 
                 `ZookeeperZnode` is *not* designed to manage the contents of this ZNode. Instead, it should be used to create a chroot for an installation of an application to work inside. Initializing the contents is the responsibility of the application.
+
+                You can learn more about this in the [Isolating clients with ZNodes usage guide](https://docs.stackable.tech/home/nightly/zookeeper/usage_guide/isolating_clients_with_znodes).
               properties:
                 clusterRef:
                   default:
                     name: null
                     namespace: null
-                  description: |-
-                    A reference to a product cluster (for example, a `ZookeeperCluster`)
-
-                    `namespace`'s defaulting only applies when retrieved via [`ClusterRef::namespace_relative_from`]
+                  description: The reference to the ZookeeperCluster that this ZNode belongs to.
                   properties:
                     name:
                       description: The name of the cluster
