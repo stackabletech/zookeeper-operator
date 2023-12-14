@@ -15,6 +15,7 @@ metadata:
 spec:
   image:
     productVersion: "{{ test_scenario['values']['zookeeper'] }}"
+    pullPolicy: IfNotPresent
   clusterConfig:
 {% if test_scenario['values']['use-server-tls'] == 'true' %}
     tls:
