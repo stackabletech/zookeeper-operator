@@ -3,9 +3,9 @@
 
 The Stackable Operator for Apache ZooKeeper creates a number of discovery profiles, which are client configuration bundles
 that allow access to the Apache ZooKeeper cluster. These are published into the Kubernetes cluster as
-https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.23/#configmap-v1-core[ConfigMap] objects.
+https://kubernetes.io/docs/concepts/configuration/configmap/[ConfigMap] objects.
 
-Discovery profiles are generated for each xref:configuration.adoc[ZookeeperCluster] and xref:znodes.adoc[ZookeeperZnode] object,
+Discovery profiles are generated for each ZookeeperCluster and xref:znodes.adoc[ZookeeperZnode] object,
 the name of which is the "base name" of the profile.
 
 == Profiles
