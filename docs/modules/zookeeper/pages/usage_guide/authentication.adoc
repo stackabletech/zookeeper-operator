@@ -1,8 +1,7 @@
 = Authentication
 
-The communication between nodes (server to server) is encrypted TLS by default. In order to enforce TLS authentication
-for client-to-server communication, you can set an `AuthenticationClass` reference in the custom resource provided by
-the xref:commons-operator:index.adoc[Commons Operator].
+The communication between nodes (server to server) is encrypted via TLS by default.
+In order to enforce TLS authentication for client-to-server communication, you can set an xref:home:concepts:authentication.adoc[AuthenticationClass] reference in the `spec.clusterConfig.authentication` property.
 
 Currently it is possible to configure a single form of authentication (of type TLS) by adding one (and only one) entry
 in the `authentication` sequence as shown in the example below. Additional authentication methods, such as Kerberos, are
@@ -15,9 +14,9 @@ include::example$usage_guide/example-cluster-tls-authentication-class.yaml[]
 include::example$usage_guide/example-cluster-tls-authentication-secret.yaml[]
 ----
 <1> The `clusterConfig.authentication.authenticationClass` can be set to use TLS for authentication. This is optional.
-<2> The referenced `AuthenticationClass` that references a `SecretClass` to provide certificates.
-<3> The reference to a `SecretClass`.
-<4> The `SecretClass` that is referenced by the `AuthenticationClass` in order to provide certificates.
+<2> The referenced AuthenticationClass that references a SecretClass to provide certificates.
+<3> The reference to a SecretClass.
+<4> The SecretClass that is referenced by the AuthenticationClass in order to provide certificates.
 
 If both `spec.clusterConfig.tls.server.secretClass` and `spec.clusterConfig.authentication.authenticationClass` are set,
 the authentication class will take precedence over the secret class. The cluster will be encrypted and authenticate only
@@ -26,3 +25,8 @@ against the authentication class.
 WARNING: Due to a https://issues.apache.org/jira/browse/ZOOKEEPER-4276[bug] in ZooKeeper, the `clientPort` property in
 combination with `client.portUnification=true` is used instead of the `secureClientPort`. This means that unencrypted
 and unauthenticated access to the ZooKeeper cluster is still possible.
+
+== Learn more
+
+* Read the xref:home:concepts:authentication.adoc[authentication concept] of the Stackable Data Platform.
+* Read the {crd-docs}/authentication.stackable.tech/authenticationclass/v1alpha1/[AuthenticationClass reference {external-link-icon}^].
