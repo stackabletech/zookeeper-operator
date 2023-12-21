@@ -1,17 +1,60 @@
 = Configuration
 
-== Command Line Parameters
-
-This operator accepts the following command line parameters:
-
-include::commandline_args.adoc[]
-
-== Environment variables
-
-This operator accepts the following environment variables:
-
-include::env_var_args.adoc[]
-
 == Kubernetes custom resource options
 
-include::config_properties.adoc[]
+The cluster can be configured via a YAML file. This custom resource specifies the amount of replicas for each role group or role specific configuration like port definitions etc.
+
+[source,yaml]
+----
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: simple
+spec:
+  image:
+    productVersion: 3.8.3
+  servers:
+    roleGroups:
+      default:
+        selector:
+          matchLabels:
+            kubernetes.io/os: linux
+        # Here you can set the Stackable supported configuration parameters
+        # See the documentation for a full list of the exposed configuration parameters
+        config:
+          tickTime: 3000
+        # You can also override properties in a configuration file here
+        configOverrides:
+          zoo.cfg:
+            4lw.commands.whitelist: 'srvr,ruok,isro'
+        # Set environment variables here
+        envOverrides:
+          MY_ENV_VAR: "foobar"
+----
+
+
+== Configuration Properties
+
+[cols="2,2,2,2,1"]
+|===
+| config-spec Property | Actual Property | Default Value | Recommended Value | Location
+
+| initLimit
+| initLimit
+| 5
+| 5
+| file:zoo.cfg
+
+| syncLimit
+| syncLimit
+| 2
+| 2
+| file:zoo.cfg
+
+| tickTime
+| tickTime
+| 3000
+| 3000
+| file:zoo.cfg
+
+|===

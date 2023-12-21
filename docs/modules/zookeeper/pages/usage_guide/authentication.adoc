@@ -15,9 +15,9 @@ include::example$usage_guide/example-cluster-tls-authentication-class.yaml[]
 include::example$usage_guide/example-cluster-tls-authentication-secret.yaml[]
 ----
 <1> The `clusterConfig.authentication.authenticationClass` can be set to use TLS for authentication. This is optional.
-<2> The referenced `AuthenticationClass` that references a `SecretClass` to provide certificates.
-<3> The reference to a `SecretClass`.
-<4> The `SecretClass` that is referenced by the `AuthenticationClass` in order to provide certificates.
+<2> The referenced AuthenticationClass that references a SecretClass to provide certificates.
+<3> The reference to a SecretClass.
+<4> The SecretClass that is referenced by the AuthenticationClass in order to provide certificates.
 
 If both `spec.clusterConfig.tls.server.secretClass` and `spec.clusterConfig.authentication.authenticationClass` are set,
 the authentication class will take precedence over the secret class. The cluster will be encrypted and authenticate only
