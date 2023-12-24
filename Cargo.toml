@@ -10,7 +10,7 @@ repository = "https://github.com/stackabletech/zookeeper-operator"
 
 [workspace.dependencies]
 anyhow = "1.0"
-built = { version = "0.6", features = ["chrono", "git2"] }
+built = { version = "0.7", features = ["chrono", "git2"] }
 clap = "4.3"
 failure = "0.1"
 fnv = "1.0"
