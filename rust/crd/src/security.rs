@@ -10,7 +10,7 @@ use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::{
         ContainerBuilder, PodBuilder, SecretFormat, SecretOperatorVolumeSourceBuilder,
-        VolumeBuilder,
+        SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
     },
     client::Client,
     commons::authentication::AuthenticationClassProvider,
@@ -19,10 +19,17 @@ use stackable_operator::{
 
 use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 
+type Result<T, E = Error> = std::result::Result<T, E>;
+
 #[derive(Snafu, Debug)]
 pub enum Error {
     #[snafu(display("failed to process authentication class"))]
     InvalidAuthenticationClassConfiguration { source: authentication::Error },
+
+    #[snafu(display("failed to build TLS volume"))]
+    BuildTlsVolume {
+        source: SecretOperatorVolumeSourceBuilderError,
+    },
 }
 
 /// Helper struct combining TLS settings for server and quorum with the resolved AuthenticationClasses
@@ -123,12 +130,12 @@ impl ZookeeperSecurity {
         &self,
         pod_builder: &mut PodBuilder,
         cb_zookeeper: &mut ContainerBuilder,
-    ) {
+    ) -> Result<()> {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
             cb_zookeeper.add_volume_mount("server-tls", Self::SERVER_TLS_DIR);
-            pod_builder.add_volume(Self::create_tls_volume("server-tls", secret_class));
+            pod_builder.add_volume(Self::create_tls_volume("server-tls", secret_class)?);
         }
 
         // quorum
@@ -136,7 +143,9 @@ impl ZookeeperSecurity {
         pod_builder.add_volume(Self::create_tls_volume(
             "quorum-tls",
             &self.quorum_secret_class,
-        ));
+        )?);
+
+        Ok(())
     }
 
     /// Returns required ZooKeeper configuration settings for the `zoo.cfg` properties file
@@ -251,15 +260,18 @@ impl ZookeeperSecurity {
     }
 
     /// Creates ephemeral volumes to mount the `SecretClass` into the Pods
-    fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Volume {
-        VolumeBuilder::new(volume_name)
+    fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Result<Volume> {
+        let volume = VolumeBuilder::new(volume_name)
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(secret_class_name)
                     .with_pod_scope()
                     .with_node_scope()
                     .with_format(SecretFormat::TlsPkcs12)
-                    .build(),
+                    .build()
+                    .context(BuildTlsVolumeSnafu)?,
             )
-            .build()
+            .build();
+
+        Ok(volume)
     }
 }
