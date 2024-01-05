@@ -18,7 +18,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
         resources::ResourceRequirementsBuilder, ConfigMapBuilder, ContainerBuilder,
-        ObjectMetaBuilder, PodBuilder,
+        ObjectMetaBuilder, ObjectMetaBuilderError, PodBuilder,
     },
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::{
@@ -38,7 +38,7 @@ use stackable_operator::{
         DeepMerge,
     },
     kube::{api::DynamicObject, runtime::controller, Resource},
-    labels::{role_group_selector_labels, role_selector_labels},
+    kvp::{Label, LabelError, Labels},
     logging::controller::ReconcilerError,
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
@@ -81,6 +81,8 @@ pub struct Ctx {
     pub client: stackable_operator::client::Client,
     pub product_config: ProductConfigManager,
 }
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Snafu, Debug, EnumDiscriminants)]
 #[strum_discriminants(derive(IntoStaticStr))]
@@ -231,9 +233,13 @@ pub enum Error {
     GracefulShutdown {
         source: crate::operations::graceful_shutdown::Error,
     },
-}
 
-type Result<T, E = Error> = std::result::Result<T, E>;
+    #[snafu(display("failed to build label"))]
+    BuildLabel { source: LabelError },
+
+    #[snafu(display("failed to build object meta data"))]
+    ObjectMeta { source: ObjectMetaBuilderError },
+}
 
 impl ReconcilerError for Error {
     fn category(&self) -> &'static str {
@@ -270,6 +276,8 @@ impl ReconcilerError for Error {
             Error::FailedToResolveConfig { .. } => None,
             Error::FailedToCreatePdb { .. } => None,
             Error::GracefulShutdown { .. } => None,
+            Error::BuildLabel { .. } => None,
+            Error::ObjectMeta { .. } => None,
         }
     }
 }
@@ -332,13 +340,17 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     let (rbac_sa, rbac_rolebinding) = build_rbac_resources(
         zk.as_ref(),
         APP_NAME,
-        cluster_resources.get_required_labels(),
+        cluster_resources
+            .get_required_labels()
+            .context(BuildLabelSnafu)?,
     )
     .context(BuildRbacResourcesSnafu)?;
+
     cluster_resources
         .add(client, rbac_sa)
         .await
         .context(ApplyServiceAccountSnafu)?;
+
     cluster_resources
         .add(client, rbac_rolebinding)
         .await
@@ -481,31 +493,40 @@ pub fn build_server_role_service(
     let role_svc_name = zk
         .server_role_service_name()
         .context(GlobalServiceNameNotFoundSnafu)?;
+
+    let metadata = ObjectMetaBuilder::new()
+        .name_and_namespace(zk)
+        .name(&role_svc_name)
+        .ownerreference_from_resource(zk, None, Some(true))
+        .context(ObjectMissingMetadataForOwnerRefSnafu)?
+        .with_recommended_labels(build_recommended_labels(
+            zk,
+            ZK_CONTROLLER_NAME,
+            &resolved_product_image.app_version_label,
+            &role_name,
+            "global",
+        ))
+        .context(ObjectMetaSnafu)?
+        .build();
+
+    let service_selector_labels =
+        Labels::role_selector(zk, APP_NAME, &role_name).context(BuildLabelSnafu)?;
+
+    let service_spec = ServiceSpec {
+        ports: Some(vec![ServicePort {
+            name: Some("zk".to_string()),
+            port: zookeeper_security.client_port().into(),
+            protocol: Some("TCP".to_string()),
+            ..ServicePort::default()
+        }]),
+        selector: Some(service_selector_labels.into()),
+        type_: Some(zk.spec.cluster_config.listener_class.k8s_service_type()),
+        ..ServiceSpec::default()
+    };
+
     Ok(Service {
-        metadata: ObjectMetaBuilder::new()
-            .name_and_namespace(zk)
-            .name(&role_svc_name)
-            .ownerreference_from_resource(zk, None, Some(true))
-            .context(ObjectMissingMetadataForOwnerRefSnafu)?
-            .with_recommended_labels(build_recommended_labels(
-                zk,
-                ZK_CONTROLLER_NAME,
-                &resolved_product_image.app_version_label,
-                &role_name,
-                "global",
-            ))
-            .build(),
-        spec: Some(ServiceSpec {
-            ports: Some(vec![ServicePort {
-                name: Some("zk".to_string()),
-                port: zookeeper_security.client_port().into(),
-                protocol: Some("TCP".to_string()),
-                ..ServicePort::default()
-            }]),
-            selector: Some(role_selector_labels(zk, APP_NAME, &role_name)),
-            type_: Some(zk.spec.cluster_config.listener_class.k8s_service_type()),
-            ..ServiceSpec::default()
-        }),
+        metadata,
+        spec: Some(service_spec),
         status: None,
     })
 }
@@ -572,6 +593,7 @@ fn build_server_rolegroup_config_map(
                     &rolegroup.role,
                     &rolegroup.role_group,
                 ))
+                .context(ObjectMetaSnafu)?
                 .build(),
         )
         .add_data(
@@ -616,48 +638,55 @@ fn build_server_rolegroup_service(
     resolved_product_image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<Service> {
+    let prometheus_label =
+        Label::try_from(("prometheus.io/scrape", "true")).context(BuildLabelSnafu)?;
+
+    let metadata = ObjectMetaBuilder::new()
+        .name_and_namespace(zk)
+        .name(&rolegroup.object_name())
+        .ownerreference_from_resource(zk, None, Some(true))
+        .context(ObjectMissingMetadataForOwnerRefSnafu)?
+        .with_recommended_labels(build_recommended_labels(
+            zk,
+            ZK_CONTROLLER_NAME,
+            &resolved_product_image.app_version_label,
+            &rolegroup.role,
+            &rolegroup.role_group,
+        ))
+        .context(ObjectMetaSnafu)?
+        .with_label(prometheus_label)
+        .build();
+
+    let service_selector_labels =
+        Labels::role_group_selector(zk, APP_NAME, &rolegroup.role, &rolegroup.role_group)
+            .context(BuildLabelSnafu)?;
+
+    let service_spec = ServiceSpec {
+        // Internal communication does not need to be exposed
+        type_: Some("ClusterIP".to_string()),
+        cluster_ip: Some("None".to_string()),
+        ports: Some(vec![
+            ServicePort {
+                name: Some("zk".to_string()),
+                port: zookeeper_security.client_port().into(),
+                protocol: Some("TCP".to_string()),
+                ..ServicePort::default()
+            },
+            ServicePort {
+                name: Some("metrics".to_string()),
+                port: 9505,
+                protocol: Some("TCP".to_string()),
+                ..ServicePort::default()
+            },
+        ]),
+        selector: Some(service_selector_labels.into()),
+        publish_not_ready_addresses: Some(true),
+        ..ServiceSpec::default()
+    };
+
     Ok(Service {
-        metadata: ObjectMetaBuilder::new()
-            .name_and_namespace(zk)
-            .name(&rolegroup.object_name())
-            .ownerreference_from_resource(zk, None, Some(true))
-            .context(ObjectMissingMetadataForOwnerRefSnafu)?
-            .with_recommended_labels(build_recommended_labels(
-                zk,
-                ZK_CONTROLLER_NAME,
-                &resolved_product_image.app_version_label,
-                &rolegroup.role,
-                &rolegroup.role_group,
-            ))
-            .with_label("prometheus.io/scrape", "true")
-            .build(),
-        spec: Some(ServiceSpec {
-            // Internal communication does not need to be exposed
-            type_: Some("ClusterIP".to_string()),
-            cluster_ip: Some("None".to_string()),
-            ports: Some(vec![
-                ServicePort {
-                    name: Some("zk".to_string()),
-                    port: zookeeper_security.client_port().into(),
-                    protocol: Some("TCP".to_string()),
-                    ..ServicePort::default()
-                },
-                ServicePort {
-                    name: Some("metrics".to_string()),
-                    port: 9505,
-                    protocol: Some("TCP".to_string()),
-                    ..ServicePort::default()
-                },
-            ]),
-            selector: Some(role_group_selector_labels(
-                zk,
-                APP_NAME,
-                &rolegroup.role,
-                &rolegroup.role_group,
-            )),
-            publish_not_ready_addresses: Some(true),
-            ..ServiceSpec::default()
-        }),
+        metadata,
+        spec: Some(service_spec),
         status: None,
     })
 }
@@ -821,16 +850,19 @@ fn build_server_rolegroup_statefulset(
         .resources(resources)
         .build();
 
+    let pb_metadata = ObjectMetaBuilder::new()
+        .with_recommended_labels(build_recommended_labels(
+            zk,
+            ZK_CONTROLLER_NAME,
+            &resolved_product_image.app_version_label,
+            &rolegroup_ref.role,
+            &rolegroup_ref.role_group,
+        ))
+        .context(ObjectMetaSnafu)?
+        .build();
+
     pod_builder
-        .metadata_builder(|m| {
-            m.with_recommended_labels(build_recommended_labels(
-                zk,
-                ZK_CONTROLLER_NAME,
-                &resolved_product_image.app_version_label,
-                &rolegroup_ref.role,
-                &rolegroup_ref.role_group,
-            ))
-        })
+        .metadata(pb_metadata)
         .image_pull_secrets_from_product_image(resolved_product_image)
         .add_init_container(container_prepare)
         .add_container(container_zk)
@@ -912,40 +944,44 @@ fn build_server_rolegroup_statefulset(
     pod_template.merge_from(role.config.pod_overrides.clone());
     pod_template.merge_from(rolegroup.config.pod_overrides.clone());
 
+    let metadata = ObjectMetaBuilder::new()
+        .name_and_namespace(zk)
+        .name(&rolegroup_ref.object_name())
+        .ownerreference_from_resource(zk, None, Some(true))
+        .context(ObjectMissingMetadataForOwnerRefSnafu)?
+        .with_recommended_labels(build_recommended_labels(
+            zk,
+            ZK_CONTROLLER_NAME,
+            &resolved_product_image.app_version_label,
+            &rolegroup_ref.role,
+            &rolegroup_ref.role_group,
+        ))
+        // The initial restart muddles up the integration tests. This can be re-enabled as soon
+        // as https://github.com/stackabletech/commons-operator/issues/111 is implemented.
+        // .with_label("restarter.stackable.tech/enabled", "true")
+        .context(ObjectMetaSnafu)?
+        .build();
+
+    let statefulset_match_labels =
+        Labels::role_group_selector(zk, APP_NAME, &rolegroup_ref.role, &rolegroup_ref.role_group)
+            .context(BuildLabelSnafu)?;
+
+    let statefulset_spec = StatefulSetSpec {
+        pod_management_policy: Some("Parallel".to_string()),
+        replicas: rolegroup.replicas.map(i32::from),
+        selector: LabelSelector {
+            match_labels: Some(statefulset_match_labels.into()),
+            ..LabelSelector::default()
+        },
+        service_name: rolegroup_ref.object_name(),
+        template: pod_template,
+        volume_claim_templates: Some(pvc),
+        ..StatefulSetSpec::default()
+    };
+
     Ok(StatefulSet {
-        metadata: ObjectMetaBuilder::new()
-            .name_and_namespace(zk)
-            .name(&rolegroup_ref.object_name())
-            .ownerreference_from_resource(zk, None, Some(true))
-            .context(ObjectMissingMetadataForOwnerRefSnafu)?
-            .with_recommended_labels(build_recommended_labels(
-                zk,
-                ZK_CONTROLLER_NAME,
-                &resolved_product_image.app_version_label,
-                &rolegroup_ref.role,
-                &rolegroup_ref.role_group,
-            ))
-            // The initial restart muddles up the integration tests. This can be re-enabled as soon
-            // as https://github.com/stackabletech/commons-operator/issues/111 is implemented.
-            // .with_label("restarter.stackable.tech/enabled", "true")
-            .build(),
-        spec: Some(StatefulSetSpec {
-            pod_management_policy: Some("Parallel".to_string()),
-            replicas: rolegroup.replicas.map(i32::from),
-            selector: LabelSelector {
-                match_labels: Some(role_group_selector_labels(
-                    zk,
-                    APP_NAME,
-                    &rolegroup_ref.role,
-                    &rolegroup_ref.role_group,
-                )),
-                ..LabelSelector::default()
-            },
-            service_name: rolegroup_ref.object_name(),
-            template: pod_template,
-            volume_claim_templates: Some(pvc),
-            ..StatefulSetSpec::default()
-        }),
+        metadata,
+        spec: Some(statefulset_spec),
         status: None,
     })
 }
