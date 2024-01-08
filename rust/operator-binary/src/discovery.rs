@@ -11,6 +11,8 @@ use stackable_zookeeper_crd::{security::ZookeeperSecurity, ZookeeperCluster, Zoo
 
 use crate::utils::build_recommended_labels;
 
+type Result<T, E = Error> = std::result::Result<T, E>;
+
 #[derive(Snafu, Debug)]
 pub enum Error {
     #[snafu(display("object {} is missing metadata to build owner reference", zk))]
@@ -113,7 +115,7 @@ fn build_discovery_configmap(
     chroot: Option<&str>,
     hosts: impl IntoIterator<Item = (impl Into<String>, u16)>,
     resolved_product_image: &ResolvedProductImage,
-) -> Result<ConfigMap, Error> {
+) -> Result<ConfigMap> {
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"
     // See https://zookeeper.apache.org/doc/current/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-
@@ -163,7 +165,7 @@ fn build_discovery_configmap(
 fn pod_hosts<'a>(
     zk: &'a ZookeeperCluster,
     zookeeper_security: &'a ZookeeperSecurity,
-) -> Result<impl IntoIterator<Item = (String, u16)> + 'a, Error> {
+) -> Result<impl IntoIterator<Item = (String, u16)> + 'a> {
     Ok(zk
         .pods()
         .context(ExpectedPodsSnafu)?
@@ -175,7 +177,7 @@ async fn nodeport_hosts(
     client: &stackable_operator::client::Client,
     svc: &Service,
     port_name: &str,
-) -> Result<impl IntoIterator<Item = (String, u16)>, Error> {
+) -> Result<impl IntoIterator<Item = (String, u16)>> {
     let svc_port = svc
         .spec
         .as_ref()
