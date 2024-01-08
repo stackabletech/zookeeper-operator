@@ -26,9 +26,10 @@ pub enum Error {
     #[snafu(display("failed to process authentication class"))]
     InvalidAuthenticationClassConfiguration { source: authentication::Error },
 
-    #[snafu(display("failed to build TLS volume"))]
+    #[snafu(display("failed to build TLS volume for {volume_name:?}"))]
     BuildTlsVolume {
         source: SecretOperatorVolumeSourceBuilderError,
+        volume_name: String,
     },
 }
 
@@ -134,14 +135,16 @@ impl ZookeeperSecurity {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
-            cb_zookeeper.add_volume_mount("server-tls", Self::SERVER_TLS_DIR);
-            pod_builder.add_volume(Self::create_tls_volume("server-tls", secret_class)?);
+            let tls_volume_name = "server-tls";
+            cb_zookeeper.add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR);
+            pod_builder.add_volume(Self::create_tls_volume(tls_volume_name, secret_class)?);
         }
 
         // quorum
-        cb_zookeeper.add_volume_mount("quorum-tls", Self::QUORUM_TLS_DIR);
+        let tls_volume_name = "quorum-tls";
+        cb_zookeeper.add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR);
         pod_builder.add_volume(Self::create_tls_volume(
-            "quorum-tls",
+            tls_volume_name,
             &self.quorum_secret_class,
         )?);
 
@@ -268,7 +271,7 @@ impl ZookeeperSecurity {
                     .with_node_scope()
                     .with_format(SecretFormat::TlsPkcs12)
                     .build()
-                    .context(BuildTlsVolumeSnafu)?,
+                    .context(BuildTlsVolumeSnafu { volume_name })?,
             )
             .build();
 

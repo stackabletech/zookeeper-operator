@@ -1,4 +1,4 @@
-use stackable_operator::labels::ObjectLabels;
+use stackable_operator::kvp::ObjectLabels;
 
 use crate::{APP_NAME, OPERATOR_NAME};
 

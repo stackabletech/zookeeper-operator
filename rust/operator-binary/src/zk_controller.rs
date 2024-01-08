@@ -58,11 +58,11 @@ use stackable_operator::{
     utils::COMMON_BASH_TRAP_FUNCTIONS,
 };
 use stackable_zookeeper_crd::{
-    security::ZookeeperSecurity, Container, ZookeeperCluster, ZookeeperClusterStatus,
-    ZookeeperConfig, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE,
-    MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
-    STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
-    ZOOKEEPER_PROPERTIES_FILE,
+    security::{self, ZookeeperSecurity},
+    Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole,
+    DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
+    MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
+    STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
@@ -237,8 +237,11 @@ pub enum Error {
     #[snafu(display("failed to build label"))]
     BuildLabel { source: LabelError },
 
-    #[snafu(display("failed to build object meta data"))]
+    #[snafu(display("failed to build object  meta data"))]
     ObjectMeta { source: ObjectMetaBuilderError },
+
+    #[snafu(display("failed to add TLS volume mounts"))]
+    AddTlsVolumeMounts { source: security::Error },
 }
 
 impl ReconcilerError for Error {
@@ -278,6 +281,7 @@ impl ReconcilerError for Error {
             Error::GracefulShutdown { .. } => None,
             Error::BuildLabel { .. } => None,
             Error::ObjectMeta { .. } => None,
+            Error::AddTlsVolumeMounts { .. } => None,
         }
     }
 }
@@ -745,7 +749,9 @@ fn build_server_rolegroup_statefulset(
     let mut pod_builder = PodBuilder::new();
 
     // add volumes and mounts depending on tls / auth settings
-    zookeeper_security.add_volume_mounts(&mut pod_builder, &mut cb_zookeeper);
+    zookeeper_security
+        .add_volume_mounts(&mut pod_builder, &mut cb_zookeeper)
+        .context(AddTlsVolumeMountsSnafu)?;
 
     let mut args = Vec::new();
 
