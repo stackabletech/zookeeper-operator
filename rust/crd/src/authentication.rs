@@ -70,7 +70,9 @@ impl ResolvedAuthenticationClasses {
         for auth_class in &self.resolved_authentication_classes {
             match &auth_class.spec.provider {
                 AuthenticationClassProvider::Tls(_) => {}
-                _ => {
+                AuthenticationClassProvider::Ldap(_)
+                | AuthenticationClassProvider::Oidc(_)
+                | AuthenticationClassProvider::Static(_) => {
                     return Err(Error::AuthenticationMethodNotSupported {
                         authentication_class: ObjectRef::from_obj(auth_class),
                         method: auth_class.spec.provider.to_string(),

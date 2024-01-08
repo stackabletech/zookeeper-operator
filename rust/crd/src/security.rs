@@ -257,7 +257,9 @@ impl ZookeeperSecurity {
             .get_tls_authentication_class()
             .and_then(|auth_class| match &auth_class.spec.provider {
                 AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.as_ref(),
-                _ => None,
+                AuthenticationClassProvider::Ldap(_)
+                | AuthenticationClassProvider::Oidc(_)
+                | AuthenticationClassProvider::Static(_) => None,
             })
             .or(self.server_secret_class.as_ref())
     }
