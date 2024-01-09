@@ -594,17 +594,6 @@ impl ZookeeperCluster {
         let role_group = self.rolegroup(rolegroup_ref)?;
         let mut conf_role_group = role_group.config.config;
 
-        if let Some(RoleGroup {
-            selector: Some(selector),
-            ..
-        }) = role.role_groups.get(&rolegroup_ref.role_group)
-        {
-            // Migrate old `selector` attribute, see ADR 26 affinities.
-            // TODO Can be removed after support for the old `selector` field is dropped.
-            #[allow(deprecated)]
-            conf_role_group.affinity.add_legacy_selector(selector);
-        }
-
         // Merge more specific configs into default config
         // Hierarchy is:
         // 1. RoleGroup

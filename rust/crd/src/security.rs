@@ -10,7 +10,7 @@ use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::{
         ContainerBuilder, PodBuilder, SecretFormat, SecretOperatorVolumeSourceBuilder,
-        VolumeBuilder,
+        SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
     },
     client::Client,
     commons::authentication::AuthenticationClassProvider,
@@ -19,10 +19,18 @@ use stackable_operator::{
 
 use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 
+type Result<T, E = Error> = std::result::Result<T, E>;
+
 #[derive(Snafu, Debug)]
 pub enum Error {
     #[snafu(display("failed to process authentication class"))]
     InvalidAuthenticationClassConfiguration { source: authentication::Error },
+
+    #[snafu(display("failed to build TLS volume for {volume_name:?}"))]
+    BuildTlsVolume {
+        source: SecretOperatorVolumeSourceBuilderError,
+        volume_name: String,
+    },
 }
 
 /// Helper struct combining TLS settings for server and quorum with the resolved AuthenticationClasses
@@ -123,20 +131,24 @@ impl ZookeeperSecurity {
         &self,
         pod_builder: &mut PodBuilder,
         cb_zookeeper: &mut ContainerBuilder,
-    ) {
+    ) -> Result<()> {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
-            cb_zookeeper.add_volume_mount("server-tls", Self::SERVER_TLS_DIR);
-            pod_builder.add_volume(Self::create_tls_volume("server-tls", secret_class));
+            let tls_volume_name = "server-tls";
+            cb_zookeeper.add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR);
+            pod_builder.add_volume(Self::create_tls_volume(tls_volume_name, secret_class)?);
         }
 
         // quorum
-        cb_zookeeper.add_volume_mount("quorum-tls", Self::QUORUM_TLS_DIR);
+        let tls_volume_name = "quorum-tls";
+        cb_zookeeper.add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR);
         pod_builder.add_volume(Self::create_tls_volume(
-            "quorum-tls",
+            tls_volume_name,
             &self.quorum_secret_class,
-        ));
+        )?);
+
+        Ok(())
     }
 
     /// Returns required ZooKeeper configuration settings for the `zoo.cfg` properties file
@@ -245,21 +257,26 @@ impl ZookeeperSecurity {
             .get_tls_authentication_class()
             .and_then(|auth_class| match &auth_class.spec.provider {
                 AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.as_ref(),
-                _ => None,
+                AuthenticationClassProvider::Ldap(_)
+                | AuthenticationClassProvider::Oidc(_)
+                | AuthenticationClassProvider::Static(_) => None,
             })
             .or(self.server_secret_class.as_ref())
     }
 
     /// Creates ephemeral volumes to mount the `SecretClass` into the Pods
-    fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Volume {
-        VolumeBuilder::new(volume_name)
+    fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Result<Volume> {
+        let volume = VolumeBuilder::new(volume_name)
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(secret_class_name)
                     .with_pod_scope()
                     .with_node_scope()
                     .with_format(SecretFormat::TlsPkcs12)
-                    .build(),
+                    .build()
+                    .context(BuildTlsVolumeSnafu { volume_name })?,
             )
-            .build()
+            .build();
+
+        Ok(volume)
     }
 }
