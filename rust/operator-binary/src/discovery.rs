@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, num::TryFromIntError};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::{ConfigMapBuilder, ObjectMetaBuilder},
+    builder::{ConfigMapBuilder, ObjectMetaBuilder, ObjectMetaBuilderError},
     commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
     kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
@@ -10,6 +10,8 @@ use stackable_operator::{
 use stackable_zookeeper_crd::{security::ZookeeperSecurity, ZookeeperCluster, ZookeeperRole};
 
 use crate::utils::build_recommended_labels;
+
+type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -52,6 +54,9 @@ pub enum Error {
     BuildConfigMap {
         source: stackable_operator::error::Error,
     },
+
+    #[snafu(display("failed to build object meta data"))]
+    ObjectMeta { source: ObjectMetaBuilderError },
 }
 
 /// Builds discovery [`ConfigMap`]s for connecting to a [`ZookeeperCluster`] for all expected scenarios
@@ -65,7 +70,7 @@ pub async fn build_discovery_configmaps(
     chroot: Option<&str>,
     resolved_product_image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
-) -> Result<Vec<ConfigMap>, Error> {
+) -> Result<Vec<ConfigMap>> {
     let name = owner.name_unchecked();
     let namespace = owner.namespace().context(NoNamespaceSnafu)?;
 
@@ -113,7 +118,7 @@ fn build_discovery_configmap(
     chroot: Option<&str>,
     hosts: impl IntoIterator<Item = (impl Into<String>, u16)>,
     resolved_product_image: &ResolvedProductImage,
-) -> Result<ConfigMap, Error> {
+) -> Result<ConfigMap> {
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"
     // See https://zookeeper.apache.org/doc/current/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-
@@ -145,6 +150,7 @@ fn build_discovery_configmap(
                     &ZookeeperRole::Server.to_string(),
                     "discovery",
                 ))
+                .context(ObjectMetaSnafu)?
                 .build(),
         )
         .add_data("ZOOKEEPER", conn_str)
@@ -163,7 +169,7 @@ fn build_discovery_configmap(
 fn pod_hosts<'a>(
     zk: &'a ZookeeperCluster,
     zookeeper_security: &'a ZookeeperSecurity,
-) -> Result<impl IntoIterator<Item = (String, u16)> + 'a, Error> {
+) -> Result<impl IntoIterator<Item = (String, u16)> + 'a> {
     Ok(zk
         .pods()
         .context(ExpectedPodsSnafu)?
@@ -175,7 +181,7 @@ async fn nodeport_hosts(
     client: &stackable_operator::client::Client,
     svc: &Service,
     port_name: &str,
-) -> Result<impl IntoIterator<Item = (String, u16)>, Error> {
+) -> Result<impl IntoIterator<Item = (String, u16)>> {
     let svc_port = svc
         .spec
         .as_ref()
