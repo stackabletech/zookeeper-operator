@@ -544,22 +544,21 @@ fn build_server_rolegroup_config_map(
     vector_aggregator_address: Option<&str>,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<ConfigMap> {
-    let mut zoo_cfg = server_config
-        .get(&PropertyNameKind::File(
-            ZOOKEEPER_PROPERTIES_FILE.to_string(),
-        ))
-        .cloned()
-        .unwrap_or_default();
-    zoo_cfg.extend(zk.pods().into_iter().flatten().map(|pod| {
-        (
-            format!("server.{}", pod.zookeeper_myid),
-            format!(
-                "{}:2888:3888;{}",
-                pod.fqdn(),
-                zookeeper_security.client_port()
-            ),
-        )
-    }));
+    let mut zoo_cfg: BTreeMap<_, _> = zk
+        .pods()
+        .into_iter()
+        .flatten()
+        .map(|pod| {
+            (
+                format!("server.{}", pod.zookeeper_myid),
+                format!(
+                    "{}:2888:3888;{}",
+                    pod.fqdn(),
+                    zookeeper_security.client_port()
+                ),
+            )
+        })
+        .collect();
 
     zoo_cfg.extend(zookeeper_security.config_settings());
 
@@ -578,11 +577,20 @@ fn build_server_rolegroup_config_map(
             role: rolegroup.role.to_string(),
         })?;
 
-    let mut cm_builder = ConfigMapBuilder::new();
+    // configOverrides need to go last
+    zoo_cfg.extend(
+        server_config
+            .get(&PropertyNameKind::File(
+                ZOOKEEPER_PROPERTIES_FILE.to_string(),
+            ))
+            .cloned()
+            .unwrap_or_default(),
+    );
 
     let zk_data: BTreeMap<String, Option<String>> =
         zoo_cfg.into_iter().map(|(k, v)| (k, Some(v))).collect();
 
+    let mut cm_builder = ConfigMapBuilder::new();
     cm_builder
         .metadata(
             ObjectMetaBuilder::new()
