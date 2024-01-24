@@ -13,12 +13,17 @@ All notable changes to this project will be documented in this file.
 - Use new label builders ([#757]).
 - Use explicit match arms for AuthenticationClassProvider ([#757]).
 
+### Fixed
+
+- Apply configOverrides ([#762]).
+
 ### Removed
 
 - [BREAKING] Removed legacy node selector on roleGroups ([#757]).
 
 [#749]: https://github.com/stackabletech/zookeeper-operator/pull/749
 [#757]: https://github.com/stackabletech/zookeeper-operator/pull/757
+[#762]: https://github.com/stackabletech/zookeeper-operator/pull/762
 
 ## [23.11.0] - 2023-11-24
 
