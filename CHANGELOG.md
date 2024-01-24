@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Apply configOverrides ([#762]).
+- `configOverrides` are now able to overwrite configs written by the operator ([#762]).
 
 ### Removed
 
