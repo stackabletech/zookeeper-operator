@@ -22,8 +22,9 @@ spec:
         {{- end }}
       labels:
         {{- include "operator.selectorLabels" . | nindent 8 }}
+        {{- with .Values.labels }}
     spec:
-      {{- with .Values.imagePullSecrets }}
+      {{- with .Values.image.pullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
