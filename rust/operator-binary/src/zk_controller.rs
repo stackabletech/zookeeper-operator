@@ -1007,3 +1007,134 @@ pub fn error_policy(
 ) -> controller::Action {
     controller::Action::requeue(*Duration::from_secs(5))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.8.3"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let config = cm.get("zoo.cfg").unwrap();
+        assert!(config.contains(
+            "authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider"
+        ));
+        assert!(config.contains("ssl.hostnameVerification=true"));
+        // Default value
+        assert!(config.contains("ssl.quorum.hostnameVerification=true"));
+
+        assert!(cm.contains_key("security.properties"));
+    }
+
+    #[test]
+    fn test_config_overrides() {
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.8.3"
+          servers:
+            configOverrides:
+              zoo.cfg:
+                foo: bar
+                level: role
+            roleGroups:
+              default:
+                configOverrides:
+                  zoo.cfg:
+                    foo: bar
+                    level: role-group
+                    ssl.quorum.hostnameVerification: "false"
+                replicas: 3
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let config = cm.get("zoo.cfg").unwrap();
+        assert!(config.contains("foo=bar"));
+        assert!(config.contains("level=role-group"));
+        assert!(config.contains(
+            "authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider"
+        ));
+        assert!(config.contains("ssl.hostnameVerification=true"));
+        // Overwritten by configOverride
+        assert!(config.contains("ssl.quorum.hostnameVerification=false"));
+
+        assert!(cm.contains_key("security.properties"));
+    }
+
+    fn build_config_map(zookeeper_yaml: &str) -> ConfigMap {
+        let mut zookeeper: ZookeeperCluster =
+            serde_yaml::from_str(zookeeper_yaml).expect("illegal test input");
+        zookeeper.metadata.uid = Some("42".to_owned());
+
+        let resolved_product_image = zookeeper
+            .spec
+            .image
+            .resolve(DOCKER_IMAGE_BASE_NAME, "0.0.0-dev");
+
+        let validated_config = validate_all_roles_and_groups_config(
+            &resolved_product_image.app_version_label,
+            &transform_all_roles_to_config(
+                &zookeeper,
+                [(
+                    ZookeeperRole::Server.to_string(),
+                    (
+                        vec![
+                            PropertyNameKind::Env,
+                            PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
+                            PropertyNameKind::File(JVM_SECURITY_PROPERTIES_FILE.to_string()),
+                        ],
+                        zookeeper.spec.servers.clone().unwrap(),
+                    ),
+                )]
+                .into(),
+            )
+            .unwrap(),
+            // Using this instead of ProductConfigManager::from_yaml_file, as that did not find the file
+            &ProductConfigManager::from_str(include_str!(
+                "../../../deploy/config-spec/properties.yaml"
+            ))
+            .unwrap(),
+            false,
+            false,
+        )
+        .unwrap();
+
+        let rolegroup_ref = RoleGroupRef {
+            cluster: ObjectRef::from_obj(&zookeeper),
+            role: ZookeeperRole::Server.to_string(),
+            role_group: "default".to_string(),
+        };
+
+        let zookeeper_security = ZookeeperSecurity::new_for_tests();
+
+        build_server_rolegroup_config_map(
+            &zookeeper,
+            &rolegroup_ref,
+            validated_config
+                .get("server")
+                .unwrap()
+                .get("default")
+                .unwrap(),
+            &resolved_product_image,
+            None,
+            &zookeeper_security,
+        )
+        .unwrap()
+    }
+}

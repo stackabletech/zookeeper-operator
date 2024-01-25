@@ -83,6 +83,13 @@ impl ResolvedAuthenticationClasses {
 
         Ok(self.clone())
     }
+
+    /// USE ONLY IN TESTS! We can not put it behind `#[cfg(test)]` because of <https://github.com/rust-lang/cargo/issues/8379>
+    pub fn new_for_tests() -> Self {
+        ResolvedAuthenticationClasses {
+            resolved_authentication_classes: vec![],
+        }
+    }
 }
 
 /// Resolve provided AuthenticationClasses via API calls and validate the contents.
