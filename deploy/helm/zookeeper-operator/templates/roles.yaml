@@ -128,6 +128,8 @@ apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:
   name: zookeeper-scc
+  labels:
+  {{- include "operator.labels" . | nindent 4 }}
   annotations:
     kubernetes.io/description: |-
       zookeeper-scc is derived from hostmount-anyuid. It provides all the features of the
