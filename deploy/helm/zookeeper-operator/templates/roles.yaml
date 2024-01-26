@@ -137,8 +137,6 @@ metadata:
       used by the persistent volume recycler. WARNING: this SCC allows host file
       system access as any UID, including UID 0.  Grant with caution.
     release.openshift.io/create-only: "true"
-  labels:
-  {{- include "operator.labels" . | nindent 4 }}
 allowHostDirVolumePlugin: true
 allowHostIPC: false
 allowHostNetwork: false
