@@ -2036,6 +2036,7 @@ dependencies = [
  "rstest",
  "semver",
  "serde",
+ "serde_yaml",
  "snafu 0.7.5",
  "stackable-operator",
  "stackable-zookeeper-crd",

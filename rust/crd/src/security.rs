@@ -279,4 +279,13 @@ impl ZookeeperSecurity {
 
         Ok(volume)
     }
+
+    /// USE ONLY IN TESTS! We can not put it behind `#[cfg(test)]` because of <https://github.com/rust-lang/cargo/issues/8379>
+    pub fn new_for_tests() -> Self {
+        ZookeeperSecurity {
+            resolved_authentication_classes: ResolvedAuthenticationClasses::new_for_tests(),
+            server_secret_class: Some("tls".to_owned()),
+            quorum_secret_class: "tls".to_string(),
+        }
+    }
 }
