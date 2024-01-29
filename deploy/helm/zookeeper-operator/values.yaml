@@ -3,8 +3,8 @@
 image:
   repository: docker.stackable.tech/stackable/zookeeper-operator
   pullPolicy: IfNotPresent
+  pullSecrets: []
 
-imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
@@ -16,6 +16,9 @@ serviceAccount:
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
+
+# Provide additional labels which get attached to all deployed resources
+labels: {}
 
 podAnnotations: {}
 
