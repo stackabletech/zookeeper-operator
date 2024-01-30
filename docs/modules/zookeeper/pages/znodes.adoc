@@ -8,6 +8,19 @@ as it sees fit. This can be thought of like a namespace for that client, and pre
 
 The Stackable Operator for Apache ZooKeeper manages ZNodes using the _ZookeeperZnode_ resource. 
 
+IMPORTANT: The Operator connects directly to ZooKeeper to manage the ZNodes inside of the ZooKeeper ensemble. This means that network access to the ZooKeeper pods is necessary. If your Kubernetes cluster restricts network acess, you need to configure a NetworkPolicy to allow the operator to connect to ZooKeeper.
+
+== Configuring ZNodes
+
+ZNodes are configured with the ZookeeperZnode CustomResource.
+If a ZookeeperZnode resource is created, the operator will create the respective tree in ZooKeeper.
+Also, if the resource in Kubernetes is deleted, so is the data in ZooKeeper.
+
+CAUTION: The operator automatically deletes the ZNode from the ZooKeeper cluster if the Kubernetes `ZookeeperZnode` object is deleted. Recreating the
+`ZookeeperZnode` object will not restore access to the data.
+
+Here is an example of a ZookeeperZnode:
+
 [source,yaml]
 ----
 include::example$example-znode.yaml[]
@@ -16,14 +29,17 @@ include::example$example-znode.yaml[]
 <2> Reference to the `ZookeeperCluster` object where the ZNode should be created.
 <3> The namespace of the `ZookeeperCluster`. Can be omitted and will default to the namespace of the ZNode object.
 
-NOTE: It is the responsibility of the user to ensure that ZNodes are not shared between products. For example, a Kafka and a Hadoop cluster should not share the same ZNode.
-
 When a ZNode is created, the operator creates the required tree in ZooKeeper and a xref:concepts:service_discovery.adoc[discovery ConfigMap] with a xref:discovery.adoc[] for this ZNode. This discovery ConfigMap is used by other operators to configure clients with access to the ZNode. 
 
 The operator _does not_ manage the contents of the ZNode.
 
-CAUTION: The operator automatically deletes the ZNode from the ZooKeeper cluster if the Kubernetes `ZookeeperZnode` object is deleted. Recreating the
-`ZookeeperZnode` object will not restore access to the data.
+
+== Creating a ZNode per dependant
+
+To ensure that a product that uses ZooKeeper is running smoothly, you should make sure that each Stacklet or product instance is operating with its own ZNode.
+For example, a Kafka and a Hadoop cluster should not share the same ZNode. Also no two Kafka instances should share the same ZNode.
+
+Have a look at the xref:usage_guide/isolating_clients_with_znodes.adoc[] guide for hands-on instructions on how to set up multiple ZNodes for different Stacklets.
 
 == Split responsibilities for ZooKeeper and ZNodes
 
@@ -35,4 +51,4 @@ ZNodes however are product specific and need to be managed by product teams that
 
 == What's next
 
-Have a look at the usage guide for ZNodes: xref:usage_guide/isolating_clients_with_znodes.adoc[]
+Have a look at the usage guide for ZNodes: xref:usage_guide/isolating_clients_with_znodes.adoc[] or the CRD reference for the {crd-docs}/zookeeper.stackable.tech/zookeeperznode/v1alpha1/[ZookeeperZnode {external-link-icon}^] CustomResource.
