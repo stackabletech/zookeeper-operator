@@ -6,8 +6,8 @@ The Stackable Operator for Apache ZooKeeper is a Kubernetes Operator for deployi
 https://zookeeper.apache.org/[Apache ZooKeeper] ensembles. Apache ZooKeeper is an open-source distributed coordination
 service that facilitates synchronization, configuration management and leader election in distributed systems. ZooKeeper
 is often used for these tasks in the Apache Hadoop ecosystem. Within the Stackable Platform, the Stackable Operators for
-xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka] and
-xref:nifi:index.adoc[Apache NiFi] depend on the ZooKeeper Operator.
+xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka], 
+xref:nifi:index.adoc[Apache NiFi] and xref:druid:index.adoc[Apache Druid] depend on the ZooKeeper Operator.
 
 == Getting started
 
@@ -29,7 +29,7 @@ role group is accessible through its own Service, and there is a Service for the
 
 The Operator creates a xref:concepts:service_discovery.adoc[service discovery ConfigMap] for the ZooKeeper instance, as
 well as for each ZNode. The discovery ConfigMaps contain information on how to connect to ZooKeeper. The ZNode discovery
-ConfigMap give access information for the ZNode. xref:zookeeper:znodes.adoc[learn more about ZNodes].
+ConfigMap give access information for the ZNode. xref:zookeeper:znodes.adoc[Learn more about ZNodes].
 
 == Dependencies
 
