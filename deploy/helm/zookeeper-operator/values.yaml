@@ -18,7 +18,8 @@ serviceAccount:
   name: ""
 
 # Provide additional labels which get attached to all deployed resources
-labels: {}
+labels:
+  stackable.tech/vendor: Stackable
 
 podAnnotations: {}
 
