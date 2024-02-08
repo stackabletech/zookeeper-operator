@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - More CRD documentation ([#749]).
 - Helm: support labels in values.yaml ([#763]).
+- Support for `3.9.1` ([#771]).
 
 ### Changed
 
@@ -21,11 +22,13 @@ All notable changes to this project will be documented in this file.
 ### Removed
 
 - [BREAKING] Removed legacy node selector on roleGroups ([#757]).
+- Support for `3.8.1` ([#771]).
 
 [#749]: https://github.com/stackabletech/zookeeper-operator/pull/749
 [#757]: https://github.com/stackabletech/zookeeper-operator/pull/757
 [#762]: https://github.com/stackabletech/zookeeper-operator/pull/762
 [#763]: https://github.com/stackabletech/zookeeper-operator/pull/763
+[#771]: https://github.com/stackabletech/zookeeper-operator/pull/771
 
 ## [23.11.0] - 2023-11-24
 
