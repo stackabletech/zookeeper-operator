@@ -1,6 +1,6 @@
 = ZNodes
 
-Apache ZooKeeper organizes all data into a hierarchical system of https://zookeeper.apache.org/doc/r3.8.3/zookeeperProgrammers.html#ch_zkDataModel[ZNodes],
+Apache ZooKeeper organizes all data into a hierarchical system of https://zookeeper.apache.org/doc/r3.9.1/zookeeperProgrammers.html#ch_zkDataModel[ZNodes],
 which act as both files (they can have data associated with them) and folders (they can contain other ZNodes) when compared to a traditional (POSIX-like) file system.
 
 In order to isolate different clients using the same ZooKeeper cluster, each client application should be assigned a unique root ZNode, which it can then organize
