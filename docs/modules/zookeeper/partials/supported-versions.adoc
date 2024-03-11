@@ -3,4 +3,5 @@
 // Stackable Platform documentation.
 
 - 3.9.1
-- 3.8.3 (LTS)
+- 3.8.3
+- 3.8.4 (LTS)
