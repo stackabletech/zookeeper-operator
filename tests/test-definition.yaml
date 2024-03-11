@@ -3,6 +3,7 @@ dimensions:
   - name: zookeeper
     values:
       - 3.8.3
+      - 3.8.4
       - 3.9.1
   - name: zookeeper-latest
     values:
