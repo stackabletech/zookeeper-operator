@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 - More CRD documentation ([#749]).
 - Helm: support labels in values.yaml ([#763]).
 - Support for `3.8.4` ([#783])
-- Support for `3.9.2` ([#786]).
+- Support for `3.9.2` ([#788]).
 
 ### Changed
 
@@ -31,7 +31,7 @@ All notable changes to this project will be documented in this file.
 [#763]: https://github.com/stackabletech/zookeeper-operator/pull/763
 [#771]: https://github.com/stackabletech/zookeeper-operator/pull/771
 [#783]: https://github.com/stackabletech/zookeeper-operator/pull/783
-[#786]: https://github.com/stackabletech/zookeeper-operator/pull/786
+[#788]: https://github.com/stackabletech/zookeeper-operator/pull/788
 
 ## [23.11.0] - 2023-11-24
 
