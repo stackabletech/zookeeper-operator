@@ -1054,6 +1054,7 @@ mod tests {
               zoo.cfg:
                 foo: bar
                 level: role
+                hello-from-role: "true"
             roleGroups:
               default:
                 configOverrides:
@@ -1061,12 +1062,15 @@ mod tests {
                     foo: bar
                     level: role-group
                     ssl.quorum.hostnameVerification: "false"
+                    hello-from-role-group: "true"
                 replicas: 3
         "#;
         let cm = build_config_map(zookeeper_yaml).data.unwrap();
         let config = cm.get("zoo.cfg").unwrap();
         assert!(config.contains("foo=bar"));
         assert!(config.contains("level=role-group"));
+        assert!(config.contains("hello-from-role=true"));
+        assert!(config.contains("hello-from-role-group=true"));
         assert!(config.contains(
             "authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider"
         ));
