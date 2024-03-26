@@ -1,6 +1,6 @@
 = Stackable Operator for Apache ZooKeeper
 :description: The Stackable Operator for Apache ZooKeeper is a Kubernetes operator that can manage Apache ZooKeeper ensembles. Learn about its features, resources, dependencies and demos, and see the list of supported ZooKeeper versions.
-:keywords: Stackable Operator, Hadoop, Apache ZooKeeper, Kubernetes, k8s, operator, engineer, big data, metadata, storage, cluster
+:keywords: Stackable Operator, Hadoop, Apache ZooKeeper, Kubernetes, k8s, operator, metadata, storage, cluster
 
 The Stackable Operator for Apache ZooKeeper is a Kubernetes Operator for deploying and managing
 https://zookeeper.apache.org/[Apache ZooKeeper] ensembles. Apache ZooKeeper is an open-source distributed coordination
@@ -48,8 +48,10 @@ components will also deploy a ZooKeeper ensemble. Here is the list of the demos 
 * xref:demos:nifi-kafka-druid-earthquake-data.adoc[]
 * xref:demos:nifi-kafka-druid-water-level-data.adoc[]
 
-== Supported Versions
+== Supported versions
 
-The Stackable Operator for Apache ZooKeeper currently supports the following versions of ZooKeeper:
+The Stackable Operator for Apache ZooKeeper currently supports the ZooKeeper versions listed below.
+To use a specific ZooKeeper version in your ZookeeperCluster, you have to specify an image - this is explained in the xref:concepts:product-image-selection.adoc[] documentation.
+The operator also supports running images from a custom registry or running entirely customized images; both of these cases are explained under xref:concepts:product-image-selection.adoc[] as well.
 
 include::partial$supported-versions.adoc[]
