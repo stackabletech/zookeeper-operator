@@ -1,7 +1,7 @@
 = Authentication
 
 The communication between nodes (server to server) is encrypted via TLS by default.
-In order to enforce TLS authentication for client-to-server communication, you can set an xref:home:concepts:authentication.adoc[AuthenticationClass] reference in the `spec.clusterConfig.authentication` property.
+In order to enforce TLS authentication for client-to-server communication, you can set an xref:concepts:authentication.adoc[AuthenticationClass] reference in the `spec.clusterConfig.authentication` property.
 
 Currently it is possible to configure a single form of authentication (of type TLS) by adding one (and only one) entry
 in the `authentication` sequence as shown in the example below. Additional authentication methods, such as Kerberos, are
@@ -28,5 +28,5 @@ and unauthenticated access to the ZooKeeper cluster is still possible.
 
 == Learn more
 
-* Read the xref:home:concepts:authentication.adoc[authentication concept] of the Stackable Data Platform.
+* Read the xref:concepts:authentication.adoc[authentication concept] of the Stackable Data Platform.
 * Read the {crd-docs}/authentication.stackable.tech/authenticationclass/v1alpha1/[AuthenticationClass reference {external-link-icon}^].

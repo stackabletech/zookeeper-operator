@@ -1,7 +1,7 @@
 = Using multiple role groups
 
 // abstract/summary
-ZooKeeper uses a unique ID called _myid_ to identify each server in the cluster. The Stackable Operator for Apache ZooKeeper assigns the _myid_ to each Pod from the https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#ordinal-index[ordinal index] given to the Pod by Kubernetes. This index is unique over the Pods in the StatefulSet of the xref:home:concepts:roles-and-role-groups.adoc[role group].
+ZooKeeper uses a unique ID called _myid_ to identify each server in the cluster. The Stackable Operator for Apache ZooKeeper assigns the _myid_ to each Pod from the https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#ordinal-index[ordinal index] given to the Pod by Kubernetes. This index is unique over the Pods in the StatefulSet of the xref:concepts:roles-and-role-groups.adoc[role group].
 
 When using multiple role groups in a cluster, this will lead to different ZooKeeper Pods using the same _myid_. Each role group is represented by its own StatefulSet, and therefore always identified starting with `0`.
 
