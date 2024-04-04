@@ -1,0 +1,4 @@
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+commands:
+  - script: kubectl get zookeeperznode/test-znode -o json -n $NAMESPACE | jq '.status.znodePath = "/znode-override"' | kubectl replace -f- --subresource=status

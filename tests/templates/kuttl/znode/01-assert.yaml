@@ -1,0 +1,10 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-znode
+data:
+  ZOOKEEPER_CHROOT: /znode-override
