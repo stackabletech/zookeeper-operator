@@ -713,6 +713,9 @@ pub struct ZookeeperZnodeSpec {
 #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZookeeperZnodeStatus {
+    /// The absolute ZNode allocated to the ZookeeperZnode. This will typically be set by the operator.
+    ///
+    /// This can be set explicitly by an administrator, such as when restoring from a backup.
     pub znode_path: Option<String>,
 }
 
