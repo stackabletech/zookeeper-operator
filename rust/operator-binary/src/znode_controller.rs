@@ -94,6 +94,11 @@ pub enum Error {
         cm: ObjectRef<ConfigMap>,
     },
 
+    #[snafu(display("failed to update status"))]
+    ApplyStatus {
+        source: stackable_operator::error::Error,
+    },
+
     #[snafu(display("error managing finalizer"))]
     Finalizer {
         source: finalizer::Error<Infallible>,
@@ -155,6 +160,7 @@ impl ReconcilerError for Error {
             Error::EnsureZnodeMissing { zk, .. } => Some(zk.clone().erase()),
             Error::BuildDiscoveryConfigMap { source: _ } => None,
             Error::ApplyDiscoveryConfigMap { cm, .. } => Some(cm.clone().erase()),
+            Error::ApplyStatus { .. } => None,
             Error::Finalizer { source: _ } => None,
             Error::ObjectMissingMetadataForOwnerRef { source: _ } => None,
             Error::DeleteOrphans { source: _ } => None,
@@ -209,7 +215,7 @@ pub async fn reconcile_znode(
         ctx.client
             .merge_patch_status(&*znode, &status)
             .await
-            .unwrap();
+            .context(ApplyStatusSnafu)?;
     }
 
     finalizer(
