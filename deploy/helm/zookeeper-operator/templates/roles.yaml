@@ -120,6 +120,7 @@ rules:
       - {{ include "operator.name" . }}.stackable.tech
     resources:
       - {{ include "operator.name" . }}clusters/status
+      - {{ include "operator.name" . }}znodes/status
     verbs:
       - patch
 {{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" }}

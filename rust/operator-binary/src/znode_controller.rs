@@ -1,7 +1,7 @@
 //! Reconciles state for ZooKeeper znodes between Kubernetes [`ZookeeperZnode`] objects and the ZooKeeper cluster
 //!
 //! See [`ZookeeperZnode`] for more details.
-use std::{convert::Infallible, sync::Arc};
+use std::{borrow::Cow, convert::Infallible, sync::Arc};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -19,9 +19,11 @@ use stackable_operator::{
     time::Duration,
 };
 use stackable_zookeeper_crd::{
-    security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, DOCKER_IMAGE_BASE_NAME,
+    security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, ZookeeperZnodeStatus,
+    DOCKER_IMAGE_BASE_NAME,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
+use tracing::{debug, info};
 
 use crate::{
     discovery::{self, build_discovery_configmaps},
@@ -180,14 +182,40 @@ pub async fn reconcile_znode(
     let client = &ctx.client;
 
     let zk = find_zk_of_znode(client, &znode).await;
-    // Use the uid (managed by k8s itself) rather than the object name, to ensure that malicious users can't trick the controller
-    // into letting them take over a znode owned by someone else
-    let znode_path = format!("/znode-{}", uid);
+    let mut default_status_updates: Option<ZookeeperZnodeStatus> = None;
+    // Store the znode path in the status rather than the object itself, to ensure that only K8s administrators can override it
+    let znode_path = match znode.status.as_ref().and_then(|s| s.znode_path.as_deref()) {
+        Some(znode_path) => {
+            debug!(znode.path = znode_path, "Using configured znode path");
+            Cow::Borrowed(znode_path)
+        }
+        None => {
+            // Default to the uid (managed by k8s itself) rather than the object name, to ensure that malicious users can't trick the controller
+            // into letting them take over a znode owned by someone else
+            let znode_path = format!("/znode-{}", uid);
+            info!(
+                znode.path = znode_path,
+                "No znode path set, setting to default"
+            );
+            default_status_updates
+                .get_or_insert_with(Default::default)
+                .znode_path = Some(znode_path.clone());
+            Cow::Owned(znode_path)
+        }
+    };
+
+    if let Some(status) = default_status_updates {
+        info!("Writing default configuration to status");
+        ctx.client
+            .merge_patch_status(&*znode, &status)
+            .await
+            .unwrap();
+    }
 
     finalizer(
         &client.get_api::<ZookeeperZnode>(&ns),
         &format!("{OPERATOR_NAME}/znode"),
-        znode,
+        znode.clone(),
         |ev| async {
             match ev {
                 finalizer::Event::Apply(znode) => {

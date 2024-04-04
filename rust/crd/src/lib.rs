@@ -695,6 +695,7 @@ impl ZookeeperPodRef {
     plural = "zookeeperznodes",
     shortname = "zno",
     shortname = "znode",
+    status = "ZookeeperZnodeStatus",
     namespaced,
     crates(
         kube_core = "stackable_operator::kube::core",
@@ -707,6 +708,12 @@ pub struct ZookeeperZnodeSpec {
     /// The reference to the ZookeeperCluster that this ZNode belongs to.
     #[serde(default)]
     pub cluster_ref: ClusterRef<ZookeeperCluster>,
+}
+
+#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperZnodeStatus {
+    pub znode_path: Option<String>,
 }
 
 #[cfg(test)]
