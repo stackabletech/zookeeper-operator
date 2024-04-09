@@ -2,6 +2,14 @@
 :description: The Stackable operator for Apache ZooKeeper is a Kubernetes operator that can manage Apache ZooKeeper ensembles. Learn about its features, resources, dependencies and demos, and see the list of supported ZooKeeper versions.
 :keywords: Stackable operator, Hadoop, Apache ZooKeeper, Kubernetes, k8s, operator, metadata, storage, cluster
 :zookeeper: https://zookeeper.apache.org/
+:github: https://github.com/stackabletech/zookeeper-operator/
+:crd: {crd-docs}/zookeeper.stackable.tech/zookeepercluster/v1alpha1/
+:feature-tracker: https://features.stackable.tech/unified
+
+[.link-bar]
+* {github}[GitHub {external-link-icon}^]
+* {feature-tracker}[Feature Tracker {external-link-icon}^]
+* {crd}[CRD documentation {external-link-icon}^]
 
 The Stackable operator for Apache ZooKeeper is a Kubernetes operator for deploying and managing {zookeeper}[Apache ZooKeeper] ensembles.
 Apache ZooKeeper is an open-source distributed coordination service that facilitates synchronization, configuration management and leader election in distributed systems.
@@ -52,3 +60,9 @@ To use a specific ZooKeeper version in your ZookeeperCluster, you have to specif
 The operator also supports running images from a custom registry or running entirely customized images; both of these cases are explained under xref:concepts:product-image-selection.adoc[] as well.
 
 include::partial$supported-versions.adoc[]
+
+== Useful links
+
+* The {github}[zookeeper-operator {external-link-icon}^] GitHub repository
+* The operator feature overview in the {feature-tracker}[feature tracker {external-link-icon}^]
+* The {crd}[ZookeeperCluster {external-link-icon}^] CRD documentation
