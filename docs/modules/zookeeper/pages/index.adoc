@@ -1,45 +1,42 @@
 = Stackable Operator for Apache ZooKeeper
-:description: The Stackable Operator for Apache ZooKeeper is a Kubernetes operator that can manage Apache ZooKeeper ensembles. Learn about its features, resources, dependencies and demos, and see the list of supported ZooKeeper versions.
-:keywords: Stackable Operator, Hadoop, Apache ZooKeeper, Kubernetes, k8s, operator, metadata, storage, cluster
+:description: The Stackable operator for Apache ZooKeeper is a Kubernetes operator that can manage Apache ZooKeeper ensembles. Learn about its features, resources, dependencies and demos, and see the list of supported ZooKeeper versions.
+:keywords: Stackable operator, Hadoop, Apache ZooKeeper, Kubernetes, k8s, operator, metadata, storage, cluster
+:zookeeper: https://zookeeper.apache.org/
 
-The Stackable Operator for Apache ZooKeeper is a Kubernetes Operator for deploying and managing
-https://zookeeper.apache.org/[Apache ZooKeeper] ensembles. Apache ZooKeeper is an open-source distributed coordination
-service that facilitates synchronization, configuration management and leader election in distributed systems. ZooKeeper
-is often used for these tasks in the Apache Hadoop ecosystem. Within the Stackable Platform, the Stackable Operators for
-xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka], 
-xref:nifi:index.adoc[Apache NiFi] and xref:druid:index.adoc[Apache Druid] depend on the ZooKeeper Operator.
+The Stackable operator for Apache ZooKeeper is a Kubernetes operator for deploying and managing {zookeeper}[Apache ZooKeeper] ensembles.
+Apache ZooKeeper is an open-source distributed coordination service that facilitates synchronization, configuration management and leader election in distributed systems.
+ZooKeeper is often used for these tasks in the Apache Hadoop ecosystem.
+Within the Stackable Platform, the Stackable operators for xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka],  xref:nifi:index.adoc[Apache NiFi] and xref:druid:index.adoc[Apache Druid] depend on the ZooKeeper operator.
 
 == Getting started
 
-Get started with Apache ZooKeeper and the Stackable Operator by following the xref:getting_started/index.adoc[Getting
-started] guide, it will guide you through the xref:getting_started/installation.adoc[installation] process. Afterwards,
-consult the xref:usage_guide/index.adoc[Usage guide] to learn more about configuring ZooKeeper for your needs. You can
-also deploy a <<demos, demo>> to see an example deployment of ZooKeeper together with other data products.
+Get started with Apache ZooKeeper and the Stackable operator by following the xref:getting_started/index.adoc[Getting started] guide, it will guide you through the xref:getting_started/installation.adoc[installation] process.
+Afterwards, consult the xref:usage_guide/index.adoc[Usage guide] to learn more about configuring ZooKeeper for your needs.
+You can also deploy a <<demos, demo>> to see an example deployment of ZooKeeper together with other data products.
 
 == Operator model
 
-The Operator manages two custom resources: _ZookeeperCluster_ and _ZookeeperZnode_. ZooKeeper only has a single process
-that it runs, so the cluster resource only has a single corresponding xref:concepts:roles-and-role-groups.adoc[role]
-called _server_.
+The operator manages two custom resources: _ZookeeperCluster_ and _ZookeeperZnode_.
+ZooKeeper only has a single process that it runs, so the cluster resource only has a single corresponding xref:concepts:roles-and-role-groups.adoc[role] called _server_.
 
-image::zookeeper_overview.drawio.svg[A diagram depicting the Kubernetes resources created by the Stackable Operator for Apache ZooKeeper]
+image::zookeeper_overview.drawio.svg[A diagram depicting the Kubernetes resources created by the Stackable operator for Apache ZooKeeper]
 
-For every role group the Operator creates a ConfigMap and StatefulSet which can have multiple replicas (Pods). Every
-role group is accessible through its own Service, and there is a Service for the whole Cluster.
+For every role group the operator creates a ConfigMap and StatefulSet which can have multiple replicas (Pods).
+Every role group is accessible through its own Service, and there is a Service for the whole Cluster.
 
-The Operator creates a xref:concepts:service_discovery.adoc[service discovery ConfigMap] for the ZooKeeper instance, as
-well as for each ZNode. The discovery ConfigMaps contain information on how to connect to ZooKeeper. The ZNode discovery
-ConfigMap give access information for the ZNode. xref:zookeeper:znodes.adoc[Learn more about ZNodes].
+The operator creates a xref:concepts:service_discovery.adoc[service discovery ConfigMap] for the ZooKeeper instance, as well as for each ZNode.
+The discovery ConfigMaps contain information on how to connect to ZooKeeper.
+The ZNode discovery ConfigMap give access information for the ZNode.
+xref:zookeeper:znodes.adoc[Learn more about ZNodes].
 
 == Dependencies
 
-Apache ZooKeeper and the Stackable Operator have no dependencies besides the xref:commons-operator:index.adoc[], xref:secret-operator:index.adoc[] and xref:listener-operator:index.adoc[].
+Apache ZooKeeper and the Stackable operator have no dependencies besides the xref:commons-operator:index.adoc[], xref:secret-operator:index.adoc[] and xref:listener-operator:index.adoc[].
 
 == [[demos]]Demos
 
-Apache ZooKeeper is a dependency of xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS],
-xref:kafka:index.adoc[Apache Kafka] and xref:nifi:index.adoc[Apache NiFi], thus any demo that uses one or more of these
-components will also deploy a ZooKeeper ensemble. Here is the list of the demos that include ZooKeeper:
+Apache ZooKeeper is a dependency of xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka] and xref:nifi:index.adoc[Apache NiFi], thus any demo that uses one or more of these components will also deploy a ZooKeeper ensemble.
+Here is the list of the demos that include ZooKeeper:
 
 * xref:demos:data-lakehouse-iceberg-trino-spark.adoc[]
 * xref:demos:hbase-hdfs-load-cycling-data.adoc[]
@@ -50,7 +47,7 @@ components will also deploy a ZooKeeper ensemble. Here is the list of the demos 
 
 == Supported versions
 
-The Stackable Operator for Apache ZooKeeper currently supports the ZooKeeper versions listed below.
+The Stackable operator for Apache ZooKeeper currently supports the ZooKeeper versions listed below.
 To use a specific ZooKeeper version in your ZookeeperCluster, you have to specify an image - this is explained in the xref:concepts:product-image-selection.adoc[] documentation.
 The operator also supports running images from a custom registry or running entirely customized images; both of these cases are explained under xref:concepts:product-image-selection.adoc[] as well.
 
