@@ -3,7 +3,7 @@
 :keywords: Stackable operator, Hadoop, Apache ZooKeeper, Kubernetes, k8s, operator, metadata, storage, cluster
 :zookeeper: https://zookeeper.apache.org/
 :github: https://github.com/stackabletech/zookeeper-operator/
-:crd: {crd-docs-base-url}/airflow-operator/{crd-docs-version}/
+:crd: {crd-docs-base-url}/zookeeper-operator/{crd-docs-version}/
 :crd-zookeepercluster: {crd-docs}/zookeeper.stackable.tech/zookeepercluster/v1alpha1/
 :crd-zookeeperznode: {crd-docs}/zookeeper.stackable.tech/zookeeperznode/v1alpha1/
 :feature-tracker: https://features.stackable.tech/unified
