@@ -100,3 +100,20 @@ The Stackable Operators for Kafka and Druid use the discovery ConfigMaps to conn
 == What's next
 
 You can find out more about the discovery ConfigMap xref:discovery.adoc[] and the xref:znodes.adoc[] in the concepts documentation.
+
+== Restoring from backups
+
+For security reasons, a unique ZNode path is generated every time the same ZookeeperZnode object is recreated, even if it has the same name.
+
+If a ZookeeperZnode needs to be associated with an existing ZNode path, the field `status.znodePath` can be set to
+the desired path. Note that since this is a subfield of `status`, it must explicitly be updated on the `status` subresource,
+and requires RBAC permissions to replace the `zookeeperznodes/status` resource. For example:
+
+[source,bash]
+----
+kubectl get zookeeperznode/test-znode -o json -n $NAMESPACE \
+        | jq '.status.znodePath = "/znode-override"' \
+        | kubectl replace -f- --subresource=status
+----
+
+NOTE: The auto-generated ZNode will still be kept, and should be cleaned up by an administrator.
