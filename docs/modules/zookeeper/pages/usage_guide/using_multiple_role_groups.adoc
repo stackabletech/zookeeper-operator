@@ -29,4 +29,4 @@ spec:
 
 <1> The `myidOffset` property set to 10 for the secondary role group
 
-The `secondary` role group _myid_ starts from id `10`. The `primary` role group will start from `0`. This means, the replicas of the role group `primary` should not be scaled higher than `10` which results in `10` `primary` Pods using a _myid_ from `0` to `9`, followed by the `secondary` Pods starting at _myid_ `10`. 
+The `secondary` role group _myid_ starts from id `10`. The `primary` role group will start from `0`. This means, the replicas of the role group `primary` should not be scaled higher than `10` which results in `10` `primary` Pods using a _myid_ from `0` to `9`, followed by the `secondary` Pods starting at _myid_ `10`.
