@@ -2233,8 +2233,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-zookeeper"
-version = "0.3.0"
-source = "git+https://github.com/stackabletech/tokio-zookeeper.git?branch=bugfix/whatever-thread-safety#2d98ea35ada2f122aab5dfaadf24fac40ed2e0b7"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a9a838bc64b4adf9736893e0687f63cc0c04297045a5fc946210963420987be"
 dependencies = [
  "async-trait",
  "byteorder",

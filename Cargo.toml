@@ -27,7 +27,7 @@ stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git",
 product-config = { git = "https://github.com/stackabletech/product-config.git", tag = "0.6.0" }
 strum = { version = "0.25", features = ["derive"] }
 tokio = { version = "1.29", features = ["full"] }
-tokio-zookeeper = "0.3"
+tokio-zookeeper = "0.4"
 tracing = "0.1"
 
 # [patch."https://github.com/stackabletech/operator-rs.git"]
@@ -35,4 +35,4 @@ tracing = "0.1"
 
 [patch.crates-io]
 # tokio-zookeeper = { path = "../tokio-zookeeper" }
-tokio-zookeeper = { git = "https://github.com/stackabletech/tokio-zookeeper.git", branch = "bugfix/whatever-thread-safety" }
+# tokio-zookeeper = { git = "https://github.com/stackabletech/tokio-zookeeper.git", branch = "bugfix/whatever-thread-safety" }
