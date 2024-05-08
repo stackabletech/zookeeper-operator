@@ -14,7 +14,6 @@ stackable-zookeeper-crd = { path = "../crd" }
 
 anyhow.workspace = true
 clap.workspace = true
-failure.workspace = true
 fnv.workspace = true
 futures.workspace = true
 indoc.workspace = true
