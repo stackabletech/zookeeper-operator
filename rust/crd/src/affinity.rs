@@ -96,8 +96,7 @@ mod tests {
                             namespaces: None,
                             topology_key: "kubernetes.io/hostname".to_string(),
                             // NOTE (@Techassi): Both these fields were added in
-                            // Kubernetes 1.30, and cannot be used by use for
-                            // now.
+                            // Kubernetes 1.30, and cannot be used for now.
                             match_label_keys: None,
                             mismatch_label_keys: None,
                         },
