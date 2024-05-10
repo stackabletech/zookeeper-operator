@@ -368,38 +368,32 @@ mod znode_mgmt {
         AddrResolution { addr: String },
         #[snafu(display("failed to connect to {}", addr))]
         Connect {
-            #[snafu(source(from(failure::Error, failure::Error::compat)))]
-            source: failure::Compat<failure::Error>,
+            source: tokio_zookeeper::error::Error,
             addr: SocketAddr,
         },
         #[snafu(display("protocol error creating znode {}", path))]
         CreateZnodeProtocol {
-            #[snafu(source(from(failure::Error, failure::Error::compat)))]
-            source: failure::Compat<failure::Error>,
+            source: tokio_zookeeper::error::Error,
             path: String,
         },
         #[snafu(display("failed to create znode {}", path))]
         CreateZnode {
-            #[snafu(source(from(tokio_zookeeper::error::Create, failure::Fail::compat)))]
-            source: failure::Compat<tokio_zookeeper::error::Create>,
+            source: tokio_zookeeper::error::Create,
             path: String,
         },
         #[snafu(display("protocol error deleting znode {}", path))]
         DeleteZnodeProtocol {
-            #[snafu(source(from(failure::Error, failure::Error::compat)))]
-            source: failure::Compat<failure::Error>,
+            source: tokio_zookeeper::error::Error,
             path: String,
         },
         #[snafu(display("failed to delete znode {}", path))]
         DeleteZnode {
-            #[snafu(source(from(tokio_zookeeper::error::Delete, failure::Fail::compat)))]
-            source: failure::Compat<tokio_zookeeper::error::Delete>,
+            source: tokio_zookeeper::error::Delete,
             path: String,
         },
         #[snafu(display("failed to find children to delete of {}", path))]
         DeleteZnodeFindChildrenProtocol {
-            #[snafu(source(from(failure::Error, failure::Error::compat)))]
-            source: failure::Compat<failure::Error>,
+            source: tokio_zookeeper::error::Error,
             path: String,
         },
     }
