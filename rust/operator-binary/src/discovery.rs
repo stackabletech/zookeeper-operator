@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, num::TryFromIntError};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::{ConfigMapBuilder, ObjectMetaBuilder, ObjectMetaBuilderError},
+    builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
     commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
     kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
@@ -17,7 +17,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     #[snafu(display("object {} is missing metadata to build owner reference", zk))]
     ObjectMissingMetadataForOwnerRef {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::builder::meta::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
 
@@ -43,7 +43,7 @@ pub enum Error {
 
     #[snafu(display("could not find Endpoints for {}", svc))]
     FindEndpoints {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::client::Error,
         svc: ObjectRef<Service>,
     },
 
@@ -52,11 +52,13 @@ pub enum Error {
 
     #[snafu(display("failed to build ConfigMap"))]
     BuildConfigMap {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::builder::configmap::Error,
     },
 
     #[snafu(display("failed to build object meta data"))]
-    ObjectMeta { source: ObjectMetaBuilderError },
+    ObjectMeta {
+        source: stackable_operator::builder::meta::Error,
+    },
 }
 
 /// Builds discovery [`ConfigMap`]s for connecting to a [`ZookeeperCluster`] for all expected scenarios

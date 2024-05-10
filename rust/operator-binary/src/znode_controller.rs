@@ -48,12 +48,12 @@ pub enum Error {
 
     #[snafu(display("could not find {}", zk))]
     FindZk {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::client::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
 
     ZkDoesNotExist {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::client::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
 
@@ -62,7 +62,7 @@ pub enum Error {
 
     #[snafu(display("could not find server role service for {}", zk))]
     FindZkSvc {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::client::Error,
         zk: ObjectRef<ZookeeperCluster>,
     },
 
@@ -88,7 +88,7 @@ pub enum Error {
 
     #[snafu(display("failed to save discovery information to {}", cm))]
     ApplyDiscoveryConfigMap {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::cluster_resources::Error,
         cm: ObjectRef<ConfigMap>,
     },
 
@@ -97,14 +97,9 @@ pub enum Error {
         source: finalizer::Error<Infallible>,
     },
 
-    #[snafu(display("object is missing metadata to build owner reference"))]
-    ObjectMissingMetadataForOwnerRef {
-        source: stackable_operator::error::Error,
-    },
-
     #[snafu(display("failed to delete orphaned resources"))]
     DeleteOrphans {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::cluster_resources::Error,
     },
 
     #[snafu(display("object has no namespace"))]
@@ -154,7 +149,6 @@ impl ReconcilerError for Error {
             Error::BuildDiscoveryConfigMap { source: _ } => None,
             Error::ApplyDiscoveryConfigMap { cm, .. } => Some(cm.clone().erase()),
             Error::Finalizer { source: _ } => None,
-            Error::ObjectMissingMetadataForOwnerRef { source: _ } => None,
             Error::DeleteOrphans { source: _ } => None,
             Error::ObjectHasNoNamespace => None,
             Error::FailedToInitializeSecurityContext { source: _ } => None,
@@ -333,8 +327,9 @@ async fn find_zk_of_znode(
         match client.get::<ZookeeperCluster>(zk_name, zk_ns).await {
             Ok(zk) => Ok(zk),
             Err(err) => match &err {
-                stackable_operator::error::Error::KubeError {
+                stackable_operator::client::Error::GetResource {
                     source: kube::Error::Api(kube::core::ErrorResponse { ref reason, .. }),
+                    ..
                 } if reason == "NotFound" => Err(err).with_context(|_| ZkDoesNotExistSnafu {
                     zk: ObjectRef::new(zk_name).within(zk_ns),
                 }),

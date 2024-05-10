@@ -12,7 +12,10 @@ use stackable_operator::{
             PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
         },
     },
-    config::{fragment, fragment::Fragment, fragment::ValidationError, merge::Merge},
+    config::{
+        fragment::{self, Fragment, ValidationError},
+        merge::Merge,
+    },
     crd::ClusterRef,
     k8s_openapi::{
         api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
@@ -20,7 +23,7 @@ use stackable_operator::{
     },
     kube::{runtime::reflector::ObjectRef, CustomResource, ResourceExt},
     memory::{BinaryMultiple, MemoryQuantity},
-    product_config_utils::{ConfigError, Configuration},
+    product_config_utils::{self, Configuration},
     product_logging::{self, spec::Logging},
     role_utils::{GenericRoleConfig, Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
@@ -100,7 +103,7 @@ pub enum Error {
 
     #[snafu(display("failed to convert java heap config to unit [{unit}]"))]
     FailedToConvertJavaHeap {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::memory::Error,
         unit: String,
     },
 }
@@ -324,13 +327,9 @@ impl Configuration for ZookeeperConfigFragment {
         &self,
         resource: &Self::Configurable,
         _role_name: &str,
-    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
-        let logging_framework =
-            resource
-                .logging_framework()
-                .map_err(|e| ConfigError::InvalidConfiguration {
-                    reason: e.to_string(),
-                })?;
+    ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
+        let logging_framework = resource.logging_framework();
+
         let jvm_flags = [
             format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
             match logging_framework {
@@ -339,6 +338,7 @@ impl Configuration for ZookeeperConfigFragment {
             },
             format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
         ].join(" ");
+
         Ok([
             (
                 ZookeeperConfig::MYID_OFFSET.to_string(),
@@ -362,7 +362,7 @@ impl Configuration for ZookeeperConfigFragment {
         &self,
         _resource: &Self::Configurable,
         _role_name: &str,
-    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+    ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
         Ok(BTreeMap::new())
     }
 
@@ -371,7 +371,7 @@ impl Configuration for ZookeeperConfigFragment {
         _resource: &Self::Configurable,
         _role_name: &str,
         file: &str,
-    ) -> Result<BTreeMap<String, Option<String>>, ConfigError> {
+    ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
         let mut result = BTreeMap::new();
         if file == ZOOKEEPER_PROPERTIES_FILE {
             if let Some(init_limit) = self.init_limit {
@@ -456,7 +456,7 @@ pub enum LoggingFramework {
 }
 
 impl ZookeeperCluster {
-    pub fn logging_framework(&self) -> Result<LoggingFramework, Error> {
+    pub fn logging_framework(&self) -> LoggingFramework {
         let version = self
             .spec
             .image
@@ -475,7 +475,7 @@ impl ZookeeperCluster {
             LoggingFramework::LOGBACK
         };
 
-        Ok(framework)
+        framework
     }
 
     /// The name of the role-level load-balanced Kubernetes `Service`
