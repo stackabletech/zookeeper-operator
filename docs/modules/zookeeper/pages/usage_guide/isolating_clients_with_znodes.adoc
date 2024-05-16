@@ -6,7 +6,7 @@ This guide shows you how to set up multiple ZNodes to use with different product
 
 == Prerequisites
 
-To follow this guide, you should have 
+To follow this guide, you should have
 
 * Access to a Kubernetes cluster
 * The Stackable Operator for Apache ZooKeeper installed in said cluster

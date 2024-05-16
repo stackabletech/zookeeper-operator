@@ -8,7 +8,14 @@ All notable changes to this project will be documented in this file.
 
 - ZNode path override ([#799]).
 
+
+### Changed
+
+- Bump `built`, `clap`, `rstest`, `stackable-operator` and `strum`
+  dependencies ([#812]).
+
 [#799]: https://github.com/stackabletech/zookeeper-operator/pull/799
+[#812]: https://github.com/stackabletech/zookeeper-operator/pull/812
 
 ## [24.3.0] - 2024-03-20
 

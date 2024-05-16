@@ -8,9 +8,13 @@ use std::collections::BTreeMap;
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
-    builder::{
-        ContainerBuilder, PodBuilder, SecretFormat, SecretOperatorVolumeSourceBuilder,
-        SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
+    builder::pod::{
+        container::ContainerBuilder,
+        volume::{
+            SecretFormat, SecretOperatorVolumeSourceBuilder,
+            SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
+        },
+        PodBuilder,
     },
     client::Client,
     commons::authentication::AuthenticationClassProvider,

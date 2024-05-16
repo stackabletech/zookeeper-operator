@@ -15,7 +15,7 @@ const SUPPORTED_AUTHENTICATION_CLASS: [&str; 1] = ["TLS"];
 pub enum Error {
     #[snafu(display("failed to retrieve AuthenticationClass [{}]", authentication_class))]
     AuthenticationClassRetrieval {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::client::Error,
         authentication_class: ObjectRef<AuthenticationClass>,
     },
     // TODO: Adapt message if multiple authentication classes are supported

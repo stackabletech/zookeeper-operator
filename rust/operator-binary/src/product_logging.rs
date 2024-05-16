@@ -1,6 +1,6 @@
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::ConfigMapBuilder,
+    builder::configmap::ConfigMapBuilder,
     client::Client,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::ResourceExt,
@@ -23,7 +23,7 @@ pub enum Error {
 
     #[snafu(display("failed to retrieve the ConfigMap {cm_name}"))]
     ConfigMapNotFound {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::client::Error,
         cm_name: String,
     },
 
@@ -100,7 +100,7 @@ pub fn extend_role_group_config_map(
         choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
     }) = logging.containers.get(&Container::Zookeeper)
     {
-        match zk.logging_framework().context(CrdValidationFailureSnafu)? {
+        match zk.logging_framework() {
             LoggingFramework::LOG4J => {
                 cm_builder.add_data(
                     LOG4J_CONFIG_FILE,
