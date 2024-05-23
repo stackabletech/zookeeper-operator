@@ -466,16 +466,14 @@ impl ZookeeperCluster {
             "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
         ];
 
-        let framework = if zookeeper_versions_with_log4j
+        if zookeeper_versions_with_log4j
             .into_iter()
             .any(|prefix| version.starts_with(prefix))
         {
             LoggingFramework::LOG4J
         } else {
             LoggingFramework::LOGBACK
-        };
-
-        framework
+        }
     }
 
     /// The name of the role-level load-balanced Kubernetes `Service`
