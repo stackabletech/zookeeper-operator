@@ -1,4 +1,4 @@
-== Quorum hostname verification
+== Quorum hostname verification failing
 
 In the past we have noticed problems with mutual TLS in quorums, notably with the hostname verification.
 We reported the problems upstream in https://issues.apache.org/jira/browse/ZOOKEEPER-4790[ZOOKEEPER-4790].
@@ -16,8 +16,6 @@ javax.net.ssl.SSLPeerUnverifiedException: Certificate for <100.64.11.99> doesn't
 
 In case you are running into issues with hostname verification, a workaround - until the problem is fixed - is to turn off hostname verification for the quorum.
 
-WARNING: This imposes a security risk, so we don't disable the check by default.
-
 [source,yaml]
 ----
 servers:
@@ -25,3 +23,5 @@ servers:
     zoo.cfg:
       ssl.quorum.hostnameVerification: "false"
 ----
+
+WARNING: This imposes a security risk, so we don't disable the check by default.
