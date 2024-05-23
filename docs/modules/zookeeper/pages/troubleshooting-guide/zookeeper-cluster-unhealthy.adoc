@@ -1,3 +1,5 @@
+= Zookeeper cluster unhealthy
+
 == Quorum hostname verification failing
 
 In the past we have noticed problems with mutual TLS in quorums, notably with the hostname verification.
