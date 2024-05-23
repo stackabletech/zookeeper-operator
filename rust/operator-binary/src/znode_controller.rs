@@ -96,7 +96,7 @@ pub enum Error {
 
     #[snafu(display("failed to update status"))]
     ApplyStatus {
-        source: stackable_operator::error::Error,
+        source: stackable_operator::client::Error,
     },
 
     #[snafu(display("error managing finalizer"))]
