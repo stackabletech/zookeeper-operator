@@ -42,7 +42,7 @@ servers:
 In the past we have noticed problems with mutual TLS in quorums, notably with the hostname verification.
 We reported the problems upstream in https://issues.apache.org/jira/browse/ZOOKEEPER-4790[ZOOKEEPER-4790].
 
-In case you are running into issues with hostname verification, a workaround - until the problem is fixed - is to turn of hostname verification for the quorum.
+In case you are running into issues with hostname verification, a workaround - until the problem is fixed - is to turn off hostname verification for the quorum.
 
 WARNING: This imposes a security risk, so we don't disable the check default.
 
