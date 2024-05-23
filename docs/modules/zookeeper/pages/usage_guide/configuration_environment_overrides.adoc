@@ -37,6 +37,23 @@ servers:
       replicas: 1
 ----
 
+==== Turn off quorum hostname verification
+
+In the past we have noticed problems with mutual TLS in quorums, notably with the hostname verification.
+We reported the problems upstream in https://issues.apache.org/jira/browse/ZOOKEEPER-4790[ZOOKEEPER-4790].
+
+A workaround - until the problem is fixed - is to turn of hostname verification for the quorum.
+
+WARNING: This imposes a security risk, so we don't disable the check default.
+
+[source,yaml]
+----
+servers:
+  configOverrides:
+    zoo.cfg:
+      ssl.quorum.hostnameVerification: "false"
+----
+
 All property values must be strings.
 
 For a full list of configuration options we refer to the Apache ZooKeeper https://zookeeper.apache.org/doc/r3.9.2/zookeeperAdmin.html#sc_configuration[Configuration Reference].
