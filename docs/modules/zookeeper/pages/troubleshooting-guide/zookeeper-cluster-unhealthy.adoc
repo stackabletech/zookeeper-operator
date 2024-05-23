@@ -5,7 +5,7 @@
 In the past we have noticed problems with mutual TLS in quorums, notably with the hostname verification.
 We reported the problems upstream in https://issues.apache.org/jira/browse/ZOOKEEPER-4790[ZOOKEEPER-4790].
 
-The execption looks something like
+The exception looks something like
 
 [source]
 ----
