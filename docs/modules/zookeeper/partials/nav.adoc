@@ -18,6 +18,8 @@
 *** xref:zookeeper:usage_guide/operations/pod-placement.adoc[]
 *** xref:zookeeper:usage_guide/operations/pod-disruptions.adoc[]
 *** xref:zookeeper:usage_guide/operations/graceful-shutdown.adoc[]
+* xref:zookeeper:troubleshooting-guide/index.adoc[]
+** xref:zookeeper:troubleshooting-guide/zookeeper-cluster-unhealthy.adoc[]
 * xref:zookeeper:reference/index.adoc[]
 ** xref:zookeeper:reference/crds.adoc[]
 *** {crd-docs}/zookeeper.stackable.tech/zookeepercluster/v1alpha1/[ZookeeperCluster {external-link-icon}^]

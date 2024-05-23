@@ -1,0 +1,3 @@
+= Troubleshooting guide
+
+This section tries to help you in case something isn't working as expected.

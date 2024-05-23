@@ -1,0 +1,27 @@
+== Quorum hostname verification
+
+In the past we have noticed problems with mutual TLS in quorums, notably with the hostname verification.
+We reported the problems upstream in https://issues.apache.org/jira/browse/ZOOKEEPER-4790[ZOOKEEPER-4790].
+
+The execption looks something like
+
+[source]
+----
+2024-01-23 07:01:46,432 [myid:] - INFO  [ListenerHandler-zk-server-default-0.zka1-zk-server-default.default.svc.cluster.local/100.64.9.69:3888:o.a.z.s.q.QuorumCnxManager$Listener$ListenerHandler@1076] - Received connection request from /100.64.11.99:58368
+2024-01-23 07:01:46,446 [myid:] - ERROR [ListenerHandler-zk-server-default-0.zka1-zk-server-default.default.svc.cluster.local/100.64.9.69:3888:o.a.z.c.ZKTrustManager@161] - Failed to verify host address: 100.64.11.99
+javax.net.ssl.SSLPeerUnverifiedException: Certificate for <100.64.11.99> doesn't match any of the subject alternative names: [zk-server-default.default.svc.cluster.local, zk-server-default-1.zk-server-default.default.svc.cluster.local, 10.8.XXX.XXX, 10.8.XXX.XXX, 10.8.XXX.XXX, 10.XXX.XXX.XXX, 10.8.XXX.XXX, 10.8.XXX.XXX, 10.8.XXX.XXX, 10.XXX.XXX.XXX]
+	at org.apache.zookeeper.common.ZKHostnameVerifier.matchIPAddress(ZKHostnameVerifier.java:197)
+	at org.apache.zookeeper.common.ZKHostnameVerifier.verify(ZKHostnameVerifier.java:165)
+----
+
+In case you are running into issues with hostname verification, a workaround - until the problem is fixed - is to turn off hostname verification for the quorum.
+
+WARNING: This imposes a security risk, so we don't disable the check by default.
+
+[source,yaml]
+----
+servers:
+  configOverrides:
+    zoo.cfg:
+      ssl.quorum.hostnameVerification: "false"
+----
