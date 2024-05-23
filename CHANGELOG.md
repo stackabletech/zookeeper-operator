@@ -8,7 +8,6 @@ All notable changes to this project will be documented in this file.
 
 - ZNode path override ([#799]).
 
-
 ### Changed
 
 - Bump `built`, `clap`, `rstest`, `stackable-operator` and `strum`
