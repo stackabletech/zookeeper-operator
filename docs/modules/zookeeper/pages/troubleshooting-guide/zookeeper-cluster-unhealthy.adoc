@@ -26,4 +26,4 @@ servers:
       ssl.quorum.hostnameVerification: "false"
 ----
 
-WARNING: This imposes a security risk, so we don't disable the check by default.
+WARNING: This imposes a security risk, so we don't disable the check by default. Any possessor of a certificate signed by the ca (even for a totally different host) can pretend to be a Zookeeper server to a Zookeeper server.
