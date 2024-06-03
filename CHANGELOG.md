@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- ZNode path override ([#799]).
+- Allow overriding ZNode path by setting `status.znodePath` ([#799]).
 
 ### Changed
 
