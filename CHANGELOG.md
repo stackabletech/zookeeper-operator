@@ -13,8 +13,14 @@ All notable changes to this project will be documented in this file.
 - Bump `built`, `clap`, `rstest`, `stackable-operator` and `strum`
   dependencies ([#812]).
 
+### Fixed
+
+- Processing of corrupted log events fixed; If errors occur, the error
+  messages are added to the log event ([#821]).
+
 [#799]: https://github.com/stackabletech/zookeeper-operator/pull/799
 [#812]: https://github.com/stackabletech/zookeeper-operator/pull/812
+[#821]: https://github.com/stackabletech/zookeeper-operator/pull/821
 
 ## [24.3.0] - 2024-03-20
 
