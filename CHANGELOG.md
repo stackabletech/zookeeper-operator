@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Allow overriding ZNode path by setting `status.znodePath` ([#799]).
+
 ### Changed
 
 - Bump `built`, `clap`, `rstest`, `stackable-operator` and `strum`
@@ -14,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - Processing of corrupted log events fixed; If errors occur, the error
   messages are added to the log event ([#821]).
 
+[#799]: https://github.com/stackabletech/zookeeper-operator/pull/799
 [#812]: https://github.com/stackabletech/zookeeper-operator/pull/812
 [#821]: https://github.com/stackabletech/zookeeper-operator/pull/821
 

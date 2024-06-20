@@ -7561,10 +7561,22 @@ spec:
                       type: string
                   type: object
               type: object
+            status:
+              nullable: true
+              properties:
+                znodePath:
+                  description: |-
+                    The absolute ZNode allocated to the ZookeeperZnode. This will typically be set by the operator.
+
+                    This can be set explicitly by an administrator, such as when restoring from a backup.
+                  nullable: true
+                  type: string
+              type: object
           required:
             - spec
           title: ZookeeperZnode
           type: object
       served: true
       storage: true
-      subresources: {}
+      subresources:
+        status: {}

@@ -466,16 +466,14 @@ impl ZookeeperCluster {
             "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
         ];
 
-        let framework = if zookeeper_versions_with_log4j
+        if zookeeper_versions_with_log4j
             .into_iter()
             .any(|prefix| version.starts_with(prefix))
         {
             LoggingFramework::LOG4J
         } else {
             LoggingFramework::LOGBACK
-        };
-
-        framework
+        }
     }
 
     /// The name of the role-level load-balanced Kubernetes `Service`
@@ -695,6 +693,7 @@ impl ZookeeperPodRef {
     plural = "zookeeperznodes",
     shortname = "zno",
     shortname = "znode",
+    status = "ZookeeperZnodeStatus",
     namespaced,
     crates(
         kube_core = "stackable_operator::kube::core",
@@ -707,6 +706,15 @@ pub struct ZookeeperZnodeSpec {
     /// The reference to the ZookeeperCluster that this ZNode belongs to.
     #[serde(default)]
     pub cluster_ref: ClusterRef<ZookeeperCluster>,
+}
+
+#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperZnodeStatus {
+    /// The absolute ZNode allocated to the ZookeeperZnode. This will typically be set by the operator.
+    ///
+    /// This can be set explicitly by an administrator, such as when restoring from a backup.
+    pub znode_path: Option<String>,
 }
 
 #[cfg(test)]
