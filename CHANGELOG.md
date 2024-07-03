@@ -20,11 +20,12 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
-- Support for `3.8.3`, which was deprecated in SDP `24.3` ([#XXX]).
+- Support for `3.8.3`, which was deprecated in SDP `24.3` ([#832]).
 
 [#799]: https://github.com/stackabletech/zookeeper-operator/pull/799
 [#812]: https://github.com/stackabletech/zookeeper-operator/pull/812
 [#821]: https://github.com/stackabletech/zookeeper-operator/pull/821
+[#832]: https://github.com/stackabletech/zookeeper-operator/pull/832
 
 ## [24.3.0] - 2024-03-20
 
