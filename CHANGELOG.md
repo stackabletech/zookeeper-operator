@@ -10,8 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Bump `built`, `clap`, `rstest`, `stackable-operator` and `strum`
-  dependencies ([#812]).
+- Bump `stackable-operator` to 0.70.0, `product-config` to 0.7.0, and other dependencies ([#812],
+  [#833]).
 
 ### Fixed
 
@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 [#812]: https://github.com/stackabletech/zookeeper-operator/pull/812
 [#821]: https://github.com/stackabletech/zookeeper-operator/pull/821
 [#832]: https://github.com/stackabletech/zookeeper-operator/pull/832
+[#833]: https://github.com/stackabletech/zookeeper-operator/pull/833
 
 ## [24.3.0] - 2024-03-20
 

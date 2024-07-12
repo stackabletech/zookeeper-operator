@@ -133,6 +133,9 @@ impl Error {
             finalizer::Error::UnnamedObject => Error::Finalizer {
                 source: finalizer::Error::UnnamedObject,
             },
+            finalizer::Error::InvalidFinalizer => Error::Finalizer {
+                source: finalizer::Error::InvalidFinalizer,
+            },
         }
     }
 }
