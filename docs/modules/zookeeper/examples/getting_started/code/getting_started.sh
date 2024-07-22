@@ -125,6 +125,7 @@ kubectl describe configmap simple-znode
 
 cm_output=$(get_configmap)
 
+# shellcheck disable=SC2181 # wont't fix this now, but ideally we should enable bash strict mode so we can avoid success checks.
 if [[ $? == 0 ]]; then
   echo "ConfigMap retrieved."
 else
