@@ -22,7 +22,7 @@ You can also configure which StorageClass to use, consult the xref:concepts:reso
 
 == Resource requests
 
-include::home:concepts:stackable_resource_requests.adoc[]
+include::concepts:stackable_resource_requests.adoc[]
 
 A minimal HA setup consisting of 3 ZooKeeper instances has the following https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/[resource requirements]:
 
