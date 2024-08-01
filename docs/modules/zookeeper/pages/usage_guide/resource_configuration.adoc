@@ -20,7 +20,7 @@ In the above example, all ZooKeeper nodes in the default group will store data (
 
 == Resource requests
 
-include::home:concepts:stackable_resource_requests.adoc[]
+include::concepts:stackable_resource_requests.adoc[]
 
 A minimal HA setup consisting of 3 ZooKeeper instances has the following https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/[resource requirements]:
 
