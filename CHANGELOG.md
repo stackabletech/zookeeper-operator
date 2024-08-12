@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Reduce CRD size from `483KB` to `57KB` by accepting arbitrary YAML input instead of the underlying schema for the following fields ([#853]):
+  - `podOverrides`
+  - `affinity`
+
+[#853]: https://github.com/stackabletech/zookeeper-operator/pull/853
+
 ## [24.7.0] - 2024-07-24
 
 ### Added
