@@ -44,11 +44,17 @@ spec:
           min: '250m'
         memory:
           limit: '512Mi'
+    envOverrides:
+      COMMON_VAR: role-value # overridden by role group below
+      ROLE_VAR: role-value   # only defined here at role level
     roleGroups:
       primary:
         replicas: 2
         config:
           myidOffset: 10
+        envOverrides:
+          COMMON_VAR: group-value # overrides role value
+          GROUP_VAR: group-value # only defined here at group level
       secondary:
         replicas: 1
         config:
