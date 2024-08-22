@@ -47,6 +47,10 @@ spec:
     envOverrides:
       COMMON_VAR: role-value # overridden by role group below
       ROLE_VAR: role-value   # only defined here at role level
+    configOverrides:
+      zoo.cfg:
+        prop.common: role
+        prop.role: role
     roleGroups:
       primary:
         replicas: 2
@@ -55,6 +59,10 @@ spec:
         envOverrides:
           COMMON_VAR: group-value # overrides role value
           GROUP_VAR: group-value # only defined here at group level
+        configOverrides:
+          zoo.cfg:
+            prop.common: group
+            prop.group: group
       secondary:
         replicas: 1
         config:
