@@ -1,4 +1,5 @@
 = ZNodes
+:description: Manage ZooKeeper ZNodes with the ZookeeperZnode resource. Each client should use a unique root ZNode to prevent conflicts. Network access to ZooKeeper is required.
 
 Apache ZooKeeper organizes all data into a hierarchical system of https://zookeeper.apache.org/doc/r3.9.2/zookeeperProgrammers.html#ch_zkDataModel[ZNodes],
 which act as both files (they can have data associated with them) and folders (they can contain other ZNodes) when compared to a traditional (POSIX-like) file system.

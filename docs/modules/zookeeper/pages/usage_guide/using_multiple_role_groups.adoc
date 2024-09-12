@@ -1,17 +1,23 @@
 = Using multiple role groups
+:description: ZooKeeper uses myid for server identification. Avoid conflicts in multiple role groups by setting myidOffset for unique IDs in each StatefulSet.
+:ordinal-index: https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#ordinal-index
 
-// abstract/summary
-ZooKeeper uses a unique ID called _myid_ to identify each server in the cluster. The Stackable Operator for Apache ZooKeeper assigns the _myid_ to each Pod from the https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#ordinal-index[ordinal index] given to the Pod by Kubernetes. This index is unique over the Pods in the StatefulSet of the xref:concepts:roles-and-role-groups.adoc[role group].
+ZooKeeper uses a unique ID called _myid_ to identify each server in the cluster.
+The Stackable Operator for Apache ZooKeeper assigns the _myid_ to each Pod from the {ordinal-index}[ordinal index] given to the Pod by Kubernetes.
+This index is unique over the Pods in the StatefulSet of the xref:concepts:roles-and-role-groups.adoc[role group].
 
-When using multiple role groups in a cluster, this will lead to different ZooKeeper Pods using the same _myid_. Each role group is represented by its own StatefulSet, and therefore always identified starting with `0`.
+When using multiple role groups in a cluster, this will lead to different ZooKeeper Pods using the same _myid_.
+Each role group is represented by its own StatefulSet, and therefore always identified starting with `0`.
 
-In order to avoid this _myid_ conflict, a property `myidOffset` needs to be specified in each rolegroup. The `myidOffset` defaults to zero, but if specified will be added to the ordinal index of the Pod.
+In order to avoid this _myid_ conflict, a property `myidOffset` needs to be specified in each rolegroup.
+The `myidOffset` defaults to zero, but if specified will be added to the ordinal index of the Pod.
 
 == Example configuration
 
 Here the property is used on the second role group in a ZooKeeperCluster:
 
-```yaml
+[source,yaml]
+----
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperCluster
 metadata:
@@ -25,8 +31,9 @@ spec:
         replicas: 1
         config:
           myidOffset: 10  # <1>
-```
-
+----
 <1> The `myidOffset` property set to 10 for the secondary role group
 
-The `secondary` role group _myid_ starts from id `10`. The `primary` role group will start from `0`. This means, the replicas of the role group `primary` should not be scaled higher than `10` which results in `10` `primary` Pods using a _myid_ from `0` to `9`, followed by the `secondary` Pods starting at _myid_ `10`.
+The `secondary` role group _myid_ starts from id `10`.
+The `primary` role group will start from `0`.
+This means, the replicas of the role group `primary` should not be scaled higher than `10` which results in `10` `primary` Pods using a _myid_ from `0` to `9`, followed by the `secondary` Pods starting at _myid_ `10`.

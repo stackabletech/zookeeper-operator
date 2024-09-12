@@ -1,4 +1,5 @@
 = Authentication
+:description: Enable TLS authentication for ZooKeeper with Stackable's Kubernetes operator.
 
 The communication between nodes (server to server) is encrypted via TLS by default.
 In order to enforce TLS authentication for client-to-server communication, you can set an xref:concepts:authentication.adoc[AuthenticationClass] reference in the `spec.clusterConfig.authentication` property.
