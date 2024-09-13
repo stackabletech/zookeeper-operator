@@ -10,7 +10,12 @@ All notable changes to this project will be documented in this file.
   - `podOverrides`
   - `affinity`
 
+### Removed
+
+- Remove ZooKeeper 3.8.4 from tests and docs ([#857]).
+
 [#853]: https://github.com/stackabletech/zookeeper-operator/pull/853
+[#857]: https://github.com/stackabletech/zookeeper-operator/pull/857
 
 ## [24.7.0] - 2024-07-24
 
