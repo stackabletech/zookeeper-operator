@@ -4,7 +4,8 @@ Now that the operator is installed it is time to deploy a ZooKeeper cluster and 
 
 == Deploy ZooKeeper
 
-The ZooKeeper cluster is deployed with a very simple resource definition. Create a file called `zookeeper.yaml`:
+The ZooKeeper cluster is deployed with a very simple resource definition.
+Create a file called `zookeeper.yaml`:
 
 [source,yaml]
 include::example$getting_started/code/zookeeper.yaml[]
@@ -13,12 +14,15 @@ and apply it:
 [source,bash]
 include::example$getting_started/code/getting_started.sh[tag=install-zookeeper]
 
-The operator will create a ZooKeeper cluster with two replicas. Use kubectl to observe the status of the cluster:
+The operator will create a ZooKeeper cluster with two replicas.
+Use kubectl to observe the status of the cluster:
 
 [source,bash]
 include::example$getting_started/code/getting_started.sh[tag=watch-zookeeper-rollout]
 
-The Operator deploys readiness probes to make sure the replicas are ready and established a quorum. Only then will the StatefulSet actually be marked as `Ready`. You will see
+The Operator deploys readiness probes to make sure the replicas are ready and established a quorum.
+Only then will the StatefulSet actually be marked as `Ready`.
+You will see
 
 ----
 partitioned roll out complete: 2 new pods have been updated...
@@ -28,12 +32,15 @@ The ZooKeeper cluster is now ready.
 
 == Deploy a ZNode
 
-ZooKeeper manages its data in a hierarchical node system. You can look at the nodes using the zkCli tool. It is included inside the Stackable ZooKeeper container, and you can invoke it using `kubectl run`:
+ZooKeeper manages its data in a hierarchical node system.
+You can look at the nodes using the zkCli tool.
+It is included inside the Stackable ZooKeeper container, and you can invoke it using `kubectl run`:
 
 [source,bash]
 include::example$getting_started/code/getting_started.sh[tag=zkcli-ls]
 
-NOTE: You might wonder why the logs are used instead of the output from `kubectl run`. This is because `kubectl run` sometimes loses lines of the output, a link:https://github.com/kubernetes/kubernetes/issues/27264[known issue].
+NOTE: You might wonder why the logs are used instead of the output from `kubectl run`.
+This is because `kubectl run` sometimes loses lines of the output, a link:https://github.com/kubernetes/kubernetes/issues/27264[known issue].
 
 Among the log output you will see the current list of nodes in the root directory `/`:
 
@@ -45,7 +52,8 @@ Among the log output you will see the current list of nodes in the root director
 The `zookeeper` node contains ZooKeeper configuration data.
 
 It is useful to use different nodes for different applications using ZooKeeper, and the Stackable Operator uses xref:znodes.adoc[ZNodes] for this.
-ZNodes are created with manifest files of the kind `ZookeeperZnode`. Create a file called `znode.yaml` with the following contents:
+ZNodes are created with manifest files of the kind `ZookeeperZnode`.
+Create a file called `znode.yaml` with the following contents:
 
 [source,yaml]
 include::example$getting_started/code/znode.yaml[]
@@ -68,7 +76,8 @@ and the ZNode has appeared in the output:
 
 == The discovery ConfigMap
 
-The operator creates a ConfigMap with connection information that has the same name as the ZNode - in this case `simple-znode`. Have a look at it using
+The operator creates a ConfigMap with connection information that has the same name as the ZNode - in this case `simple-znode`.
+Have a look at it using
 
 [source,bash]
 kubectl describe configmap simple-znode
@@ -87,11 +96,15 @@ ZOOKEEPER_HOSTS:
 simple-zk-server-default-0.simple-zk-server-default.default.svc.cluster.local:2282,simple-zk-server-default-1.simple-zk-server-default.default.svc.cluster.local:2282
 
 The `ZOOKEEPER` entry contains a ZooKeeper connection string that you can use to connect to this specific ZNode.
-The `ZOOKEEPER_CHROOT` and `ZOOKEEPER_HOSTS` entries contain the node name and hosts list respectively. You can use these three entries mounted into a pod to connect to ZooKeeper at this specific ZNode and read/write in that ZNode directory.
+The `ZOOKEEPER_CHROOT` and `ZOOKEEPER_HOSTS` entries contain the node name and hosts list respectively.
+You can use these three entries mounted into a pod to connect to ZooKeeper at this specific ZNode and read/write in that ZNode directory.
 
 
-Great! This step concludes the Getting started guide. You have installed the ZooKeeper Operator and its dependencies and set up your first ZooKeeper cluster as well as your first ZNode.
+Great!
+This step concludes the Getting started guide.
+You have installed the ZooKeeper Operator and its dependencies and set up your first ZooKeeper cluster as well as your first ZNode.
 
 == What's next
 
-Have a look at the xref:usage_guide/index.adoc[] to learn more about configuration options for your ZooKeeper cluster like setting up encryption or authentication. You can also have a look at the xref:znodes.adoc[] page to learn more about ZNodes.
+Have a look at the xref:usage_guide/index.adoc[] to learn more about configuration options for your ZooKeeper cluster like setting up encryption or authentication.
+You can also have a look at the xref:znodes.adoc[] page to learn more about ZNodes.
