@@ -85,3 +85,8 @@ servers:
     default:
       replicas: 1
 ----
+
+== Pod overrides
+
+The ZooKeeper operator also supports Pod overrides, allowing you to override any property that you can set on a Kubernetes Pod.
+Read the xref:concepts:overrides.adoc#pod-overrides[Pod overrides documentation] to learn more about this feature.
