@@ -658,7 +658,7 @@ fn build_server_rolegroup_service(
 
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
-        .name(&rolegroup.object_name())
+        .name(rolegroup.object_name())
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
         .with_recommended_labels(build_recommended_labels(
@@ -887,7 +887,7 @@ fn build_server_rolegroup_statefulset(
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
-                name: Some(rolegroup_ref.object_name()),
+                name: rolegroup_ref.object_name(),
                 ..ConfigMapVolumeSource::default()
             }),
             ..Volume::default()
@@ -924,7 +924,7 @@ fn build_server_rolegroup_statefulset(
         pod_builder.add_volume(Volume {
             name: "log-config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
-                name: Some(config_map.into()),
+                name: config_map.into(),
                 ..ConfigMapVolumeSource::default()
             }),
             ..Volume::default()
@@ -933,7 +933,7 @@ fn build_server_rolegroup_statefulset(
         pod_builder.add_volume(Volume {
             name: "log-config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
-                name: Some(rolegroup_ref.object_name()),
+                name: rolegroup_ref.object_name(),
                 ..ConfigMapVolumeSource::default()
             }),
             ..Volume::default()
@@ -963,7 +963,7 @@ fn build_server_rolegroup_statefulset(
 
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
-        .name(&rolegroup_ref.object_name())
+        .name(rolegroup_ref.object_name())
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
         .with_recommended_labels(build_recommended_labels(

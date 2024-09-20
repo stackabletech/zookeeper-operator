@@ -109,6 +109,7 @@ impl ZookeeperSecurity {
     /// Check if TLS encryption is enabled. This could be due to:
     /// - A provided server `SecretClass`
     /// - A provided client `AuthenticationClass`
+    ///
     /// This affects init container commands, ZooKeeper configuration, volume mounts and
     /// the ZooKeeper client port
     pub fn tls_enabled(&self) -> bool {
