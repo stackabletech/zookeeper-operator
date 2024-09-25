@@ -14,15 +14,15 @@ and apply it:
 [source,bash]
 include::example$getting_started/code/getting_started.sh[tag=install-zookeeper]
 
-The operator will create a ZooKeeper cluster with two replicas.
+The operator creates a ZooKeeper cluster with two replicas.
 Use kubectl to observe the status of the cluster:
 
 [source,bash]
 include::example$getting_started/code/getting_started.sh[tag=watch-zookeeper-rollout]
 
-The Operator deploys readiness probes to make sure the replicas are ready and established a quorum.
-Only then will the StatefulSet actually be marked as `Ready`.
-You will see
+The operator deploys readiness probes to make sure the replicas are ready and established a quorum.
+Only then is the StatefulSet actually marked as `Ready`.
+You see
 
 ----
 partitioned roll out complete: 2 new pods have been updated...
@@ -42,7 +42,7 @@ include::example$getting_started/code/getting_started.sh[tag=zkcli-ls]
 NOTE: You might wonder why the logs are used instead of the output from `kubectl run`.
 This is because `kubectl run` sometimes loses lines of the output, a link:https://github.com/kubernetes/kubernetes/issues/27264[known issue].
 
-Among the log output you will see the current list of nodes in the root directory `/`:
+Among the log output you see the current list of nodes in the root directory `/`:
 
 [source]
 ----
@@ -82,7 +82,7 @@ Have a look at it using
 [source,bash]
 kubectl describe configmap simple-znode
 
-You will see an output similar to this:
+You see an output similar to this:
 
 [source]
 ZOOKEEPER:

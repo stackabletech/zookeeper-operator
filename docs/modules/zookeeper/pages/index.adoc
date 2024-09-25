@@ -20,7 +20,7 @@ Within the Stackable Platform, the Stackable operators for xref:hbase:index.adoc
 
 == Getting started
 
-Get started with Apache ZooKeeper and the Stackable operator by following the xref:getting_started/index.adoc[Getting started] guide, it will guide you through the xref:getting_started/installation.adoc[installation] process.
+Get started with Apache ZooKeeper and the Stackable operator by following the xref:getting_started/index.adoc[Getting started] guide, it guides you through the xref:getting_started/installation.adoc[installation] process.
 Afterwards, consult the xref:usage_guide/index.adoc[Usage guide] to learn more about configuring ZooKeeper for your needs.
 You can also deploy a <<demos, demo>> to see an example deployment of ZooKeeper together with other data products.
 
@@ -45,7 +45,7 @@ Apache ZooKeeper and the Stackable operator have no dependencies besides the xre
 
 == [[demos]]Demos
 
-Apache ZooKeeper is a dependency of xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka] and xref:nifi:index.adoc[Apache NiFi], thus any demo that uses one or more of these components will also deploy a ZooKeeper ensemble.
+Apache ZooKeeper is a dependency of xref:hbase:index.adoc[Apache HBase], xref:hdfs:index.adoc[Apache Hadoop HDFS], xref:kafka:index.adoc[Apache Kafka] and xref:nifi:index.adoc[Apache NiFi], thus any demo that uses one or more of these components also deploys a ZooKeeper ensemble.
 Here is the list of the demos that include ZooKeeper:
 
 * xref:demos:data-lakehouse-iceberg-trino-spark.adoc[]
