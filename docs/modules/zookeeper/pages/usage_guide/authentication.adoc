@@ -20,7 +20,7 @@ include::example$usage_guide/example-cluster-tls-authentication-secret.yaml[]
 <4> The SecretClass that is referenced by the AuthenticationClass in order to provide certificates.
 
 If both `spec.clusterConfig.tls.server.secretClass` and `spec.clusterConfig.authentication.authenticationClass` are set,
-the authentication class takes precedence over the secret class. 
+the authentication class takes precedence over the secret class.
 The cluster is encrypted and authenticates only against the authentication class.
 
 WARNING: Due to a https://issues.apache.org/jira/browse/ZOOKEEPER-4276[bug] in ZooKeeper, the `clientPort` property in
