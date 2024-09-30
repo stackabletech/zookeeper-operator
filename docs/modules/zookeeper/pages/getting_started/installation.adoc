@@ -2,7 +2,7 @@
 :description: Install the Stackable operator for Apache ZooKeeper using stackablectl or Helm.
 
 There are multiple ways to install the Stackable Operator for Apache Zookeeper.
-xref:management:stackablectl:index.adoc[] is the preferred way but Helm is also supported.
+xref:management:stackablectl:index.adoc[] is the preferred way, but Helm is also supported.
 OpenShift users may prefer installing the operator from the RedHat Certified Operator catalog using the OpenShift web console.
 
 [tabs]

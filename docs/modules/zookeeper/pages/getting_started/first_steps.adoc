@@ -21,7 +21,7 @@ Use kubectl to observe the status of the cluster:
 include::example$getting_started/code/getting_started.sh[tag=watch-zookeeper-rollout]
 
 The operator deploys readiness probes to make sure the replicas are ready and established a quorum.
-Only then is the StatefulSet actually marked as `Ready`.
+Only then, the StatefulSet is actually marked as `Ready`.
 You see
 
 ----

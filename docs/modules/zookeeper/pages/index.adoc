@@ -21,7 +21,7 @@ Within the Stackable Platform, the Stackable operators for xref:hbase:index.adoc
 == Getting started
 
 Get started with Apache ZooKeeper and the Stackable operator by following the xref:getting_started/index.adoc[Getting started] guide, it guides you through the xref:getting_started/installation.adoc[installation] process.
-Afterwards, consult the xref:usage_guide/index.adoc[Usage guide] to learn more about configuring ZooKeeper for your needs.
+Afterward, consult the xref:usage_guide/index.adoc[Usage guide] to learn more about configuring ZooKeeper for your needs.
 You can also deploy a <<demos, demo>> to see an example deployment of ZooKeeper together with other data products.
 
 == Operator model
