@@ -14,7 +14,12 @@ metadata:
   name: test-zk
 spec:
   image:
+{% if test_scenario['values']['zookeeper-latest'].find(",") > 0 %}
+    custom: "{{ test_scenario['values']['zookeeper-latest'].split(',')[1] }}"
+    productVersion: "{{ test_scenario['values']['zookeeper-latest'].split(',')[0] }}"
+{% else %}
     productVersion: "{{ test_scenario['values']['zookeeper-latest'] }}"
+{% endif %}
     pullPolicy: IfNotPresent
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
   clusterConfig:

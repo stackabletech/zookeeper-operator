@@ -14,7 +14,12 @@ metadata:
   name: test-zk
 spec:
   image:
+{% if test_scenario['values']['zookeeper'].find(",") > 0 %}
+    custom: "{{ test_scenario['values']['zookeeper'].split(',')[1] }}"
+    productVersion: "{{ test_scenario['values']['zookeeper'].split(',')[0] }}"
+{% else %}
     productVersion: "{{ test_scenario['values']['zookeeper'] }}"
+{% endif %}
     pullPolicy: IfNotPresent
   clusterConfig:
 {% if test_scenario['values']['use-server-tls'] == 'true' %}
