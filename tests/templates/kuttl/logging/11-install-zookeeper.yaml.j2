@@ -38,6 +38,8 @@ spec:
   clusterConfig:
     vectorAggregatorConfigMapName: zookeeper-vector-aggregator-discovery
   servers:
+    config:
+      gracefulShutdownTimeout: 1m
     roleGroups:
       automatic-log-config:
         replicas: 1
