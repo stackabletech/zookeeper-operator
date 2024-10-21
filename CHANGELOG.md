@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - The operator can now run on Kubernetes clusters using a non-default cluster domain. It should automatically detect the
   correct domain to use, but you can also use the env var `KUBERNETES_CLUSTER_DOMAIN` to set the domain explicitly
-  or use the helm-chart property `kubernetesClusterDomain` ([#xxx]).
+  or use the helm-chart property `kubernetesClusterDomain` ([#870]).
 
 ### Changed
 
@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 
 [#853]: https://github.com/stackabletech/zookeeper-operator/pull/853
 [#857]: https://github.com/stackabletech/zookeeper-operator/pull/857
-[#xxx]: https://github.com/stackabletech/zookeeper-operator/pull/xxx
+[#870]: https://github.com/stackabletech/zookeeper-operator/pull/870
 
 ## [24.7.0] - 2024-07-24
 
