@@ -73,7 +73,8 @@ impl ResolvedAuthenticationClasses {
                 AuthenticationClassProvider::Tls(_) => {}
                 AuthenticationClassProvider::Ldap(_)
                 | AuthenticationClassProvider::Oidc(_)
-                | AuthenticationClassProvider::Static(_) => {
+                | AuthenticationClassProvider::Static(_)
+                | AuthenticationClassProvider::Kerberos(_) => {
                     return Err(Error::AuthenticationMethodNotSupported {
                         authentication_class: ObjectRef::from_obj(auth_class),
                         method: auth_class.spec.provider.to_string(),

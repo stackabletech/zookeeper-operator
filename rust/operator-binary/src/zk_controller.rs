@@ -17,6 +17,7 @@ use product_config::{
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
+        self,
         configmap::ConfigMapBuilder,
         meta::ObjectMetaBuilder,
         pod::{container::ContainerBuilder, resources::ResourceRequirementsBuilder, PodBuilder},
@@ -245,6 +246,14 @@ pub enum Error {
 
     #[snafu(display("failed to add TLS volume mounts"))]
     AddTlsVolumeMounts { source: security::Error },
+
+    #[snafu(display("failed to add needed volume"))]
+    AddVolume { source: builder::pod::Error },
+
+    #[snafu(display("failed to add needed volumeMount"))]
+    AddVolumeMount {
+        source: builder::pod::container::Error,
+    },
 }
 
 impl ReconcilerError for Error {
@@ -285,6 +294,8 @@ impl ReconcilerError for Error {
             Error::BuildLabel { .. } => None,
             Error::ObjectMeta { .. } => None,
             Error::AddTlsVolumeMounts { .. } => None,
+            Error::AddVolume { .. } => None,
+            Error::AddVolumeMount { .. } => None,
         }
     }
 }
@@ -801,9 +812,13 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         }])
         .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .unwrap()
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .unwrap()
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .unwrap()
         .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .unwrap()
         .resources(
             ResourceRequirementsBuilder::new()
                 .with_cpu_request("200m")
@@ -860,10 +875,15 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk-election", 3888)
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .unwrap()
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .unwrap()
         .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
+        .unwrap()
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .unwrap()
         .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .unwrap()
         .resources(resources)
         .build();
 
@@ -892,6 +912,7 @@ fn build_server_rolegroup_statefulset(
             }),
             ..Volume::default()
         })
+        .context(AddVolumeSnafu)?
         .add_volume(Volume {
             empty_dir: Some(EmptyDirVolumeSource {
                 medium: None,
@@ -900,12 +921,14 @@ fn build_server_rolegroup_statefulset(
             name: "rwconfig".to_string(),
             ..Volume::default()
         })
+        .context(AddVolumeSnafu)?
         .add_empty_dir_volume(
             "log",
             Some(product_logging::framework::calculate_log_volume_size_limit(
                 &[MAX_ZK_LOG_FILES_SIZE, MAX_PREPARE_LOG_FILE_SIZE],
             )),
         )
+        .context(AddVolumeSnafu)?
         .security_context(PodSecurityContext {
             run_as_user: Some(ZK_UID),
             run_as_group: Some(0),
@@ -921,38 +944,45 @@ fn build_server_rolegroup_statefulset(
             })),
     }) = logging.containers.get(&Container::Zookeeper)
     {
-        pod_builder.add_volume(Volume {
-            name: "log-config".to_string(),
-            config_map: Some(ConfigMapVolumeSource {
-                name: config_map.into(),
-                ..ConfigMapVolumeSource::default()
-            }),
-            ..Volume::default()
-        });
+        pod_builder
+            .add_volume(Volume {
+                name: "log-config".to_string(),
+                config_map: Some(ConfigMapVolumeSource {
+                    name: config_map.into(),
+                    ..ConfigMapVolumeSource::default()
+                }),
+                ..Volume::default()
+            })
+            .context(AddVolumeSnafu)?;
     } else {
-        pod_builder.add_volume(Volume {
-            name: "log-config".to_string(),
-            config_map: Some(ConfigMapVolumeSource {
-                name: rolegroup_ref.object_name(),
-                ..ConfigMapVolumeSource::default()
-            }),
-            ..Volume::default()
-        });
+        pod_builder
+            .add_volume(Volume {
+                name: "log-config".to_string(),
+                config_map: Some(ConfigMapVolumeSource {
+                    name: rolegroup_ref.object_name(),
+                    ..ConfigMapVolumeSource::default()
+                }),
+                ..Volume::default()
+            })
+            .context(AddVolumeSnafu)?;
     }
 
     if logging.enable_vector_agent {
-        pod_builder.add_container(product_logging::framework::vector_container(
-            resolved_product_image,
-            "config",
-            "log",
-            logging.containers.get(&Container::Vector),
-            ResourceRequirementsBuilder::new()
-                .with_cpu_request("250m")
-                .with_cpu_limit("500m")
-                .with_memory_request("128Mi")
-                .with_memory_limit("128Mi")
-                .build(),
-        ));
+        pod_builder.add_container(
+            product_logging::framework::vector_container(
+                resolved_product_image,
+                "config",
+                "log",
+                logging.containers.get(&Container::Vector),
+                ResourceRequirementsBuilder::new()
+                    .with_cpu_request("250m")
+                    .with_cpu_limit("500m")
+                    .with_memory_request("128Mi")
+                    .with_memory_limit("128Mi")
+                    .build(),
+            )
+            .unwrap(),
+        );
     }
 
     add_graceful_shutdown_config(config, &mut pod_builder).context(GracefulShutdownSnafu)?;
