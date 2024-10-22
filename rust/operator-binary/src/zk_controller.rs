@@ -45,7 +45,9 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
         self,
-        framework::{create_vector_shutdown_file_command, remove_vector_shutdown_file_command},
+        framework::{
+            create_vector_shutdown_file_command, remove_vector_shutdown_file_command, LoggingError,
+        },
         spec::{
             ConfigMapLogConfig, ContainerLogConfig, ContainerLogConfigChoice,
             CustomContainerLogConfig,
@@ -247,12 +249,20 @@ pub enum Error {
     #[snafu(display("failed to add TLS volume mounts"))]
     AddTlsVolumeMounts { source: security::Error },
 
+    #[snafu(display("failed to configure logging"))]
+    ConfigureLogging { source: LoggingError },
+
     #[snafu(display("failed to add needed volume"))]
     AddVolume { source: builder::pod::Error },
 
     #[snafu(display("failed to add needed volumeMount"))]
     AddVolumeMount {
         source: builder::pod::container::Error,
+    },
+
+    #[snafu(display("failed to create cluster resources"))]
+    CreateClusterResources {
+        source: stackable_operator::cluster_resources::Error,
     },
 }
 
@@ -294,8 +304,10 @@ impl ReconcilerError for Error {
             Error::BuildLabel { .. } => None,
             Error::ObjectMeta { .. } => None,
             Error::AddTlsVolumeMounts { .. } => None,
+            Error::ConfigureLogging { .. } => None,
             Error::AddVolume { .. } => None,
             Error::AddVolumeMount { .. } => None,
+            Error::CreateClusterResources { .. } => None,
         }
     }
 }
@@ -316,7 +328,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         &zk.object_ref(&()),
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
     )
-    .unwrap();
+    .context(CreateClusterResourcesSnafu)?;
 
     let validated_config = validate_all_roles_and_groups_config(
         &resolved_product_image.app_version_label,
@@ -812,13 +824,13 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         }])
         .add_volume_mount("data", STACKABLE_DATA_DIR)
-        .unwrap()
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
-        .unwrap()
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
-        .unwrap()
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("log", STACKABLE_LOG_DIR)
-        .unwrap()
+        .context(AddVolumeMountSnafu)?
         .resources(
             ResourceRequirementsBuilder::new()
                 .with_cpu_request("200m")
@@ -875,15 +887,15 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk-election", 3888)
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", STACKABLE_DATA_DIR)
-        .unwrap()
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
-        .unwrap()
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
-        .unwrap()
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
-        .unwrap()
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("log", STACKABLE_LOG_DIR)
-        .unwrap()
+        .context(AddVolumeMountSnafu)?
         .resources(resources)
         .build();
 
@@ -981,7 +993,7 @@ fn build_server_rolegroup_statefulset(
                     .with_memory_limit("128Mi")
                     .build(),
             )
-            .unwrap(),
+            .context(ConfigureLoggingSnafu)?,
         );
     }
 
