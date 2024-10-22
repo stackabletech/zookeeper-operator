@@ -486,7 +486,7 @@ impl ZookeeperCluster {
     pub fn server_role_service_fqdn(&self) -> Option<String> {
         let cluster_domain = KUBERNETES_CLUSTER_DOMAIN
             .get()
-            .expect("Could not resolve the Kubernetes cluster domain!");
+            .expect("KUBERNETES_CLUSTER_DOMAIN must first be set by calling initialize_operator");
         Some(format!(
             "{}.{}.svc.{}",
             self.server_role_service_name()?,
