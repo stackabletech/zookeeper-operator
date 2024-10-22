@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, num::TryFromIntError};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
+    client::Client,
     commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
     kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
@@ -84,7 +85,7 @@ pub async fn build_discovery_configmaps(
         &namespace,
         controller_name,
         chroot,
-        pod_hosts(zk, zookeeper_security)?,
+        pod_hosts(zk, zookeeper_security, client)?,
         resolved_product_image,
     )?];
     if zk.spec.cluster_config.listener_class
@@ -171,11 +172,12 @@ fn build_discovery_configmap(
 fn pod_hosts<'a>(
     zk: &'a ZookeeperCluster,
     zookeeper_security: &'a ZookeeperSecurity,
+    client: &'a Client,
 ) -> Result<impl IntoIterator<Item = (String, u16)> + 'a> {
     Ok(zk
         .pods()
         .context(ExpectedPodsSnafu)?
-        .map(|pod_ref| (pod_ref.fqdn(), zookeeper_security.client_port())))
+        .map(|pod_ref| (pod_ref.fqdn(client), zookeeper_security.client_port())))
 }
 
 /// Lists all nodes currently hosting Pods participating in the [`Service`]

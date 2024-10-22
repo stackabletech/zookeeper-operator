@@ -3,6 +3,7 @@ use std::{collections::BTreeMap, str::FromStr};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
+    client::Client,
     commons::{
         affinity::StackableAffinity,
         cluster_operation::ClusterOperation,
@@ -29,7 +30,6 @@ use stackable_operator::{
     schemars::{self, JsonSchema},
     status::condition::{ClusterCondition, HasStatusCondition},
     time::Duration,
-    utils::cluster_domain::KUBERNETES_CLUSTER_DOMAIN,
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
@@ -483,15 +483,12 @@ impl ZookeeperCluster {
     }
 
     /// The fully-qualified domain name of the role-level load-balanced Kubernetes `Service`
-    pub fn server_role_service_fqdn(&self) -> Option<String> {
-        let cluster_domain = KUBERNETES_CLUSTER_DOMAIN
-            .get()
-            .expect("Could not resolve the Kubernetes cluster domain!");
+    pub fn server_role_service_fqdn(&self, client: &Client) -> Option<String> {
         Some(format!(
             "{}.{}.svc.{}",
             self.server_role_service_name()?,
             self.metadata.namespace.as_ref()?,
-            cluster_domain
+            client.kubernetes_cluster_domain
         ))
     }
 
@@ -671,13 +668,13 @@ pub struct ZookeeperPodRef {
 }
 
 impl ZookeeperPodRef {
-    pub fn fqdn(&self) -> String {
-        let cluster_domain = KUBERNETES_CLUSTER_DOMAIN
-            .get()
-            .expect("Could not resolve the Kubernetes cluster domain!");
+    pub fn fqdn(&self, client: &Client) -> String {
         format!(
             "{}.{}.{}.svc.{}",
-            self.pod_name, self.role_group_service_name, self.namespace, cluster_domain
+            self.pod_name,
+            self.role_group_service_name,
+            self.namespace,
+            client.kubernetes_cluster_domain
         )
     }
 }

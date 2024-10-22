@@ -22,6 +22,7 @@ use stackable_operator::{
         meta::ObjectMetaBuilder,
         pod::{container::ContainerBuilder, resources::ResourceRequirementsBuilder, PodBuilder},
     },
+    client::Client,
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::{
         product_image_selection::ResolvedProductImage,
@@ -404,6 +405,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             &resolved_product_image,
             vector_aggregator_address.as_deref(),
             &zookeeper_security,
+            client,
         )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             &zk,
@@ -557,6 +559,7 @@ fn build_server_rolegroup_config_map(
     resolved_product_image: &ResolvedProductImage,
     vector_aggregator_address: Option<&str>,
     zookeeper_security: &ZookeeperSecurity,
+    client: &Client,
 ) -> Result<ConfigMap> {
     let mut zoo_cfg: BTreeMap<_, _> = zk
         .pods()
@@ -567,7 +570,7 @@ fn build_server_rolegroup_config_map(
                 format!("server.{}", pod.zookeeper_myid),
                 format!(
                     "{}:2888:3888;{}",
-                    pod.fqdn(),
+                    pod.fqdn(client),
                     zookeeper_security.client_port()
                 ),
             )
@@ -1171,6 +1174,7 @@ mod tests {
             &resolved_product_image,
             None,
             &zookeeper_security,
+            client,
         )
         .unwrap()
     }

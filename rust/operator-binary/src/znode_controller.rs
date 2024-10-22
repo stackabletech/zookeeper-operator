@@ -5,6 +5,7 @@ use std::{borrow::Cow, convert::Infallible, sync::Arc};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
+    client::Client,
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Service},
@@ -262,7 +263,7 @@ async fn reconcile_apply(
     )
     .unwrap();
 
-    znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk, &zookeeper_security)?, znode_path)
+    znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk, &zookeeper_security, client)?, znode_path)
         .await
         .with_context(|_| EnsureZnodeSnafu {
             zk: ObjectRef::from_obj(&zk),
@@ -329,7 +330,7 @@ async fn reconcile_cleanup(
         .context(FailedToInitializeSecurityContextSnafu)?;
 
     // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
-    znode_mgmt::ensure_znode_missing(&zk_mgmt_addr(&zk, &zookeeper_security)?, znode_path)
+    znode_mgmt::ensure_znode_missing(&zk_mgmt_addr(&zk, &zookeeper_security, client)?, znode_path)
         .await
         .with_context(|_| EnsureZnodeMissingSnafu {
             zk: ObjectRef::from_obj(&zk),
@@ -339,12 +340,16 @@ async fn reconcile_cleanup(
     Ok(controller::Action::await_change())
 }
 
-fn zk_mgmt_addr(zk: &ZookeeperCluster, zookeeper_security: &ZookeeperSecurity) -> Result<String> {
+fn zk_mgmt_addr(
+    zk: &ZookeeperCluster,
+    zookeeper_security: &ZookeeperSecurity,
+    client: &Client,
+) -> Result<String> {
     // Rust ZooKeeper client does not support client-side load-balancing, so use
     // (load-balanced) global service instead.
     Ok(format!(
         "{}:{}",
-        zk.server_role_service_fqdn()
+        zk.server_role_service_fqdn(client)
             .with_context(|| NoZkFqdnSnafu {
                 zk: ObjectRef::from_obj(zk),
             })?,
