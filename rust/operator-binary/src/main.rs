@@ -8,7 +8,11 @@ use stackable_operator::{
         apps::v1::StatefulSet,
         core::v1::{ConfigMap, Endpoints, Service},
     },
-    kube::runtime::{reflector::ObjectRef, watcher, Controller},
+    kube::{
+        core::DeserializeGuard,
+        runtime::{reflector::ObjectRef, watcher, Controller},
+        Resource,
+    },
     logging::controller::report_controller_reconciled,
     CustomResourceExt,
 };
@@ -71,36 +75,40 @@ async fn main() -> anyhow::Result<()> {
             let client =
                 stackable_operator::client::create_client(Some(OPERATOR_NAME.to_string())).await?;
             let zk_controller_builder = Controller::new(
-                watch_namespace.get_api::<ZookeeperCluster>(&client),
+                watch_namespace.get_api::<DeserializeGuard<ZookeeperCluster>>(&client),
                 watcher::Config::default(),
             );
 
             let zk_store = zk_controller_builder.store();
             let zk_controller = zk_controller_builder
                 .owns(
-                    watch_namespace.get_api::<Service>(&client),
+                    watch_namespace.get_api::<DeserializeGuard<Service>>(&client),
                     watcher::Config::default(),
                 )
                 .watches(
-                    watch_namespace.get_api::<Endpoints>(&client),
+                    watch_namespace.get_api::<DeserializeGuard<Endpoints>>(&client),
                     watcher::Config::default(),
                     move |endpoints| {
                         zk_store
                             .state()
                             .into_iter()
                             .filter(move |zk| {
-                                zk.metadata.namespace == endpoints.metadata.namespace
-                                    && zk.server_role_service_name() == endpoints.metadata.name
+                                let Ok(zk) = &zk.0 else {
+                                    return false;
+                                };
+                                let endpoints_meta = endpoints.meta();
+                                zk.metadata.namespace == endpoints_meta.namespace
+                                    && zk.server_role_service_name() == endpoints_meta.name
                             })
                             .map(|zk| ObjectRef::from_obj(&*zk))
                     },
                 )
                 .owns(
-                    watch_namespace.get_api::<StatefulSet>(&client),
+                    watch_namespace.get_api::<DeserializeGuard<StatefulSet>>(&client),
                     watcher::Config::default(),
                 )
                 .owns(
-                    watch_namespace.get_api::<ConfigMap>(&client),
+                    watch_namespace.get_api::<DeserializeGuard<ConfigMap>>(&client),
                     watcher::Config::default(),
                 )
                 .shutdown_on_signal()
@@ -120,25 +128,29 @@ async fn main() -> anyhow::Result<()> {
                     );
                 });
             let znode_controller_builder = Controller::new(
-                watch_namespace.get_api::<ZookeeperZnode>(&client),
+                watch_namespace.get_api::<DeserializeGuard<ZookeeperZnode>>(&client),
                 watcher::Config::default(),
             );
             let znode_store = znode_controller_builder.store();
             let znode_controller = znode_controller_builder
                 .owns(
-                    watch_namespace.get_api::<ConfigMap>(&client),
+                    watch_namespace.get_api::<DeserializeGuard<ConfigMap>>(&client),
                     watcher::Config::default(),
                 )
                 .watches(
-                    watch_namespace.get_api::<ZookeeperCluster>(&client),
+                    watch_namespace.get_api::<DeserializeGuard<ZookeeperCluster>>(&client),
                     watcher::Config::default(),
                     move |zk| {
                         znode_store
                             .state()
                             .into_iter()
                             .filter(move |znode| {
-                                zk.metadata.namespace == znode.spec.cluster_ref.namespace
-                                    && zk.metadata.name == znode.spec.cluster_ref.name
+                                let Ok(znode) = &znode.0 else {
+                                    return false;
+                                };
+                                let zk_meta = zk.meta();
+                                zk_meta.namespace == znode.spec.cluster_ref.namespace
+                                    && zk_meta.name == znode.spec.cluster_ref.name
                             })
                             .map(|znode| ObjectRef::from_obj(&*znode))
                     },
