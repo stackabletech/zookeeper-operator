@@ -38,7 +38,12 @@ use stackable_operator::{
         apimachinery::pkg::apis::meta::v1::LabelSelector,
         DeepMerge,
     },
-    kube::{api::DynamicObject, runtime::controller, Resource},
+    kube::{
+        api::DynamicObject,
+        core::{error_boundary, DeserializeGuard},
+        runtime::controller,
+        Resource,
+    },
     kvp::{Label, LabelError, Labels},
     logging::controller::ReconcilerError,
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
@@ -89,6 +94,11 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    #[snafu(display("ZookeeperCluster object is invalid"))]
+    InvalidZookeeperCluster {
+        source: error_boundary::InvalidObject,
+    },
+
     #[snafu(display("crd validation failure"))]
     CrdValidationFailure {
         source: stackable_zookeeper_crd::Error,
@@ -253,6 +263,7 @@ impl ReconcilerError for Error {
     }
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
+            Error::InvalidZookeeperCluster { source: _ } => None,
             Error::CrdValidationFailure { .. } => None,
             Error::NoServerRole => None,
             Error::RoleParseFailure { .. } => None,
@@ -289,8 +300,15 @@ impl ReconcilerError for Error {
     }
 }
 
-pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<controller::Action> {
+pub async fn reconcile_zk(
+    zk: Arc<DeserializeGuard<ZookeeperCluster>>,
+    ctx: Arc<Ctx>,
+) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
+    let zk =
+        zk.0.as_ref()
+            .map_err(error_boundary::InvalidObject::clone)
+            .context(InvalidZookeeperClusterSnafu)?;
     let client = &ctx.client;
 
     let resolved_product_image = zk
@@ -310,7 +328,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     let validated_config = validate_all_roles_and_groups_config(
         &resolved_product_image.app_version_label,
         &transform_all_roles_to_config(
-            zk.as_ref(),
+            zk,
             [(
                 ZookeeperRole::Server.to_string(),
                 (
@@ -336,16 +354,16 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
-    let vector_aggregator_address = resolve_vector_aggregator_address(&zk, client)
+    let vector_aggregator_address = resolve_vector_aggregator_address(zk, client)
         .await
         .context(ResolveVectorAggregatorAddressSnafu)?;
 
-    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, &zk)
+    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, zk)
         .await
         .context(FailedToInitializeSecurityContextSnafu)?;
 
     let (rbac_sa, rbac_rolebinding) = build_rbac_resources(
-        zk.as_ref(),
+        zk,
         APP_NAME,
         cluster_resources
             .get_required_labels()
@@ -366,7 +384,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     let server_role_service = cluster_resources
         .add(
             client,
-            build_server_role_service(&zk, &resolved_product_image, &zookeeper_security)?,
+            build_server_role_service(zk, &resolved_product_image, &zookeeper_security)?,
         )
         .await
         .context(ApplyRoleServiceSnafu)?;
@@ -381,13 +399,13 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             .context(FailedToResolveConfigSnafu)?;
 
         let rg_service = build_server_rolegroup_service(
-            &zk,
+            zk,
             &rolegroup,
             &resolved_product_image,
             &zookeeper_security,
         )?;
         let rg_configmap = build_server_rolegroup_config_map(
-            &zk,
+            zk,
             &rolegroup,
             rolegroup_config,
             &resolved_product_image,
@@ -395,7 +413,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             &zookeeper_security,
         )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
-            &zk,
+            zk,
             &zk_role,
             &rolegroup,
             rolegroup_config,
@@ -431,7 +449,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         pod_disruption_budget: pdb,
     }) = role_config
     {
-        add_pdbs(pdb, &zk, &zk_role, client, &mut cluster_resources)
+        add_pdbs(pdb, zk, &zk_role, client, &mut cluster_resources)
             .await
             .context(FailedToCreatePdbSnafu)?;
     }
@@ -440,8 +458,8 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
     for discovery_cm in build_discovery_configmaps(
-        &zk,
-        &*zk,
+        zk,
+        zk,
         client,
         ZK_CONTROLLER_NAME,
         &server_role_service,
@@ -468,10 +486,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
-        conditions: compute_conditions(
-            zk.as_ref(),
-            &[&ss_cond_builder, &cluster_operation_cond_builder],
-        ),
+        conditions: compute_conditions(zk, &[&ss_cond_builder, &cluster_operation_cond_builder]),
     };
 
     cluster_resources
@@ -479,7 +494,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(DeleteOrphansSnafu)?;
     client
-        .apply_patch_status(OPERATOR_NAME, &*zk, &status)
+        .apply_patch_status(OPERATOR_NAME, zk, &status)
         .await
         .context(ApplyStatusSnafu)?;
 
@@ -1004,11 +1019,16 @@ fn build_server_rolegroup_statefulset(
 }
 
 pub fn error_policy(
-    _obj: Arc<ZookeeperCluster>,
-    _error: &Error,
+    _obj: Arc<DeserializeGuard<ZookeeperCluster>>,
+    error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {
-    controller::Action::requeue(*Duration::from_secs(5))
+    match error {
+        // root object is invalid, will be requeued when modified anyway
+        Error::InvalidZookeeperCluster { .. } => controller::Action::await_change(),
+
+        _ => controller::Action::requeue(*Duration::from_secs(5)),
+    }
 }
 
 #[cfg(test)]

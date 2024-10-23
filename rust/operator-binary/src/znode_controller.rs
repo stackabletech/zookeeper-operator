@@ -11,7 +11,7 @@ use stackable_operator::{
     kube::{
         self,
         api::ObjectMeta,
-        core::DynamicObject,
+        core::{error_boundary, DeserializeGuard, DynamicObject},
         runtime::{controller, finalizer, reflector::ObjectRef},
         Resource,
     },
@@ -40,6 +40,11 @@ pub struct Ctx {
 #[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    #[snafu(display("ZookeeperZnode object is invalid"))]
+    InvalidZookeeperZnode {
+        source: error_boundary::InvalidObject,
+    },
+
     #[snafu(display(
         "object is missing metadata that should be created by the Kubernetes cluster",
     ))]
@@ -147,6 +152,7 @@ impl ReconcilerError for Error {
 
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
+            Error::InvalidZookeeperZnode { source: _ } => None,
             Error::ObjectMissingMetadata => None,
             Error::InvalidZkReference => None,
             Error::FindZk { zk, .. } => Some(zk.clone().erase()),
@@ -168,10 +174,15 @@ impl ReconcilerError for Error {
 }
 
 pub async fn reconcile_znode(
-    znode: Arc<ZookeeperZnode>,
+    znode: Arc<DeserializeGuard<ZookeeperZnode>>,
     ctx: Arc<Ctx>,
 ) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
+    let znode = znode
+        .0
+        .as_ref()
+        .map_err(error_boundary::InvalidObject::clone)
+        .context(InvalidZookeeperZnodeSnafu)?;
     let (ns, uid) = if let ObjectMeta {
         namespace: Some(ns),
         uid: Some(uid),
@@ -184,7 +195,7 @@ pub async fn reconcile_znode(
     };
     let client = &ctx.client;
 
-    let zk = find_zk_of_znode(client, &znode).await;
+    let zk = find_zk_of_znode(client, znode).await;
     let mut default_status_updates: Option<ZookeeperZnodeStatus> = None;
     // Store the znode path in the status rather than the object itself, to ensure that only K8s administrators can override it
     let znode_path = match znode.status.as_ref().and_then(|s| s.znode_path.as_deref()) {
@@ -210,7 +221,7 @@ pub async fn reconcile_znode(
     if let Some(status) = default_status_updates {
         info!("Writing default configuration to status");
         ctx.client
-            .merge_patch_status(&*znode, &status)
+            .merge_patch_status(znode, &status)
             .await
             .context(ApplyStatusSnafu)?;
     }
@@ -218,7 +229,7 @@ pub async fn reconcile_znode(
     finalizer(
         &client.get_api::<ZookeeperZnode>(&ns),
         &format!("{OPERATOR_NAME}/znode"),
-        znode.clone(),
+        Arc::new(znode.clone()),
         |ev| async {
             match ev {
                 finalizer::Event::Apply(znode) => {
@@ -381,7 +392,7 @@ async fn find_zk_of_znode(
 }
 
 pub fn error_policy(
-    _obj: Arc<ZookeeperZnode>,
+    _obj: Arc<DeserializeGuard<ZookeeperZnode>>,
     _error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {
