@@ -64,7 +64,7 @@ use stackable_operator::{
         statefulset::StatefulSetConditionBuilder,
     },
     time::Duration,
-    utils::COMMON_BASH_TRAP_FUNCTIONS,
+    utils::{cluster_info::KubernetesClusterInfo, COMMON_BASH_TRAP_FUNCTIONS},
 };
 use stackable_zookeeper_crd::{
     security::{self, ZookeeperSecurity},
@@ -434,6 +434,7 @@ pub async fn reconcile_zk(
             &resolved_product_image,
             vector_aggregator_address.as_deref(),
             &zookeeper_security,
+            &client.kubernetes_cluster_info,
         )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             zk,
@@ -584,6 +585,7 @@ fn build_server_rolegroup_config_map(
     resolved_product_image: &ResolvedProductImage,
     vector_aggregator_address: Option<&str>,
     zookeeper_security: &ZookeeperSecurity,
+    cluster_info: &KubernetesClusterInfo,
 ) -> Result<ConfigMap> {
     let mut zoo_cfg: BTreeMap<_, _> = zk
         .pods()
@@ -594,7 +596,7 @@ fn build_server_rolegroup_config_map(
                 format!("server.{}", pod.zookeeper_myid),
                 format!(
                     "{}:2888:3888;{}",
-                    pod.fqdn(),
+                    pod.fqdn(cluster_info),
                     zookeeper_security.client_port()
                 ),
             )
@@ -1075,6 +1077,8 @@ pub fn error_policy(
 
 #[cfg(test)]
 mod tests {
+    use stackable_operator::commons::networking::DomainName;
+
     use super::*;
 
     #[test]
@@ -1150,7 +1154,9 @@ mod tests {
         let mut zookeeper: ZookeeperCluster =
             serde_yaml::from_str(zookeeper_yaml).expect("illegal test input");
         zookeeper.metadata.uid = Some("42".to_owned());
-
+        let cluster_info = KubernetesClusterInfo {
+            cluster_domain: DomainName::try_from("cluster.local").unwrap(),
+        };
         let resolved_product_image = zookeeper
             .spec
             .image
@@ -1203,6 +1209,7 @@ mod tests {
             &resolved_product_image,
             None,
             &zookeeper_security,
+            &cluster_info,
         )
         .unwrap()
     }
