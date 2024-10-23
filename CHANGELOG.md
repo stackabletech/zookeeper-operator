@@ -14,8 +14,13 @@ All notable changes to this project will be documented in this file.
 
 - Remove ZooKeeper 3.8.4 from tests and docs ([#857]).
 
+### Fixed
+
+- Failing to parse one `ZookeeperCluster`/`ZookeeperZnode` should no longer cause the whole operator to stop functioning ([#872]).
+
 [#853]: https://github.com/stackabletech/zookeeper-operator/pull/853
 [#857]: https://github.com/stackabletech/zookeeper-operator/pull/857
+[#872]: https://github.com/stackabletech/zookeeper-operator/pull/872
 
 ## [24.7.0] - 2024-07-24
 
