@@ -29,6 +29,7 @@ use stackable_operator::{
     schemars::{self, JsonSchema},
     status::condition::{ClusterCondition, HasStatusCondition},
     time::Duration,
+    utils::cluster_info::KubernetesClusterInfo,
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
@@ -482,11 +483,12 @@ impl ZookeeperCluster {
     }
 
     /// The fully-qualified domain name of the role-level load-balanced Kubernetes `Service`
-    pub fn server_role_service_fqdn(&self) -> Option<String> {
+    pub fn server_role_service_fqdn(&self, cluster_info: &KubernetesClusterInfo) -> Option<String> {
         Some(format!(
-            "{}.{}.svc.cluster.local",
-            self.server_role_service_name()?,
-            self.metadata.namespace.as_ref()?
+            "{role_service_name}.{namespace}.svc.{cluster_domain}",
+            role_service_name = self.server_role_service_name()?,
+            namespace = self.metadata.namespace.as_ref()?,
+            cluster_domain = cluster_info.cluster_domain
         ))
     }
 
@@ -666,10 +668,13 @@ pub struct ZookeeperPodRef {
 }
 
 impl ZookeeperPodRef {
-    pub fn fqdn(&self) -> String {
+    pub fn fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
         format!(
-            "{}.{}.{}.svc.cluster.local",
-            self.pod_name, self.role_group_service_name, self.namespace
+            "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}",
+            pod_name = self.pod_name,
+            service_name = self.role_group_service_name,
+            namespace = self.namespace,
+            cluster_domain = cluster_info.cluster_domain
         )
     }
 }

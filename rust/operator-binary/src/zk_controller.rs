@@ -17,6 +17,7 @@ use product_config::{
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
+        self,
         configmap::ConfigMapBuilder,
         meta::ObjectMetaBuilder,
         pod::{container::ContainerBuilder, resources::ResourceRequirementsBuilder, PodBuilder},
@@ -49,7 +50,9 @@ use stackable_operator::{
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
         self,
-        framework::{create_vector_shutdown_file_command, remove_vector_shutdown_file_command},
+        framework::{
+            create_vector_shutdown_file_command, remove_vector_shutdown_file_command, LoggingError,
+        },
         spec::{
             ConfigMapLogConfig, ContainerLogConfig, ContainerLogConfigChoice,
             CustomContainerLogConfig,
@@ -61,7 +64,7 @@ use stackable_operator::{
         statefulset::StatefulSetConditionBuilder,
     },
     time::Duration,
-    utils::COMMON_BASH_TRAP_FUNCTIONS,
+    utils::{cluster_info::KubernetesClusterInfo, COMMON_BASH_TRAP_FUNCTIONS},
 };
 use stackable_zookeeper_crd::{
     security::{self, ZookeeperSecurity},
@@ -255,6 +258,22 @@ pub enum Error {
 
     #[snafu(display("failed to add TLS volume mounts"))]
     AddTlsVolumeMounts { source: security::Error },
+
+    #[snafu(display("failed to configure logging"))]
+    ConfigureLogging { source: LoggingError },
+
+    #[snafu(display("failed to add needed volume"))]
+    AddVolume { source: builder::pod::Error },
+
+    #[snafu(display("failed to add needed volumeMount"))]
+    AddVolumeMount {
+        source: builder::pod::container::Error,
+    },
+
+    #[snafu(display("failed to create cluster resources"))]
+    CreateClusterResources {
+        source: stackable_operator::cluster_resources::Error,
+    },
 }
 
 impl ReconcilerError for Error {
@@ -296,6 +315,10 @@ impl ReconcilerError for Error {
             Error::BuildLabel { .. } => None,
             Error::ObjectMeta { .. } => None,
             Error::AddTlsVolumeMounts { .. } => None,
+            Error::ConfigureLogging { .. } => None,
+            Error::AddVolume { .. } => None,
+            Error::AddVolumeMount { .. } => None,
+            Error::CreateClusterResources { .. } => None,
         }
     }
 }
@@ -323,7 +346,7 @@ pub async fn reconcile_zk(
         &zk.object_ref(&()),
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
     )
-    .unwrap();
+    .context(CreateClusterResourcesSnafu)?;
 
     let validated_config = validate_all_roles_and_groups_config(
         &resolved_product_image.app_version_label,
@@ -411,6 +434,7 @@ pub async fn reconcile_zk(
             &resolved_product_image,
             vector_aggregator_address.as_deref(),
             &zookeeper_security,
+            &client.kubernetes_cluster_info,
         )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             zk,
@@ -561,6 +585,7 @@ fn build_server_rolegroup_config_map(
     resolved_product_image: &ResolvedProductImage,
     vector_aggregator_address: Option<&str>,
     zookeeper_security: &ZookeeperSecurity,
+    cluster_info: &KubernetesClusterInfo,
 ) -> Result<ConfigMap> {
     let mut zoo_cfg: BTreeMap<_, _> = zk
         .pods()
@@ -571,7 +596,7 @@ fn build_server_rolegroup_config_map(
                 format!("server.{}", pod.zookeeper_myid),
                 format!(
                     "{}:2888:3888;{}",
-                    pod.fqdn(),
+                    pod.fqdn(cluster_info),
                     zookeeper_security.client_port()
                 ),
             )
@@ -816,9 +841,13 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         }])
         .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .context(AddVolumeMountSnafu)?
         .resources(
             ResourceRequirementsBuilder::new()
                 .with_cpu_request("200m")
@@ -875,10 +904,15 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk-election", 3888)
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .context(AddVolumeMountSnafu)?
         .resources(resources)
         .build();
 
@@ -907,6 +941,7 @@ fn build_server_rolegroup_statefulset(
             }),
             ..Volume::default()
         })
+        .context(AddVolumeSnafu)?
         .add_volume(Volume {
             empty_dir: Some(EmptyDirVolumeSource {
                 medium: None,
@@ -915,12 +950,14 @@ fn build_server_rolegroup_statefulset(
             name: "rwconfig".to_string(),
             ..Volume::default()
         })
+        .context(AddVolumeSnafu)?
         .add_empty_dir_volume(
             "log",
             Some(product_logging::framework::calculate_log_volume_size_limit(
                 &[MAX_ZK_LOG_FILES_SIZE, MAX_PREPARE_LOG_FILE_SIZE],
             )),
         )
+        .context(AddVolumeSnafu)?
         .security_context(PodSecurityContext {
             run_as_user: Some(ZK_UID),
             run_as_group: Some(0),
@@ -936,38 +973,45 @@ fn build_server_rolegroup_statefulset(
             })),
     }) = logging.containers.get(&Container::Zookeeper)
     {
-        pod_builder.add_volume(Volume {
-            name: "log-config".to_string(),
-            config_map: Some(ConfigMapVolumeSource {
-                name: config_map.into(),
-                ..ConfigMapVolumeSource::default()
-            }),
-            ..Volume::default()
-        });
+        pod_builder
+            .add_volume(Volume {
+                name: "log-config".to_string(),
+                config_map: Some(ConfigMapVolumeSource {
+                    name: config_map.into(),
+                    ..ConfigMapVolumeSource::default()
+                }),
+                ..Volume::default()
+            })
+            .context(AddVolumeSnafu)?;
     } else {
-        pod_builder.add_volume(Volume {
-            name: "log-config".to_string(),
-            config_map: Some(ConfigMapVolumeSource {
-                name: rolegroup_ref.object_name(),
-                ..ConfigMapVolumeSource::default()
-            }),
-            ..Volume::default()
-        });
+        pod_builder
+            .add_volume(Volume {
+                name: "log-config".to_string(),
+                config_map: Some(ConfigMapVolumeSource {
+                    name: rolegroup_ref.object_name(),
+                    ..ConfigMapVolumeSource::default()
+                }),
+                ..Volume::default()
+            })
+            .context(AddVolumeSnafu)?;
     }
 
     if logging.enable_vector_agent {
-        pod_builder.add_container(product_logging::framework::vector_container(
-            resolved_product_image,
-            "config",
-            "log",
-            logging.containers.get(&Container::Vector),
-            ResourceRequirementsBuilder::new()
-                .with_cpu_request("250m")
-                .with_cpu_limit("500m")
-                .with_memory_request("128Mi")
-                .with_memory_limit("128Mi")
-                .build(),
-        ));
+        pod_builder.add_container(
+            product_logging::framework::vector_container(
+                resolved_product_image,
+                "config",
+                "log",
+                logging.containers.get(&Container::Vector),
+                ResourceRequirementsBuilder::new()
+                    .with_cpu_request("250m")
+                    .with_cpu_limit("500m")
+                    .with_memory_request("128Mi")
+                    .with_memory_limit("128Mi")
+                    .build(),
+            )
+            .context(ConfigureLoggingSnafu)?,
+        );
     }
 
     add_graceful_shutdown_config(config, &mut pod_builder).context(GracefulShutdownSnafu)?;
@@ -1033,6 +1077,8 @@ pub fn error_policy(
 
 #[cfg(test)]
 mod tests {
+    use stackable_operator::commons::networking::DomainName;
+
     use super::*;
 
     #[test]
@@ -1108,7 +1154,9 @@ mod tests {
         let mut zookeeper: ZookeeperCluster =
             serde_yaml::from_str(zookeeper_yaml).expect("illegal test input");
         zookeeper.metadata.uid = Some("42".to_owned());
-
+        let cluster_info = KubernetesClusterInfo {
+            cluster_domain: DomainName::try_from("cluster.local").unwrap(),
+        };
         let resolved_product_image = zookeeper
             .spec
             .image
@@ -1161,6 +1209,7 @@ mod tests {
             &resolved_product_image,
             None,
             &zookeeper_security,
+            &cluster_info,
         )
         .unwrap()
     }

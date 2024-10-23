@@ -8,13 +8,16 @@ use std::collections::BTreeMap;
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
-    builder::pod::{
-        container::ContainerBuilder,
-        volume::{
-            SecretFormat, SecretOperatorVolumeSourceBuilder,
-            SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
+    builder::{
+        self,
+        pod::{
+            container::ContainerBuilder,
+            volume::{
+                SecretFormat, SecretOperatorVolumeSourceBuilder,
+                SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
+            },
+            PodBuilder,
         },
-        PodBuilder,
     },
     client::Client,
     commons::authentication::AuthenticationClassProvider,
@@ -34,6 +37,14 @@ pub enum Error {
     BuildTlsVolume {
         source: SecretOperatorVolumeSourceBuilderError,
         volume_name: String,
+    },
+
+    #[snafu(display("failed to add needed volume"))]
+    AddVolume { source: builder::pod::Error },
+
+    #[snafu(display("failed to add needed volumeMount"))]
+    AddVolumeMount {
+        source: builder::pod::container::Error,
     },
 }
 
@@ -141,17 +152,25 @@ impl ZookeeperSecurity {
 
         if let Some(secret_class) = tls_secret_class {
             let tls_volume_name = "server-tls";
-            cb_zookeeper.add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR);
-            pod_builder.add_volume(Self::create_tls_volume(tls_volume_name, secret_class)?);
+            cb_zookeeper
+                .add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR)
+                .context(AddVolumeMountSnafu)?;
+            pod_builder
+                .add_volume(Self::create_tls_volume(tls_volume_name, secret_class)?)
+                .context(AddVolumeSnafu)?;
         }
 
         // quorum
         let tls_volume_name = "quorum-tls";
-        cb_zookeeper.add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR);
-        pod_builder.add_volume(Self::create_tls_volume(
-            tls_volume_name,
-            &self.quorum_secret_class,
-        )?);
+        cb_zookeeper
+            .add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR)
+            .context(AddVolumeMountSnafu)?;
+        pod_builder
+            .add_volume(Self::create_tls_volume(
+                tls_volume_name,
+                &self.quorum_secret_class,
+            )?)
+            .context(AddVolumeSnafu)?;
 
         Ok(())
     }
@@ -264,7 +283,8 @@ impl ZookeeperSecurity {
                 AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.as_ref(),
                 AuthenticationClassProvider::Ldap(_)
                 | AuthenticationClassProvider::Oidc(_)
-                | AuthenticationClassProvider::Static(_) => None,
+                | AuthenticationClassProvider::Static(_)
+                | AuthenticationClassProvider::Kerberos(_) => None,
             })
             .or(self.server_secret_class.as_ref())
     }

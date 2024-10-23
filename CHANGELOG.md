@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- The operator can now run on Kubernetes clusters using a non-default cluster domain.
+  Use the env var `KUBERNETES_CLUSTER_DOMAIN` or the operator Helm chart property `kubernetesClusterDomain` to set a non-default cluster domain ([#870]).
+
 ### Changed
 
 - Reduce CRD size from `483KB` to `57KB` by accepting arbitrary YAML input instead of the underlying schema for the following fields ([#853]):
@@ -20,6 +25,7 @@ All notable changes to this project will be documented in this file.
 
 [#853]: https://github.com/stackabletech/zookeeper-operator/pull/853
 [#857]: https://github.com/stackabletech/zookeeper-operator/pull/857
+[#870]: https://github.com/stackabletech/zookeeper-operator/pull/870
 [#872]: https://github.com/stackabletech/zookeeper-operator/pull/872
 
 ## [24.7.0] - 2024-07-24

@@ -17,6 +17,7 @@ use stackable_operator::{
     },
     logging::controller::ReconcilerError,
     time::Duration,
+    utils::cluster_info::KubernetesClusterInfo,
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, ZookeeperZnodeStatus,
@@ -273,12 +274,15 @@ async fn reconcile_apply(
     )
     .unwrap();
 
-    znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk, &zookeeper_security)?, znode_path)
-        .await
-        .with_context(|_| EnsureZnodeSnafu {
-            zk: ObjectRef::from_obj(&zk),
-            znode_path,
-        })?;
+    znode_mgmt::ensure_znode_exists(
+        &zk_mgmt_addr(&zk, &zookeeper_security, &client.kubernetes_cluster_info)?,
+        znode_path,
+    )
+    .await
+    .with_context(|_| EnsureZnodeSnafu {
+        zk: ObjectRef::from_obj(&zk),
+        znode_path,
+    })?;
 
     let server_role_service = client
         .get::<Service>(
@@ -340,22 +344,29 @@ async fn reconcile_cleanup(
         .context(FailedToInitializeSecurityContextSnafu)?;
 
     // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
-    znode_mgmt::ensure_znode_missing(&zk_mgmt_addr(&zk, &zookeeper_security)?, znode_path)
-        .await
-        .with_context(|_| EnsureZnodeMissingSnafu {
-            zk: ObjectRef::from_obj(&zk),
-            znode_path,
-        })?;
+    znode_mgmt::ensure_znode_missing(
+        &zk_mgmt_addr(&zk, &zookeeper_security, &client.kubernetes_cluster_info)?,
+        znode_path,
+    )
+    .await
+    .with_context(|_| EnsureZnodeMissingSnafu {
+        zk: ObjectRef::from_obj(&zk),
+        znode_path,
+    })?;
     // No need to delete the ConfigMap, since that has an OwnerReference on the ZookeeperZnode object
     Ok(controller::Action::await_change())
 }
 
-fn zk_mgmt_addr(zk: &ZookeeperCluster, zookeeper_security: &ZookeeperSecurity) -> Result<String> {
+fn zk_mgmt_addr(
+    zk: &ZookeeperCluster,
+    zookeeper_security: &ZookeeperSecurity,
+    cluster_info: &KubernetesClusterInfo,
+) -> Result<String> {
     // Rust ZooKeeper client does not support client-side load-balancing, so use
     // (load-balanced) global service instead.
     Ok(format!(
         "{}:{}",
-        zk.server_role_service_fqdn()
+        zk.server_role_service_fqdn(cluster_info)
             .with_context(|| NoZkFqdnSnafu {
                 zk: ObjectRef::from_obj(zk),
             })?,
