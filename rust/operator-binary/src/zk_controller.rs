@@ -23,17 +23,14 @@ use stackable_operator::{
         pod::{container::ContainerBuilder, resources::ResourceRequirementsBuilder, PodBuilder},
     },
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::{
-        product_image_selection::ResolvedProductImage,
-        rbac::{build_rbac_resources, service_account_name},
-    },
+    commons::{product_image_selection::ResolvedProductImage, rbac::build_rbac_resources},
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service, ServicePort,
-                ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service,
+                ServiceAccount, ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
@@ -43,7 +40,7 @@ use stackable_operator::{
         api::DynamicObject,
         core::{error_boundary, DeserializeGuard},
         runtime::controller,
-        Resource,
+        Resource, ResourceExt,
     },
     kvp::{Label, LabelError, Labels},
     logging::controller::ReconcilerError,
@@ -395,7 +392,7 @@ pub async fn reconcile_zk(
     .context(BuildRbacResourcesSnafu)?;
 
     cluster_resources
-        .add(client, rbac_sa)
+        .add(client, rbac_sa.clone())
         .await
         .context(ApplyServiceAccountSnafu)?;
 
@@ -444,6 +441,7 @@ pub async fn reconcile_zk(
             &zookeeper_security,
             &resolved_product_image,
             &merged_config,
+            &rbac_sa,
         )?;
         cluster_resources
             .add(client, rg_service)
@@ -757,6 +755,7 @@ fn build_server_rolegroup_statefulset(
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
     config: &ZookeeperConfig,
+    service_account: &ServiceAccount,
 ) -> Result<StatefulSet> {
     let role = zk.role(zk_role).context(InternalOperatorFailureSnafu)?;
     let rolegroup = zk
@@ -964,7 +963,7 @@ fn build_server_rolegroup_statefulset(
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(service_account_name(APP_NAME));
+        .service_account_name(service_account.name_any());
 
     if let Some(ContainerLogConfig {
         choice:
