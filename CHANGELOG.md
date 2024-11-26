@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- BREAKING: Use distinct ServiceAccounts for the Stacklets, so that multiple Stacklets can be
+  deployed in one namespace. Existing Stacklets will use the newly created ServiceAccounts after
+  restart ([#889]).
+
+[#889]: https://github.com/stackabletech/zookeeper-operator/pull/889
+
 ## [24.11.0] - 2024-11-18
 
 ### Added
@@ -24,13 +32,11 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Failing to parse one `ZookeeperCluster`/`ZookeeperZnode` should no longer cause the whole operator to stop functioning ([#872]).
-- BREAKING: Use distinct ServiceAccounts for the Stacklets, so that multiple Stacklets can be deployed in one namespace. Existing Stacklets will use the newly created ServiceAccounts after restart ([#889]).
 
 [#853]: https://github.com/stackabletech/zookeeper-operator/pull/853
 [#857]: https://github.com/stackabletech/zookeeper-operator/pull/857
 [#870]: https://github.com/stackabletech/zookeeper-operator/pull/870
 [#872]: https://github.com/stackabletech/zookeeper-operator/pull/872
-[#889]: https://github.com/stackabletech/zookeeper-operator/pull/889
 
 ## [24.7.0] - 2024-07-24
 
