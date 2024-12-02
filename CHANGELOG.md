@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- The lifetime of auto generated TLS certificates is now configurable with the role and roleGroup
+  config property `requestedSecretLifetime`. This helps reduce frequent Pod restarts ([#892]).
+
 ### Fixed
 
 - BREAKING: Use distinct ServiceAccounts for the Stacklets, so that multiple Stacklets can be
@@ -11,6 +16,7 @@ All notable changes to this project will be documented in this file.
   restart ([#889]).
 
 [#889]: https://github.com/stackabletech/zookeeper-operator/pull/889
+[#892]: https://github.com/stackabletech/zookeeper-operator/pull/892
 
 ## [24.11.0] - 2024-11-18
 
