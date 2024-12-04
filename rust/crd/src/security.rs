@@ -6,7 +6,9 @@
 //! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
 use std::collections::BTreeMap;
 
+use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 use snafu::{ResultExt, Snafu};
+use stackable_operator::time::Duration;
 use stackable_operator::{
     builder::{
         self,
@@ -23,8 +25,6 @@ use stackable_operator::{
     commons::authentication::AuthenticationClassProvider,
     k8s_openapi::api::core::v1::Volume,
 };
-
-use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -147,6 +147,7 @@ impl ZookeeperSecurity {
         &self,
         pod_builder: &mut PodBuilder,
         cb_zookeeper: &mut ContainerBuilder,
+        requested_secret_lifetime: &Duration,
     ) -> Result<()> {
         let tls_secret_class = self.get_tls_secret_class();
 
@@ -156,7 +157,11 @@ impl ZookeeperSecurity {
                 .add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR)
                 .context(AddVolumeMountSnafu)?;
             pod_builder
-                .add_volume(Self::create_tls_volume(tls_volume_name, secret_class)?)
+                .add_volume(Self::create_tls_volume(
+                    tls_volume_name,
+                    secret_class,
+                    requested_secret_lifetime,
+                )?)
                 .context(AddVolumeSnafu)?;
         }
 
@@ -169,6 +174,7 @@ impl ZookeeperSecurity {
             .add_volume(Self::create_tls_volume(
                 tls_volume_name,
                 &self.quorum_secret_class,
+                requested_secret_lifetime,
             )?)
             .context(AddVolumeSnafu)?;
 
@@ -290,13 +296,18 @@ impl ZookeeperSecurity {
     }
 
     /// Creates ephemeral volumes to mount the `SecretClass` into the Pods
-    fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Result<Volume> {
+    fn create_tls_volume(
+        volume_name: &str,
+        secret_class_name: &str,
+        requested_secret_lifetime: &Duration,
+    ) -> Result<Volume> {
         let volume = VolumeBuilder::new(volume_name)
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(secret_class_name)
                     .with_pod_scope()
                     .with_node_scope()
                     .with_format(SecretFormat::TlsPkcs12)
+                    .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                     .build()
                     .context(BuildTlsVolumeSnafu { volume_name })?,
             )
