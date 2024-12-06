@@ -2173,7 +2173,7 @@ dependencies = [
 
 [[package]]
 name = "stackable-zookeeper-crd"
-version = "24.11.0"
+version = "24.11.1-rc1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2186,7 +2186,7 @@ dependencies = [
 
 [[package]]
 name = "stackable-zookeeper-operator"
-version = "24.11.0"
+version = "24.11.1-rc1"
 dependencies = [
  "anyhow",
  "built",
