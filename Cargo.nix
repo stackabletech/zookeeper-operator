@@ -6754,7 +6754,7 @@ rec {
       };
       "stackable-zookeeper-crd" = rec {
         crateName = "stackable-zookeeper-crd";
-        version = "24.11.0";
+        version = "24.11.1-rc1";
         edition = "2021";
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./rust/crd; };
         libName = "stackable_zookeeper_crd";
@@ -6799,7 +6799,7 @@ rec {
       };
       "stackable-zookeeper-operator" = rec {
         crateName = "stackable-zookeeper-operator";
-        version = "24.11.0";
+        version = "24.11.1-rc1";
         edition = "2021";
         crateBin = [
           {

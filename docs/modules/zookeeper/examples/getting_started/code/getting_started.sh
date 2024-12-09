@@ -28,20 +28,20 @@ helm repo update
 
 echo "Installing Operators with Helm"
 # tag::helm-install-operators[]
-helm install --wait commons-operator stackable-stable/commons-operator --version 24.11.0
-helm install --wait secret-operator stackable-stable/secret-operator --version 24.11.0
-helm install --wait listener-operator stackable-stable/listener-operator --version 24.11.0
-helm install --wait zookeeper-operator stackable-stable/zookeeper-operator --version 24.11.0
+helm install --wait commons-operator stackable-stable/commons-operator --version 24.11.1-rc1
+helm install --wait secret-operator stackable-stable/secret-operator --version 24.11.1-rc1
+helm install --wait listener-operator stackable-stable/listener-operator --version 24.11.1-rc1
+helm install --wait zookeeper-operator stackable-stable/zookeeper-operator --version 24.11.1-rc1
 # end::helm-install-operators[]
 ;;
 "stackablectl")
 echo "installing Operators with stackablectl"
 # tag::stackablectl-install-operators[]
 stackablectl operator install \
-  commons=24.11.0 \
-  secret=24.11.0 \
-  listener=24.11.0 \
-  zookeeper=24.11.0
+  commons=24.11.1-rc1 \
+  secret=24.11.1-rc1 \
+  listener=24.11.1-rc1 \
+  zookeeper=24.11.1-rc1
 # end::stackablectl-install-operators[]
 ;;
 *)
@@ -70,7 +70,7 @@ zkCli_ls() {
 # tag::zkcli-ls[]
 kubectl run my-pod \
   --stdin --tty --quiet --restart=Never \
-  --image docker.stackable.tech/stackable/zookeeper:3.9.2-stackable24.11.0 -- \
+  --image docker.stackable.tech/stackable/zookeeper:3.9.2-stackable24.11.1-rc1 -- \
   bin/zkCli.sh -server simple-zk-server-default:2282 ls / > /dev/null && \
   kubectl logs my-pod && \
   kubectl delete pods my-pod
