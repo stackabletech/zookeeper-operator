@@ -296,7 +296,7 @@ impl ZookeeperConfig {
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
     pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
 
-    const DEFAULT_SECRET_LIFETIME: Duration = Duration::from_days_unchecked(7);
+    const DEFAULT_SECRET_LIFETIME: Duration = Duration::from_days_unchecked(1);
 
     fn default_server_config(cluster_name: &str, role: &ZookeeperRole) -> ZookeeperConfigFragment {
         ZookeeperConfigFragment {
