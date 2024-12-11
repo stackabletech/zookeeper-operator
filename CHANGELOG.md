@@ -8,7 +8,7 @@ All notable changes to this project will be documented in this file.
 
 - The lifetime of auto generated TLS certificates is now configurable with the role and roleGroup
   config property `requestedSecretLifetime`. This helps reduce frequent Pod restarts ([#892]).
-- Run a `containerdebug` process in the background of each Trino container to collect debugging information ([#881]).
+- Run a `containerdebug` process in the background of each Zookeeper container to collect debugging information ([#881]).
 
 ### Fixed
 
