@@ -6,6 +6,22 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- The lifetime of auto generated TLS certificates is now configurable with the role and roleGroup
+  config property `requestedSecretLifetime`. This helps reduce frequent Pod restarts ([#892]).
+
+### Fixed
+
+- BREAKING: Use distinct ServiceAccounts for the Stacklets, so that multiple Stacklets can be
+  deployed in one namespace. Existing Stacklets will use the newly created ServiceAccounts after
+  restart ([#889]).
+
+[#889]: https://github.com/stackabletech/zookeeper-operator/pull/889
+[#892]: https://github.com/stackabletech/zookeeper-operator/pull/892
+
+## [24.11.0] - 2024-11-18
+
+### Added
+
 - The operator can now run on Kubernetes clusters using a non-default cluster domain.
   Use the env var `KUBERNETES_CLUSTER_DOMAIN` or the operator Helm chart property `kubernetesClusterDomain` to set a non-default cluster domain ([#870]).
 

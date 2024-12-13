@@ -23,17 +23,14 @@ use stackable_operator::{
         pod::{container::ContainerBuilder, resources::ResourceRequirementsBuilder, PodBuilder},
     },
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::{
-        product_image_selection::ResolvedProductImage,
-        rbac::{build_rbac_resources, service_account_name},
-    },
+    commons::{product_image_selection::ResolvedProductImage, rbac::build_rbac_resources},
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service, ServicePort,
-                ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service,
+                ServiceAccount, ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
@@ -43,7 +40,7 @@ use stackable_operator::{
         api::DynamicObject,
         core::{error_boundary, DeserializeGuard},
         runtime::controller,
-        Resource,
+        Resource, ResourceExt,
     },
     kvp::{Label, LabelError, Labels},
     logging::controller::ReconcilerError,
@@ -97,6 +94,9 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    #[snafu(display("missing secret lifetime"))]
+    MissingSecretLifetime,
+
     #[snafu(display("ZookeeperCluster object is invalid"))]
     InvalidZookeeperCluster {
         source: error_boundary::InvalidObject,
@@ -282,6 +282,7 @@ impl ReconcilerError for Error {
     }
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
+            Error::MissingSecretLifetime => None,
             Error::InvalidZookeeperCluster { source: _ } => None,
             Error::CrdValidationFailure { .. } => None,
             Error::NoServerRole => None,
@@ -395,7 +396,7 @@ pub async fn reconcile_zk(
     .context(BuildRbacResourcesSnafu)?;
 
     cluster_resources
-        .add(client, rbac_sa)
+        .add(client, rbac_sa.clone())
         .await
         .context(ApplyServiceAccountSnafu)?;
 
@@ -444,6 +445,7 @@ pub async fn reconcile_zk(
             &zookeeper_security,
             &resolved_product_image,
             &merged_config,
+            &rbac_sa,
         )?;
         cluster_resources
             .add(client, rg_service)
@@ -749,6 +751,7 @@ fn build_server_rolegroup_service(
 /// The rolegroup [`StatefulSet`] runs the rolegroup, as configured by the administrator.
 ///
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_server_rolegroup_service`]).
+#[allow(clippy::too_many_arguments)]
 fn build_server_rolegroup_statefulset(
     zk: &ZookeeperCluster,
     zk_role: &ZookeeperRole,
@@ -756,7 +759,8 @@ fn build_server_rolegroup_statefulset(
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
-    config: &ZookeeperConfig,
+    merged_config: &ZookeeperConfig,
+    service_account: &ServiceAccount,
 ) -> Result<StatefulSet> {
     let role = zk.role(zk_role).context(InternalOperatorFailureSnafu)?;
     let rolegroup = zk
@@ -799,9 +803,16 @@ fn build_server_rolegroup_statefulset(
         ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
     let mut pod_builder = PodBuilder::new();
 
+    let requested_secret_lifetime = merged_config
+        .requested_secret_lifetime
+        .context(MissingSecretLifetimeSnafu)?;
     // add volumes and mounts depending on tls / auth settings
     zookeeper_security
-        .add_volume_mounts(&mut pod_builder, &mut cb_zookeeper)
+        .add_volume_mounts(
+            &mut pod_builder,
+            &mut cb_zookeeper,
+            &requested_secret_lifetime,
+        )
         .context(AddTlsVolumeMountsSnafu)?;
 
     let mut args = Vec::new();
@@ -932,7 +943,7 @@ fn build_server_rolegroup_statefulset(
         .image_pull_secrets_from_product_image(resolved_product_image)
         .add_init_container(container_prepare)
         .add_container(container_zk)
-        .affinity(&config.affinity)
+        .affinity(&merged_config.affinity)
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
@@ -964,7 +975,7 @@ fn build_server_rolegroup_statefulset(
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(service_account_name(APP_NAME));
+        .service_account_name(service_account.name_any());
 
     if let Some(ContainerLogConfig {
         choice:
@@ -1014,7 +1025,7 @@ fn build_server_rolegroup_statefulset(
         );
     }
 
-    add_graceful_shutdown_config(config, &mut pod_builder).context(GracefulShutdownSnafu)?;
+    add_graceful_shutdown_config(merged_config, &mut pod_builder).context(GracefulShutdownSnafu)?;
 
     let mut pod_template = pod_builder.build_template();
     pod_template.merge_from(role.config.pod_overrides.clone());
