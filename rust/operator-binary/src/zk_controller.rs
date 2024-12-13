@@ -882,6 +882,7 @@ fn build_server_rolegroup_statefulset(
             {COMMON_BASH_TRAP_FUNCTIONS}
             {remove_vector_shutdown_file_command}
             prepare_signal_handlers
+            containerdebug --output={STACKABLE_LOG_DIR}/containerdebug-state.json --loop &
             bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/zoo.cfg &
             wait_for_termination $!
             {create_vector_shutdown_file_command}
@@ -892,6 +893,10 @@ fn build_server_rolegroup_statefulset(
                 create_vector_shutdown_file_command(STACKABLE_LOG_DIR),
         }])
         .add_env_vars(env_vars)
+        .add_env_var(
+            "CONTAINERDEBUG_LOG_DIRECTORY",
+            format!("{STACKABLE_LOG_DIR}/containerdebug"),
+        )
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
         // This also acts as a hint to the StatefulSet controller to wait for each pod to enter quorum before taking down the next
         .readiness_probe(Probe {
