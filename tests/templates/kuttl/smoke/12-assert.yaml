@@ -1,0 +1,7 @@
+---
+# This test checks if the containerdebug-state.json file is present and valid
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 120
+commands:
+  - script: kubectl exec -n $NAMESPACE --container zookeeper test-zk-server-primary-0 -- cat /stackable/log/containerdebug-state.json | jq --exit-status '"valid JSON"'
