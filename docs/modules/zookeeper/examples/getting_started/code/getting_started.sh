@@ -70,7 +70,7 @@ zkCli_ls() {
 # tag::zkcli-ls[]
 kubectl run my-pod \
   --stdin --tty --quiet --restart=Never \
-  --image docker.stackable.tech/stackable/zookeeper:3.9.2-stackable0.0.0-dev -- \
+  --image oci.stackable.tech/sdp/zookeeper:3.9.2-stackable0.0.0-dev -- \
   bin/zkCli.sh -server simple-zk-server-default:2282 ls / > /dev/null && \
   kubectl logs my-pod && \
   kubectl delete pods my-pod
