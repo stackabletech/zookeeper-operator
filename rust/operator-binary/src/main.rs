@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clap::{crate_description, crate_version, Parser};
-use futures::StreamExt;
+use futures::{pin_mut, StreamExt};
 use stackable_operator::{
     cli::{Command, ProductOperatorRun},
     k8s_openapi::api::{
@@ -10,7 +10,11 @@ use stackable_operator::{
     },
     kube::{
         core::DeserializeGuard,
-        runtime::{reflector::ObjectRef, watcher, Controller},
+        runtime::{
+            events::{Recorder, Reporter},
+            reflector::ObjectRef,
+            watcher, Controller,
+        },
         Resource,
     },
     logging::controller::report_controller_reconciled,
@@ -18,8 +22,7 @@ use stackable_operator::{
 };
 use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
 
-use crate::zk_controller::ZK_CONTROLLER_NAME;
-use crate::znode_controller::ZNODE_CONTROLLER_NAME;
+use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
 
 mod command;
 mod discovery;
@@ -79,13 +82,20 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
 
-            let zk_controller_builder = Controller::new(
+            let zk_controller = Controller::new(
                 watch_namespace.get_api::<DeserializeGuard<ZookeeperCluster>>(&client),
                 watcher::Config::default(),
             );
 
-            let zk_store = zk_controller_builder.store();
-            let zk_controller = zk_controller_builder
+            let zk_event_recorder = Arc::new(Recorder::new(
+                client.as_kube_client(),
+                Reporter {
+                    controller: ZK_FULL_CONTROLLER_NAME.to_string(),
+                    instance: None,
+                },
+            ));
+            let zk_store = zk_controller.store();
+            let zk_controller = zk_controller
                 .owns(
                     watch_namespace.get_api::<DeserializeGuard<Service>>(&client),
                     watcher::Config::default(),
@@ -125,19 +135,38 @@ async fn main() -> anyhow::Result<()> {
                         product_config,
                     }),
                 )
-                .map(|res| {
-                    report_controller_reconciled(
-                        &client,
-                        &format!("{ZK_CONTROLLER_NAME}.{OPERATOR_NAME}"),
-                        &res,
-                    );
-                });
-            let znode_controller_builder = Controller::new(
+                // We can let the reporting happen in the background
+                .for_each_concurrent(
+                    16, // concurrency limit
+                    |result| {
+                        // The event_recorder needs to be shared across all invocations, so that
+                        // events are correctly aggregated
+                        let event_recorder = zk_event_recorder.clone();
+                        async move {
+                            report_controller_reconciled(
+                                &event_recorder,
+                                ZK_FULL_CONTROLLER_NAME,
+                                &result,
+                            )
+                            .await;
+                        }
+                    },
+                );
+
+            let znode_controller = Controller::new(
                 watch_namespace.get_api::<DeserializeGuard<ZookeeperZnode>>(&client),
                 watcher::Config::default(),
             );
-            let znode_store = znode_controller_builder.store();
-            let znode_controller = znode_controller_builder
+            let znode_event_recorder = Arc::new(Recorder::new(
+                client.as_kube_client(),
+                Reporter {
+                    controller: ZNODE_FULL_CONTROLLER_NAME.to_string(),
+                    instance: None,
+                },
+            ));
+
+            let znode_store = znode_controller.store();
+            let znode_controller = znode_controller
                 .owns(
                     watch_namespace.get_api::<DeserializeGuard<ConfigMap>>(&client),
                     watcher::Config::default(),
@@ -168,17 +197,27 @@ async fn main() -> anyhow::Result<()> {
                         client: client.clone(),
                     }),
                 )
-                .map(|res| {
-                    report_controller_reconciled(
-                        &client,
-                        &format!("{ZNODE_CONTROLLER_NAME}.{OPERATOR_NAME}"),
-                        &res,
-                    );
-                });
+                // We can let the reporting happen in the background
+                .for_each_concurrent(
+                    16, // concurrency limit
+                    move |result| {
+                        // The event_recorder needs to be shared across all invocations, so that
+                        // events are correctly aggregated
+                        let event_recorder = znode_event_recorder.clone();
+                        async move {
+                            report_controller_reconciled(
+                                &event_recorder,
+                                ZNODE_FULL_CONTROLLER_NAME,
+                                &result,
+                            )
+                            .await;
+                        }
+                    },
+                );
 
-            futures::stream::select(zk_controller, znode_controller)
-                .collect::<()>()
-                .await;
+            pin_mut!(zk_controller, znode_controller);
+            // kube-runtime's Controller will tokio::spawn each reconciliation, so this only concerns the internal watch machinery
+            futures::future::select(zk_controller, znode_controller).await;
         }
     }
 

@@ -7,6 +7,7 @@ use std::{
     sync::Arc,
 };
 
+use const_format::concatcp;
 use fnv::FnvHasher;
 use indoc::formatdoc;
 use product_config::{
@@ -82,6 +83,8 @@ use crate::{
 };
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
+pub const ZK_FULL_CONTROLLER_NAME: &str = concatcp!(ZK_CONTROLLER_NAME, '.', OPERATOR_NAME);
+
 pub const ZK_UID: i64 = 1000;
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
