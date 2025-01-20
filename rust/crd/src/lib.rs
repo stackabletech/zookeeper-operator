@@ -25,7 +25,9 @@ use stackable_operator::{
     memory::{BinaryMultiple, MemoryQuantity},
     product_config_utils::{self, Configuration},
     product_logging::{self, spec::Logging},
-    role_utils::{GenericRoleConfig, Role, RoleGroup, RoleGroupRef},
+    role_utils::{
+        GenericProductSpecificCommonConfig, GenericRoleConfig, Role, RoleGroup, RoleGroupRef,
+    },
     schemars::{self, JsonSchema},
     status::condition::{ClusterCondition, HasStatusCondition},
     time::Duration,
@@ -517,7 +519,7 @@ impl ZookeeperCluster {
     pub fn rolegroup(
         &self,
         rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
-    ) -> Result<RoleGroup<ZookeeperConfigFragment>, Error> {
+    ) -> Result<RoleGroup<ZookeeperConfigFragment, GenericProductSpecificCommonConfig>, Error> {
         let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
             UnknownZookeeperRoleSnafu {
                 role: rolegroup_ref.role.to_owned(),

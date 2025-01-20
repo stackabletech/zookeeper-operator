@@ -3,6 +3,7 @@
 //! See [`ZookeeperZnode`] for more details.
 use std::{borrow::Cow, convert::Infallible, sync::Arc};
 
+use const_format::concatcp;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
@@ -32,6 +33,7 @@ use crate::{
 };
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
+pub const ZNODE_FULL_CONTROLLER_NAME: &str = concatcp!(ZNODE_CONTROLLER_NAME, '.', OPERATOR_NAME);
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
