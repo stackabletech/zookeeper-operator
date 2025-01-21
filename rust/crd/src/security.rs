@@ -6,22 +6,25 @@
 //! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
 use std::collections::BTreeMap;
 
+use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 use snafu::{ResultExt, Snafu};
+use stackable_operator::time::Duration;
 use stackable_operator::{
-    builder::pod::{
-        container::ContainerBuilder,
-        volume::{
-            SecretFormat, SecretOperatorVolumeSourceBuilder,
-            SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
+    builder::{
+        self,
+        pod::{
+            container::ContainerBuilder,
+            volume::{
+                SecretFormat, SecretOperatorVolumeSourceBuilder,
+                SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
+            },
+            PodBuilder,
         },
-        PodBuilder,
     },
     client::Client,
     commons::authentication::AuthenticationClassProvider,
     k8s_openapi::api::core::v1::Volume,
 };
-
-use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -34,6 +37,14 @@ pub enum Error {
     BuildTlsVolume {
         source: SecretOperatorVolumeSourceBuilderError,
         volume_name: String,
+    },
+
+    #[snafu(display("failed to add needed volume"))]
+    AddVolume { source: builder::pod::Error },
+
+    #[snafu(display("failed to add needed volumeMount"))]
+    AddVolumeMount {
+        source: builder::pod::container::Error,
     },
 }
 
@@ -109,6 +120,7 @@ impl ZookeeperSecurity {
     /// Check if TLS encryption is enabled. This could be due to:
     /// - A provided server `SecretClass`
     /// - A provided client `AuthenticationClass`
+    ///
     /// This affects init container commands, ZooKeeper configuration, volume mounts and
     /// the ZooKeeper client port
     pub fn tls_enabled(&self) -> bool {
@@ -135,22 +147,36 @@ impl ZookeeperSecurity {
         &self,
         pod_builder: &mut PodBuilder,
         cb_zookeeper: &mut ContainerBuilder,
+        requested_secret_lifetime: &Duration,
     ) -> Result<()> {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
             let tls_volume_name = "server-tls";
-            cb_zookeeper.add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR);
-            pod_builder.add_volume(Self::create_tls_volume(tls_volume_name, secret_class)?);
+            cb_zookeeper
+                .add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR)
+                .context(AddVolumeMountSnafu)?;
+            pod_builder
+                .add_volume(Self::create_tls_volume(
+                    tls_volume_name,
+                    secret_class,
+                    requested_secret_lifetime,
+                )?)
+                .context(AddVolumeSnafu)?;
         }
 
         // quorum
         let tls_volume_name = "quorum-tls";
-        cb_zookeeper.add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR);
-        pod_builder.add_volume(Self::create_tls_volume(
-            tls_volume_name,
-            &self.quorum_secret_class,
-        )?);
+        cb_zookeeper
+            .add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR)
+            .context(AddVolumeMountSnafu)?;
+        pod_builder
+            .add_volume(Self::create_tls_volume(
+                tls_volume_name,
+                &self.quorum_secret_class,
+                requested_secret_lifetime,
+            )?)
+            .context(AddVolumeSnafu)?;
 
         Ok(())
     }
@@ -263,19 +289,25 @@ impl ZookeeperSecurity {
                 AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.as_ref(),
                 AuthenticationClassProvider::Ldap(_)
                 | AuthenticationClassProvider::Oidc(_)
-                | AuthenticationClassProvider::Static(_) => None,
+                | AuthenticationClassProvider::Static(_)
+                | AuthenticationClassProvider::Kerberos(_) => None,
             })
             .or(self.server_secret_class.as_ref())
     }
 
     /// Creates ephemeral volumes to mount the `SecretClass` into the Pods
-    fn create_tls_volume(volume_name: &str, secret_class_name: &str) -> Result<Volume> {
+    fn create_tls_volume(
+        volume_name: &str,
+        secret_class_name: &str,
+        requested_secret_lifetime: &Duration,
+    ) -> Result<Volume> {
         let volume = VolumeBuilder::new(volume_name)
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(secret_class_name)
                     .with_pod_scope()
                     .with_node_scope()
                     .with_format(SecretFormat::TlsPkcs12)
+                    .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                     .build()
                     .context(BuildTlsVolumeSnafu { volume_name })?,
             )

@@ -25,10 +25,13 @@ use stackable_operator::{
     memory::{BinaryMultiple, MemoryQuantity},
     product_config_utils::{self, Configuration},
     product_logging::{self, spec::Logging},
-    role_utils::{GenericRoleConfig, Role, RoleGroup, RoleGroupRef},
+    role_utils::{
+        GenericProductSpecificCommonConfig, GenericRoleConfig, Role, RoleGroup, RoleGroupRef,
+    },
     schemars::{self, JsonSchema},
     status::condition::{ClusterCondition, HasStatusCondition},
     time::Duration,
+    utils::cluster_info::KubernetesClusterInfo,
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
@@ -239,6 +242,11 @@ pub struct ZookeeperConfig {
     /// Time period Pods have to gracefully shut down, e.g. `30m`, `1h` or `2d`. Consult the operator documentation for details.
     #[fragment_attrs(serde(default))]
     pub graceful_shutdown_timeout: Option<Duration>,
+
+    /// Request secret (currently only autoTls certificates) lifetime from the secret operator, e.g. `7d`, or `30d`.
+    /// This can be shortened by the `maxCertificateLifetime` setting on the SecretClass issuing the TLS certificate.
+    #[fragment_attrs(serde(default))]
+    pub requested_secret_lifetime: Option<Duration>,
 }
 
 #[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
@@ -290,6 +298,8 @@ impl ZookeeperConfig {
     pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
     pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
 
+    const DEFAULT_SECRET_LIFETIME: Duration = Duration::from_days_unchecked(1);
+
     fn default_server_config(cluster_name: &str, role: &ZookeeperRole) -> ZookeeperConfigFragment {
         ZookeeperConfigFragment {
             init_limit: None,
@@ -316,6 +326,7 @@ impl ZookeeperConfig {
             logging: product_logging::spec::default_logging(),
             affinity: get_affinity(cluster_name, role),
             graceful_shutdown_timeout: Some(DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT),
+            requested_secret_lifetime: Some(Self::DEFAULT_SECRET_LIFETIME),
         }
     }
 }
@@ -482,11 +493,12 @@ impl ZookeeperCluster {
     }
 
     /// The fully-qualified domain name of the role-level load-balanced Kubernetes `Service`
-    pub fn server_role_service_fqdn(&self) -> Option<String> {
+    pub fn server_role_service_fqdn(&self, cluster_info: &KubernetesClusterInfo) -> Option<String> {
         Some(format!(
-            "{}.{}.svc.cluster.local",
-            self.server_role_service_name()?,
-            self.metadata.namespace.as_ref()?
+            "{role_service_name}.{namespace}.svc.{cluster_domain}",
+            role_service_name = self.server_role_service_name()?,
+            namespace = self.metadata.namespace.as_ref()?,
+            cluster_domain = cluster_info.cluster_domain
         ))
     }
 
@@ -507,7 +519,7 @@ impl ZookeeperCluster {
     pub fn rolegroup(
         &self,
         rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
-    ) -> Result<RoleGroup<ZookeeperConfigFragment>, Error> {
+    ) -> Result<RoleGroup<ZookeeperConfigFragment, GenericProductSpecificCommonConfig>, Error> {
         let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
             UnknownZookeeperRoleSnafu {
                 role: rolegroup_ref.role.to_owned(),
@@ -666,10 +678,13 @@ pub struct ZookeeperPodRef {
 }
 
 impl ZookeeperPodRef {
-    pub fn fqdn(&self) -> String {
+    pub fn fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
         format!(
-            "{}.{}.{}.svc.cluster.local",
-            self.pod_name, self.role_group_service_name, self.namespace
+            "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}",
+            pod_name = self.pod_name,
+            service_name = self.role_group_service_name,
+            namespace = self.namespace,
+            cluster_domain = cluster_info.cluster_domain
         )
     }
 }

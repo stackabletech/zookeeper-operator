@@ -1,0 +1,30 @@
+---
+name: pre-commit
+
+on:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN_VERSION: "1.82.0"
+  HADOLINT_VERSION: "v2.12.0"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install host dependencies
+        uses: awalsh128/cache-apt-pkgs-action@a6c3917cc929dd0345bfb2d3feaf9101823370ad # v1.4.2
+        with:
+          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config apt-transport-https
+          version: ubuntu-latest
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - uses: stackabletech/actions/run-pre-commit@5b66858af3597c4ea34f9b33664b8034a1d28427 # v0.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          rust: ${{ env.RUST_TOOLCHAIN_VERSION }}
+          hadolint: ${{ env.HADOLINT_VERSION }}

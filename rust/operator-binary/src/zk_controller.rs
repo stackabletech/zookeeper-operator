@@ -7,6 +7,7 @@ use std::{
     sync::Arc,
 };
 
+use const_format::concatcp;
 use fnv::FnvHasher;
 use indoc::formatdoc;
 use product_config::{
@@ -17,34 +18,39 @@ use product_config::{
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
+        self,
         configmap::ConfigMapBuilder,
         meta::ObjectMetaBuilder,
         pod::{container::ContainerBuilder, resources::ResourceRequirementsBuilder, PodBuilder},
     },
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::{
-        product_image_selection::ResolvedProductImage,
-        rbac::{build_rbac_resources, service_account_name},
-    },
+    commons::{product_image_selection::ResolvedProductImage, rbac::build_rbac_resources},
     k8s_openapi::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service, ServicePort,
-                ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service,
+                ServiceAccount, ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
         DeepMerge,
     },
-    kube::{api::DynamicObject, runtime::controller, Resource},
+    kube::{
+        api::DynamicObject,
+        core::{error_boundary, DeserializeGuard},
+        runtime::controller,
+        Resource, ResourceExt,
+    },
     kvp::{Label, LabelError, Labels},
     logging::controller::ReconcilerError,
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
         self,
-        framework::{create_vector_shutdown_file_command, remove_vector_shutdown_file_command},
+        framework::{
+            create_vector_shutdown_file_command, remove_vector_shutdown_file_command, LoggingError,
+        },
         spec::{
             ConfigMapLogConfig, ContainerLogConfig, ContainerLogConfigChoice,
             CustomContainerLogConfig,
@@ -56,7 +62,7 @@ use stackable_operator::{
         statefulset::StatefulSetConditionBuilder,
     },
     time::Duration,
-    utils::COMMON_BASH_TRAP_FUNCTIONS,
+    utils::{cluster_info::KubernetesClusterInfo, COMMON_BASH_TRAP_FUNCTIONS},
 };
 use stackable_zookeeper_crd::{
     security::{self, ZookeeperSecurity},
@@ -77,6 +83,8 @@ use crate::{
 };
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
+pub const ZK_FULL_CONTROLLER_NAME: &str = concatcp!(ZK_CONTROLLER_NAME, '.', OPERATOR_NAME);
+
 pub const ZK_UID: i64 = 1000;
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -89,6 +97,14 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    #[snafu(display("missing secret lifetime"))]
+    MissingSecretLifetime,
+
+    #[snafu(display("ZookeeperCluster object is invalid"))]
+    InvalidZookeeperCluster {
+        source: error_boundary::InvalidObject,
+    },
+
     #[snafu(display("crd validation failure"))]
     CrdValidationFailure {
         source: stackable_zookeeper_crd::Error,
@@ -245,6 +261,22 @@ pub enum Error {
 
     #[snafu(display("failed to add TLS volume mounts"))]
     AddTlsVolumeMounts { source: security::Error },
+
+    #[snafu(display("failed to configure logging"))]
+    ConfigureLogging { source: LoggingError },
+
+    #[snafu(display("failed to add needed volume"))]
+    AddVolume { source: builder::pod::Error },
+
+    #[snafu(display("failed to add needed volumeMount"))]
+    AddVolumeMount {
+        source: builder::pod::container::Error,
+    },
+
+    #[snafu(display("failed to create cluster resources"))]
+    CreateClusterResources {
+        source: stackable_operator::cluster_resources::Error,
+    },
 }
 
 impl ReconcilerError for Error {
@@ -253,6 +285,8 @@ impl ReconcilerError for Error {
     }
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
+            Error::MissingSecretLifetime => None,
+            Error::InvalidZookeeperCluster { source: _ } => None,
             Error::CrdValidationFailure { .. } => None,
             Error::NoServerRole => None,
             Error::RoleParseFailure { .. } => None,
@@ -285,12 +319,23 @@ impl ReconcilerError for Error {
             Error::BuildLabel { .. } => None,
             Error::ObjectMeta { .. } => None,
             Error::AddTlsVolumeMounts { .. } => None,
+            Error::ConfigureLogging { .. } => None,
+            Error::AddVolume { .. } => None,
+            Error::AddVolumeMount { .. } => None,
+            Error::CreateClusterResources { .. } => None,
         }
     }
 }
 
-pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<controller::Action> {
+pub async fn reconcile_zk(
+    zk: Arc<DeserializeGuard<ZookeeperCluster>>,
+    ctx: Arc<Ctx>,
+) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
+    let zk =
+        zk.0.as_ref()
+            .map_err(error_boundary::InvalidObject::clone)
+            .context(InvalidZookeeperClusterSnafu)?;
     let client = &ctx.client;
 
     let resolved_product_image = zk
@@ -305,12 +350,12 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         &zk.object_ref(&()),
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
     )
-    .unwrap();
+    .context(CreateClusterResourcesSnafu)?;
 
     let validated_config = validate_all_roles_and_groups_config(
         &resolved_product_image.app_version_label,
         &transform_all_roles_to_config(
-            zk.as_ref(),
+            zk,
             [(
                 ZookeeperRole::Server.to_string(),
                 (
@@ -336,16 +381,16 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
-    let vector_aggregator_address = resolve_vector_aggregator_address(&zk, client)
+    let vector_aggregator_address = resolve_vector_aggregator_address(zk, client)
         .await
         .context(ResolveVectorAggregatorAddressSnafu)?;
 
-    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, &zk)
+    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, zk)
         .await
         .context(FailedToInitializeSecurityContextSnafu)?;
 
     let (rbac_sa, rbac_rolebinding) = build_rbac_resources(
-        zk.as_ref(),
+        zk,
         APP_NAME,
         cluster_resources
             .get_required_labels()
@@ -354,7 +399,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     .context(BuildRbacResourcesSnafu)?;
 
     cluster_resources
-        .add(client, rbac_sa)
+        .add(client, rbac_sa.clone())
         .await
         .context(ApplyServiceAccountSnafu)?;
 
@@ -366,7 +411,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     let server_role_service = cluster_resources
         .add(
             client,
-            build_server_role_service(&zk, &resolved_product_image, &zookeeper_security)?,
+            build_server_role_service(zk, &resolved_product_image, &zookeeper_security)?,
         )
         .await
         .context(ApplyRoleServiceSnafu)?;
@@ -381,27 +426,29 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
             .context(FailedToResolveConfigSnafu)?;
 
         let rg_service = build_server_rolegroup_service(
-            &zk,
+            zk,
             &rolegroup,
             &resolved_product_image,
             &zookeeper_security,
         )?;
         let rg_configmap = build_server_rolegroup_config_map(
-            &zk,
+            zk,
             &rolegroup,
             rolegroup_config,
             &resolved_product_image,
             vector_aggregator_address.as_deref(),
             &zookeeper_security,
+            &client.kubernetes_cluster_info,
         )?;
         let rg_statefulset = build_server_rolegroup_statefulset(
-            &zk,
+            zk,
             &zk_role,
             &rolegroup,
             rolegroup_config,
             &zookeeper_security,
             &resolved_product_image,
             &merged_config,
+            &rbac_sa,
         )?;
         cluster_resources
             .add(client, rg_service)
@@ -431,7 +478,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         pod_disruption_budget: pdb,
     }) = role_config
     {
-        add_pdbs(pdb, &zk, &zk_role, client, &mut cluster_resources)
+        add_pdbs(pdb, zk, &zk_role, client, &mut cluster_resources)
             .await
             .context(FailedToCreatePdbSnafu)?;
     }
@@ -440,8 +487,8 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
     for discovery_cm in build_discovery_configmaps(
-        &zk,
-        &*zk,
+        zk,
+        zk,
         client,
         ZK_CONTROLLER_NAME,
         &server_role_service,
@@ -468,10 +515,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
-        conditions: compute_conditions(
-            zk.as_ref(),
-            &[&ss_cond_builder, &cluster_operation_cond_builder],
-        ),
+        conditions: compute_conditions(zk, &[&ss_cond_builder, &cluster_operation_cond_builder]),
     };
 
     cluster_resources
@@ -479,7 +523,7 @@ pub async fn reconcile_zk(zk: Arc<ZookeeperCluster>, ctx: Arc<Ctx>) -> Result<co
         .await
         .context(DeleteOrphansSnafu)?;
     client
-        .apply_patch_status(OPERATOR_NAME, &*zk, &status)
+        .apply_patch_status(OPERATOR_NAME, zk, &status)
         .await
         .context(ApplyStatusSnafu)?;
 
@@ -546,6 +590,7 @@ fn build_server_rolegroup_config_map(
     resolved_product_image: &ResolvedProductImage,
     vector_aggregator_address: Option<&str>,
     zookeeper_security: &ZookeeperSecurity,
+    cluster_info: &KubernetesClusterInfo,
 ) -> Result<ConfigMap> {
     let mut zoo_cfg: BTreeMap<_, _> = zk
         .pods()
@@ -556,7 +601,7 @@ fn build_server_rolegroup_config_map(
                 format!("server.{}", pod.zookeeper_myid),
                 format!(
                     "{}:2888:3888;{}",
-                    pod.fqdn(),
+                    pod.fqdn(cluster_info),
                     zookeeper_security.client_port()
                 ),
             )
@@ -658,7 +703,7 @@ fn build_server_rolegroup_service(
 
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
-        .name(&rolegroup.object_name())
+        .name(rolegroup.object_name())
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
         .with_recommended_labels(build_recommended_labels(
@@ -709,6 +754,7 @@ fn build_server_rolegroup_service(
 /// The rolegroup [`StatefulSet`] runs the rolegroup, as configured by the administrator.
 ///
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_server_rolegroup_service`]).
+#[allow(clippy::too_many_arguments)]
 fn build_server_rolegroup_statefulset(
     zk: &ZookeeperCluster,
     zk_role: &ZookeeperRole,
@@ -716,7 +762,8 @@ fn build_server_rolegroup_statefulset(
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
-    config: &ZookeeperConfig,
+    merged_config: &ZookeeperConfig,
+    service_account: &ServiceAccount,
 ) -> Result<StatefulSet> {
     let role = zk.role(zk_role).context(InternalOperatorFailureSnafu)?;
     let rolegroup = zk
@@ -759,9 +806,16 @@ fn build_server_rolegroup_statefulset(
         ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
     let mut pod_builder = PodBuilder::new();
 
+    let requested_secret_lifetime = merged_config
+        .requested_secret_lifetime
+        .context(MissingSecretLifetimeSnafu)?;
     // add volumes and mounts depending on tls / auth settings
     zookeeper_security
-        .add_volume_mounts(&mut pod_builder, &mut cb_zookeeper)
+        .add_volume_mounts(
+            &mut pod_builder,
+            &mut cb_zookeeper,
+            &requested_secret_lifetime,
+        )
         .context(AddTlsVolumeMountsSnafu)?;
 
     let mut args = Vec::new();
@@ -801,9 +855,13 @@ fn build_server_rolegroup_statefulset(
             ..EnvVar::default()
         }])
         .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .context(AddVolumeMountSnafu)?
         .resources(
             ResourceRequirementsBuilder::new()
                 .with_cpu_request("200m")
@@ -827,6 +885,7 @@ fn build_server_rolegroup_statefulset(
             {COMMON_BASH_TRAP_FUNCTIONS}
             {remove_vector_shutdown_file_command}
             prepare_signal_handlers
+            containerdebug --output={STACKABLE_LOG_DIR}/containerdebug-state.json --loop &
             bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/zoo.cfg &
             wait_for_termination $!
             {create_vector_shutdown_file_command}
@@ -837,6 +896,10 @@ fn build_server_rolegroup_statefulset(
                 create_vector_shutdown_file_command(STACKABLE_LOG_DIR),
         }])
         .add_env_vars(env_vars)
+        .add_env_var(
+            "CONTAINERDEBUG_LOG_DIRECTORY",
+            format!("{STACKABLE_LOG_DIR}/containerdebug"),
+        )
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
         // This also acts as a hint to the StatefulSet controller to wait for each pod to enter quorum before taking down the next
         .readiness_probe(Probe {
@@ -860,10 +923,15 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk-election", 3888)
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .context(AddVolumeMountSnafu)?
         .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .context(AddVolumeMountSnafu)?
         .resources(resources)
         .build();
 
@@ -883,15 +951,16 @@ fn build_server_rolegroup_statefulset(
         .image_pull_secrets_from_product_image(resolved_product_image)
         .add_init_container(container_prepare)
         .add_container(container_zk)
-        .affinity(&config.affinity)
+        .affinity(&merged_config.affinity)
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
-                name: Some(rolegroup_ref.object_name()),
+                name: rolegroup_ref.object_name(),
                 ..ConfigMapVolumeSource::default()
             }),
             ..Volume::default()
         })
+        .context(AddVolumeSnafu)?
         .add_volume(Volume {
             empty_dir: Some(EmptyDirVolumeSource {
                 medium: None,
@@ -900,19 +969,21 @@ fn build_server_rolegroup_statefulset(
             name: "rwconfig".to_string(),
             ..Volume::default()
         })
+        .context(AddVolumeSnafu)?
         .add_empty_dir_volume(
             "log",
             Some(product_logging::framework::calculate_log_volume_size_limit(
                 &[MAX_ZK_LOG_FILES_SIZE, MAX_PREPARE_LOG_FILE_SIZE],
             )),
         )
+        .context(AddVolumeSnafu)?
         .security_context(PodSecurityContext {
             run_as_user: Some(ZK_UID),
             run_as_group: Some(0),
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(service_account_name(APP_NAME));
+        .service_account_name(service_account.name_any());
 
     if let Some(ContainerLogConfig {
         choice:
@@ -921,41 +992,48 @@ fn build_server_rolegroup_statefulset(
             })),
     }) = logging.containers.get(&Container::Zookeeper)
     {
-        pod_builder.add_volume(Volume {
-            name: "log-config".to_string(),
-            config_map: Some(ConfigMapVolumeSource {
-                name: Some(config_map.into()),
-                ..ConfigMapVolumeSource::default()
-            }),
-            ..Volume::default()
-        });
+        pod_builder
+            .add_volume(Volume {
+                name: "log-config".to_string(),
+                config_map: Some(ConfigMapVolumeSource {
+                    name: config_map.into(),
+                    ..ConfigMapVolumeSource::default()
+                }),
+                ..Volume::default()
+            })
+            .context(AddVolumeSnafu)?;
     } else {
-        pod_builder.add_volume(Volume {
-            name: "log-config".to_string(),
-            config_map: Some(ConfigMapVolumeSource {
-                name: Some(rolegroup_ref.object_name()),
-                ..ConfigMapVolumeSource::default()
-            }),
-            ..Volume::default()
-        });
+        pod_builder
+            .add_volume(Volume {
+                name: "log-config".to_string(),
+                config_map: Some(ConfigMapVolumeSource {
+                    name: rolegroup_ref.object_name(),
+                    ..ConfigMapVolumeSource::default()
+                }),
+                ..Volume::default()
+            })
+            .context(AddVolumeSnafu)?;
     }
 
     if logging.enable_vector_agent {
-        pod_builder.add_container(product_logging::framework::vector_container(
-            resolved_product_image,
-            "config",
-            "log",
-            logging.containers.get(&Container::Vector),
-            ResourceRequirementsBuilder::new()
-                .with_cpu_request("250m")
-                .with_cpu_limit("500m")
-                .with_memory_request("128Mi")
-                .with_memory_limit("128Mi")
-                .build(),
-        ));
+        pod_builder.add_container(
+            product_logging::framework::vector_container(
+                resolved_product_image,
+                "config",
+                "log",
+                logging.containers.get(&Container::Vector),
+                ResourceRequirementsBuilder::new()
+                    .with_cpu_request("250m")
+                    .with_cpu_limit("500m")
+                    .with_memory_request("128Mi")
+                    .with_memory_limit("128Mi")
+                    .build(),
+            )
+            .context(ConfigureLoggingSnafu)?,
+        );
     }
 
-    add_graceful_shutdown_config(config, &mut pod_builder).context(GracefulShutdownSnafu)?;
+    add_graceful_shutdown_config(merged_config, &mut pod_builder).context(GracefulShutdownSnafu)?;
 
     let mut pod_template = pod_builder.build_template();
     pod_template.merge_from(role.config.pod_overrides.clone());
@@ -963,7 +1041,7 @@ fn build_server_rolegroup_statefulset(
 
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
-        .name(&rolegroup_ref.object_name())
+        .name(rolegroup_ref.object_name())
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
         .with_recommended_labels(build_recommended_labels(
@@ -1004,15 +1082,22 @@ fn build_server_rolegroup_statefulset(
 }
 
 pub fn error_policy(
-    _obj: Arc<ZookeeperCluster>,
-    _error: &Error,
+    _obj: Arc<DeserializeGuard<ZookeeperCluster>>,
+    error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {
-    controller::Action::requeue(*Duration::from_secs(5))
+    match error {
+        // root object is invalid, will be requeued when modified anyway
+        Error::InvalidZookeeperCluster { .. } => controller::Action::await_change(),
+
+        _ => controller::Action::requeue(*Duration::from_secs(5)),
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use stackable_operator::commons::networking::DomainName;
+
     use super::*;
 
     #[test]
@@ -1088,7 +1173,9 @@ mod tests {
         let mut zookeeper: ZookeeperCluster =
             serde_yaml::from_str(zookeeper_yaml).expect("illegal test input");
         zookeeper.metadata.uid = Some("42".to_owned());
-
+        let cluster_info = KubernetesClusterInfo {
+            cluster_domain: DomainName::try_from("cluster.local").unwrap(),
+        };
         let resolved_product_image = zookeeper
             .spec
             .image
@@ -1141,6 +1228,7 @@ mod tests {
             &resolved_product_image,
             None,
             &zookeeper_security,
+            &cluster_info,
         )
         .unwrap()
     }

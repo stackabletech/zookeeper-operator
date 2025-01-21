@@ -1,4 +1,4 @@
-[INFO ] Installing commons operator in version 0.0.0-dev
-[INFO ] Installing secret operator in version 0.0.0-dev
-[INFO ] Installing listener operator in version 0.0.0-dev
-[INFO ] Installing zookeeper operator in version 0.0.0-dev
+Installed commons=0.0.0-dev operator
+Installed secret=0.0.0-dev operator
+Installed listener=0.0.0-dev operator
+Installed zookeeper=0.0.0-dev operator

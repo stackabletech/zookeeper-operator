@@ -1,4 +1,5 @@
 = ZNodes
+:description: Manage ZooKeeper ZNodes with the ZookeeperZnode resource. Each client should use a unique root ZNode to prevent conflicts. Network access to ZooKeeper is required.
 
 Apache ZooKeeper organizes all data into a hierarchical system of https://zookeeper.apache.org/doc/r3.9.2/zookeeperProgrammers.html#ch_zkDataModel[ZNodes],
 which act as both files (they can have data associated with them) and folders (they can contain other ZNodes) when compared to a traditional (POSIX-like) file system.
@@ -13,11 +14,11 @@ IMPORTANT: The Operator connects directly to ZooKeeper to manage the ZNodes insi
 == Configuring ZNodes
 
 ZNodes are configured with the ZookeeperZnode CustomResource.
-If a ZookeeperZnode resource is created, the operator will create the respective tree in ZooKeeper.
+If a ZookeeperZnode resource is created, the operator creates the respective tree in ZooKeeper.
 Also, if the resource in Kubernetes is deleted, so is the data in ZooKeeper.
 
-CAUTION: The operator automatically deletes the ZNode from the ZooKeeper cluster if the Kubernetes `ZookeeperZnode` object is deleted. Recreating the
-`ZookeeperZnode` object will not restore access to the data.
+CAUTION: The operator automatically deletes the ZNode from the ZooKeeper cluster if the Kubernetes ZookeeperZnode object is deleted.
+Recreating the ZookeeperZnode object will not restore access to the data.
 
 Here is an example of a ZookeeperZnode:
 
@@ -27,7 +28,8 @@ include::example$example-znode.yaml[]
 ----
 <1> The name of the ZNode in ZooKeeper. It is the same as the name of the Kubernetes resource.
 <2> Reference to the `ZookeeperCluster` object where the ZNode should be created.
-<3> The namespace of the `ZookeeperCluster`. Can be omitted and will default to the namespace of the ZNode object.
+<3> The namespace of the `ZookeeperCluster`.
+    Can be omitted and defaults to the namespace of the ZNode object.
 
 When a ZNode is created, the operator creates the required tree in ZooKeeper and a xref:concepts:service_discovery.adoc[discovery ConfigMap] with a xref:discovery.adoc[] for this ZNode. This discovery ConfigMap is used by other operators to configure clients with access to the ZNode.
 

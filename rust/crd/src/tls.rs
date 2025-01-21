@@ -11,6 +11,7 @@ pub struct ZookeeperTls {
     /// (mandatory). This setting controls:
     /// - Which cert the servers should use to authenticate themselves against other servers
     /// - Which ca.crt to use when validating the other server
+    ///
     /// Defaults to `tls`
     #[serde(default = "quorum_tls_default")]
     pub quorum_secret_class: String,
@@ -19,6 +20,7 @@ pub struct ZookeeperTls {
     /// client connections. This setting controls:
     /// - If TLS encryption is used at all
     /// - Which cert the servers should use to authenticate themselves against the client
+    ///
     /// Defaults to `tls`.
     #[serde(
         default = "server_tls_default",

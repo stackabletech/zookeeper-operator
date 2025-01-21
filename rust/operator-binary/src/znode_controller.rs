@@ -3,6 +3,7 @@
 //! See [`ZookeeperZnode`] for more details.
 use std::{borrow::Cow, convert::Infallible, sync::Arc};
 
+use const_format::concatcp;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
@@ -11,12 +12,13 @@ use stackable_operator::{
     kube::{
         self,
         api::ObjectMeta,
-        core::DynamicObject,
+        core::{error_boundary, DeserializeGuard, DynamicObject},
         runtime::{controller, finalizer, reflector::ObjectRef},
         Resource,
     },
     logging::controller::ReconcilerError,
     time::Duration,
+    utils::cluster_info::KubernetesClusterInfo,
 };
 use stackable_zookeeper_crd::{
     security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, ZookeeperZnodeStatus,
@@ -31,6 +33,7 @@ use crate::{
 };
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
+pub const ZNODE_FULL_CONTROLLER_NAME: &str = concatcp!(ZNODE_CONTROLLER_NAME, '.', OPERATOR_NAME);
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -40,6 +43,11 @@ pub struct Ctx {
 #[strum_discriminants(derive(IntoStaticStr))]
 #[allow(clippy::enum_variant_names)]
 pub enum Error {
+    #[snafu(display("ZookeeperZnode object is invalid"))]
+    InvalidZookeeperZnode {
+        source: error_boundary::InvalidObject,
+    },
+
     #[snafu(display(
         "object is missing metadata that should be created by the Kubernetes cluster",
     ))]
@@ -133,6 +141,9 @@ impl Error {
             finalizer::Error::UnnamedObject => Error::Finalizer {
                 source: finalizer::Error::UnnamedObject,
             },
+            finalizer::Error::InvalidFinalizer => Error::Finalizer {
+                source: finalizer::Error::InvalidFinalizer,
+            },
         }
     }
 }
@@ -144,6 +155,7 @@ impl ReconcilerError for Error {
 
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
+            Error::InvalidZookeeperZnode { source: _ } => None,
             Error::ObjectMissingMetadata => None,
             Error::InvalidZkReference => None,
             Error::FindZk { zk, .. } => Some(zk.clone().erase()),
@@ -165,10 +177,15 @@ impl ReconcilerError for Error {
 }
 
 pub async fn reconcile_znode(
-    znode: Arc<ZookeeperZnode>,
+    znode: Arc<DeserializeGuard<ZookeeperZnode>>,
     ctx: Arc<Ctx>,
 ) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
+    let znode = znode
+        .0
+        .as_ref()
+        .map_err(error_boundary::InvalidObject::clone)
+        .context(InvalidZookeeperZnodeSnafu)?;
     let (ns, uid) = if let ObjectMeta {
         namespace: Some(ns),
         uid: Some(uid),
@@ -181,7 +198,7 @@ pub async fn reconcile_znode(
     };
     let client = &ctx.client;
 
-    let zk = find_zk_of_znode(client, &znode).await;
+    let zk = find_zk_of_znode(client, znode).await;
     let mut default_status_updates: Option<ZookeeperZnodeStatus> = None;
     // Store the znode path in the status rather than the object itself, to ensure that only K8s administrators can override it
     let znode_path = match znode.status.as_ref().and_then(|s| s.znode_path.as_deref()) {
@@ -207,7 +224,7 @@ pub async fn reconcile_znode(
     if let Some(status) = default_status_updates {
         info!("Writing default configuration to status");
         ctx.client
-            .merge_patch_status(&*znode, &status)
+            .merge_patch_status(znode, &status)
             .await
             .context(ApplyStatusSnafu)?;
     }
@@ -215,7 +232,7 @@ pub async fn reconcile_znode(
     finalizer(
         &client.get_api::<ZookeeperZnode>(&ns),
         &format!("{OPERATOR_NAME}/znode"),
-        znode.clone(),
+        Arc::new(znode.clone()),
         |ev| async {
             match ev {
                 finalizer::Event::Apply(znode) => {
@@ -259,12 +276,15 @@ async fn reconcile_apply(
     )
     .unwrap();
 
-    znode_mgmt::ensure_znode_exists(&zk_mgmt_addr(&zk, &zookeeper_security)?, znode_path)
-        .await
-        .with_context(|_| EnsureZnodeSnafu {
-            zk: ObjectRef::from_obj(&zk),
-            znode_path,
-        })?;
+    znode_mgmt::ensure_znode_exists(
+        &zk_mgmt_addr(&zk, &zookeeper_security, &client.kubernetes_cluster_info)?,
+        znode_path,
+    )
+    .await
+    .with_context(|_| EnsureZnodeSnafu {
+        zk: ObjectRef::from_obj(&zk),
+        znode_path,
+    })?;
 
     let server_role_service = client
         .get::<Service>(
@@ -326,22 +346,29 @@ async fn reconcile_cleanup(
         .context(FailedToInitializeSecurityContextSnafu)?;
 
     // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
-    znode_mgmt::ensure_znode_missing(&zk_mgmt_addr(&zk, &zookeeper_security)?, znode_path)
-        .await
-        .with_context(|_| EnsureZnodeMissingSnafu {
-            zk: ObjectRef::from_obj(&zk),
-            znode_path,
-        })?;
+    znode_mgmt::ensure_znode_missing(
+        &zk_mgmt_addr(&zk, &zookeeper_security, &client.kubernetes_cluster_info)?,
+        znode_path,
+    )
+    .await
+    .with_context(|_| EnsureZnodeMissingSnafu {
+        zk: ObjectRef::from_obj(&zk),
+        znode_path,
+    })?;
     // No need to delete the ConfigMap, since that has an OwnerReference on the ZookeeperZnode object
     Ok(controller::Action::await_change())
 }
 
-fn zk_mgmt_addr(zk: &ZookeeperCluster, zookeeper_security: &ZookeeperSecurity) -> Result<String> {
+fn zk_mgmt_addr(
+    zk: &ZookeeperCluster,
+    zookeeper_security: &ZookeeperSecurity,
+    cluster_info: &KubernetesClusterInfo,
+) -> Result<String> {
     // Rust ZooKeeper client does not support client-side load-balancing, so use
     // (load-balanced) global service instead.
     Ok(format!(
         "{}:{}",
-        zk.server_role_service_fqdn()
+        zk.server_role_service_fqdn(cluster_info)
             .with_context(|| NoZkFqdnSnafu {
                 zk: ObjectRef::from_obj(zk),
             })?,
@@ -378,7 +405,7 @@ async fn find_zk_of_znode(
 }
 
 pub fn error_policy(
-    _obj: Arc<ZookeeperZnode>,
+    _obj: Arc<DeserializeGuard<ZookeeperZnode>>,
     _error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {

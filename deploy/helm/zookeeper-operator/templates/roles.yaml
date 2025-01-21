@@ -106,6 +106,7 @@ rules:
       - events
     verbs:
       - create
+      - patch
   - apiGroups:
       - {{ include "operator.name" . }}.stackable.tech
     resources:
@@ -123,54 +124,6 @@ rules:
       - {{ include "operator.name" . }}znodes/status
     verbs:
       - patch
-{{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
----
-apiVersion: security.openshift.io/v1
-kind: SecurityContextConstraints
-metadata:
-  name: zookeeper-scc
-  labels:
-  {{- include "operator.labels" . | nindent 4 }}
-  annotations:
-    kubernetes.io/description: |-
-      zookeeper-scc is derived from hostmount-anyuid. It provides all the features of the
-      restricted SCC but allows host mounts and any UID by a pod.  This is primarily
-      used by the persistent volume recycler. WARNING: this SCC allows host file
-      system access as any UID, including UID 0.  Grant with caution.
-    release.openshift.io/create-only: "true"
-allowHostDirVolumePlugin: true
-allowHostIPC: false
-allowHostNetwork: false
-allowHostPID: false
-allowHostPorts: false
-allowPrivilegeEscalation: true
-allowPrivilegedContainer: false
-allowedCapabilities: null
-defaultAddCapabilities: null
-fsGroup:
-  type: RunAsAny
-groups: []
-priority: null
-readOnlyRootFilesystem: false
-requiredDropCapabilities:
-- MKNOD
-runAsUser:
-  type: RunAsAny
-seLinuxContext:
-  type: MustRunAs
-supplementalGroups:
-  type: RunAsAny
-volumes:
-- configMap
-- downwardAPI
-- emptyDir
-- hostPath
-- nfs
-- persistentVolumeClaim
-- projected
-- secret
-- ephemeral
-{{ end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -199,7 +152,7 @@ rules:
     resources:
       - securitycontextconstraints
     resourceNames:
-      - zookeeper-scc
+      - nonroot-v2
     verbs:
       - use
 {{ end }}

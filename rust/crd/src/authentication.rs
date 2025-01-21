@@ -40,6 +40,7 @@ pub struct ZookeeperAuthentication {
     /// Only affects client connections. This setting controls:
     /// - If clients need to authenticate themselves against the server via TLS
     /// - Which ca.crt to use when validating the provided client certs
+    ///
     /// This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.
     pub authentication_class: String,
 }
@@ -72,7 +73,8 @@ impl ResolvedAuthenticationClasses {
                 AuthenticationClassProvider::Tls(_) => {}
                 AuthenticationClassProvider::Ldap(_)
                 | AuthenticationClassProvider::Oidc(_)
-                | AuthenticationClassProvider::Static(_) => {
+                | AuthenticationClassProvider::Static(_)
+                | AuthenticationClassProvider::Kerberos(_) => {
                     return Err(Error::AuthenticationMethodNotSupported {
                         authentication_class: ObjectRef::from_obj(auth_class),
                         method: auth_class.spec.provider.to_string(),

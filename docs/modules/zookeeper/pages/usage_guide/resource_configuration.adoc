@@ -1,8 +1,10 @@
 = Storage and resource configuration
+:description: Configure ZooKeeper storage with PersistentVolumeClaims and set resource requests for CPU, memory, and storage.
+:pvcs: https://kubernetes.io/docs/concepts/storage/persistent-volumes
 
 == Storage for data volumes
 
-You can mount volumes where data is stored by specifying https://kubernetes.io/docs/concepts/storage/persistent-volumes[PersistentVolumeClaims] for each individual role group:
+You can mount volumes where data is stored by specifying {pvcs}[PersistentVolumeClaims] for each individual role group:
 
 [source,yaml]
 ----

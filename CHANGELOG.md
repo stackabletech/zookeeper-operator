@@ -6,21 +6,77 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- The lifetime of auto generated TLS certificates is now configurable with the role and roleGroup
+  config property `requestedSecretLifetime`. This helps reduce frequent Pod restarts ([#892]).
+- Run a `containerdebug` process in the background of each Zookeeper container to collect debugging information ([#881]).
+- Aggregate emitted Kubernetes events on the CustomResources ([#904]).
+
+### Changed
+
+- Append a dot (`.`) to the default cluster domain to reduce DNS requests ([#904]).
+
+### Fixed
+
+- BREAKING: Use distinct ServiceAccounts for the Stacklets, so that multiple Stacklets can be
+  deployed in one namespace. Existing Stacklets will use the newly created ServiceAccounts after
+  restart ([#889]).
+
+[#881]: https://github.com/stackabletech/zookeeper-operator/pull/881
+[#889]: https://github.com/stackabletech/zookeeper-operator/pull/889
+[#892]: https://github.com/stackabletech/zookeeper-operator/pull/892
+[#904]: https://github.com/stackabletech/zookeeper-operator/pull/904
+
+## [24.11.0] - 2024-11-18
+
+### Added
+
+- The operator can now run on Kubernetes clusters using a non-default cluster domain.
+  Use the env var `KUBERNETES_CLUSTER_DOMAIN` or the operator Helm chart property `kubernetesClusterDomain` to set a non-default cluster domain ([#870]).
+
+### Changed
+
+- Reduce CRD size from `483KB` to `57KB` by accepting arbitrary YAML input instead of the underlying schema for the following fields ([#853]):
+  - `podOverrides`
+  - `affinity`
+
+### Removed
+
+- Remove ZooKeeper 3.8.4 from tests and docs ([#857]).
+
+### Fixed
+
+- Failing to parse one `ZookeeperCluster`/`ZookeeperZnode` should no longer cause the whole operator to stop functioning ([#872]).
+
+[#853]: https://github.com/stackabletech/zookeeper-operator/pull/853
+[#857]: https://github.com/stackabletech/zookeeper-operator/pull/857
+[#870]: https://github.com/stackabletech/zookeeper-operator/pull/870
+[#872]: https://github.com/stackabletech/zookeeper-operator/pull/872
+
+## [24.7.0] - 2024-07-24
+
+### Added
+
 - Allow overriding ZNode path by setting `status.znodePath` ([#799]).
 
 ### Changed
 
-- Bump `built`, `clap`, `rstest`, `stackable-operator` and `strum`
-  dependencies ([#812]).
+- Bump `stackable-operator` to 0.70.0, `product-config` to 0.7.0, and other dependencies ([#812],
+  [#833]).
 
 ### Fixed
 
 - Processing of corrupted log events fixed; If errors occur, the error
   messages are added to the log event ([#821]).
 
+### Removed
+
+- Support for `3.8.3`, which was deprecated in SDP `24.3` ([#832]).
+
 [#799]: https://github.com/stackabletech/zookeeper-operator/pull/799
 [#812]: https://github.com/stackabletech/zookeeper-operator/pull/812
 [#821]: https://github.com/stackabletech/zookeeper-operator/pull/821
+[#832]: https://github.com/stackabletech/zookeeper-operator/pull/832
+[#833]: https://github.com/stackabletech/zookeeper-operator/pull/833
 
 ## [24.3.0] - 2024-03-20
 

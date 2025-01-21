@@ -14,6 +14,7 @@ on:
       - "renovate/**"
     tags:
       - '[0-9][0-9].[0-9]+.[0-9]+'
+      - '[0-9][0-9].[0-9]+.[0-9]+-rc[0-9]+'
   pull_request:
   merge_group:
   schedule:
@@ -25,7 +26,7 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: '0'
   CARGO_PROFILE_DEV_DEBUG: '0'
-  RUST_TOOLCHAIN_VERSION: "1.77.2"
+  RUST_TOOLCHAIN_VERSION: "1.82.0"
   RUSTFLAGS: "-D warnings"
   RUSTDOCFLAGS: "-D warnings"
   RUST_LOG: "info"
@@ -44,12 +45,12 @@ jobs:
       - name: Install host dependencies
         uses: awalsh128/cache-apt-pkgs-action@a6c3917cc929dd0345bfb2d3feaf9101823370ad # v1.4.2
         with:
-          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config
-          version: 1.0
+          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config apt-transport-https
+          version: ubuntu-latest
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
+      - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
@@ -57,7 +58,7 @@ jobs:
           key: udeps
           cache-all-crates: "true"
       - uses: stackabletech/cargo-install-action@cargo-udeps
-      - run: cargo udeps --workspace
+      - run: cargo udeps --workspace --all-targets
 
   # This job evaluates the github environment to determine why this action is running and selects the appropriate
   # target repository for published Helm charts based on this.
@@ -88,18 +89,18 @@ jobs:
           TRIGGER: ${{ github.event_name }}
           GITHUB_REF: ${{ github.ref }}
         run: |
-          if [[ $TRIGGER == "pull_request" ]]; then
+          if [[ "$TRIGGER" == "pull_request" ]]; then
             echo "exporting test as target helm repo: ${{ env.TEST_REPO_HELM_URL }}"
-            echo "helm_repo=${{ env.TEST_REPO_HELM_URL }}" >> $GITHUB_OUTPUT
-          elif [[ ( $TRIGGER == "push" || $TRIGGER == "schedule" || $TRIGGER == "workflow_dispatch" ) && $GITHUB_REF == "refs/heads/main" ]]; then
+            echo "helm_repo=${{ env.TEST_REPO_HELM_URL }}" >> "$GITHUB_OUTPUT"
+          elif [[ ( "$TRIGGER" == "push" || "$TRIGGER" == "schedule" || "$TRIGGER" == "workflow_dispatch" ) && "$GITHUB_REF" == "refs/heads/main" ]]; then
             echo "exporting dev as target helm repo: ${{ env.DEV_REPO_HELM_URL }}"
-            echo "helm_repo=${{ env.DEV_REPO_HELM_URL }}" >> $GITHUB_OUTPUT
-          elif [[ $TRIGGER == "push" && $GITHUB_REF == refs/tags/* ]]; then
+            echo "helm_repo=${{ env.DEV_REPO_HELM_URL }}" >> "$GITHUB_OUTPUT"
+          elif [[ "$TRIGGER" == "push" && $GITHUB_REF == refs/tags/* ]]; then
             echo "exporting stable as target helm repo: ${{ env.STABLE_REPO_HELM_URL }}"
-            echo "helm_repo=${{ env.STABLE_REPO_HELM_URL }}" >> $GITHUB_OUTPUT
+            echo "helm_repo=${{ env.STABLE_REPO_HELM_URL }}" >> "$GITHUB_OUTPUT"
           else
             echo "Unknown trigger and ref combination encountered, skipping publish step: $TRIGGER $GITHUB_REF"
-            echo "helm_repo=skip" >> $GITHUB_OUTPUT
+            echo "helm_repo=skip" >> "$GITHUB_OUTPUT"
           fi
 
   run_cargodeny:
@@ -118,7 +119,7 @@ jobs:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           submodules: recursive
-      - uses: EmbarkStudios/cargo-deny-action@3f4a782664881cf5725d0ffd23969fcce89fd868 # v1.6.3
+      - uses: EmbarkStudios/cargo-deny-action@8371184bd11e21dcf8ac82ebf8c9c9f74ebf7268 # v2.0.1
         with:
           command: check ${{ matrix.checks }}
 
@@ -129,7 +130,7 @@ jobs:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
+      - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           components: rustfmt
@@ -142,12 +143,12 @@ jobs:
       - name: Install host dependencies
         uses: awalsh128/cache-apt-pkgs-action@a6c3917cc929dd0345bfb2d3feaf9101823370ad # v1.4.2
         with:
-          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config
-          version: 1.0
+          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config apt-transport-https
+          version: ubuntu-latest
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
+      - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           components: clippy
@@ -177,12 +178,12 @@ jobs:
       - name: Install host dependencies
         uses: awalsh128/cache-apt-pkgs-action@a6c3917cc929dd0345bfb2d3feaf9101823370ad # v1.4.2
         with:
-          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config
-          version: 1.0
+          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config apt-transport-https
+          version: ubuntu-latest
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
+      - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           components: rustfmt
@@ -199,12 +200,12 @@ jobs:
       - name: Install host dependencies
         uses: awalsh128/cache-apt-pkgs-action@a6c3917cc929dd0345bfb2d3feaf9101823370ad # v1.4.2
         with:
-          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config
-          version: 1.0
+          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config apt-transport-https
+          version: ubuntu-latest
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
+      - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
@@ -224,7 +225,7 @@ jobs:
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           submodules: recursive
-      - uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d # v5.1.0
+      - uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3 # v5.2.0
         with:
           python-version: '3.12'
       - name: Install jinja2-cli
@@ -257,17 +258,17 @@ jobs:
       - name: Install host dependencies
         uses: awalsh128/cache-apt-pkgs-action@a6c3917cc929dd0345bfb2d3feaf9101823370ad # v1.4.2
         with:
-          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config
-          version: 1.0
+          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config apt-transport-https
+          version: ubuntu-latest
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           submodules: recursive
       - name: Set up Helm
         uses: azure/setup-helm@fe7b79cd5ee1e45176fcad797de68ecaf3ca4814 # v4.2.0
         with:
-          version: v3.13.3
+          version: v3.16.1
       - name: Set up cargo
-        uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
+        uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
       - uses: Swatinem/rust-cache@23bce251a8cd2ffc3c1075eaa2367cf899916d84 # v2.7.3
@@ -310,6 +311,7 @@ jobs:
       matrix:
         runner: ["ubuntu-latest", "ubicloud-standard-8-arm"]
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     permissions:
       id-token: write
     env:
@@ -326,13 +328,13 @@ jobs:
       - name: Install host dependencies
         uses: awalsh128/cache-apt-pkgs-action@a6c3917cc929dd0345bfb2d3feaf9101823370ad # v1.4.2
         with:
-          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config
-          version: 1.0
+          packages: protobuf-compiler krb5-user libkrb5-dev libclang-dev liblzma-dev libssl-dev pkg-config apt-transport-https
+          version: ${{ matrix.runner }}
       - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
           submodules: recursive
-      - uses: cachix/install-nix-action@8887e596b4ee1134dae06b98d573bd674693f47c # v26
-      - uses: dtolnay/rust-toolchain@d8352f6b1d2e870bc5716e7a6d9b65c4cc244a1a
+      - uses: cachix/install-nix-action@ba0dd844c9180cbf77aa72a116d6fbc515d0e87b # v27
+      - uses: dtolnay/rust-toolchain@7b1c307e0dcbda6122208f10795a713336a9b35a
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           components: rustfmt
@@ -343,23 +345,35 @@ jobs:
         with:
           crate: cargo-edit
           bin: cargo-set-version
-      - name: Update version if PR
-        if: ${{ github.event_name == 'pull_request' }}
-        run: cargo set-version --offline --workspace 0.0.0-pr${{ github.event.pull_request.number }}
+      - name: Update version if PR against main branch
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' }}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PR_VERSION="0.0.0-pr${PR_NUMBER}"
+          cargo set-version --offline --workspace "$PR_VERSION"
+      - name: Update version if PR against non-main branch
+        # For PRs to be merged against a release branch, use the version that has already been set in the calling script.
+        if: ${{ github.event_name == 'pull_request' && startsWith(github.event.pull_request.base.ref, 'release-') }}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          MANIFEST_VERSION=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[0].version')
+          PR_VERSION="${MANIFEST_VERSION}-pr${PR_NUMBER}"
+          cargo set-version --offline --workspace "$PR_VERSION"
 
       # Recreate charts and publish charts and docker image. The "-e" is needed as we want to override the
       # default value in the makefile if called from this action, but not otherwise (i.e. when called locally).
       # This is needed for the HELM_REPO variable.
       - name: Install cosign
-        uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 # v3.5.0
+        uses: sigstore/cosign-installer@4959ce089c160fddf62f7b42464195ba1a56d382 # v3.6.0
       - name: Install syft
-        uses: anchore/sbom-action/download-syft@e8d2a6937ecead383dfe75190d104edd1f9c5751 # v0.16.0
+        uses: anchore/sbom-action/download-syft@61119d458adab75f756bc0b9e4bde25725f86a7a # v0.17.2
       - name: Build Docker image and Helm chart
         run: |
           # Installing helm and yq on ubicloud-standard-8-arm only
           if [ "$(arch)" = "aarch64" ]; then
             curl https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
-            sudo apt-get -y install apt-transport-https
             echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
             sudo apt-get -y update
             sudo apt-get -y install helm
@@ -369,15 +383,22 @@ jobs:
           make -e build
       - name: Publish Docker image and Helm chart
         if: ${{ !github.event.pull_request.head.repo.fork }}
-        run: make -e publish
+        run: |
+          # We want to publish helmcharts only once as they have a common name, while still publishing both images with architecture specific tags
+          if [ "$(uname -m)" = "x86_64" ]; then
+            make -e publish
+          else
+            make -e docker-publish
+          fi
         # Output the name of the published image to the Job output for later use
       - id: printtag
         name: Output image name and tag
         if: ${{ !github.event.pull_request.head.repo.fork }}
-        run: echo "IMAGE_TAG=$(make -e print-docker-tag)" >> $GITHUB_OUTPUT
+        run: echo "IMAGE_TAG=$(make -e print-docker-tag)" >> "$GITHUB_OUTPUT"
 
   create_manifest_list:
     name: Build and publish manifest list
+    if: ${{ !github.event.pull_request.head.repo.fork }}
     needs:
       - package_and_publish
     runs-on: ubuntu-latest
@@ -391,7 +412,7 @@ jobs:
       OCI_REGISTRY_SDP_CHARTS_USERNAME: "robot$sdp-charts+github-action-build"
     steps:
       - name: Install cosign
-        uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 # v3.5.0
+        uses: sigstore/cosign-installer@4959ce089c160fddf62f7b42464195ba1a56d382 # v3.6.0
       - name: Checkout
         uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
         with:
@@ -403,9 +424,22 @@ jobs:
         with:
           crate: cargo-edit
           bin: cargo-set-version
-      - name: Update version if PR
-        if: ${{ github.event_name == 'pull_request' }}
-        run: cargo set-version --offline --workspace 0.0.0-pr${{ github.event.pull_request.number }}
+      - name: Update version if PR against main branch
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main' }}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          PR_VERSION="0.0.0-pr${PR_NUMBER}"
+          cargo set-version --offline --workspace "$PR_VERSION"
+      - name: Update version if PR against non-main branch
+        # For PRs to be merged against a release branch, use the version that has already been set in the calling script.
+        if: ${{ github.event_name == 'pull_request' && startsWith(github.event.pull_request.base.ref, 'release-') }}
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          MANIFEST_VERSION=$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[0].version')
+          PR_VERSION="${MANIFEST_VERSION}-pr${PR_NUMBER}"
+          cargo set-version --offline --workspace "$PR_VERSION"
       - name: Build manifest list
         run: |
           # Creating manifest list
@@ -425,11 +459,11 @@ jobs:
     steps:
       - name: Install preflight
         run: |
-          wget https://github.com/redhat-openshift-ecosystem/openshift-preflight/releases/download/1.9.4/preflight-linux-amd64
+          wget https://github.com/redhat-openshift-ecosystem/openshift-preflight/releases/download/1.10.0/preflight-linux-amd64
           chmod +x preflight-linux-amd64
       - name: Check container
         run: |
           ARCH_FOR_PREFLIGHT="$(arch | sed -e 's#x86_64#amd64#' | sed -e 's#aarch64#arm64#')"
           ./preflight-linux-amd64 check container "$IMAGE_TAG" --platform "${ARCH_FOR_PREFLIGHT}" > preflight.out
       - name: "Passed?"
-        run: '[ "$(cat preflight.out | jq -r .passed)" == true ]'
+        run: '[ "$(jq -r .passed < preflight.out)" == true ]'

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# DO NOT EDIT THE SCRIPT
+# Instead, update the j2 template, and regenerate it for dev with `make render-docs`.
+
 # This script contains all the code snippets from the guide, as well as some assert tests
 # to test if the instructions in the guide work. The user *could* use it, but it is intended
 # for testing only.
@@ -112,6 +115,7 @@ kubectl describe configmap simple-znode
 
 cm_output=$(get_configmap)
 
+# shellcheck disable=SC2181 # wont't fix this now, but ideally we should enable bash strict mode so we can avoid success checks.
 if [[ $? == 0 ]]; then
   echo "ConfigMap retrieved."
 else

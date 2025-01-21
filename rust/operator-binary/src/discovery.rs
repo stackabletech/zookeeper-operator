@@ -6,6 +6,7 @@ use stackable_operator::{
     commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
     kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
+    utils::cluster_info::KubernetesClusterInfo,
 };
 use stackable_zookeeper_crd::{security::ZookeeperSecurity, ZookeeperCluster, ZookeeperRole};
 
@@ -84,7 +85,7 @@ pub async fn build_discovery_configmaps(
         &namespace,
         controller_name,
         chroot,
-        pod_hosts(zk, zookeeper_security)?,
+        pod_hosts(zk, zookeeper_security, &client.kubernetes_cluster_info)?,
         resolved_product_image,
     )?];
     if zk.spec.cluster_config.listener_class
@@ -171,11 +172,12 @@ fn build_discovery_configmap(
 fn pod_hosts<'a>(
     zk: &'a ZookeeperCluster,
     zookeeper_security: &'a ZookeeperSecurity,
+    cluster_info: &'a KubernetesClusterInfo,
 ) -> Result<impl IntoIterator<Item = (String, u16)> + 'a> {
     Ok(zk
         .pods()
         .context(ExpectedPodsSnafu)?
-        .map(|pod_ref| (pod_ref.fqdn(), zookeeper_security.client_port())))
+        .map(|pod_ref| (pod_ref.fqdn(cluster_info), zookeeper_security.client_port())))
 }
 
 /// Lists all nodes currently hosting Pods participating in the [`Service`]
