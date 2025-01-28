@@ -11,10 +11,6 @@ All notable changes to this project will be documented in this file.
 - Run a `containerdebug` process in the background of each Zookeeper container to collect debugging information ([#881]).
 - Aggregate emitted Kubernetes events on the CustomResources ([#904]).
 
-### Changed
-
-- Append a dot (`.`) to the default cluster domain to reduce DNS requests ([#904]).
-
 ### Fixed
 
 - BREAKING: Use distinct ServiceAccounts for the Stacklets, so that multiple Stacklets can be
@@ -24,7 +20,6 @@ All notable changes to this project will be documented in this file.
 [#881]: https://github.com/stackabletech/zookeeper-operator/pull/881
 [#889]: https://github.com/stackabletech/zookeeper-operator/pull/889
 [#892]: https://github.com/stackabletech/zookeeper-operator/pull/892
-[#904]: https://github.com/stackabletech/zookeeper-operator/pull/904
 
 ## [24.11.0] - 2024-11-18
 
