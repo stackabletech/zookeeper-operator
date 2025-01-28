@@ -11,15 +11,19 @@ All notable changes to this project will be documented in this file.
 - Run a `containerdebug` process in the background of each Zookeeper container to collect debugging information ([#881]).
 - Aggregate emitted Kubernetes events on the CustomResources ([#904]).
 
+[#881]: https://github.com/stackabletech/zookeeper-operator/pull/881
+[#892]: https://github.com/stackabletech/zookeeper-operator/pull/892
+[#904]: https://github.com/stackabletech/zookeeper-operator/pull/904
+
+## [24.11.1] - 2025-01-10
+
 ### Fixed
 
 - BREAKING: Use distinct ServiceAccounts for the Stacklets, so that multiple Stacklets can be
   deployed in one namespace. Existing Stacklets will use the newly created ServiceAccounts after
   restart ([#889]).
 
-[#881]: https://github.com/stackabletech/zookeeper-operator/pull/881
 [#889]: https://github.com/stackabletech/zookeeper-operator/pull/889
-[#892]: https://github.com/stackabletech/zookeeper-operator/pull/892
 
 ## [24.11.0] - 2024-11-18
 
