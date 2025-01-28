@@ -4,11 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- The lifetime of auto generated TLS certificates is now configurable with the role and roleGroup
+  config property `requestedSecretLifetime`. This helps reduce frequent Pod restarts ([#892]).
+- Run a `containerdebug` process in the background of each Zookeeper container to collect debugging information ([#881]).
+- Aggregate emitted Kubernetes events on the CustomResources ([#904]).
+
+[#881]: https://github.com/stackabletech/zookeeper-operator/pull/881
+[#892]: https://github.com/stackabletech/zookeeper-operator/pull/892
+[#904]: https://github.com/stackabletech/zookeeper-operator/pull/904
+
 ## [24.11.1] - 2025-01-10
-
-## [24.11.1-rc2] - 2024-12-12
-
-## [24.11.1-rc1] - 2024-12-06
 
 ### Fixed
 
