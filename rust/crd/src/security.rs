@@ -6,9 +6,7 @@
 //! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
 use std::collections::BTreeMap;
 
-use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 use snafu::{ResultExt, Snafu};
-use stackable_operator::time::Duration;
 use stackable_operator::{
     builder::{
         self,
@@ -24,7 +22,10 @@ use stackable_operator::{
     client::Client,
     commons::authentication::AuthenticationClassProvider,
     k8s_openapi::api::core::v1::Volume,
+    time::Duration,
 };
+
+use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 

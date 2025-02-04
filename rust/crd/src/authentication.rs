@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
-use stackable_operator::commons::authentication::AuthenticationClassProvider;
 use stackable_operator::{
     client::Client,
-    commons::authentication::AuthenticationClass,
+    commons::authentication::{AuthenticationClass, AuthenticationClassProvider},
     schemars::{self, JsonSchema},
 };
 

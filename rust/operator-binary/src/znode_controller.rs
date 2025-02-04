@@ -413,8 +413,9 @@ pub fn error_policy(
 }
 
 mod znode_mgmt {
-    use snafu::{OptionExt, ResultExt, Snafu};
     use std::{collections::VecDeque, net::SocketAddr};
+
+    use snafu::{OptionExt, ResultExt, Snafu};
     use tokio::net::lookup_host;
     use tokio_zookeeper::{Acl, Permission, ZooKeeper};
 
