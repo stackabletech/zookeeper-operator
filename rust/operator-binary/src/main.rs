@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use clap::{crate_description, crate_version, Parser};
+use crd::{ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
 use futures::{pin_mut, StreamExt};
 use stackable_operator::{
     cli::{Command, ProductOperatorRun},
@@ -20,11 +21,11 @@ use stackable_operator::{
     logging::controller::report_controller_reconciled,
     CustomResourceExt,
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
 
 use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
 
 mod command;
+pub mod crd;
 mod discovery;
 mod operations;
 mod product_logging;

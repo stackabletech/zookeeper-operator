@@ -11,7 +11,8 @@ use stackable_operator::{
     },
     role_utils::RoleGroupRef,
 };
-use stackable_zookeeper_crd::{
+
+use crate::crd::{
     Container, LoggingFramework, ZookeeperCluster, ZookeeperRole, LOG4J_CONFIG_FILE,
     LOGBACK_CONFIG_FILE, MAX_ZK_LOG_FILES_SIZE, STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE,
 };
@@ -34,9 +35,7 @@ pub enum Error {
     },
 
     #[snafu(display("crd validation failure"))]
-    CrdValidationFailure {
-        source: stackable_zookeeper_crd::Error,
-    },
+    CrdValidationFailure { source: crate::crd::Error },
 
     #[snafu(display("vectorAggregatorConfigMapName must be set"))]
     MissingVectorAggregatorAddress,

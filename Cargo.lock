@@ -2331,19 +2331,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "stackable-zookeeper-crd"
-version = "0.0.0-dev"
-dependencies = [
- "serde",
- "serde_json",
- "serde_yaml",
- "snafu 0.8.5",
- "stackable-operator",
- "strum",
- "tracing",
-]
-
-[[package]]
 name = "stackable-zookeeper-operator"
 version = "0.0.0-dev"
 dependencies = [
@@ -2358,10 +2345,10 @@ dependencies = [
  "product-config",
  "semver",
  "serde",
+ "serde_json",
  "serde_yaml",
  "snafu 0.8.5",
  "stackable-operator",
- "stackable-zookeeper-crd",
  "strum",
  "tokio",
  "tokio-zookeeper",

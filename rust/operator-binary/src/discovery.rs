@@ -8,9 +8,11 @@ use stackable_operator::{
     kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
     utils::cluster_info::KubernetesClusterInfo,
 };
-use stackable_zookeeper_crd::{security::ZookeeperSecurity, ZookeeperCluster, ZookeeperRole};
 
-use crate::utils::build_recommended_labels;
+use crate::{
+    crd::{security::ZookeeperSecurity, ZookeeperCluster, ZookeeperRole},
+    utils::build_recommended_labels,
+};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -32,9 +34,7 @@ pub enum Error {
     NoNamespace,
 
     #[snafu(display("failed to list expected pods"))]
-    ExpectedPods {
-        source: stackable_zookeeper_crd::Error,
-    },
+    ExpectedPods { source: crate::crd::Error },
 
     #[snafu(display("could not find service port with name {}", port_name))]
     NoServicePort { port_name: String },
@@ -89,7 +89,7 @@ pub async fn build_discovery_configmaps(
         resolved_product_image,
     )?];
     if zk.spec.cluster_config.listener_class
-        == stackable_zookeeper_crd::CurrentlySupportedListenerClasses::ExternalUnstable
+        == crate::crd::CurrentlySupportedListenerClasses::ExternalUnstable
     {
         discovery_configmaps.push(build_discovery_configmap(
             zk,

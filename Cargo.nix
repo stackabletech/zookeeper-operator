@@ -32,21 +32,23 @@ rec {
   # "public" attributes that we attempt to keep stable with new versions of crate2nix.
   #
 
+  rootCrate = rec {
+    packageId = "stackable-zookeeper-operator";
 
+    # Use this attribute to refer to the derivation building your root crate package.
+    # You can override the features with rootCrate.build.override { features = [ "default" "feature1" ... ]; }.
+    build = internal.buildRustCrateWithFeatures {
+      inherit packageId;
+    };
+
+    # Debug support which might change between releases.
+    # File a bug if you depend on any for non-debug work!
+    debug = internal.debugCrate { inherit packageId; };
+  };
   # Refer your crate build derivation by name here.
   # You can override the features with
   # workspaceMembers."${crateName}".build.override { features = [ "default" "feature1" ... ]; }.
   workspaceMembers = {
-    "stackable-zookeeper-crd" = rec {
-      packageId = "stackable-zookeeper-crd";
-      build = internal.buildRustCrateWithFeatures {
-        packageId = "stackable-zookeeper-crd";
-      };
-
-      # Debug support which might change between releases.
-      # File a bug if you depend on any for non-debug work!
-      debug = internal.debugCrate { inherit packageId; };
-    };
     "stackable-zookeeper-operator" = rec {
       packageId = "stackable-zookeeper-operator";
       build = internal.buildRustCrateWithFeatures {
@@ -7305,51 +7307,6 @@ rec {
         ];
 
       };
-      "stackable-zookeeper-crd" = rec {
-        crateName = "stackable-zookeeper-crd";
-        version = "0.0.0-dev";
-        edition = "2021";
-        src = lib.cleanSourceWith { filter = sourceFilter;  src = ./rust/crd; };
-        libName = "stackable_zookeeper_crd";
-        authors = [
-          "Stackable GmbH <info@stackable.tech>"
-        ];
-        dependencies = [
-          {
-            name = "serde";
-            packageId = "serde";
-            features = [ "derive" ];
-          }
-          {
-            name = "serde_json";
-            packageId = "serde_json";
-          }
-          {
-            name = "snafu";
-            packageId = "snafu 0.8.5";
-          }
-          {
-            name = "stackable-operator";
-            packageId = "stackable-operator";
-          }
-          {
-            name = "strum";
-            packageId = "strum";
-            features = [ "derive" ];
-          }
-          {
-            name = "tracing";
-            packageId = "tracing";
-          }
-        ];
-        devDependencies = [
-          {
-            name = "serde_yaml";
-            packageId = "serde_yaml";
-          }
-        ];
-
-      };
       "stackable-zookeeper-operator" = rec {
         crateName = "stackable-zookeeper-operator";
         version = "0.0.0-dev";
@@ -7409,16 +7366,16 @@ rec {
             features = [ "derive" ];
           }
           {
+            name = "serde_json";
+            packageId = "serde_json";
+          }
+          {
             name = "snafu";
             packageId = "snafu 0.8.5";
           }
           {
             name = "stackable-operator";
             packageId = "stackable-operator";
-          }
-          {
-            name = "stackable-zookeeper-crd";
-            packageId = "stackable-zookeeper-crd";
           }
           {
             name = "strum";

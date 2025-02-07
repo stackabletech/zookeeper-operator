@@ -64,17 +64,17 @@ use stackable_operator::{
     time::Duration,
     utils::{cluster_info::KubernetesClusterInfo, COMMON_BASH_TRAP_FUNCTIONS},
 };
-use stackable_zookeeper_crd::{
-    security::{self, ZookeeperSecurity},
-    Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole,
-    DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
-    MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
-    STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
-};
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
     command::create_init_container_command_args,
+    crd::{
+        security::{self, ZookeeperSecurity},
+        Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole,
+        DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
+        MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
+        STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+    },
     discovery::{self, build_discovery_configmaps},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
     product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
@@ -106,9 +106,7 @@ pub enum Error {
     },
 
     #[snafu(display("crd validation failure"))]
-    CrdValidationFailure {
-        source: stackable_zookeeper_crd::Error,
-    },
+    CrdValidationFailure { source: crate::crd::Error },
 
     #[snafu(display("object defines no server role"))]
     NoServerRole,
@@ -120,9 +118,7 @@ pub enum Error {
     },
 
     #[snafu(display("internal operator failure"))]
-    InternalOperatorFailure {
-        source: stackable_zookeeper_crd::Error,
-    },
+    InternalOperatorFailure { source: crate::crd::Error },
 
     #[snafu(display("failed to calculate global service name"))]
     GlobalServiceNameNotFound,
@@ -196,9 +192,7 @@ pub enum Error {
     },
 
     #[snafu(display("invalid java heap config"))]
-    InvalidJavaHeapConfig {
-        source: stackable_zookeeper_crd::Error,
-    },
+    InvalidJavaHeapConfig { source: crate::crd::Error },
 
     #[snafu(display("failed to create RBAC service account"))]
     ApplyServiceAccount {
@@ -232,14 +226,10 @@ pub enum Error {
     },
 
     #[snafu(display("failed to initialize security context"))]
-    FailedToInitializeSecurityContext {
-        source: stackable_zookeeper_crd::security::Error,
-    },
+    FailedToInitializeSecurityContext { source: crate::crd::security::Error },
 
     #[snafu(display("failed to resolve and merge config for role and role group"))]
-    FailedToResolveConfig {
-        source: stackable_zookeeper_crd::Error,
-    },
+    FailedToResolveConfig { source: crate::crd::Error },
 
     #[snafu(display("failed to create PodDisruptionBudget"))]
     FailedToCreatePdb {

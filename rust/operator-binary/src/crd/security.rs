@@ -25,7 +25,9 @@ use stackable_operator::{
     time::Duration,
 };
 
-use crate::{authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster};
+use crate::crd::{
+    authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster,
+};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 

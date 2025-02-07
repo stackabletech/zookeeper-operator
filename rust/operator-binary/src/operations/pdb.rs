@@ -3,9 +3,11 @@ use stackable_operator::{
     builder::pdb::PodDisruptionBudgetBuilder, client::Client, cluster_resources::ClusterResources,
     commons::pdb::PdbConfig, kube::ResourceExt,
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperRole, APP_NAME, OPERATOR_NAME};
 
-use crate::zk_controller::ZK_CONTROLLER_NAME;
+use crate::{
+    crd::{ZookeeperCluster, ZookeeperRole, APP_NAME, OPERATOR_NAME},
+    zk_controller::ZK_CONTROLLER_NAME,
+};
 
 #[derive(Snafu, Debug)]
 pub enum Error {

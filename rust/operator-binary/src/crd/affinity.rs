@@ -3,7 +3,7 @@ use stackable_operator::{
     k8s_openapi::api::core::v1::PodAntiAffinity,
 };
 
-use crate::{ZookeeperRole, APP_NAME};
+use crate::crd::{ZookeeperRole, APP_NAME};
 
 pub fn get_affinity(cluster_name: &str, role: &ZookeeperRole) -> StackableAffinityFragment {
     let affinity_between_role_pods =
@@ -37,7 +37,7 @@ mod tests {
         role_utils::RoleGroupRef,
     };
 
-    use crate::{ZookeeperCluster, ZookeeperRole};
+    use crate::{crd::affinity::ZookeeperRole, ZookeeperCluster};
 
     #[test]
     fn test_affinity_defaults() {

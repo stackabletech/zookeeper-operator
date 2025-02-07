@@ -35,7 +35,9 @@ use stackable_operator::{
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
-use crate::{affinity::get_affinity, authentication::ZookeeperAuthentication, tls::ZookeeperTls};
+use crate::crd::{
+    affinity::get_affinity, authentication::ZookeeperAuthentication, tls::ZookeeperTls,
+};
 
 pub mod affinity;
 pub mod authentication;
@@ -471,7 +473,10 @@ impl ZookeeperCluster {
         let version = self
             .spec
             .image
-            .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::CARGO_PKG_VERSION)
+            .resolve(
+                DOCKER_IMAGE_BASE_NAME,
+                crate::crd::built_info::CARGO_PKG_VERSION,
+            )
             .product_version;
         let zookeeper_versions_with_log4j = [
             "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",

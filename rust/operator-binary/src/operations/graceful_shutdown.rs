@@ -1,6 +1,7 @@
 use snafu::{ResultExt, Snafu};
 use stackable_operator::builder::pod::PodBuilder;
-use stackable_zookeeper_crd::ZookeeperConfig;
+
+use crate::crd::ZookeeperConfig;
 
 #[derive(Debug, Snafu)]
 pub enum Error {

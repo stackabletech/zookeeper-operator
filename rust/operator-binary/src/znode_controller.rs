@@ -20,14 +20,14 @@ use stackable_operator::{
     time::Duration,
     utils::cluster_info::KubernetesClusterInfo,
 };
-use stackable_zookeeper_crd::{
-    security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, ZookeeperZnodeStatus,
-    DOCKER_IMAGE_BASE_NAME,
-};
 use strum::{EnumDiscriminants, IntoStaticStr};
 use tracing::{debug, info};
 
 use crate::{
+    crd::{
+        security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, ZookeeperZnodeStatus,
+        DOCKER_IMAGE_BASE_NAME,
+    },
     discovery::{self, build_discovery_configmaps},
     APP_NAME, OPERATOR_NAME,
 };
@@ -121,9 +121,7 @@ pub enum Error {
     ObjectHasNoNamespace,
 
     #[snafu(display("failed to initialize security context"))]
-    FailedToInitializeSecurityContext {
-        source: stackable_zookeeper_crd::security::Error,
-    },
+    FailedToInitializeSecurityContext { source: crate::crd::security::Error },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
