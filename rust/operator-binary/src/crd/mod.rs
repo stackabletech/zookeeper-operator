@@ -203,15 +203,6 @@ pub enum CurrentlySupportedListenerClasses {
     ExternalUnstable,
 }
 
-impl CurrentlySupportedListenerClasses {
-    pub fn k8s_service_type(&self) -> String {
-        match self {
-            CurrentlySupportedListenerClasses::ClusterInternal => "ClusterIP".to_string(),
-            CurrentlySupportedListenerClasses::ExternalUnstable => "NodePort".to_string(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
 #[fragment_attrs(
     derive(
@@ -288,6 +279,102 @@ pub enum Container {
     Prepare,
     Vector,
     Zookeeper,
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Display,
+    EnumIter,
+    Eq,
+    Hash,
+    JsonSchema,
+    PartialEq,
+    Serialize,
+    EnumString,
+)]
+#[strum(serialize_all = "camelCase")]
+pub enum ZookeeperRole {
+    #[strum(serialize = "server")]
+    Server,
+}
+
+#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperClusterStatus {
+    /// An opaque value that changes every time a discovery detail does
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discovery_hash: Option<String>,
+    #[serde(default)]
+    pub conditions: Vec<ClusterCondition>,
+}
+
+pub enum LoggingFramework {
+    LOG4J,
+    LOGBACK,
+}
+
+/// Reference to a single `Pod` that is a component of a [`ZookeeperCluster`]
+///
+/// Used for service discovery.
+pub struct ZookeeperPodRef {
+    pub namespace: String,
+    pub role_group_service_name: String,
+    pub pod_name: String,
+    pub zookeeper_myid: u16,
+}
+
+/// A claim for a single ZooKeeper ZNode tree (filesystem node).
+///
+/// A ConfigMap will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`.
+/// Each ZookeeperZnode gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains.
+/// All data inside of this chroot will be deleted when the corresponding `ZookeeperZnode` is.
+///
+/// `ZookeeperZnode` is *not* designed to manage the contents of this ZNode. Instead, it should be used to create a chroot
+/// for an installation of an application to work inside. Initializing the contents is the responsibility of the application.
+///
+/// You can learn more about this in the
+/// [Isolating clients with ZNodes usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/isolating_clients_with_znodes).
+#[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[kube(
+    group = "zookeeper.stackable.tech",
+    version = "v1alpha1",
+    kind = "ZookeeperZnode",
+    plural = "zookeeperznodes",
+    shortname = "zno",
+    shortname = "znode",
+    status = "ZookeeperZnodeStatus",
+    namespaced,
+    crates(
+        kube_core = "stackable_operator::kube::core",
+        k8s_openapi = "stackable_operator::k8s_openapi",
+        schemars = "stackable_operator::schemars"
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperZnodeSpec {
+    /// The reference to the ZookeeperCluster that this ZNode belongs to.
+    #[serde(default)]
+    pub cluster_ref: ClusterRef<ZookeeperCluster>,
+}
+
+#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperZnodeStatus {
+    /// The absolute ZNode allocated to the ZookeeperZnode. This will typically be set by the operator.
+    ///
+    /// This can be set explicitly by an administrator, such as when restoring from a backup.
+    pub znode_path: Option<String>,
+}
+
+impl CurrentlySupportedListenerClasses {
+    pub fn k8s_service_type(&self) -> String {
+        match self {
+            CurrentlySupportedListenerClasses::ClusterInternal => "ClusterIP".to_string(),
+            CurrentlySupportedListenerClasses::ExternalUnstable => "NodePort".to_string(),
+        }
+    }
 }
 
 impl ZookeeperConfig {
@@ -415,25 +502,6 @@ impl Configuration for ZookeeperConfigFragment {
     }
 }
 
-#[derive(
-    Clone,
-    Debug,
-    Deserialize,
-    Display,
-    EnumIter,
-    Eq,
-    Hash,
-    JsonSchema,
-    PartialEq,
-    Serialize,
-    EnumString,
-)]
-#[strum(serialize_all = "camelCase")]
-pub enum ZookeeperRole {
-    #[strum(serialize = "server")]
-    Server,
-}
-
 impl ZookeeperRole {
     pub fn roles() -> Vec<String> {
         let mut roles = vec![];
@@ -442,16 +510,6 @@ impl ZookeeperRole {
         }
         roles
     }
-}
-
-#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperClusterStatus {
-    /// An opaque value that changes every time a discovery detail does
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub discovery_hash: Option<String>,
-    #[serde(default)]
-    pub conditions: Vec<ClusterCondition>,
 }
 
 impl HasStatusCondition for ZookeeperCluster {
@@ -463,9 +521,16 @@ impl HasStatusCondition for ZookeeperCluster {
     }
 }
 
-pub enum LoggingFramework {
-    LOG4J,
-    LOGBACK,
+impl ZookeeperPodRef {
+    pub fn fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
+        format!(
+            "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}",
+            pod_name = self.pod_name,
+            service_name = self.role_group_service_name,
+            namespace = self.namespace,
+            cluster_domain = cluster_info.cluster_domain
+        )
+    }
 }
 
 impl ZookeeperCluster {
@@ -670,71 +735,6 @@ impl ZookeeperCluster {
                 .value as u32,
         ))
     }
-}
-
-/// Reference to a single `Pod` that is a component of a [`ZookeeperCluster`]
-///
-/// Used for service discovery.
-pub struct ZookeeperPodRef {
-    pub namespace: String,
-    pub role_group_service_name: String,
-    pub pod_name: String,
-    pub zookeeper_myid: u16,
-}
-
-impl ZookeeperPodRef {
-    pub fn fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
-        format!(
-            "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}",
-            pod_name = self.pod_name,
-            service_name = self.role_group_service_name,
-            namespace = self.namespace,
-            cluster_domain = cluster_info.cluster_domain
-        )
-    }
-}
-
-/// A claim for a single ZooKeeper ZNode tree (filesystem node).
-///
-/// A ConfigMap will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`.
-/// Each ZookeeperZnode gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains.
-/// All data inside of this chroot will be deleted when the corresponding `ZookeeperZnode` is.
-///
-/// `ZookeeperZnode` is *not* designed to manage the contents of this ZNode. Instead, it should be used to create a chroot
-/// for an installation of an application to work inside. Initializing the contents is the responsibility of the application.
-///
-/// You can learn more about this in the
-/// [Isolating clients with ZNodes usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/isolating_clients_with_znodes).
-#[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[kube(
-    group = "zookeeper.stackable.tech",
-    version = "v1alpha1",
-    kind = "ZookeeperZnode",
-    plural = "zookeeperznodes",
-    shortname = "zno",
-    shortname = "znode",
-    status = "ZookeeperZnodeStatus",
-    namespaced,
-    crates(
-        kube_core = "stackable_operator::kube::core",
-        k8s_openapi = "stackable_operator::k8s_openapi",
-        schemars = "stackable_operator::schemars"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperZnodeSpec {
-    /// The reference to the ZookeeperCluster that this ZNode belongs to.
-    #[serde(default)]
-    pub cluster_ref: ClusterRef<ZookeeperCluster>,
-}
-
-#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperZnodeStatus {
-    /// The absolute ZNode allocated to the ZookeeperZnode. This will typically be set by the operator.
-    ///
-    /// This can be set explicitly by an administrator, such as when restoring from a backup.
-    pub znode_path: Option<String>,
 }
 
 #[cfg(test)]
