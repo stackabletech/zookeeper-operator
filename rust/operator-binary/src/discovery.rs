@@ -65,7 +65,7 @@ pub enum Error {
     },
 }
 
-/// Builds discovery [`ConfigMap`]s for connecting to a [`ZookeeperCluster`] for all expected scenarios
+/// Builds discovery [`ConfigMap`]s for connecting to a [`v1alpha1::ZookeeperCluster`] for all expected scenarios
 #[allow(clippy::too_many_arguments)]
 pub async fn build_discovery_configmaps(
     zk: &ZookeeperCluster,
@@ -110,7 +110,7 @@ pub async fn build_discovery_configmaps(
     Ok(discovery_configmaps)
 }
 
-/// Build a discovery [`ConfigMap`] containing information about how to connect to a certain [`ZookeeperCluster`]
+/// Build a discovery [`ConfigMap`] containing information about how to connect to a certain [`v1alpha1::ZookeeperCluster`]
 ///
 /// `hosts` will usually come from either [`pod_hosts`] or [`nodeport_hosts`].
 #[allow(clippy::too_many_arguments)]
@@ -171,7 +171,7 @@ fn build_discovery_configmap(
         .context(BuildConfigMapSnafu)
 }
 
-/// Lists all Pods FQDNs expected to host the [`ZookeeperCluster`]
+/// Lists all Pods FQDNs expected to host the [`v1alpha1::ZookeeperCluster`]
 fn pod_hosts<'a>(
     zk: &'a ZookeeperCluster,
     zookeeper_security: &'a ZookeeperSecurity,

@@ -308,7 +308,7 @@ pub mod versioned {
         pub conditions: Vec<ClusterCondition>,
     }
 
-    /// Reference to a single `Pod` that is a component of a [`ZookeeperCluster`]
+    /// Reference to a single `Pod` that is a component of a [`v1alpha1::ZookeeperCluster`]
     ///
     /// Used for service discovery.
     pub struct ZookeeperPodRef {
