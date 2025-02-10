@@ -10,7 +10,10 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{security::ZookeeperSecurity, ZookeeperCluster, ZookeeperRole},
+    crd::{
+        security::ZookeeperSecurity,
+        v1alpha1::{ZookeeperCluster, ZookeeperRole},
+    },
     utils::build_recommended_labels,
 };
 
@@ -89,7 +92,7 @@ pub async fn build_discovery_configmaps(
         resolved_product_image,
     )?];
     if zk.spec.cluster_config.listener_class
-        == crate::crd::CurrentlySupportedListenerClasses::ExternalUnstable
+        == crate::crd::v1alpha1::CurrentlySupportedListenerClasses::ExternalUnstable
     {
         discovery_configmaps.push(build_discovery_configmap(
             zk,

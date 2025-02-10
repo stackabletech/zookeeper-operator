@@ -25,7 +25,8 @@ use tracing::{debug, info};
 
 use crate::{
     crd::{
-        security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, ZookeeperZnodeStatus,
+        security::ZookeeperSecurity,
+        v1alpha1::{ZookeeperCluster, ZookeeperZnode, ZookeeperZnodeStatus},
         DOCKER_IMAGE_BASE_NAME,
     },
     discovery::{self, build_discovery_configmaps},

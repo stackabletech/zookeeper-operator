@@ -26,7 +26,7 @@ use stackable_operator::{
 };
 
 use crate::crd::{
-    authentication, authentication::ResolvedAuthenticationClasses, tls, ZookeeperCluster,
+    authentication, authentication::ResolvedAuthenticationClasses, tls, v1alpha1::ZookeeperCluster,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;

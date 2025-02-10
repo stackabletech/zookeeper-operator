@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use clap::{crate_description, crate_version, Parser};
-use crd::{ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
+use crd::{
+    v1alpha1::{ZookeeperCluster, ZookeeperZnode},
+    APP_NAME, OPERATOR_NAME,
+};
 use futures::{pin_mut, StreamExt};
 use stackable_operator::{
     cli::{Command, ProductOperatorRun},
