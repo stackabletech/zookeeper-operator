@@ -10,10 +10,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{
-        security::ZookeeperSecurity,
-        v1alpha1::{ZookeeperCluster, ZookeeperRole},
-    },
+    crd::{security::ZookeeperSecurity, v1alpha1::ZookeeperCluster, ZookeeperRole},
     utils::build_recommended_labels,
 };
 

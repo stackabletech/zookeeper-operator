@@ -70,12 +70,11 @@ use crate::{
     command::create_init_container_command_args,
     crd::{
         security::{self, ZookeeperSecurity},
-        v1alpha1::{
-            Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig, ZookeeperRole,
-        },
-        DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
-        MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
-        STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE,
+        v1alpha1::{Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig},
+        ZookeeperRole, DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE,
+        MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+        STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+        ZOOKEEPER_PROPERTIES_FILE,
     },
     discovery::{self, build_discovery_configmaps},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},

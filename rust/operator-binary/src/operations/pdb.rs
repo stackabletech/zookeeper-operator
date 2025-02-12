@@ -5,10 +5,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{
-        v1alpha1::{ZookeeperCluster, ZookeeperRole},
-        APP_NAME, OPERATOR_NAME,
-    },
+    crd::{v1alpha1::ZookeeperCluster, ZookeeperRole, APP_NAME, OPERATOR_NAME},
     zk_controller::ZK_CONTROLLER_NAME,
 };
 

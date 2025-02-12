@@ -37,7 +37,8 @@ use stackable_versioned::versioned;
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
 use crate::crd::{
-    affinity::get_affinity, authentication::ZookeeperAuthentication, tls::ZookeeperTls,
+    affinity::get_affinity, authentication::v1alpha1::ZookeeperAuthentication,
+    tls::v1alpha1::ZookeeperTls,
 };
 
 pub mod affinity;
@@ -143,7 +144,7 @@ pub mod versioned {
         /// Settings that affect all roles and role groups.
         /// The settings in the `clusterConfig` are cluster wide settings that do not need to be configurable at role or role group level.
         #[serde(default = "cluster_config_default")]
-        pub cluster_config: v1alpha1::ZookeeperClusterConfig,
+        pub cluster_config: ZookeeperClusterConfig,
         // no doc - it's in the struct.
         #[serde(default)]
         pub cluster_operation: ClusterOperation,
@@ -187,7 +188,7 @@ pub mod versioned {
         /// In the future, this setting will control which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html)
         /// will be used to expose the service, and ListenerClass names will stay the same, allowing for a non-breaking change.
         #[serde(default)]
-        pub listener_class: v1alpha1::CurrentlySupportedListenerClasses,
+        pub listener_class: CurrentlySupportedListenerClasses,
     }
 
     // TODO: Temporary solution until listener-operator is finished
@@ -199,6 +200,45 @@ pub mod versioned {
         ClusterInternal,
         #[serde(rename = "external-unstable")]
         ExternalUnstable,
+    }
+
+    #[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
+    #[fragment_attrs(
+        derive(
+            Clone,
+            Debug,
+            Default,
+            Deserialize,
+            Merge,
+            JsonSchema,
+            PartialEq,
+            Serialize
+        ),
+        serde(rename_all = "camelCase")
+    )]
+    pub struct ZookeeperConfig {
+        pub init_limit: Option<u32>,
+        pub sync_limit: Option<u32>,
+        pub tick_time: Option<u32>,
+        pub myid_offset: u16,
+
+        #[fragment_attrs(serde(default))]
+        pub resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits>,
+
+        #[fragment_attrs(serde(default))]
+        pub logging: Logging<Container>,
+
+        #[fragment_attrs(serde(default))]
+        pub affinity: StackableAffinity,
+
+        /// Time period Pods have to gracefully shut down, e.g. `30m`, `1h` or `2d`. Consult the operator documentation for details.
+        #[fragment_attrs(serde(default))]
+        pub graceful_shutdown_timeout: Option<Duration>,
+
+        /// Request secret (currently only autoTls certificates) lifetime from the secret operator, e.g. `7d`, or `30d`.
+        /// This can be shortened by the `maxCertificateLifetime` setting on the SecretClass issuing the TLS certificate.
+        #[fragment_attrs(serde(default))]
+        pub requested_secret_lifetime: Option<Duration>,
     }
 
     #[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
@@ -240,64 +280,6 @@ pub mod versioned {
         Zookeeper,
     }
 
-    #[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
-    #[fragment_attrs(
-        derive(
-            Clone,
-            Debug,
-            Default,
-            Deserialize,
-            Merge,
-            JsonSchema,
-            PartialEq,
-            Serialize
-        ),
-        serde(rename_all = "camelCase")
-    )]
-    pub struct ZookeeperConfig {
-        pub init_limit: Option<u32>,
-        pub sync_limit: Option<u32>,
-        pub tick_time: Option<u32>,
-        pub myid_offset: u16,
-
-        #[fragment_attrs(serde(default))]
-        pub resources: Resources<v1alpha1::ZookeeperStorageConfig, NoRuntimeLimits>,
-
-        #[fragment_attrs(serde(default))]
-        pub logging: Logging<v1alpha1::Container>,
-
-        #[fragment_attrs(serde(default))]
-        pub affinity: StackableAffinity,
-
-        /// Time period Pods have to gracefully shut down, e.g. `30m`, `1h` or `2d`. Consult the operator documentation for details.
-        #[fragment_attrs(serde(default))]
-        pub graceful_shutdown_timeout: Option<Duration>,
-
-        /// Request secret (currently only autoTls certificates) lifetime from the secret operator, e.g. `7d`, or `30d`.
-        /// This can be shortened by the `maxCertificateLifetime` setting on the SecretClass issuing the TLS certificate.
-        #[fragment_attrs(serde(default))]
-        pub requested_secret_lifetime: Option<Duration>,
-    }
-
-    #[derive(
-        Clone,
-        Debug,
-        Deserialize,
-        Display,
-        EnumIter,
-        Eq,
-        Hash,
-        JsonSchema,
-        PartialEq,
-        Serialize,
-        EnumString,
-    )]
-    #[strum(serialize_all = "camelCase")]
-    pub enum ZookeeperRole {
-        #[strum(serialize = "server")]
-        Server,
-    }
-
     #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ZookeeperClusterStatus {
@@ -306,16 +288,6 @@ pub mod versioned {
         pub discovery_hash: Option<String>,
         #[serde(default)]
         pub conditions: Vec<ClusterCondition>,
-    }
-
-    /// Reference to a single `Pod` that is a component of a [`v1alpha1::ZookeeperCluster`]
-    ///
-    /// Used for service discovery.
-    pub struct ZookeeperPodRef {
-        pub namespace: String,
-        pub role_group_service_name: String,
-        pub pod_name: String,
-        pub zookeeper_myid: u16,
     }
 
     /// A claim for a single ZooKeeper ZNode tree (filesystem node).
@@ -330,12 +302,13 @@ pub mod versioned {
     /// You can learn more about this in the
     /// [Isolating clients with ZNodes usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/isolating_clients_with_znodes).
     #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-    #[kube(
+    #[versioned(k8s(
         group = "zookeeper.stackable.tech",
-        version = "v1alpha1",
         kind = "ZookeeperZnode",
         plural = "zookeeperznodes",
-        shortname = "zno",
+        // TODO: stackable-versioned currently only supports a single shortname.
+        // Leaving this one commented for now.
+        // shortname = "zno",
         shortname = "znode",
         status = "ZookeeperZnodeStatus",
         namespaced,
@@ -344,7 +317,7 @@ pub mod versioned {
             k8s_openapi = "stackable_operator::k8s_openapi",
             schemars = "stackable_operator::schemars"
         )
-    )]
+    ))]
     #[serde(rename_all = "camelCase")]
     pub struct ZookeeperZnodeSpec {
         /// The reference to the ZookeeperCluster that this ZNode belongs to.
@@ -360,6 +333,35 @@ pub mod versioned {
         /// This can be set explicitly by an administrator, such as when restoring from a backup.
         pub znode_path: Option<String>,
     }
+}
+
+#[derive(
+    Clone,
+    Debug,
+    Deserialize,
+    Display,
+    EnumIter,
+    Eq,
+    Hash,
+    JsonSchema,
+    PartialEq,
+    Serialize,
+    EnumString,
+)]
+#[strum(serialize_all = "camelCase")]
+pub enum ZookeeperRole {
+    #[strum(serialize = "server")]
+    Server,
+}
+
+/// Reference to a single `Pod` that is a component of a [`v1alpha1::ZookeeperCluster`]
+///
+/// Used for service discovery.
+pub struct ZookeeperPodRef {
+    pub namespace: String,
+    pub role_group_service_name: String,
+    pub pod_name: String,
+    pub zookeeper_myid: u16,
 }
 
 fn cluster_config_default() -> v1alpha1::ZookeeperClusterConfig {
@@ -394,7 +396,7 @@ impl v1alpha1::ZookeeperConfig {
 
     fn default_server_config(
         cluster_name: &str,
-        role: &v1alpha1::ZookeeperRole,
+        role: &ZookeeperRole,
     ) -> v1alpha1::ZookeeperConfigFragment {
         v1alpha1::ZookeeperConfigFragment {
             init_limit: None,
@@ -451,7 +453,7 @@ impl Configuration for v1alpha1::ZookeeperConfigFragment {
                 self.myid_offset
                     .or(v1alpha1::ZookeeperConfig::default_server_config(
                         &resource.name_any(),
-                        &v1alpha1::ZookeeperRole::Server,
+                        &ZookeeperRole::Server,
                     )
                     .myid_offset)
                     .map(|myid_offset| myid_offset.to_string()),
@@ -508,7 +510,7 @@ impl Configuration for v1alpha1::ZookeeperConfigFragment {
     }
 }
 
-impl v1alpha1::ZookeeperRole {
+impl ZookeeperRole {
     pub fn roles() -> Vec<String> {
         let mut roles = vec![];
         for role in Self::iter() {
@@ -527,7 +529,7 @@ impl HasStatusCondition for v1alpha1::ZookeeperCluster {
     }
 }
 
-impl v1alpha1::ZookeeperPodRef {
+impl ZookeeperPodRef {
     pub fn fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
         format!(
             "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}",
@@ -581,10 +583,10 @@ impl v1alpha1::ZookeeperCluster {
     /// Returns a reference to the role. Raises an error if the role is not defined.
     pub fn role(
         &self,
-        role_variant: &v1alpha1::ZookeeperRole,
+        role_variant: &ZookeeperRole,
     ) -> Result<&Role<v1alpha1::ZookeeperConfigFragment>, Error> {
         match role_variant {
-            v1alpha1::ZookeeperRole::Server => self.spec.servers.as_ref(),
+            ZookeeperRole::Server => self.spec.servers.as_ref(),
         }
         .with_context(|| CannotRetrieveZookeeperRoleSnafu {
             role: role_variant.to_string(),
@@ -599,13 +601,12 @@ impl v1alpha1::ZookeeperCluster {
         RoleGroup<v1alpha1::ZookeeperConfigFragment, GenericProductSpecificCommonConfig>,
         Error,
     > {
-        let role_variant =
-            v1alpha1::ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
-                UnknownZookeeperRoleSnafu {
-                    role: rolegroup_ref.role.to_owned(),
-                    roles: v1alpha1::ZookeeperRole::roles(),
-                }
-            })?;
+        let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
+            UnknownZookeeperRoleSnafu {
+                role: rolegroup_ref.role.to_owned(),
+                roles: ZookeeperRole::roles(),
+            }
+        })?;
         let role = self.role(&role_variant)?;
         role.role_groups
             .get(&rolegroup_ref.role_group)
@@ -622,14 +623,14 @@ impl v1alpha1::ZookeeperCluster {
     ) -> RoleGroupRef<v1alpha1::ZookeeperCluster> {
         RoleGroupRef {
             cluster: ObjectRef::from_obj(self),
-            role: v1alpha1::ZookeeperRole::Server.to_string(),
+            role: ZookeeperRole::Server.to_string(),
             role_group: group_name.into(),
         }
     }
 
-    pub fn role_config(&self, role: &v1alpha1::ZookeeperRole) -> Option<&GenericRoleConfig> {
+    pub fn role_config(&self, role: &ZookeeperRole) -> Option<&GenericRoleConfig> {
         match role {
-            v1alpha1::ZookeeperRole::Server => self.spec.servers.as_ref().map(|s| &s.role_config),
+            ZookeeperRole::Server => self.spec.servers.as_ref().map(|s| &s.role_config),
         }
     }
 
@@ -639,7 +640,7 @@ impl v1alpha1::ZookeeperCluster {
     /// avoid instance churn. For example, regenerating zoo.cfg based on the cluster state would lead to
     /// a lot of spurious restarts, as well as opening us up to dangerous split-brain conditions because
     /// the pods have inconsistent snapshots of which servers they should expect to be in quorum.
-    pub fn pods(&self) -> Result<impl Iterator<Item = v1alpha1::ZookeeperPodRef> + '_, Error> {
+    pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, Error> {
         let ns = self.metadata.namespace.clone().context(NoNamespaceSnafu)?;
         let role_groups = self
             .spec
@@ -652,12 +653,12 @@ impl v1alpha1::ZookeeperCluster {
         for (rolegroup_name, rolegroup) in role_groups {
             let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
             let myid_offset = self
-                .merged_config(&v1alpha1::ZookeeperRole::Server, &rolegroup_ref)?
+                .merged_config(&ZookeeperRole::Server, &rolegroup_ref)?
                 .myid_offset;
             let ns = ns.clone();
             // In case no replicas are specified we default to 1
             for i in 0..rolegroup.replicas.unwrap_or(1) {
-                pod_refs.push(v1alpha1::ZookeeperPodRef {
+                pod_refs.push(ZookeeperPodRef {
                     namespace: ns.clone(),
                     role_group_service_name: rolegroup_ref.object_name(),
                     pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
@@ -670,7 +671,7 @@ impl v1alpha1::ZookeeperCluster {
 
     pub fn merged_config(
         &self,
-        role: &v1alpha1::ZookeeperRole,
+        role: &ZookeeperRole,
         rolegroup_ref: &RoleGroupRef<Self>,
     ) -> Result<v1alpha1::ZookeeperConfig, Error> {
         // Initialize the result with all default values as baseline
@@ -698,7 +699,7 @@ impl v1alpha1::ZookeeperCluster {
 
     pub fn logging(
         &self,
-        role: &v1alpha1::ZookeeperRole,
+        role: &ZookeeperRole,
         rolegroup_ref: &RoleGroupRef<Self>,
     ) -> Result<Logging<v1alpha1::Container>, Error> {
         let config = self.merged_config(role, rolegroup_ref)?;
@@ -713,7 +714,7 @@ impl v1alpha1::ZookeeperCluster {
     /// 3. a default PVC with 1Gi capacity
     pub fn resources(
         &self,
-        role: &v1alpha1::ZookeeperRole,
+        role: &ZookeeperRole,
         rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     ) -> Result<(Vec<PersistentVolumeClaim>, ResourceRequirements), Error> {
         let config = self.merged_config(role, rolegroup_ref)?;

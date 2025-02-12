@@ -5,6 +5,7 @@ use stackable_operator::{
     commons::authentication::{AuthenticationClass, AuthenticationClassProvider},
     schemars::{self, JsonSchema},
 };
+use stackable_versioned::versioned;
 
 use crate::crd::ObjectRef;
 
@@ -29,19 +30,22 @@ pub enum Error {
     },
 }
 
-#[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperAuthentication {
-    /// The [AuthenticationClass](https://docs.stackable.tech/home/stable/concepts/authentication) to use.
-    ///
-    /// ## mTLS
-    ///
-    /// Only affects client connections. This setting controls:
-    /// - If clients need to authenticate themselves against the server via TLS
-    /// - Which ca.crt to use when validating the provided client certs
-    ///
-    /// This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.
-    pub authentication_class: String,
+#[versioned(version(name = "v1alpha1"))]
+pub mod versioned {
+    #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ZookeeperAuthentication {
+        /// The [AuthenticationClass](https://docs.stackable.tech/home/stable/concepts/authentication) to use.
+        ///
+        /// ## mTLS
+        ///
+        /// Only affects client connections. This setting controls:
+        /// - If clients need to authenticate themselves against the server via TLS
+        /// - Which ca.crt to use when validating the provided client certs
+        ///
+        /// This will override the server TLS settings (if set) in `spec.clusterConfig.tls.serverSecretClass`.
+        pub authentication_class: String,
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -99,7 +103,7 @@ impl ResolvedAuthenticationClasses {
 /// - Validation failed
 pub async fn resolve_authentication_classes(
     client: &Client,
-    auth_classes: &Vec<ZookeeperAuthentication>,
+    auth_classes: &Vec<v1alpha1::ZookeeperAuthentication>,
 ) -> Result<ResolvedAuthenticationClasses, Error> {
     let mut resolved_authentication_classes: Vec<AuthenticationClass> = vec![];
 
