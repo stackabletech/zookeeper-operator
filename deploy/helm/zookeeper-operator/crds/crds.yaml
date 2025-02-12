@@ -789,7 +789,6 @@ spec:
     kind: ZookeeperZnode
     plural: zookeeperznodes
     shortNames:
-      - zno
       - znode
     singular: zookeeperznode
   scope: Namespaced
