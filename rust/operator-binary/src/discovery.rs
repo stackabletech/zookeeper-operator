@@ -10,7 +10,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{security::ZookeeperSecurity, v1alpha1::ZookeeperCluster, ZookeeperRole},
+    crd::{security::ZookeeperSecurity, v1alpha1, ZookeeperRole},
     utils::build_recommended_labels,
 };
 
@@ -21,7 +21,7 @@ pub enum Error {
     #[snafu(display("object {} is missing metadata to build owner reference", zk))]
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::builder::meta::Error,
-        zk: ObjectRef<ZookeeperCluster>,
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("chroot path {} was relative (must be absolute)", chroot))]
@@ -65,7 +65,7 @@ pub enum Error {
 /// Builds discovery [`ConfigMap`]s for connecting to a [`crate::crd::v1alpha1::ZookeeperCluster`] for all expected scenarios
 #[allow(clippy::too_many_arguments)]
 pub async fn build_discovery_configmaps(
-    zk: &ZookeeperCluster,
+    zk: &v1alpha1::ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
     client: &stackable_operator::client::Client,
     controller_name: &str,
@@ -112,7 +112,7 @@ pub async fn build_discovery_configmaps(
 /// `hosts` will usually come from either [`pod_hosts`] or [`nodeport_hosts`].
 #[allow(clippy::too_many_arguments)]
 fn build_discovery_configmap(
-    zk: &ZookeeperCluster,
+    zk: &v1alpha1::ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
     zookeeper_security: &ZookeeperSecurity,
     name: &str,
@@ -170,7 +170,7 @@ fn build_discovery_configmap(
 
 /// Lists all Pods FQDNs expected to host the [`crate::crd::v1alpha1::ZookeeperCluster`]
 fn pod_hosts<'a>(
-    zk: &'a ZookeeperCluster,
+    zk: &'a v1alpha1::ZookeeperCluster,
     zookeeper_security: &'a ZookeeperSecurity,
     cluster_info: &'a KubernetesClusterInfo,
 ) -> Result<impl IntoIterator<Item = (String, u16)> + 'a> {

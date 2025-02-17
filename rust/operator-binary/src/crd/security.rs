@@ -25,9 +25,7 @@ use stackable_operator::{
     time::Duration,
 };
 
-use crate::crd::{
-    authentication, authentication::ResolvedAuthenticationClasses, tls, v1alpha1::ZookeeperCluster,
-};
+use crate::crd::{authentication, authentication::ResolvedAuthenticationClasses, tls, v1alpha1};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -95,7 +93,7 @@ impl ZookeeperSecurity {
     /// all provided `AuthenticationClass` references.
     pub async fn new_from_zookeeper_cluster(
         client: &Client,
-        zk: &ZookeeperCluster,
+        zk: &v1alpha1::ZookeeperCluster,
     ) -> Result<Self, Error> {
         Ok(ZookeeperSecurity {
             resolved_authentication_classes: authentication::resolve_authentication_classes(

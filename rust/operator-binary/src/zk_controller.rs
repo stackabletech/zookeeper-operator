@@ -70,8 +70,7 @@ use crate::{
     command::create_init_container_command_args,
     crd::{
         security::{self, ZookeeperSecurity},
-        v1alpha1::{Container, ZookeeperCluster, ZookeeperClusterStatus, ZookeeperConfig},
-        ZookeeperRole, DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE,
+        v1alpha1, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE,
         MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
         STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
         ZOOKEEPER_PROPERTIES_FILE,
@@ -126,7 +125,7 @@ pub enum Error {
 
     #[snafu(display("failed to calculate service name for role {}", rolegroup))]
     RoleGroupServiceNameNotFound {
-        rolegroup: RoleGroupRef<ZookeeperCluster>,
+        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("failed to apply global Service"))]
@@ -137,25 +136,25 @@ pub enum Error {
     #[snafu(display("failed to apply Service for {}", rolegroup))]
     ApplyRoleGroupService {
         source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupRef<ZookeeperCluster>,
+        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("failed to build ConfigMap for {}", rolegroup))]
     BuildRoleGroupConfig {
         source: stackable_operator::builder::configmap::Error,
-        rolegroup: RoleGroupRef<ZookeeperCluster>,
+        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("failed to apply ConfigMap for {}", rolegroup))]
     ApplyRoleGroupConfig {
         source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupRef<ZookeeperCluster>,
+        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("failed to apply StatefulSet for {}", rolegroup))]
     ApplyRoleGroupStatefulSet {
         source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupRef<ZookeeperCluster>,
+        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("failed to generate product config"))]
@@ -171,7 +170,7 @@ pub enum Error {
     #[snafu(display("failed to serialize [{ZOOKEEPER_PROPERTIES_FILE}] for {}", rolegroup))]
     SerializeZooCfg {
         source: PropertiesWriterError,
-        rolegroup: RoleGroupRef<ZookeeperCluster>,
+        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("object is missing metadata to build owner reference"))]
@@ -319,7 +318,7 @@ impl ReconcilerError for Error {
 }
 
 pub async fn reconcile_zk(
-    zk: Arc<DeserializeGuard<ZookeeperCluster>>,
+    zk: Arc<DeserializeGuard<v1alpha1::ZookeeperCluster>>,
     ctx: Arc<Ctx>,
 ) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
@@ -502,7 +501,7 @@ pub async fn reconcile_zk(
     let cluster_operation_cond_builder =
         ClusterOperationsConditionBuilder::new(&zk.spec.cluster_operation);
 
-    let status = ZookeeperClusterStatus {
+    let status = v1alpha1::ZookeeperClusterStatus {
         // Serialize as a string to discourage users from trying to parse the value,
         // and to keep things flexible if we end up changing the hasher at some point.
         discovery_hash: Some(discovery_hash.finish().to_string()),
@@ -527,7 +526,7 @@ pub async fn reconcile_zk(
 /// Note that you should generally *not* hard-code clients to use these services; instead, create a [`v1alpha1::ZookeeperZnode`](`crate::crd::v1alpha1::ZookeeperZnode`)
 /// and use the connection string that it gives you.
 pub fn build_server_role_service(
-    zk: &ZookeeperCluster,
+    zk: &v1alpha1::ZookeeperCluster,
     resolved_product_image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<Service> {
@@ -575,8 +574,8 @@ pub fn build_server_role_service(
 
 /// The rolegroup [`ConfigMap`] configures the rolegroup based on the configuration given by the administrator
 fn build_server_rolegroup_config_map(
-    zk: &ZookeeperCluster,
-    rolegroup: &RoleGroupRef<ZookeeperCluster>,
+    zk: &v1alpha1::ZookeeperCluster,
+    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     resolved_product_image: &ResolvedProductImage,
     vector_aggregator_address: Option<&str>,
@@ -684,8 +683,8 @@ fn build_server_rolegroup_config_map(
 ///
 /// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
 fn build_server_rolegroup_service(
-    zk: &ZookeeperCluster,
-    rolegroup: &RoleGroupRef<ZookeeperCluster>,
+    zk: &v1alpha1::ZookeeperCluster,
+    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     resolved_product_image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<Service> {
@@ -747,13 +746,13 @@ fn build_server_rolegroup_service(
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding [`Service`] (from [`build_server_rolegroup_service`]).
 #[allow(clippy::too_many_arguments)]
 fn build_server_rolegroup_statefulset(
-    zk: &ZookeeperCluster,
+    zk: &v1alpha1::ZookeeperCluster,
     zk_role: &ZookeeperRole,
-    rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
+    rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
-    merged_config: &ZookeeperConfig,
+    merged_config: &v1alpha1::ZookeeperConfig,
     service_account: &ServiceAccount,
 ) -> Result<StatefulSet> {
     let role = zk.role(zk_role).context(InternalOperatorFailureSnafu)?;
@@ -785,7 +784,7 @@ fn build_server_rolegroup_statefulset(
         .context(InvalidJavaHeapConfigSnafu)?;
     if let Some(heap_limits) = heap_limits {
         env_vars.push(EnvVar {
-            name: ZookeeperConfig::ZK_SERVER_HEAP.to_string(),
+            name: v1alpha1::ZookeeperConfig::ZK_SERVER_HEAP.to_string(),
             value: Some(heap_limits.to_string()),
             ..EnvVar::default()
         });
@@ -813,7 +812,7 @@ fn build_server_rolegroup_statefulset(
 
     if let Some(ContainerLogConfig {
         choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
-    }) = logging.containers.get(&Container::Prepare)
+    }) = logging.containers.get(&v1alpha1::Container::Prepare)
     {
         args.push(product_logging::framework::capture_shell_output(
             STACKABLE_LOG_DIR,
@@ -981,7 +980,7 @@ fn build_server_rolegroup_statefulset(
             Some(ContainerLogConfigChoice::Custom(CustomContainerLogConfig {
                 custom: ConfigMapLogConfig { config_map },
             })),
-    }) = logging.containers.get(&Container::Zookeeper)
+    }) = logging.containers.get(&v1alpha1::Container::Zookeeper)
     {
         pod_builder
             .add_volume(Volume {
@@ -1012,7 +1011,7 @@ fn build_server_rolegroup_statefulset(
                 resolved_product_image,
                 "config",
                 "log",
-                logging.containers.get(&Container::Vector),
+                logging.containers.get(&v1alpha1::Container::Vector),
                 ResourceRequirementsBuilder::new()
                     .with_cpu_request("250m")
                     .with_cpu_limit("500m")
@@ -1073,7 +1072,7 @@ fn build_server_rolegroup_statefulset(
 }
 
 pub fn error_policy(
-    _obj: Arc<DeserializeGuard<ZookeeperCluster>>,
+    _obj: Arc<DeserializeGuard<v1alpha1::ZookeeperCluster>>,
     error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {
@@ -1161,7 +1160,7 @@ mod tests {
     }
 
     fn build_config_map(zookeeper_yaml: &str) -> ConfigMap {
-        let mut zookeeper: ZookeeperCluster =
+        let mut zookeeper: v1alpha1::ZookeeperCluster =
             serde_yaml::from_str(zookeeper_yaml).expect("illegal test input");
         zookeeper.metadata.uid = Some("42".to_owned());
         let cluster_info = KubernetesClusterInfo {

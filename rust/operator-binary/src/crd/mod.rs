@@ -36,10 +36,7 @@ use stackable_operator::{
 use stackable_versioned::versioned;
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
-use crate::crd::{
-    affinity::get_affinity, authentication::v1alpha1::ZookeeperAuthentication,
-    tls::v1alpha1::ZookeeperTls,
-};
+use crate::crd::affinity::get_affinity;
 
 pub mod affinity;
 pub mod authentication;
@@ -161,7 +158,7 @@ pub mod versioned {
         /// Authentication settings for ZooKeeper like mTLS authentication.
         /// Read more in the [authentication usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/authentication).
         #[serde(default)]
-        pub authentication: Vec<ZookeeperAuthentication>,
+        pub authentication: Vec<authentication::v1alpha1::ZookeeperAuthentication>,
 
         /// Name of the Vector aggregator [discovery ConfigMap](DOCS_BASE_URL_PLACEHOLDER/concepts/service_discovery).
         /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
@@ -176,7 +173,7 @@ pub mod versioned {
             default = "tls::default_zookeeper_tls",
             skip_serializing_if = "Option::is_none"
         )]
-        pub tls: Option<ZookeeperTls>,
+        pub tls: Option<tls::v1alpha1::ZookeeperTls>,
 
         /// This field controls which type of Service the Operator creates for this ZookeeperCluster:
         ///
@@ -306,9 +303,7 @@ pub mod versioned {
         group = "zookeeper.stackable.tech",
         kind = "ZookeeperZnode",
         plural = "zookeeperznodes",
-        // TODO: stackable-versioned currently only supports a single shortname.
-        // Leaving this one commented for now.
-        // shortname = "zno",
+        shortname = "zno",
         shortname = "znode",
         status = "ZookeeperZnodeStatus",
         namespaced,

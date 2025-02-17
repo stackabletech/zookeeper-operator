@@ -37,7 +37,7 @@ mod tests {
         role_utils::RoleGroupRef,
     };
 
-    use crate::crd::{affinity::ZookeeperRole, v1alpha1::ZookeeperCluster};
+    use crate::crd::{affinity::ZookeeperRole, v1alpha1};
 
     #[test]
     fn test_affinity_defaults() {
@@ -60,7 +60,8 @@ mod tests {
               default:
                 replicas: 3
         "#;
-        let zk: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        let zk: v1alpha1::ZookeeperCluster =
+            serde_yaml::from_str(input).expect("illegal test input");
 
         let rolegroup_ref = RoleGroupRef {
             cluster: ObjectRef::from_obj(&zk),

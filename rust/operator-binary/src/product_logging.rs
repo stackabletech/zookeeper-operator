@@ -13,9 +13,8 @@ use stackable_operator::{
 };
 
 use crate::crd::{
-    v1alpha1::{Container, ZookeeperCluster},
-    LoggingFramework, ZookeeperRole, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, MAX_ZK_LOG_FILES_SIZE,
-    STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE,
+    v1alpha1, LoggingFramework, ZookeeperRole, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
+    MAX_ZK_LOG_FILES_SIZE, STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE,
 };
 
 #[derive(Snafu, Debug)]
@@ -50,7 +49,7 @@ const CONSOLE_CONVERSION_PATTERN: &str = "%d{ISO8601} [myid:%X{myid}] - %-5p [%t
 /// Return the address of the Vector aggregator if the corresponding ConfigMap name is given in the
 /// cluster spec
 pub async fn resolve_vector_aggregator_address(
-    zk: &ZookeeperCluster,
+    zk: &v1alpha1::ZookeeperCluster,
     client: &Client,
 ) -> Result<Option<String>> {
     let vector_aggregator_address = if let Some(vector_aggregator_config_map_name) = &zk
@@ -86,9 +85,9 @@ pub async fn resolve_vector_aggregator_address(
 
 /// Extend the role group ConfigMap with logging and Vector configurations
 pub fn extend_role_group_config_map(
-    zk: &ZookeeperCluster,
+    zk: &v1alpha1::ZookeeperCluster,
     role: ZookeeperRole,
-    rolegroup: &RoleGroupRef<ZookeeperCluster>,
+    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     vector_aggregator_address: Option<&str>,
     cm_builder: &mut ConfigMapBuilder,
 ) -> Result<()> {
@@ -98,7 +97,7 @@ pub fn extend_role_group_config_map(
 
     if let Some(ContainerLogConfig {
         choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
-    }) = logging.containers.get(&Container::Zookeeper)
+    }) = logging.containers.get(&v1alpha1::Container::Zookeeper)
     {
         match zk.logging_framework() {
             LoggingFramework::LOG4J => {
@@ -137,7 +136,7 @@ pub fn extend_role_group_config_map(
 
     let vector_log_config = if let Some(ContainerLogConfig {
         choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
-    }) = logging.containers.get(&Container::Vector)
+    }) = logging.containers.get(&v1alpha1::Container::Vector)
     {
         Some(log_config)
     } else {
