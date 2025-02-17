@@ -1,6 +1,6 @@
-//! Reconciles state for ZooKeeper znodes between Kubernetes [`ZookeeperZnode`] objects and the ZooKeeper cluster
+//! Reconciles state for ZooKeeper znodes between Kubernetes [`v1alpha1::ZookeeperZnode`] objects and the ZooKeeper cluster
 //!
-//! See [`ZookeeperZnode`] for more details.
+//! See [`v1alpha1::ZookeeperZnode`] for more details.
 use std::{borrow::Cow, convert::Infallible, sync::Arc};
 
 use const_format::concatcp;

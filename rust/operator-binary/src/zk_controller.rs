@@ -1,4 +1,4 @@
-//! Ensures that `Pod`s are configured and running for each [`ZookeeperCluster`]
+//! Ensures that `Pod`s are configured and running for each [`v1alpha1::ZookeeperCluster`]
 use std::{
     borrow::Cow,
     collections::{BTreeMap, HashMap},
@@ -523,7 +523,7 @@ pub async fn reconcile_zk(
 /// The server-role service is the primary endpoint that should be used by clients that do not perform internal load balancing,
 /// including targets outside of the cluster.
 ///
-/// Note that you should generally *not* hard-code clients to use these services; instead, create a [`v1alpha1::ZookeeperZnode`](`crate::crd::v1alpha1::ZookeeperZnode`)
+/// Note that you should generally *not* hard-code clients to use these services; instead, create a [`v1alpha1::ZookeeperZnode`](`v1alpha1::ZookeeperZnode`)
 /// and use the connection string that it gives you.
 pub fn build_server_role_service(
     zk: &v1alpha1::ZookeeperCluster,
