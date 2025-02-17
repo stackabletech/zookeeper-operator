@@ -33,9 +33,10 @@ use stackable_operator::{
     time::Duration,
     utils::cluster_info::KubernetesClusterInfo,
 };
+use stackable_versioned::versioned;
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
-use crate::{affinity::get_affinity, authentication::ZookeeperAuthentication, tls::ZookeeperTls};
+use crate::crd::affinity::get_affinity;
 
 pub mod affinity;
 pub mod authentication;
@@ -111,161 +112,222 @@ pub enum Error {
     },
 }
 
-/// A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper.
-/// Find more information on how to use it and the resources that the operator generates in the
-/// [operator documentation](DOCS_BASE_URL_PLACEHOLDER/zookeeper/).
-#[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[kube(
-    group = "zookeeper.stackable.tech",
-    version = "v1alpha1",
-    kind = "ZookeeperCluster",
-    plural = "zookeeperclusters",
-    shortname = "zk",
-    status = "ZookeeperClusterStatus",
-    namespaced,
-    crates(
-        kube_core = "stackable_operator::kube::core",
-        k8s_openapi = "stackable_operator::k8s_openapi",
-        schemars = "stackable_operator::schemars"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperClusterSpec {
-    /// Settings that affect all roles and role groups.
-    /// The settings in the `clusterConfig` are cluster wide settings that do not need to be configurable at role or role group level.
-    #[serde(default = "cluster_config_default")]
-    pub cluster_config: ZookeeperClusterConfig,
-    // no doc - it's in the struct.
-    #[serde(default)]
-    pub cluster_operation: ClusterOperation,
-    // no doc - it's in the struct.
-    pub image: ProductImage,
-    // no doc - it's in the struct.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub servers: Option<Role<ZookeeperConfigFragment>>,
+pub enum LoggingFramework {
+    LOG4J,
+    LOGBACK,
 }
 
-#[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperClusterConfig {
-    /// Authentication settings for ZooKeeper like mTLS authentication.
-    /// Read more in the [authentication usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/authentication).
-    #[serde(default)]
-    pub authentication: Vec<ZookeeperAuthentication>,
+#[versioned(version(name = "v1alpha1"))]
+pub mod versioned {
+    /// A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper.
+    /// Find more information on how to use it and the resources that the operator generates in the
+    /// [operator documentation](DOCS_BASE_URL_PLACEHOLDER/zookeeper/).
+    #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+    #[versioned(k8s(
+        group = "zookeeper.stackable.tech",
+        kind = "ZookeeperCluster",
+        plural = "zookeeperclusters",
+        shortname = "zk",
+        status = "ZookeeperClusterStatus",
+        namespaced,
+        crates(
+            kube_core = "stackable_operator::kube::core",
+            k8s_openapi = "stackable_operator::k8s_openapi",
+            schemars = "stackable_operator::schemars"
+        )
+    ))]
+    #[serde(rename_all = "camelCase")]
+    pub struct ZookeeperClusterSpec {
+        /// Settings that affect all roles and role groups.
+        /// The settings in the `clusterConfig` are cluster wide settings that do not need to be configurable at role or role group level.
+        #[serde(default = "cluster_config_default")]
+        pub cluster_config: ZookeeperClusterConfig,
+        // no doc - it's in the struct.
+        #[serde(default)]
+        pub cluster_operation: ClusterOperation,
+        // no doc - it's in the struct.
+        pub image: ProductImage,
+        // no doc - it's in the struct.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub servers: Option<Role<ZookeeperConfigFragment>>,
+    }
 
-    /// Name of the Vector aggregator [discovery ConfigMap](DOCS_BASE_URL_PLACEHOLDER/concepts/service_discovery).
-    /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
-    /// Follow the [logging tutorial](DOCS_BASE_URL_PLACEHOLDER/tutorials/logging-vector-aggregator)
-    /// to learn how to configure log aggregation with Vector.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vector_aggregator_config_map_name: Option<String>,
+    #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ZookeeperClusterConfig {
+        /// Authentication settings for ZooKeeper like mTLS authentication.
+        /// Read more in the [authentication usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/authentication).
+        #[serde(default)]
+        pub authentication: Vec<authentication::v1alpha1::ZookeeperAuthentication>,
 
-    /// TLS encryption settings for ZooKeeper (server, quorum).
-    /// Read more in the [encryption usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/encryption).
-    #[serde(
-        default = "tls::default_zookeeper_tls",
-        skip_serializing_if = "Option::is_none"
+        /// Name of the Vector aggregator [discovery ConfigMap](DOCS_BASE_URL_PLACEHOLDER/concepts/service_discovery).
+        /// It must contain the key `ADDRESS` with the address of the Vector aggregator.
+        /// Follow the [logging tutorial](DOCS_BASE_URL_PLACEHOLDER/tutorials/logging-vector-aggregator)
+        /// to learn how to configure log aggregation with Vector.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub vector_aggregator_config_map_name: Option<String>,
+
+        /// TLS encryption settings for ZooKeeper (server, quorum).
+        /// Read more in the [encryption usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/encryption).
+        #[serde(
+            default = "tls::default_zookeeper_tls",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub tls: Option<tls::v1alpha1::ZookeeperTls>,
+
+        /// This field controls which type of Service the Operator creates for this ZookeeperCluster:
+        ///
+        /// * cluster-internal: Use a ClusterIP service
+        ///
+        /// * external-unstable: Use a NodePort service
+        ///
+        /// This is a temporary solution with the goal to keep yaml manifests forward compatible.
+        /// In the future, this setting will control which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html)
+        /// will be used to expose the service, and ListenerClass names will stay the same, allowing for a non-breaking change.
+        #[serde(default)]
+        pub listener_class: CurrentlySupportedListenerClasses,
+    }
+
+    // TODO: Temporary solution until listener-operator is finished
+    #[derive(Clone, Debug, Default, Display, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+    #[serde(rename_all = "PascalCase")]
+    pub enum CurrentlySupportedListenerClasses {
+        #[default]
+        #[serde(rename = "cluster-internal")]
+        ClusterInternal,
+        #[serde(rename = "external-unstable")]
+        ExternalUnstable,
+    }
+
+    #[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
+    #[fragment_attrs(
+        derive(
+            Clone,
+            Debug,
+            Default,
+            Deserialize,
+            Merge,
+            JsonSchema,
+            PartialEq,
+            Serialize
+        ),
+        serde(rename_all = "camelCase")
     )]
-    pub tls: Option<ZookeeperTls>,
+    pub struct ZookeeperConfig {
+        pub init_limit: Option<u32>,
+        pub sync_limit: Option<u32>,
+        pub tick_time: Option<u32>,
+        pub myid_offset: u16,
 
-    /// This field controls which type of Service the Operator creates for this ZookeeperCluster:
-    ///
-    /// * cluster-internal: Use a ClusterIP service
-    ///
-    /// * external-unstable: Use a NodePort service
-    ///
-    /// This is a temporary solution with the goal to keep yaml manifests forward compatible.
-    /// In the future, this setting will control which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html)
-    /// will be used to expose the service, and ListenerClass names will stay the same, allowing for a non-breaking change.
-    #[serde(default)]
-    pub listener_class: CurrentlySupportedListenerClasses,
-}
+        #[fragment_attrs(serde(default))]
+        pub resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits>,
 
-fn cluster_config_default() -> ZookeeperClusterConfig {
-    ZookeeperClusterConfig {
-        authentication: vec![],
-        vector_aggregator_config_map_name: None,
-        tls: tls::default_zookeeper_tls(),
-        listener_class: CurrentlySupportedListenerClasses::default(),
+        #[fragment_attrs(serde(default))]
+        pub logging: Logging<Container>,
+
+        #[fragment_attrs(serde(default))]
+        pub affinity: StackableAffinity,
+
+        /// Time period Pods have to gracefully shut down, e.g. `30m`, `1h` or `2d`. Consult the operator documentation for details.
+        #[fragment_attrs(serde(default))]
+        pub graceful_shutdown_timeout: Option<Duration>,
+
+        /// Request secret (currently only autoTls certificates) lifetime from the secret operator, e.g. `7d`, or `30d`.
+        /// This can be shortened by the `maxCertificateLifetime` setting on the SecretClass issuing the TLS certificate.
+        #[fragment_attrs(serde(default))]
+        pub requested_secret_lifetime: Option<Duration>,
     }
-}
 
-// TODO: Temporary solution until listener-operator is finished
-#[derive(Clone, Debug, Default, Display, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "PascalCase")]
-pub enum CurrentlySupportedListenerClasses {
-    #[default]
-    #[serde(rename = "cluster-internal")]
-    ClusterInternal,
-    #[serde(rename = "external-unstable")]
-    ExternalUnstable,
-}
-
-impl CurrentlySupportedListenerClasses {
-    pub fn k8s_service_type(&self) -> String {
-        match self {
-            CurrentlySupportedListenerClasses::ClusterInternal => "ClusterIP".to_string(),
-            CurrentlySupportedListenerClasses::ExternalUnstable => "NodePort".to_string(),
-        }
+    #[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
+    #[fragment_attrs(
+        derive(
+            Clone,
+            Debug,
+            Default,
+            Deserialize,
+            Merge,
+            JsonSchema,
+            PartialEq,
+            Serialize
+        ),
+        serde(rename_all = "camelCase")
+    )]
+    pub struct ZookeeperStorageConfig {
+        #[fragment_attrs(serde(default))]
+        pub data: PvcConfig,
     }
-}
 
-#[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
-#[fragment_attrs(
-    derive(
+    #[derive(
         Clone,
         Debug,
-        Default,
         Deserialize,
-        Merge,
+        Display,
+        Eq,
+        EnumIter,
         JsonSchema,
+        Ord,
         PartialEq,
-        Serialize
-    ),
-    serde(rename_all = "camelCase")
-)]
-pub struct ZookeeperConfig {
-    pub init_limit: Option<u32>,
-    pub sync_limit: Option<u32>,
-    pub tick_time: Option<u32>,
-    pub myid_offset: u16,
+        PartialOrd,
+        Serialize,
+    )]
+    #[serde(rename_all = "camelCase")]
+    pub enum Container {
+        Prepare,
+        Vector,
+        Zookeeper,
+    }
 
-    #[fragment_attrs(serde(default))]
-    pub resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits>,
+    #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ZookeeperClusterStatus {
+        /// An opaque value that changes every time a discovery detail does
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub discovery_hash: Option<String>,
+        #[serde(default)]
+        pub conditions: Vec<ClusterCondition>,
+    }
 
-    #[fragment_attrs(serde(default))]
-    pub logging: Logging<Container>,
+    /// A claim for a single ZooKeeper ZNode tree (filesystem node).
+    ///
+    /// A ConfigMap will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`.
+    /// Each ZookeeperZnode gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains.
+    /// All data inside of this chroot will be deleted when the corresponding `ZookeeperZnode` is.
+    ///
+    /// `ZookeeperZnode` is *not* designed to manage the contents of this ZNode. Instead, it should be used to create a chroot
+    /// for an installation of an application to work inside. Initializing the contents is the responsibility of the application.
+    ///
+    /// You can learn more about this in the
+    /// [Isolating clients with ZNodes usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/isolating_clients_with_znodes).
+    #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+    #[versioned(k8s(
+        group = "zookeeper.stackable.tech",
+        kind = "ZookeeperZnode",
+        plural = "zookeeperznodes",
+        shortname = "zno",
+        shortname = "znode",
+        status = "ZookeeperZnodeStatus",
+        namespaced,
+        crates(
+            kube_core = "stackable_operator::kube::core",
+            k8s_openapi = "stackable_operator::k8s_openapi",
+            schemars = "stackable_operator::schemars"
+        )
+    ))]
+    #[serde(rename_all = "camelCase")]
+    pub struct ZookeeperZnodeSpec {
+        /// The reference to the ZookeeperCluster that this ZNode belongs to.
+        #[serde(default)]
+        pub cluster_ref: ClusterRef<ZookeeperCluster>,
+    }
 
-    #[fragment_attrs(serde(default))]
-    pub affinity: StackableAffinity,
-
-    /// Time period Pods have to gracefully shut down, e.g. `30m`, `1h` or `2d`. Consult the operator documentation for details.
-    #[fragment_attrs(serde(default))]
-    pub graceful_shutdown_timeout: Option<Duration>,
-
-    /// Request secret (currently only autoTls certificates) lifetime from the secret operator, e.g. `7d`, or `30d`.
-    /// This can be shortened by the `maxCertificateLifetime` setting on the SecretClass issuing the TLS certificate.
-    #[fragment_attrs(serde(default))]
-    pub requested_secret_lifetime: Option<Duration>,
-}
-
-#[derive(Clone, Debug, Default, JsonSchema, PartialEq, Fragment)]
-#[fragment_attrs(
-    derive(
-        Clone,
-        Debug,
-        Default,
-        Deserialize,
-        Merge,
-        JsonSchema,
-        PartialEq,
-        Serialize
-    ),
-    serde(rename_all = "camelCase")
-)]
-pub struct ZookeeperStorageConfig {
-    #[fragment_attrs(serde(default))]
-    pub data: PvcConfig,
+    #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ZookeeperZnodeStatus {
+        /// The absolute ZNode allocated to the ZookeeperZnode. This will typically be set by the operator.
+        ///
+        /// This can be set explicitly by an administrator, such as when restoring from a backup.
+        pub znode_path: Option<String>,
+    }
 }
 
 #[derive(
@@ -273,22 +335,49 @@ pub struct ZookeeperStorageConfig {
     Debug,
     Deserialize,
     Display,
-    Eq,
     EnumIter,
+    Eq,
+    Hash,
     JsonSchema,
-    Ord,
     PartialEq,
-    PartialOrd,
     Serialize,
+    EnumString,
 )]
-#[serde(rename_all = "camelCase")]
-pub enum Container {
-    Prepare,
-    Vector,
-    Zookeeper,
+#[strum(serialize_all = "camelCase")]
+pub enum ZookeeperRole {
+    #[strum(serialize = "server")]
+    Server,
 }
 
-impl ZookeeperConfig {
+/// Reference to a single `Pod` that is a component of a [`v1alpha1::ZookeeperCluster`]
+///
+/// Used for service discovery.
+pub struct ZookeeperPodRef {
+    pub namespace: String,
+    pub role_group_service_name: String,
+    pub pod_name: String,
+    pub zookeeper_myid: u16,
+}
+
+fn cluster_config_default() -> v1alpha1::ZookeeperClusterConfig {
+    v1alpha1::ZookeeperClusterConfig {
+        authentication: vec![],
+        vector_aggregator_config_map_name: None,
+        tls: tls::default_zookeeper_tls(),
+        listener_class: v1alpha1::CurrentlySupportedListenerClasses::default(),
+    }
+}
+
+impl v1alpha1::CurrentlySupportedListenerClasses {
+    pub fn k8s_service_type(&self) -> String {
+        match self {
+            v1alpha1::CurrentlySupportedListenerClasses::ClusterInternal => "ClusterIP".to_string(),
+            v1alpha1::CurrentlySupportedListenerClasses::ExternalUnstable => "NodePort".to_string(),
+        }
+    }
+}
+
+impl v1alpha1::ZookeeperConfig {
     pub const INIT_LIMIT: &'static str = "initLimit";
     pub const SYNC_LIMIT: &'static str = "syncLimit";
     pub const TICK_TIME: &'static str = "tickTime";
@@ -300,8 +389,11 @@ impl ZookeeperConfig {
 
     const DEFAULT_SECRET_LIFETIME: Duration = Duration::from_days_unchecked(1);
 
-    fn default_server_config(cluster_name: &str, role: &ZookeeperRole) -> ZookeeperConfigFragment {
-        ZookeeperConfigFragment {
+    fn default_server_config(
+        cluster_name: &str,
+        role: &ZookeeperRole,
+    ) -> v1alpha1::ZookeeperConfigFragment {
+        v1alpha1::ZookeeperConfigFragment {
             init_limit: None,
             sync_limit: None,
             tick_time: None,
@@ -315,7 +407,7 @@ impl ZookeeperConfig {
                     limit: Some(Quantity("512Mi".to_owned())),
                     runtime_limits: NoRuntimeLimitsFragment {},
                 },
-                storage: ZookeeperStorageConfigFragment {
+                storage: v1alpha1::ZookeeperStorageConfigFragment {
                     data: PvcConfigFragment {
                         capacity: Some(Quantity("1Gi".to_owned())),
                         storage_class: None,
@@ -331,8 +423,8 @@ impl ZookeeperConfig {
     }
 }
 
-impl Configuration for ZookeeperConfigFragment {
-    type Configurable = ZookeeperCluster;
+impl Configuration for v1alpha1::ZookeeperConfigFragment {
+    type Configurable = v1alpha1::ZookeeperCluster;
 
     fn compute_env(
         &self,
@@ -352,9 +444,9 @@ impl Configuration for ZookeeperConfigFragment {
 
         Ok([
             (
-                ZookeeperConfig::MYID_OFFSET.to_string(),
+                v1alpha1::ZookeeperConfig::MYID_OFFSET.to_string(),
                 self.myid_offset
-                    .or(ZookeeperConfig::default_server_config(
+                    .or(v1alpha1::ZookeeperConfig::default_server_config(
                         &resource.name_any(),
                         &ZookeeperRole::Server,
                     )
@@ -362,7 +454,7 @@ impl Configuration for ZookeeperConfigFragment {
                     .map(|myid_offset| myid_offset.to_string()),
             ),
             (
-                ZookeeperConfig::SERVER_JVMFLAGS.to_string(),
+                v1alpha1::ZookeeperConfig::SERVER_JVMFLAGS.to_string(),
                 Some(jvm_flags),
             ),
         ]
@@ -387,49 +479,30 @@ impl Configuration for ZookeeperConfigFragment {
         if file == ZOOKEEPER_PROPERTIES_FILE {
             if let Some(init_limit) = self.init_limit {
                 result.insert(
-                    ZookeeperConfig::INIT_LIMIT.to_string(),
+                    v1alpha1::ZookeeperConfig::INIT_LIMIT.to_string(),
                     Some(init_limit.to_string()),
                 );
             }
             if let Some(sync_limit) = self.sync_limit {
                 result.insert(
-                    ZookeeperConfig::SYNC_LIMIT.to_string(),
+                    v1alpha1::ZookeeperConfig::SYNC_LIMIT.to_string(),
                     Some(sync_limit.to_string()),
                 );
             }
             if let Some(tick_time) = self.tick_time {
                 result.insert(
-                    ZookeeperConfig::TICK_TIME.to_string(),
+                    v1alpha1::ZookeeperConfig::TICK_TIME.to_string(),
                     Some(tick_time.to_string()),
                 );
             }
             result.insert(
-                ZookeeperConfig::DATA_DIR.to_string(),
+                v1alpha1::ZookeeperConfig::DATA_DIR.to_string(),
                 Some(STACKABLE_DATA_DIR.to_string()),
             );
         }
 
         Ok(result)
     }
-}
-
-#[derive(
-    Clone,
-    Debug,
-    Deserialize,
-    Display,
-    EnumIter,
-    Eq,
-    Hash,
-    JsonSchema,
-    PartialEq,
-    Serialize,
-    EnumString,
-)]
-#[strum(serialize_all = "camelCase")]
-pub enum ZookeeperRole {
-    #[strum(serialize = "server")]
-    Server,
 }
 
 impl ZookeeperRole {
@@ -442,17 +515,7 @@ impl ZookeeperRole {
     }
 }
 
-#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperClusterStatus {
-    /// An opaque value that changes every time a discovery detail does
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub discovery_hash: Option<String>,
-    #[serde(default)]
-    pub conditions: Vec<ClusterCondition>,
-}
-
-impl HasStatusCondition for ZookeeperCluster {
+impl HasStatusCondition for v1alpha1::ZookeeperCluster {
     fn conditions(&self) -> Vec<ClusterCondition> {
         match &self.status {
             Some(status) => status.conditions.clone(),
@@ -461,17 +524,27 @@ impl HasStatusCondition for ZookeeperCluster {
     }
 }
 
-pub enum LoggingFramework {
-    LOG4J,
-    LOGBACK,
+impl ZookeeperPodRef {
+    pub fn fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
+        format!(
+            "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}",
+            pod_name = self.pod_name,
+            service_name = self.role_group_service_name,
+            namespace = self.namespace,
+            cluster_domain = cluster_info.cluster_domain
+        )
+    }
 }
 
-impl ZookeeperCluster {
+impl v1alpha1::ZookeeperCluster {
     pub fn logging_framework(&self) -> LoggingFramework {
         let version = self
             .spec
             .image
-            .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::CARGO_PKG_VERSION)
+            .resolve(
+                DOCKER_IMAGE_BASE_NAME,
+                crate::crd::built_info::CARGO_PKG_VERSION,
+            )
             .product_version;
         let zookeeper_versions_with_log4j = [
             "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
@@ -506,7 +579,7 @@ impl ZookeeperCluster {
     pub fn role(
         &self,
         role_variant: &ZookeeperRole,
-    ) -> Result<&Role<ZookeeperConfigFragment>, Error> {
+    ) -> Result<&Role<v1alpha1::ZookeeperConfigFragment>, Error> {
         match role_variant {
             ZookeeperRole::Server => self.spec.servers.as_ref(),
         }
@@ -518,8 +591,11 @@ impl ZookeeperCluster {
     /// Returns a reference to the role group. Raises an error if the role or role group are not defined.
     pub fn rolegroup(
         &self,
-        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
-    ) -> Result<RoleGroup<ZookeeperConfigFragment, GenericProductSpecificCommonConfig>, Error> {
+        rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
+    ) -> Result<
+        RoleGroup<v1alpha1::ZookeeperConfigFragment, GenericProductSpecificCommonConfig>,
+        Error,
+    > {
         let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
             UnknownZookeeperRoleSnafu {
                 role: rolegroup_ref.role.to_owned(),
@@ -539,7 +615,7 @@ impl ZookeeperCluster {
     pub fn server_rolegroup_ref(
         &self,
         group_name: impl Into<String>,
-    ) -> RoleGroupRef<ZookeeperCluster> {
+    ) -> RoleGroupRef<v1alpha1::ZookeeperCluster> {
         RoleGroupRef {
             cluster: ObjectRef::from_obj(self),
             role: ZookeeperRole::Server.to_string(),
@@ -592,9 +668,10 @@ impl ZookeeperCluster {
         &self,
         role: &ZookeeperRole,
         rolegroup_ref: &RoleGroupRef<Self>,
-    ) -> Result<ZookeeperConfig, Error> {
+    ) -> Result<v1alpha1::ZookeeperConfig, Error> {
         // Initialize the result with all default values as baseline
-        let conf_defaults = ZookeeperConfig::default_server_config(&self.name_any(), role);
+        let conf_defaults =
+            v1alpha1::ZookeeperConfig::default_server_config(&self.name_any(), role);
 
         // Retrieve role resource config
         let role = self.role(role)?;
@@ -619,7 +696,7 @@ impl ZookeeperCluster {
         &self,
         role: &ZookeeperRole,
         rolegroup_ref: &RoleGroupRef<Self>,
-    ) -> Result<Logging<Container>, Error> {
+    ) -> Result<Logging<v1alpha1::Container>, Error> {
         let config = self.merged_config(role, rolegroup_ref)?;
         Ok(config.logging)
     }
@@ -633,10 +710,11 @@ impl ZookeeperCluster {
     pub fn resources(
         &self,
         role: &ZookeeperRole,
-        rolegroup_ref: &RoleGroupRef<ZookeeperCluster>,
+        rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     ) -> Result<(Vec<PersistentVolumeClaim>, ResourceRequirements), Error> {
         let config = self.merged_config(role, rolegroup_ref)?;
-        let resources: Resources<ZookeeperStorageConfig, NoRuntimeLimits> = config.resources;
+        let resources: Resources<v1alpha1::ZookeeperStorageConfig, NoRuntimeLimits> =
+            config.resources;
 
         let data_pvc = resources
             .storage
@@ -667,76 +745,11 @@ impl ZookeeperCluster {
     }
 }
 
-/// Reference to a single `Pod` that is a component of a [`ZookeeperCluster`]
-///
-/// Used for service discovery.
-pub struct ZookeeperPodRef {
-    pub namespace: String,
-    pub role_group_service_name: String,
-    pub pod_name: String,
-    pub zookeeper_myid: u16,
-}
-
-impl ZookeeperPodRef {
-    pub fn fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
-        format!(
-            "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}",
-            pod_name = self.pod_name,
-            service_name = self.role_group_service_name,
-            namespace = self.namespace,
-            cluster_domain = cluster_info.cluster_domain
-        )
-    }
-}
-
-/// A claim for a single ZooKeeper ZNode tree (filesystem node).
-///
-/// A ConfigMap will automatically be created with the same name, containing the connection string in the field `ZOOKEEPER`.
-/// Each ZookeeperZnode gets an isolated ZNode chroot, which the `ZOOKEEPER` automatically contains.
-/// All data inside of this chroot will be deleted when the corresponding `ZookeeperZnode` is.
-///
-/// `ZookeeperZnode` is *not* designed to manage the contents of this ZNode. Instead, it should be used to create a chroot
-/// for an installation of an application to work inside. Initializing the contents is the responsibility of the application.
-///
-/// You can learn more about this in the
-/// [Isolating clients with ZNodes usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/isolating_clients_with_znodes).
-#[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[kube(
-    group = "zookeeper.stackable.tech",
-    version = "v1alpha1",
-    kind = "ZookeeperZnode",
-    plural = "zookeeperznodes",
-    shortname = "zno",
-    shortname = "znode",
-    status = "ZookeeperZnodeStatus",
-    namespaced,
-    crates(
-        kube_core = "stackable_operator::kube::core",
-        k8s_openapi = "stackable_operator::k8s_openapi",
-        schemars = "stackable_operator::schemars"
-    )
-)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperZnodeSpec {
-    /// The reference to the ZookeeperCluster that this ZNode belongs to.
-    #[serde(default)]
-    pub cluster_ref: ClusterRef<ZookeeperCluster>,
-}
-
-#[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperZnodeStatus {
-    /// The absolute ZNode allocated to the ZookeeperZnode. This will typically be set by the operator.
-    ///
-    /// This can be set explicitly by an administrator, such as when restoring from a backup.
-    pub znode_path: Option<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn get_server_secret_class(zk: &ZookeeperCluster) -> Option<&str> {
+    fn get_server_secret_class(zk: &v1alpha1::ZookeeperCluster) -> Option<&str> {
         zk.spec
             .cluster_config
             .tls
@@ -744,7 +757,7 @@ mod tests {
             .and_then(|tls| tls.server_secret_class.as_deref())
     }
 
-    fn get_quorum_secret_class(zk: &ZookeeperCluster) -> &str {
+    fn get_quorum_secret_class(zk: &v1alpha1::ZookeeperCluster) -> &str {
         zk.spec
             .cluster_config
             .tls
@@ -765,7 +778,8 @@ mod tests {
           image:
             productVersion: "3.9.2"
         "#;
-        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        let zookeeper: v1alpha1::ZookeeperCluster =
+            serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
             tls::server_tls_default().as_deref()
@@ -787,7 +801,8 @@ mod tests {
             tls:
               serverSecretClass: simple-zookeeper-client-tls
         "#;
-        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        let zookeeper: v1alpha1::ZookeeperCluster =
+            serde_yaml::from_str(input).expect("illegal test input");
 
         assert_eq!(
             get_server_secret_class(&zookeeper),
@@ -810,7 +825,8 @@ mod tests {
             tls:
               serverSecretClass: null
         "#;
-        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        let zookeeper: v1alpha1::ZookeeperCluster =
+            serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(get_server_secret_class(&zookeeper), None);
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
@@ -829,7 +845,8 @@ mod tests {
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
         "#;
-        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        let zookeeper: v1alpha1::ZookeeperCluster =
+            serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
             tls::server_tls_default().as_deref()
@@ -851,7 +868,8 @@ mod tests {
           image:
             productVersion: "3.9.2"
         "#;
-        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        let zookeeper: v1alpha1::ZookeeperCluster =
+            serde_yaml::from_str(input).expect("illegal test input");
 
         assert_eq!(
             get_server_secret_class(&zookeeper),
@@ -874,7 +892,8 @@ mod tests {
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
         "#;
-        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        let zookeeper: v1alpha1::ZookeeperCluster =
+            serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
             tls::server_tls_default().as_deref()
@@ -896,7 +915,8 @@ mod tests {
             tls:
               serverSecretClass: simple-zookeeper-server-tls
         "#;
-        let zookeeper: ZookeeperCluster = serde_yaml::from_str(input).expect("illegal test input");
+        let zookeeper: v1alpha1::ZookeeperCluster =
+            serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
             Some("simple-zookeeper-server-tls")

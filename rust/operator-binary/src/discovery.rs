@@ -8,9 +8,11 @@ use stackable_operator::{
     kube::{runtime::reflector::ObjectRef, Resource, ResourceExt},
     utils::cluster_info::KubernetesClusterInfo,
 };
-use stackable_zookeeper_crd::{security::ZookeeperSecurity, ZookeeperCluster, ZookeeperRole};
 
-use crate::utils::build_recommended_labels;
+use crate::{
+    crd::{security::ZookeeperSecurity, v1alpha1, ZookeeperRole},
+    utils::build_recommended_labels,
+};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -19,7 +21,7 @@ pub enum Error {
     #[snafu(display("object {} is missing metadata to build owner reference", zk))]
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::builder::meta::Error,
-        zk: ObjectRef<ZookeeperCluster>,
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("chroot path {} was relative (must be absolute)", chroot))]
@@ -32,9 +34,7 @@ pub enum Error {
     NoNamespace,
 
     #[snafu(display("failed to list expected pods"))]
-    ExpectedPods {
-        source: stackable_zookeeper_crd::Error,
-    },
+    ExpectedPods { source: crate::crd::Error },
 
     #[snafu(display("could not find service port with name {}", port_name))]
     NoServicePort { port_name: String },
@@ -62,10 +62,10 @@ pub enum Error {
     },
 }
 
-/// Builds discovery [`ConfigMap`]s for connecting to a [`ZookeeperCluster`] for all expected scenarios
+/// Builds discovery [`ConfigMap`]s for connecting to a [`v1alpha1::ZookeeperCluster`] for all expected scenarios
 #[allow(clippy::too_many_arguments)]
 pub async fn build_discovery_configmaps(
-    zk: &ZookeeperCluster,
+    zk: &v1alpha1::ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
     client: &stackable_operator::client::Client,
     controller_name: &str,
@@ -89,7 +89,7 @@ pub async fn build_discovery_configmaps(
         resolved_product_image,
     )?];
     if zk.spec.cluster_config.listener_class
-        == stackable_zookeeper_crd::CurrentlySupportedListenerClasses::ExternalUnstable
+        == crate::crd::v1alpha1::CurrentlySupportedListenerClasses::ExternalUnstable
     {
         discovery_configmaps.push(build_discovery_configmap(
             zk,
@@ -107,12 +107,12 @@ pub async fn build_discovery_configmaps(
     Ok(discovery_configmaps)
 }
 
-/// Build a discovery [`ConfigMap`] containing information about how to connect to a certain [`ZookeeperCluster`]
+/// Build a discovery [`ConfigMap`] containing information about how to connect to a certain [`v1alpha1::ZookeeperCluster`]
 ///
 /// `hosts` will usually come from either [`pod_hosts`] or [`nodeport_hosts`].
 #[allow(clippy::too_many_arguments)]
 fn build_discovery_configmap(
-    zk: &ZookeeperCluster,
+    zk: &v1alpha1::ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
     zookeeper_security: &ZookeeperSecurity,
     name: &str,
@@ -168,9 +168,9 @@ fn build_discovery_configmap(
         .context(BuildConfigMapSnafu)
 }
 
-/// Lists all Pods FQDNs expected to host the [`ZookeeperCluster`]
+/// Lists all Pods FQDNs expected to host the [`v1alpha1::ZookeeperCluster`]
 fn pod_hosts<'a>(
-    zk: &'a ZookeeperCluster,
+    zk: &'a v1alpha1::ZookeeperCluster,
     zookeeper_security: &'a ZookeeperSecurity,
     cluster_info: &'a KubernetesClusterInfo,
 ) -> Result<impl IntoIterator<Item = (String, u16)> + 'a> {

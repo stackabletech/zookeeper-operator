@@ -1,4 +1,4 @@
-use stackable_zookeeper_crd::{STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR};
+use crate::crd::{STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_RW_CONFIG_DIR};
 
 pub fn create_init_container_command_args() -> Vec<String> {
     vec![
