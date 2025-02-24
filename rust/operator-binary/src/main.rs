@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clap::{crate_description, crate_version, Parser};
-use crd::{v1alpha1, APP_NAME, OPERATOR_NAME};
+use crd::{v1alpha1, ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
 use futures::{pin_mut, StreamExt};
 use stackable_operator::{
     cli::{Command, ProductOperatorRun},
@@ -19,7 +19,8 @@ use stackable_operator::{
         Resource,
     },
     logging::controller::report_controller_reconciled,
-    CustomResourceExt,
+    shared::yaml::SerializeOptions,
+    YamlSchema,
 };
 
 use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
@@ -51,8 +52,10 @@ async fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
     match opts.cmd {
         Command::Crd => {
-            v1alpha1::ZookeeperCluster::print_yaml_schema(built_info::CARGO_PKG_VERSION)?;
-            v1alpha1::ZookeeperZnode::print_yaml_schema(built_info::CARGO_PKG_VERSION)?;
+            ZookeeperCluster::merged_crd(ZookeeperCluster::V1Alpha1)?
+                .print_yaml_schema(built_info::CARGO_PKG_VERSION, SerializeOptions::default())?;
+            ZookeeperZnode::merged_crd(ZookeeperZnode::V1Alpha1)?
+                .print_yaml_schema(built_info::CARGO_PKG_VERSION, SerializeOptions::default())?;
         }
         Command::Run(ProductOperatorRun {
             product_config,
