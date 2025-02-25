@@ -1,6 +1,6 @@
-//! Reconciles state for ZooKeeper znodes between Kubernetes [`ZookeeperZnode`] objects and the ZooKeeper cluster
+//! Reconciles state for ZooKeeper znodes between Kubernetes [`v1alpha1::ZookeeperZnode`] objects and the ZooKeeper cluster
 //!
-//! See [`ZookeeperZnode`] for more details.
+//! See [`v1alpha1::ZookeeperZnode`] for more details.
 use std::{borrow::Cow, convert::Infallible, sync::Arc};
 
 use const_format::concatcp;
@@ -20,14 +20,11 @@ use stackable_operator::{
     time::Duration,
     utils::cluster_info::KubernetesClusterInfo,
 };
-use stackable_zookeeper_crd::{
-    security::ZookeeperSecurity, ZookeeperCluster, ZookeeperZnode, ZookeeperZnodeStatus,
-    DOCKER_IMAGE_BASE_NAME,
-};
 use strum::{EnumDiscriminants, IntoStaticStr};
 use tracing::{debug, info};
 
 use crate::{
+    crd::{security::ZookeeperSecurity, v1alpha1, DOCKER_IMAGE_BASE_NAME},
     discovery::{self, build_discovery_configmaps},
     APP_NAME, OPERATOR_NAME,
 };
@@ -59,37 +56,41 @@ pub enum Error {
     #[snafu(display("could not find {}", zk))]
     FindZk {
         source: stackable_operator::client::Error,
-        zk: ObjectRef<ZookeeperCluster>,
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
     ZkDoesNotExist {
         source: stackable_operator::client::Error,
-        zk: ObjectRef<ZookeeperCluster>,
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("could not find server role service name for {}", zk))]
-    NoZkSvcName { zk: ObjectRef<ZookeeperCluster> },
+    NoZkSvcName {
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
+    },
 
     #[snafu(display("could not find server role service for {}", zk))]
     FindZkSvc {
         source: stackable_operator::client::Error,
-        zk: ObjectRef<ZookeeperCluster>,
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("failed to calculate FQDN for {}", zk))]
-    NoZkFqdn { zk: ObjectRef<ZookeeperCluster> },
+    NoZkFqdn {
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
+    },
 
     #[snafu(display("failed to ensure that ZNode {} exists in {}", znode_path, zk))]
     EnsureZnode {
         source: znode_mgmt::Error,
-        zk: ObjectRef<ZookeeperCluster>,
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
         znode_path: String,
     },
 
     #[snafu(display("failed to ensure that ZNode {} is missing from {}", znode_path, zk))]
     EnsureZnodeMissing {
         source: znode_mgmt::Error,
-        zk: ObjectRef<ZookeeperCluster>,
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
         znode_path: String,
     },
 
@@ -121,9 +122,7 @@ pub enum Error {
     ObjectHasNoNamespace,
 
     #[snafu(display("failed to initialize security context"))]
-    FailedToInitializeSecurityContext {
-        source: stackable_zookeeper_crd::security::Error,
-    },
+    FailedToInitializeSecurityContext { source: crate::crd::security::Error },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -177,7 +176,7 @@ impl ReconcilerError for Error {
 }
 
 pub async fn reconcile_znode(
-    znode: Arc<DeserializeGuard<ZookeeperZnode>>,
+    znode: Arc<DeserializeGuard<v1alpha1::ZookeeperZnode>>,
     ctx: Arc<Ctx>,
 ) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
@@ -199,7 +198,7 @@ pub async fn reconcile_znode(
     let client = &ctx.client;
 
     let zk = find_zk_of_znode(client, znode).await;
-    let mut default_status_updates: Option<ZookeeperZnodeStatus> = None;
+    let mut default_status_updates: Option<v1alpha1::ZookeeperZnodeStatus> = None;
     // Store the znode path in the status rather than the object itself, to ensure that only K8s administrators can override it
     let znode_path = match znode.status.as_ref().and_then(|s| s.znode_path.as_deref()) {
         Some(znode_path) => {
@@ -230,7 +229,7 @@ pub async fn reconcile_znode(
     }
 
     finalizer(
-        &client.get_api::<ZookeeperZnode>(&ns),
+        &client.get_api::<v1alpha1::ZookeeperZnode>(&ns),
         &format!("{OPERATOR_NAME}/znode"),
         Arc::new(znode.clone()),
         |ev| async {
@@ -256,8 +255,8 @@ pub async fn reconcile_znode(
 
 async fn reconcile_apply(
     client: &stackable_operator::client::Client,
-    znode: &ZookeeperZnode,
-    zk: Result<ZookeeperCluster>,
+    znode: &v1alpha1::ZookeeperZnode,
+    zk: Result<v1alpha1::ZookeeperCluster>,
     znode_path: &str,
     resolved_product_image: &ResolvedProductImage,
 ) -> Result<controller::Action> {
@@ -330,7 +329,7 @@ async fn reconcile_apply(
 
 async fn reconcile_cleanup(
     client: &stackable_operator::client::Client,
-    zk: Result<ZookeeperCluster>,
+    zk: Result<v1alpha1::ZookeeperCluster>,
     znode_path: &str,
 ) -> Result<controller::Action> {
     let zk = match zk {
@@ -360,7 +359,7 @@ async fn reconcile_cleanup(
 }
 
 fn zk_mgmt_addr(
-    zk: &ZookeeperCluster,
+    zk: &v1alpha1::ZookeeperCluster,
     zookeeper_security: &ZookeeperSecurity,
     cluster_info: &KubernetesClusterInfo,
 ) -> Result<String> {
@@ -378,14 +377,17 @@ fn zk_mgmt_addr(
 
 async fn find_zk_of_znode(
     client: &stackable_operator::client::Client,
-    znode: &ZookeeperZnode,
-) -> Result<ZookeeperCluster> {
+    znode: &v1alpha1::ZookeeperZnode,
+) -> Result<v1alpha1::ZookeeperCluster> {
     let zk_ref = &znode.spec.cluster_ref;
     if let (Some(zk_name), Some(zk_ns)) = (
         zk_ref.name.as_deref(),
         zk_ref.namespace_relative_from(znode),
     ) {
-        match client.get::<ZookeeperCluster>(zk_name, zk_ns).await {
+        match client
+            .get::<v1alpha1::ZookeeperCluster>(zk_name, zk_ns)
+            .await
+        {
             Ok(zk) => Ok(zk),
             Err(err) => match &err {
                 stackable_operator::client::Error::GetResource {
@@ -405,7 +407,7 @@ async fn find_zk_of_znode(
 }
 
 pub fn error_policy(
-    _obj: Arc<DeserializeGuard<ZookeeperZnode>>,
+    _obj: Arc<DeserializeGuard<v1alpha1::ZookeeperZnode>>,
     _error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {

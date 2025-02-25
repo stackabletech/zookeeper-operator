@@ -369,6 +369,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb402b8d4c85569410425650ce3eddc7d698ed96d39a73f941b08fb63082f1e7"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1196,6 +1205,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1278,6 +1296,16 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_json",
+]
+
+[[package]]
+name = "k8s-version"
+version = "0.1.2"
+source = "git+https://github.com/stackabletech/operator-rs.git?tag=stackable-versioned-0.5.1#c07fd5d7237b0774b6bf4c8f3878df3b59b4ec07"
+dependencies = [
+ "darling",
+ "regex",
+ "snafu 0.8.5",
 ]
 
 [[package]]
@@ -2331,16 +2359,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "stackable-zookeeper-crd"
-version = "0.0.0-dev"
+name = "stackable-versioned"
+version = "0.5.1"
+source = "git+https://github.com/stackabletech/operator-rs.git?tag=stackable-versioned-0.5.1#c07fd5d7237b0774b6bf4c8f3878df3b59b4ec07"
 dependencies = [
- "serde",
- "serde_json",
- "serde_yaml",
- "snafu 0.8.5",
- "stackable-operator",
- "strum",
- "tracing",
+ "stackable-versioned-macros",
+]
+
+[[package]]
+name = "stackable-versioned-macros"
+version = "0.5.1"
+source = "git+https://github.com/stackabletech/operator-rs.git?tag=stackable-versioned-0.5.1#c07fd5d7237b0774b6bf4c8f3878df3b59b4ec07"
+dependencies = [
+ "convert_case",
+ "darling",
+ "itertools",
+ "k8s-openapi",
+ "k8s-version",
+ "kube",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.96",
 ]
 
 [[package]]
@@ -2358,10 +2397,11 @@ dependencies = [
  "product-config",
  "semver",
  "serde",
+ "serde_json",
  "serde_yaml",
  "snafu 0.8.5",
  "stackable-operator",
- "stackable-zookeeper-crd",
+ "stackable-versioned",
  "strum",
  "tokio",
  "tokio-zookeeper",
@@ -2809,6 +2849,12 @@ name = "unicode-ident"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb9e6ca4f869e1180728b7950e35922a7fc6397f7b641499e8f3ef06e50dc83"
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
 
 [[package]]
 name = "unicode-xid"

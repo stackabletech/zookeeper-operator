@@ -1,6 +1,7 @@
 use snafu::{ResultExt, Snafu};
 use stackable_operator::builder::pod::PodBuilder;
-use stackable_zookeeper_crd::ZookeeperConfig;
+
+use crate::crd::v1alpha1;
 
 #[derive(Debug, Snafu)]
 pub enum Error {
@@ -11,7 +12,7 @@ pub enum Error {
 }
 
 pub fn add_graceful_shutdown_config(
-    merged_config: &ZookeeperConfig,
+    merged_config: &v1alpha1::ZookeeperConfig,
     pod_builder: &mut PodBuilder,
 ) -> Result<(), Error> {
     // This must be always set by the merge mechanism, as we provide a default value,

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use clap::{crate_description, crate_version, Parser};
+use crd::{v1alpha1, ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
 use futures::{pin_mut, StreamExt};
 use stackable_operator::{
     cli::{Command, ProductOperatorRun},
@@ -18,13 +19,14 @@ use stackable_operator::{
         Resource,
     },
     logging::controller::report_controller_reconciled,
-    CustomResourceExt,
+    shared::yaml::SerializeOptions,
+    YamlSchema,
 };
-use stackable_zookeeper_crd::{ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
 
 use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
 
 mod command;
+pub mod crd;
 mod discovery;
 mod operations;
 mod product_logging;
@@ -50,8 +52,10 @@ async fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
     match opts.cmd {
         Command::Crd => {
-            ZookeeperCluster::print_yaml_schema(built_info::CARGO_PKG_VERSION)?;
-            ZookeeperZnode::print_yaml_schema(built_info::CARGO_PKG_VERSION)?;
+            ZookeeperCluster::merged_crd(ZookeeperCluster::V1Alpha1)?
+                .print_yaml_schema(built_info::CARGO_PKG_VERSION, SerializeOptions::default())?;
+            ZookeeperZnode::merged_crd(ZookeeperZnode::V1Alpha1)?
+                .print_yaml_schema(built_info::CARGO_PKG_VERSION, SerializeOptions::default())?;
         }
         Command::Run(ProductOperatorRun {
             product_config,
@@ -83,7 +87,7 @@ async fn main() -> anyhow::Result<()> {
             .await?;
 
             let zk_controller = Controller::new(
-                watch_namespace.get_api::<DeserializeGuard<ZookeeperCluster>>(&client),
+                watch_namespace.get_api::<DeserializeGuard<v1alpha1::ZookeeperCluster>>(&client),
                 watcher::Config::default(),
             );
 
@@ -154,7 +158,7 @@ async fn main() -> anyhow::Result<()> {
                 );
 
             let znode_controller = Controller::new(
-                watch_namespace.get_api::<DeserializeGuard<ZookeeperZnode>>(&client),
+                watch_namespace.get_api::<DeserializeGuard<v1alpha1::ZookeeperZnode>>(&client),
                 watcher::Config::default(),
             );
             let znode_event_recorder = Arc::new(Recorder::new(
@@ -172,7 +176,8 @@ async fn main() -> anyhow::Result<()> {
                     watcher::Config::default(),
                 )
                 .watches(
-                    watch_namespace.get_api::<DeserializeGuard<ZookeeperCluster>>(&client),
+                    watch_namespace
+                        .get_api::<DeserializeGuard<v1alpha1::ZookeeperCluster>>(&client),
                     watcher::Config::default(),
                     move |zk| {
                         znode_store
