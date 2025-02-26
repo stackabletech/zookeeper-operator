@@ -823,15 +823,6 @@ fn build_server_rolegroup_statefulset(
         ])
         .args(vec![args.join("\n")])
         .add_env_vars(env_vars.clone())
-        .add_env_var(
-            "ZK_SERVER_HEAP",
-            construct_zk_server_heap_env(merged_config).context(ConstructJvmArgumentsSnafu)?,
-        )
-        .add_env_var(
-            "SERVER_JVMFLAGS",
-            construct_non_heap_jvm_args(zk, role, &rolegroup_ref.role_group)
-                .context(ConstructJvmArgumentsSnafu)?,
-        )
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
             value_from: Some(EnvVarSource {
@@ -885,6 +876,15 @@ fn build_server_rolegroup_statefulset(
                 create_vector_shutdown_file_command(STACKABLE_LOG_DIR),
         }])
         .add_env_vars(env_vars)
+        .add_env_var(
+            "ZK_SERVER_HEAP",
+            construct_zk_server_heap_env(merged_config).context(ConstructJvmArgumentsSnafu)?,
+        )
+        .add_env_var(
+            "SERVER_JVMFLAGS",
+            construct_non_heap_jvm_args(zk, role, &rolegroup_ref.role_group)
+                .context(ConstructJvmArgumentsSnafu)?,
+        )
         .add_env_var(
             "CONTAINERDEBUG_LOG_DIRECTORY",
             format!("{STACKABLE_LOG_DIR}/containerdebug"),
