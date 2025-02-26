@@ -92,9 +92,8 @@ fn is_heap_jvm_argument(jvm_argument: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::crd::{v1alpha1::ZookeeperConfig, ZookeeperRole};
-
     use super::*;
+    use crate::crd::{v1alpha1::ZookeeperConfig, ZookeeperRole};
 
     #[test]
     fn test_construct_jvm_arguments_defaults() {
