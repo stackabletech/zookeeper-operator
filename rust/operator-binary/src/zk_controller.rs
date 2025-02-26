@@ -68,6 +68,7 @@ use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
     command::create_init_container_command_args,
+    config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
         security::{self, ZookeeperSecurity},
         v1alpha1, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE,
@@ -191,9 +192,6 @@ pub enum Error {
         source: stackable_operator::client::Error,
     },
 
-    #[snafu(display("invalid java heap config"))]
-    InvalidJavaHeapConfig { source: crate::crd::Error },
-
     #[snafu(display("failed to create RBAC service account"))]
     ApplyServiceAccount {
         source: stackable_operator::cluster_resources::Error,
@@ -267,6 +265,9 @@ pub enum Error {
     CreateClusterResources {
         source: stackable_operator::cluster_resources::Error,
     },
+
+    #[snafu(display("failed to construct JVM arguments"))]
+    ConstructJvmArguments { source: crate::config::jvm::Error },
 }
 
 impl ReconcilerError for Error {
@@ -295,7 +296,6 @@ impl ReconcilerError for Error {
             Error::BuildDiscoveryConfig { .. } => None,
             Error::ApplyDiscoveryConfig { .. } => None,
             Error::ApplyStatus { .. } => None,
-            Error::InvalidJavaHeapConfig { .. } => None,
             Error::ApplyServiceAccount { .. } => None,
             Error::ApplyRoleBinding { .. } => None,
             Error::BuildRbacResources { .. } => None,
@@ -313,6 +313,7 @@ impl ReconcilerError for Error {
             Error::AddVolume { .. } => None,
             Error::AddVolumeMount { .. } => None,
             Error::CreateClusterResources { .. } => None,
+            Error::ConstructJvmArguments { .. } => None,
         }
     }
 }
@@ -764,7 +765,7 @@ fn build_server_rolegroup_statefulset(
         .logging(zk_role, rolegroup_ref)
         .context(CrdValidationFailureSnafu)?;
 
-    let mut env_vars = server_config
+    let env_vars = server_config
         .get(&PropertyNameKind::Env)
         .into_iter()
         .flatten()
@@ -778,17 +779,6 @@ fn build_server_rolegroup_statefulset(
     let (pvc, resources) = zk
         .resources(zk_role, rolegroup_ref)
         .context(CrdValidationFailureSnafu)?;
-    // set heap size if available
-    let heap_limits = zk
-        .heap_limits(&resources)
-        .context(InvalidJavaHeapConfigSnafu)?;
-    if let Some(heap_limits) = heap_limits {
-        env_vars.push(EnvVar {
-            name: v1alpha1::ZookeeperConfig::ZK_SERVER_HEAP.to_string(),
-            value: Some(heap_limits.to_string()),
-            ..EnvVar::default()
-        });
-    }
 
     let mut cb_prepare =
         ContainerBuilder::new("prepare").expect("invalid hard-coded container name");
@@ -833,6 +823,15 @@ fn build_server_rolegroup_statefulset(
         ])
         .args(vec![args.join("\n")])
         .add_env_vars(env_vars.clone())
+        .add_env_var(
+            "ZK_SERVER_HEAP",
+            construct_zk_server_heap_env(merged_config).context(ConstructJvmArgumentsSnafu)?,
+        )
+        .add_env_var(
+            "SERVER_JVMFLAGS",
+            construct_non_heap_jvm_args(zk, role, &rolegroup_ref.role_group)
+                .context(ConstructJvmArgumentsSnafu)?,
+        )
         .add_env_vars(vec![EnvVar {
             name: "POD_NAME".to_string(),
             value_from: Some(EnvVarSource {
