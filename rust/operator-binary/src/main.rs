@@ -26,6 +26,7 @@ use stackable_operator::{
 use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
 
 mod command;
+mod config;
 pub mod crd;
 mod discovery;
 mod operations;

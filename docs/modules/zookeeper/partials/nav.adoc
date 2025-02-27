@@ -12,7 +12,7 @@
 ** xref:zookeeper:usage_guide/log_aggregation.adoc[]
 ** xref:zookeeper:usage_guide/using_multiple_role_groups.adoc[]
 ** xref:zookeeper:usage_guide/isolating_clients_with_znodes.adoc[]
-** xref:zookeeper:usage_guide/configuration_environment_overrides.adoc[]
+** xref:zookeeper:usage_guide/overrides.adoc[]
 ** xref:zookeeper:usage_guide/operations/index.adoc[]
 *** xref:zookeeper:usage_guide/operations/cluster-operations.adoc[]
 *** xref:zookeeper:usage_guide/operations/pod-placement.adoc[]

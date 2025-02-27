@@ -25,9 +25,7 @@ use stackable_operator::{
     memory::{BinaryMultiple, MemoryQuantity},
     product_config_utils::{self, Configuration},
     product_logging::{self, spec::Logging},
-    role_utils::{
-        GenericProductSpecificCommonConfig, GenericRoleConfig, Role, RoleGroup, RoleGroupRef,
-    },
+    role_utils::{GenericRoleConfig, JavaCommonConfig, Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
     status::condition::{ClusterCondition, HasStatusCondition},
     time::Duration,
@@ -71,8 +69,6 @@ pub const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
     unit: BinaryMultiple::Mebi,
 };
 
-const JVM_HEAP_FACTOR: f32 = 0.8;
-
 pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 
 const DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_minutes_unchecked(2);
@@ -101,15 +97,6 @@ pub enum Error {
 
     #[snafu(display("fragment validation failure"))]
     FragmentValidationFailure { source: ValidationError },
-
-    #[snafu(display("invalid java heap config - missing default or value in crd?"))]
-    InvalidJavaHeapConfig,
-
-    #[snafu(display("failed to convert java heap config to unit [{unit}]"))]
-    FailedToConvertJavaHeap {
-        source: stackable_operator::memory::Error,
-        unit: String,
-    },
 }
 
 pub enum LoggingFramework {
@@ -142,14 +129,17 @@ pub mod versioned {
         /// The settings in the `clusterConfig` are cluster wide settings that do not need to be configurable at role or role group level.
         #[serde(default = "cluster_config_default")]
         pub cluster_config: ZookeeperClusterConfig,
+
         // no doc - it's in the struct.
         #[serde(default)]
         pub cluster_operation: ClusterOperation,
+
         // no doc - it's in the struct.
         pub image: ProductImage,
+
         // no doc - it's in the struct.
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub servers: Option<Role<ZookeeperConfigFragment>>,
+        pub servers: Option<Role<ZookeeperConfigFragment, GenericRoleConfig, JavaCommonConfig>>,
     }
 
     #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -384,8 +374,6 @@ impl v1alpha1::ZookeeperConfig {
     pub const DATA_DIR: &'static str = "dataDir";
 
     pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
-    pub const SERVER_JVMFLAGS: &'static str = "SERVER_JVMFLAGS";
-    pub const ZK_SERVER_HEAP: &'static str = "ZK_SERVER_HEAP";
 
     const DEFAULT_SECRET_LIFETIME: Duration = Duration::from_days_unchecked(1);
 
@@ -431,33 +419,16 @@ impl Configuration for v1alpha1::ZookeeperConfigFragment {
         resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
-        let logging_framework = resource.logging_framework();
-
-        let jvm_flags = [
-            format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
-            match logging_framework {
-                LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
-                LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
-            },
-            format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
-        ].join(" ");
-
-        Ok([
-            (
-                v1alpha1::ZookeeperConfig::MYID_OFFSET.to_string(),
-                self.myid_offset
-                    .or(v1alpha1::ZookeeperConfig::default_server_config(
-                        &resource.name_any(),
-                        &ZookeeperRole::Server,
-                    )
-                    .myid_offset)
-                    .map(|myid_offset| myid_offset.to_string()),
-            ),
-            (
-                v1alpha1::ZookeeperConfig::SERVER_JVMFLAGS.to_string(),
-                Some(jvm_flags),
-            ),
-        ]
+        Ok([(
+            v1alpha1::ZookeeperConfig::MYID_OFFSET.to_string(),
+            self.myid_offset
+                .or(v1alpha1::ZookeeperConfig::default_server_config(
+                    &resource.name_any(),
+                    &ZookeeperRole::Server,
+                )
+                .myid_offset)
+                .map(|myid_offset| myid_offset.to_string()),
+        )]
         .into())
     }
 
@@ -579,7 +550,8 @@ impl v1alpha1::ZookeeperCluster {
     pub fn role(
         &self,
         role_variant: &ZookeeperRole,
-    ) -> Result<&Role<v1alpha1::ZookeeperConfigFragment>, Error> {
+    ) -> Result<&Role<v1alpha1::ZookeeperConfigFragment, GenericRoleConfig, JavaCommonConfig>, Error>
+    {
         match role_variant {
             ZookeeperRole::Server => self.spec.servers.as_ref(),
         }
@@ -592,10 +564,7 @@ impl v1alpha1::ZookeeperCluster {
     pub fn rolegroup(
         &self,
         rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    ) -> Result<
-        RoleGroup<v1alpha1::ZookeeperConfigFragment, GenericProductSpecificCommonConfig>,
-        Error,
-    > {
+    ) -> Result<RoleGroup<v1alpha1::ZookeeperConfigFragment, JavaCommonConfig>, Error> {
         let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
             UnknownZookeeperRoleSnafu {
                 role: rolegroup_ref.role.to_owned(),
@@ -722,26 +691,6 @@ impl v1alpha1::ZookeeperCluster {
             .build_pvc("data", Some(vec!["ReadWriteOnce"]));
 
         Ok((vec![data_pvc], resources.into()))
-    }
-
-    pub fn heap_limits(&self, resources: &ResourceRequirements) -> Result<Option<u32>, Error> {
-        let memory_limit = MemoryQuantity::try_from(
-            resources
-                .limits
-                .as_ref()
-                .and_then(|limits| limits.get("memory"))
-                .context(InvalidJavaHeapConfigSnafu)?,
-        )
-        .context(FailedToConvertJavaHeapSnafu {
-            unit: BinaryMultiple::Mebi.to_java_memory_unit(),
-        })?;
-
-        Ok(Some(
-            (memory_limit * JVM_HEAP_FACTOR)
-                .scale_to(BinaryMultiple::Mebi)
-                .floor()
-                .value as u32,
-        ))
     }
 }
 

@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
   config property `requestedSecretLifetime`. This helps reduce frequent Pod restarts ([#892]).
 - Run a `containerdebug` process in the background of each Zookeeper container to collect debugging information ([#881]).
 - Aggregate emitted Kubernetes events on the CustomResources ([#904]).
+- Support configuring JVM arguments ([#919]).
 
 ### Changed
 
@@ -19,6 +20,7 @@ All notable changes to this project will be documented in this file.
 [#892]: https://github.com/stackabletech/zookeeper-operator/pull/892
 [#904]: https://github.com/stackabletech/zookeeper-operator/pull/904
 [#905]: https://github.com/stackabletech/zookeeper-operator/pull/905
+[#919]: https://github.com/stackabletech/zookeeper-operator/pull/919
 
 ## [24.11.1] - 2025-01-10
 
