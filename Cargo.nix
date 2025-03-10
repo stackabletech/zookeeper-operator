@@ -1093,9 +1093,9 @@ rec {
       };
       "convert_case" = rec {
         crateName = "convert_case";
-        version = "0.7.1";
+        version = "0.8.0";
         edition = "2021";
-        sha256 = "1rzih8qbd3xh87wp76nkjvnrimn7vlzcwl2n88898ml59j6jnh5v";
+        sha256 = "17zqy79xlr1n7nc0n1mlnw5qpp8l2nbxrk13jixrhlavrbna1ams";
         authors = [
           "rutrum <dave@rutrum.net>"
         ];
@@ -3888,8 +3888,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/stackabletech/operator-rs.git";
-          rev = "c07fd5d7237b0774b6bf4c8f3878df3b59b4ec07";
-          sha256 = "1l574x35z5ylidbc3qm0crp9qravhyry8i07ww3b1kpcr4w7dd53";
+          rev = "53ccc1e9eca2a5b35a8618593c548e8687fb150d";
+          sha256 = "0asgwj93drwvqsgd5c563qawjc3avb42nav0i5dgs4zv8bldx6x0";
         };
         libName = "k8s_version";
         authors = [
@@ -7362,13 +7362,13 @@ rec {
       };
       "stackable-versioned" = rec {
         crateName = "stackable-versioned";
-        version = "0.5.1";
+        version = "0.6.0";
         edition = "2021";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/stackabletech/operator-rs.git";
-          rev = "c07fd5d7237b0774b6bf4c8f3878df3b59b4ec07";
-          sha256 = "1l574x35z5ylidbc3qm0crp9qravhyry8i07ww3b1kpcr4w7dd53";
+          rev = "53ccc1e9eca2a5b35a8618593c548e8687fb150d";
+          sha256 = "0asgwj93drwvqsgd5c563qawjc3avb42nav0i5dgs4zv8bldx6x0";
         };
         libName = "stackable_versioned";
         authors = [
@@ -7388,13 +7388,13 @@ rec {
       };
       "stackable-versioned-macros" = rec {
         crateName = "stackable-versioned-macros";
-        version = "0.5.1";
+        version = "0.6.0";
         edition = "2021";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/stackabletech/operator-rs.git";
-          rev = "c07fd5d7237b0774b6bf4c8f3878df3b59b4ec07";
-          sha256 = "1l574x35z5ylidbc3qm0crp9qravhyry8i07ww3b1kpcr4w7dd53";
+          rev = "53ccc1e9eca2a5b35a8618593c548e8687fb150d";
+          sha256 = "0asgwj93drwvqsgd5c563qawjc3avb42nav0i5dgs4zv8bldx6x0";
         };
         procMacro = true;
         libName = "stackable_versioned_macros";
