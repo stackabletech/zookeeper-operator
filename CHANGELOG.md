@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Bump stackable-operator to 0.87.2 and stackable-versioned to 0.6.0 ([#921]).
 - Default to OCI for image metadata and product image selection ([#905]).
 
 [#881]: https://github.com/stackabletech/zookeeper-operator/pull/881
@@ -21,6 +22,7 @@ All notable changes to this project will be documented in this file.
 [#904]: https://github.com/stackabletech/zookeeper-operator/pull/904
 [#905]: https://github.com/stackabletech/zookeeper-operator/pull/905
 [#919]: https://github.com/stackabletech/zookeeper-operator/pull/919
+[#921]: https://github.com/stackabletech/zookeeper-operator/pull/921
 
 ## [24.11.1] - 2025-01-10
 
