@@ -104,7 +104,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.2"
+            productVersion: "3.9.3"
           servers:
             roleGroups:
               default:
@@ -132,7 +132,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.2"
+            productVersion: "3.9.3"
           servers:
             config:
               resources:
