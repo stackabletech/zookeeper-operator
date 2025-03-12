@@ -5,7 +5,7 @@ set -euo pipefail
 # in the 'docs' directory.
 #
 # dependencies
-# pip install jinja2-cli
+# pip install jinja2-cli[yaml]
 
 docs_dir="$(dirname "$0")/../docs"
 templating_vars_file="$docs_dir/templating_vars.yaml"

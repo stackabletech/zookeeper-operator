@@ -26,7 +26,7 @@ The name of the ConfigMap created for this discovery profile is `$BASENAME-nodep
 
 Each discovery profile contains the following fields:
 
-`ZOOKEEPER`:: A connection string, as accepted by https://zookeeper.apache.org/doc/r3.9.2/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-[the official Java client], e.g. `test-zk-server-default-0.test-zk-server-default.kuttl-test-proper-spaniel.svc.cluster.local:2282,test-zk-server-default-1.test-zk-server-default.kuttl-test-proper-spaniel.svc.cluster.local:2282/znode-4e169890-d2eb-4d62-9515-e4786f0ac58e`
+`ZOOKEEPER`:: A connection string, as accepted by https://zookeeper.apache.org/doc/r3.9.3/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-[the official Java client], e.g. `test-zk-server-default-0.test-zk-server-default.kuttl-test-proper-spaniel.svc.cluster.local:2282,test-zk-server-default-1.test-zk-server-default.kuttl-test-proper-spaniel.svc.cluster.local:2282/znode-4e169890-d2eb-4d62-9515-e4786f0ac58e`
 `ZOOKEEPER_HOSTS`:: A comma-separated list of `node1:port1,node2:port2,...`, e.g. `test-zk-server-default-0.test-zk-server-default.kuttl-test-proper-spaniel.svc.cluster.local:2282,test-zk-server-default-1.test-zk-server-default.kuttl-test-proper-spaniel.svc.cluster.local:2282`
 `ZOOKEEPER_CHROOT`:: The name of the root ZNode associated with the discovery profile, should be used if (and only if) connecting using `ZOOKEEPER_HOSTS` (rather than `ZOOKEEPER`), e.g. `/znode-4e169890-d2eb-4d62-9515-e4786f0ac58e` in case of a ZNode discovery or `/` in case of a ZookeeperServer discovery
 `ZOOKEEPER_CLIENT_PORT`:: The port clients should use when connecting, e.g. `2282`
