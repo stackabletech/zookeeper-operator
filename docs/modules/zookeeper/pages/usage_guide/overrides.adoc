@@ -39,7 +39,7 @@ servers:
 
 All property values must be strings.
 
-For a full list of configuration options refer to the Apache ZooKeeper https://zookeeper.apache.org/doc/r3.9.2/zookeeperAdmin.html#sc_configuration[Configuration Reference].
+For a full list of configuration options refer to the Apache ZooKeeper https://zookeeper.apache.org/doc/r3.9.3/zookeeperAdmin.html#sc_configuration[Configuration Reference].
 
 === Overriding entries in security.properties
 
