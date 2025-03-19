@@ -501,9 +501,9 @@ rec {
       };
       "backon" = rec {
         crateName = "backon";
-        version = "1.4.0";
+        version = "1.4.1";
         edition = "2021";
-        sha256 = "0p8zpac1dzl8fl37z6psngv5nsim6k8b7j95kwcgymrsj63gbzj9";
+        sha256 = "1drv0gvhjs3g0q88f1mknqjdyhh6qg8pvb9nkfasba011ibr23cp";
         dependencies = [
           {
             name = "fastrand";
@@ -2928,7 +2928,7 @@ rec {
           "webpki-roots" = [ "dep:webpki-roots" ];
           "webpki-tokio" = [ "webpki-roots" ];
         };
-        resolvedDefaultFeatures = [ "http1" "log" "logging" "native-tokio" "rustls-native-certs" "tls12" ];
+        resolvedDefaultFeatures = [ "http1" "log" "logging" "native-tokio" "ring" "rustls-native-certs" "tls12" ];
       };
       "hyper-timeout" = rec {
         crateName = "hyper-timeout";
@@ -4043,7 +4043,7 @@ rec {
           "webpki-roots" = [ "kube-client/webpki-roots" "client" ];
           "ws" = [ "kube-client/ws" "kube-core/ws" ];
         };
-        resolvedDefaultFeatures = [ "client" "config" "derive" "jsonpatch" "kube-client" "kube-derive" "kube-runtime" "runtime" "rustls-tls" ];
+        resolvedDefaultFeatures = [ "client" "config" "derive" "jsonpatch" "kube-client" "kube-derive" "kube-runtime" "ring" "runtime" "rustls-tls" ];
       };
       "kube-client" = rec {
         crateName = "kube-client";
@@ -4284,7 +4284,7 @@ rec {
           "webpki-roots" = [ "hyper-rustls/webpki-roots" ];
           "ws" = [ "client" "tokio-tungstenite" "kube-core/ws" "tokio/macros" ];
         };
-        resolvedDefaultFeatures = [ "__non_core" "base64" "bytes" "chrono" "client" "config" "either" "futures" "home" "http-body" "http-body-util" "hyper" "hyper-rustls" "hyper-timeout" "hyper-util" "jsonpatch" "jsonpath-rust" "pem" "rustls" "rustls-tls" "serde_yaml" "tokio" "tokio-util" "tower" "tower-http" "tracing" ];
+        resolvedDefaultFeatures = [ "__non_core" "base64" "bytes" "chrono" "client" "config" "either" "futures" "home" "http-body" "http-body-util" "hyper" "hyper-rustls" "hyper-timeout" "hyper-util" "jsonpatch" "jsonpath-rust" "pem" "ring" "rustls" "rustls-tls" "serde_yaml" "tokio" "tokio-util" "tower" "tower-http" "tracing" ];
       };
       "kube-core" = rec {
         crateName = "kube-core";
@@ -6121,7 +6121,7 @@ rec {
           "std" = [ "alloc" ];
           "wasm32_unknown_unknown_js" = [ "getrandom/js" ];
         };
-        resolvedDefaultFeatures = [ "alloc" ];
+        resolvedDefaultFeatures = [ "alloc" "default" "dev_urandom_fallback" ];
       };
       "rustc-demangle" = rec {
         crateName = "rustc-demangle";
@@ -6154,6 +6154,11 @@ rec {
             packageId = "once_cell";
             usesDefaultFeatures = false;
             features = [ "alloc" "race" ];
+          }
+          {
+            name = "ring";
+            packageId = "ring";
+            optional = true;
           }
           {
             name = "rustls-pki-types";
@@ -6200,7 +6205,7 @@ rec {
           "std" = [ "webpki/std" "pki-types/std" "once_cell/std" ];
           "zlib" = [ "dep:zlib-rs" ];
         };
-        resolvedDefaultFeatures = [ "log" "logging" "std" "tls12" ];
+        resolvedDefaultFeatures = [ "log" "logging" "ring" "std" "tls12" ];
       };
       "rustls-native-certs 0.7.3" = rec {
         crateName = "rustls-native-certs";
@@ -6332,7 +6337,7 @@ rec {
           "ring" = [ "dep:ring" ];
           "std" = [ "alloc" "pki-types/std" ];
         };
-        resolvedDefaultFeatures = [ "alloc" "std" ];
+        resolvedDefaultFeatures = [ "alloc" "ring" "std" ];
       };
       "rustversion" = rec {
         crateName = "rustversion";
@@ -7182,13 +7187,13 @@ rec {
       };
       "stackable-operator" = rec {
         crateName = "stackable-operator";
-        version = "0.87.4";
+        version = "0.87.5";
         edition = "2021";
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/stackabletech/operator-rs.git";
-          rev = "a6d8db57a3108a4fb12eb82f9f7941f55ae2c88d";
-          sha256 = "1val6arh6mq2x9292ppf0nd8s7hw6nwby85qh50dsimwqw3hcpcb";
+          rev = "f035997fca85a54238c8de895389cc50b4d421e2";
+          sha256 = "0p6v8ay9vdz8070ryirr4fb1l52da82l8jkzy8mzvm8g8436f0ij";
         };
         libName = "stackable_operator";
         authors = [
@@ -7249,7 +7254,7 @@ rec {
             name = "kube";
             packageId = "kube";
             usesDefaultFeatures = false;
-            features = [ "client" "jsonpatch" "runtime" "derive" "rustls-tls" ];
+            features = [ "client" "jsonpatch" "runtime" "derive" "rustls-tls" "ring" ];
           }
           {
             name = "opentelemetry-jaeger";
@@ -7347,8 +7352,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/stackabletech/operator-rs.git";
-          rev = "a6d8db57a3108a4fb12eb82f9f7941f55ae2c88d";
-          sha256 = "1val6arh6mq2x9292ppf0nd8s7hw6nwby85qh50dsimwqw3hcpcb";
+          rev = "f035997fca85a54238c8de895389cc50b4d421e2";
+          sha256 = "0p6v8ay9vdz8070ryirr4fb1l52da82l8jkzy8mzvm8g8436f0ij";
         };
         procMacro = true;
         libName = "stackable_operator_derive";
@@ -7382,8 +7387,8 @@ rec {
         workspace_member = null;
         src = pkgs.fetchgit {
           url = "https://github.com/stackabletech/operator-rs.git";
-          rev = "a6d8db57a3108a4fb12eb82f9f7941f55ae2c88d";
-          sha256 = "1val6arh6mq2x9292ppf0nd8s7hw6nwby85qh50dsimwqw3hcpcb";
+          rev = "f035997fca85a54238c8de895389cc50b4d421e2";
+          sha256 = "0p6v8ay9vdz8070ryirr4fb1l52da82l8jkzy8mzvm8g8436f0ij";
         };
         libName = "stackable_shared";
         authors = [
@@ -7394,7 +7399,7 @@ rec {
             name = "kube";
             packageId = "kube";
             usesDefaultFeatures = false;
-            features = [ "client" "jsonpatch" "runtime" "derive" "rustls-tls" ];
+            features = [ "client" "jsonpatch" "runtime" "derive" "rustls-tls" "ring" ];
           }
           {
             name = "semver";
@@ -10307,9 +10312,9 @@ rec {
       };
       "windows-link" = rec {
         crateName = "windows-link";
-        version = "0.1.0";
+        version = "0.1.1";
         edition = "2021";
-        sha256 = "1qr0srnkw148wbrws3726pm640h2vxgcdlxn0cxpbcg27irzvk3d";
+        sha256 = "0f2cq7imbrppsmmnz8899hfhg07cp5gq6rh0bjhb1qb6nwshk13n";
         libName = "windows_link";
         authors = [
           "Microsoft"
