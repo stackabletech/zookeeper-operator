@@ -115,7 +115,7 @@ pub mod versioned {
         kind = "ZookeeperCluster",
         plural = "zookeeperclusters",
         shortname = "zk",
-        status = "ZookeeperClusterStatus",
+        status = "v1alpha1::ZookeeperClusterStatus",
         namespaced,
         crates(
             kube_core = "stackable_operator::kube::core",
@@ -295,7 +295,7 @@ pub mod versioned {
         plural = "zookeeperznodes",
         shortname = "zno",
         shortname = "znode",
-        status = "ZookeeperZnodeStatus",
+        status = "v1alpha1::ZookeeperZnodeStatus",
         namespaced,
         crates(
             kube_core = "stackable_operator::kube::core",
