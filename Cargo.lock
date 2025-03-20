@@ -169,9 +169,9 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
 name = "backon"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49fef586913a57ff189f25c9b3d034356a5bf6b3fa9a7f067588fe1698ba1f5d"
+checksum = "970d91570c01a8a5959b36ad7dd1c30642df24b6b3068710066f6809f7033bb7"
 dependencies = [
  "fastrand",
  "gloo-timers",
@@ -1952,6 +1952,7 @@ checksum = "822ee9188ac4ec04a2f0531e55d035fb2de73f18b41a63c70c2712503b6fb13c"
 dependencies = [
  "log",
  "once_cell",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
@@ -2299,8 +2300,8 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "stackable-operator"
-version = "0.87.4"
-source = "git+https://github.com/stackabletech/operator-rs.git?tag=stackable-operator-0.87.4#a6d8db57a3108a4fb12eb82f9f7941f55ae2c88d"
+version = "0.87.5"
+source = "git+https://github.com/stackabletech/operator-rs.git?tag=stackable-operator-0.87.5#f035997fca85a54238c8de895389cc50b4d421e2"
 dependencies = [
  "chrono",
  "clap",
@@ -2338,7 +2339,7 @@ dependencies = [
 [[package]]
 name = "stackable-operator-derive"
 version = "0.3.1"
-source = "git+https://github.com/stackabletech/operator-rs.git?tag=stackable-operator-0.87.4#a6d8db57a3108a4fb12eb82f9f7941f55ae2c88d"
+source = "git+https://github.com/stackabletech/operator-rs.git?tag=stackable-operator-0.87.5#f035997fca85a54238c8de895389cc50b4d421e2"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -2349,7 +2350,7 @@ dependencies = [
 [[package]]
 name = "stackable-shared"
 version = "0.0.1"
-source = "git+https://github.com/stackabletech/operator-rs.git?tag=stackable-operator-0.87.4#a6d8db57a3108a4fb12eb82f9f7941f55ae2c88d"
+source = "git+https://github.com/stackabletech/operator-rs.git?tag=stackable-operator-0.87.5#f035997fca85a54238c8de895389cc50b4d421e2"
 dependencies = [
  "kube",
  "semver",
@@ -3048,9 +3049,9 @@ dependencies = [
 
 [[package]]
 name = "windows-link"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dccfd733ce2b1753b03b6d3c65edf020262ea35e20ccdf3e288043e6dd620e3"
+checksum = "76840935b766e1b0a05c0066835fb9ec80071d4c09a16f6bd5f7e655e3c14c38"
 
 [[package]]
 name = "windows-sys"
