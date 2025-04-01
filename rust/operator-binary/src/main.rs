@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use clap::{crate_description, crate_version, Parser};
+use clap::Parser;
 use crd::{v1alpha1, ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
 use futures::{pin_mut, StreamExt};
 use stackable_operator::{
@@ -37,7 +37,6 @@ mod znode_controller;
 
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
-    pub const TARGET_PLATFORM: Option<&str> = option_env!("TARGET");
     pub const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 }
 
@@ -54,9 +53,9 @@ async fn main() -> anyhow::Result<()> {
     match opts.cmd {
         Command::Crd => {
             ZookeeperCluster::merged_crd(ZookeeperCluster::V1Alpha1)?
-                .print_yaml_schema(built_info::CARGO_PKG_VERSION, SerializeOptions::default())?;
+                .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
             ZookeeperZnode::merged_crd(ZookeeperZnode::V1Alpha1)?
-                .print_yaml_schema(built_info::CARGO_PKG_VERSION, SerializeOptions::default())?;
+                .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
         }
         Command::Run(ProductOperatorRun {
             product_config,
@@ -69,13 +68,14 @@ async fn main() -> anyhow::Result<()> {
                 APP_NAME,
                 tracing_target,
             );
-            stackable_operator::utils::print_startup_string(
-                crate_description!(),
-                crate_version!(),
-                built_info::GIT_VERSION,
-                built_info::TARGET_PLATFORM.unwrap_or("unknown target"),
-                built_info::BUILT_TIME_UTC,
-                built_info::RUSTC_VERSION,
+            tracing::info!(
+                built_info.pkg_version = built_info::PKG_VERSION,
+                built_info.git_version = built_info::GIT_VERSION,
+                built_info.target = built_info::TARGET,
+                built_info.built_time_utc = built_info::BUILT_TIME_UTC,
+                built_info.rustc_version = built_info::RUSTC_VERSION,
+                "Starting {description}",
+                description = built_info::PKG_DESCRIPTION
             );
             let product_config = product_config.load(&[
                 "deploy/config-spec/properties.yaml",
