@@ -13,8 +13,8 @@ use stackable_operator::{
 };
 
 use crate::crd::{
-    v1alpha1, LoggingFramework, ZookeeperRole, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
-    MAX_ZK_LOG_FILES_SIZE, STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE,
+    LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, LoggingFramework, MAX_ZK_LOG_FILES_SIZE,
+    STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE, ZookeeperRole, v1alpha1,
 };
 
 #[derive(Snafu, Debug)]

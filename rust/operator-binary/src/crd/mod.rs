@@ -21,7 +21,7 @@ use stackable_operator::{
         api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
         apimachinery::pkg::api::resource::Quantity,
     },
-    kube::{runtime::reflector::ObjectRef, CustomResource, ResourceExt},
+    kube::{CustomResource, ResourceExt, runtime::reflector::ObjectRef},
     memory::{BinaryMultiple, MemoryQuantity},
     product_config_utils::{self, Configuration},
     product_logging::{self, spec::Logging},
@@ -368,14 +368,12 @@ impl v1alpha1::CurrentlySupportedListenerClasses {
 }
 
 impl v1alpha1::ZookeeperConfig {
+    pub const DATA_DIR: &'static str = "dataDir";
+    const DEFAULT_SECRET_LIFETIME: Duration = Duration::from_days_unchecked(1);
     pub const INIT_LIMIT: &'static str = "initLimit";
+    pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
     pub const SYNC_LIMIT: &'static str = "syncLimit";
     pub const TICK_TIME: &'static str = "tickTime";
-    pub const DATA_DIR: &'static str = "dataDir";
-
-    pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
-
-    const DEFAULT_SECRET_LIFETIME: Duration = Duration::from_days_unchecked(1);
 
     fn default_server_config(
         cluster_name: &str,
