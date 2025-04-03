@@ -19,7 +19,9 @@ pub enum Error {
         authentication_class: ObjectRef<AuthenticationClass>,
     },
     // TODO: Adapt message if multiple authentication classes are supported
-    #[snafu(display("only one authentication class is currently supported. Possible Authentication classes are {SUPPORTED_AUTHENTICATION_CLASS:?}"))]
+    #[snafu(display(
+        "only one authentication class is currently supported. Possible Authentication classes are {SUPPORTED_AUTHENTICATION_CLASS:?}"
+    ))]
     MultipleAuthenticationClassesProvided,
     #[snafu(display(
         "failed to use authentication method [{method}] for authentication class [{authentication_class}] - supported mechanisms: {SUPPORTED_AUTHENTICATION_CLASS:?}",
@@ -81,7 +83,7 @@ impl ResolvedAuthenticationClasses {
                     return Err(Error::AuthenticationMethodNotSupported {
                         authentication_class: ObjectRef::from_obj(auth_class),
                         method: auth_class.spec.provider.to_string(),
-                    })
+                    });
                 }
             }
         }

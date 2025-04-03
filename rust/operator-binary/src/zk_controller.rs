@@ -11,9 +11,9 @@ use const_format::concatcp;
 use fnv::FnvHasher;
 use indoc::formatdoc;
 use product_config::{
-    types::PropertyNameKind,
-    writer::{to_java_properties_string, PropertiesWriterError},
     ProductConfigManager,
+    types::PropertyNameKind,
+    writer::{PropertiesWriterError, to_java_properties_string},
 };
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -21,11 +21,12 @@ use stackable_operator::{
         self,
         configmap::ConfigMapBuilder,
         meta::ObjectMetaBuilder,
-        pod::{container::ContainerBuilder, resources::ResourceRequirementsBuilder, PodBuilder},
+        pod::{PodBuilder, container::ContainerBuilder, resources::ResourceRequirementsBuilder},
     },
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::{product_image_selection::ResolvedProductImage, rbac::build_rbac_resources},
     k8s_openapi::{
+        DeepMerge,
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
@@ -35,13 +36,12 @@ use stackable_operator::{
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
-        DeepMerge,
     },
     kube::{
-        api::DynamicObject,
-        core::{error_boundary, DeserializeGuard},
-        runtime::controller,
         Resource, ResourceExt,
+        api::DynamicObject,
+        core::{DeserializeGuard, error_boundary},
+        runtime::controller,
     },
     kvp::{Label, LabelError, Labels},
     logging::controller::ReconcilerError,
@@ -49,7 +49,7 @@ use stackable_operator::{
     product_logging::{
         self,
         framework::{
-            create_vector_shutdown_file_command, remove_vector_shutdown_file_command, LoggingError,
+            LoggingError, create_vector_shutdown_file_command, remove_vector_shutdown_file_command,
         },
         spec::{
             ConfigMapLogConfig, ContainerLogConfig, ContainerLogConfigChoice,
@@ -62,25 +62,25 @@ use stackable_operator::{
         statefulset::StatefulSetConditionBuilder,
     },
     time::Duration,
-    utils::{cluster_info::KubernetesClusterInfo, COMMON_BASH_TRAP_FUNCTIONS},
+    utils::{COMMON_BASH_TRAP_FUNCTIONS, cluster_info::KubernetesClusterInfo},
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
+    APP_NAME, OPERATOR_NAME, ObjectRef,
     command::create_init_container_command_args,
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
+        DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
+        MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
+        STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE, ZookeeperRole,
         security::{self, ZookeeperSecurity},
-        v1alpha1, ZookeeperRole, DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE,
-        MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
-        STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
-        ZOOKEEPER_PROPERTIES_FILE,
+        v1alpha1,
     },
     discovery::{self, build_discovery_configmaps},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
     product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
     utils::build_recommended_labels,
-    ObjectRef, APP_NAME, OPERATOR_NAME,
 };
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
@@ -274,6 +274,7 @@ impl ReconcilerError for Error {
     fn category(&self) -> &'static str {
         ErrorDiscriminants::from(self).into()
     }
+
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
             Error::MissingSecretLifetime => None,
