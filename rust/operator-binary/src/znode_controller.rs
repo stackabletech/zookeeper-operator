@@ -10,11 +10,10 @@ use stackable_operator::{
     commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{ConfigMap, Service},
     kube::{
-        self,
+        self, Resource,
         api::ObjectMeta,
-        core::{error_boundary, DeserializeGuard, DynamicObject},
+        core::{DeserializeGuard, DynamicObject, error_boundary},
         runtime::{controller, finalizer, reflector::ObjectRef},
-        Resource,
     },
     logging::controller::ReconcilerError,
     time::Duration,
@@ -24,9 +23,9 @@ use strum::{EnumDiscriminants, IntoStaticStr};
 use tracing::{debug, info};
 
 use crate::{
-    crd::{security::ZookeeperSecurity, v1alpha1, DOCKER_IMAGE_BASE_NAME},
-    discovery::{self, build_discovery_configmaps},
     APP_NAME, OPERATOR_NAME,
+    crd::{DOCKER_IMAGE_BASE_NAME, security::ZookeeperSecurity, v1alpha1},
+    discovery::{self, build_discovery_configmaps},
 };
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";

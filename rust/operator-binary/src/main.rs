@@ -1,26 +1,27 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use crd::{v1alpha1, ZookeeperCluster, ZookeeperZnode, APP_NAME, OPERATOR_NAME};
-use futures::{pin_mut, StreamExt};
+use crd::{APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperZnode, v1alpha1};
+use futures::{StreamExt, pin_mut};
 use stackable_operator::{
+    YamlSchema,
     cli::{Command, ProductOperatorRun},
     k8s_openapi::api::{
         apps::v1::StatefulSet,
         core::v1::{ConfigMap, Endpoints, Service},
     },
     kube::{
+        Resource,
         core::DeserializeGuard,
         runtime::{
+            Controller,
             events::{Recorder, Reporter},
             reflector::ObjectRef,
-            watcher, Controller,
+            watcher,
         },
-        Resource,
     },
     logging::controller::report_controller_reconciled,
     shared::yaml::SerializeOptions,
-    YamlSchema,
 };
 
 use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
@@ -92,13 +93,10 @@ async fn main() -> anyhow::Result<()> {
                 watcher::Config::default(),
             );
 
-            let zk_event_recorder = Arc::new(Recorder::new(
-                client.as_kube_client(),
-                Reporter {
-                    controller: ZK_FULL_CONTROLLER_NAME.to_string(),
-                    instance: None,
-                },
-            ));
+            let zk_event_recorder = Arc::new(Recorder::new(client.as_kube_client(), Reporter {
+                controller: ZK_FULL_CONTROLLER_NAME.to_string(),
+                instance: None,
+            }));
             let zk_store = zk_controller.store();
             let zk_controller = zk_controller
                 .owns(
@@ -162,13 +160,10 @@ async fn main() -> anyhow::Result<()> {
                 watch_namespace.get_api::<DeserializeGuard<v1alpha1::ZookeeperZnode>>(&client),
                 watcher::Config::default(),
             );
-            let znode_event_recorder = Arc::new(Recorder::new(
-                client.as_kube_client(),
-                Reporter {
-                    controller: ZNODE_FULL_CONTROLLER_NAME.to_string(),
-                    instance: None,
-                },
-            ));
+            let znode_event_recorder = Arc::new(Recorder::new(client.as_kube_client(), Reporter {
+                controller: ZNODE_FULL_CONTROLLER_NAME.to_string(),
+                instance: None,
+            }));
 
             let znode_store = znode_controller.store();
             let znode_controller = znode_controller

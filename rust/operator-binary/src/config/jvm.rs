@@ -5,9 +5,9 @@ use stackable_operator::{
 };
 
 use crate::crd::{
-    v1alpha1::{ZookeeperCluster, ZookeeperConfig, ZookeeperConfigFragment},
-    LoggingFramework, JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
+    JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, LoggingFramework,
     METRICS_PORT, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
+    v1alpha1::{ZookeeperCluster, ZookeeperConfig, ZookeeperConfigFragment},
 };
 
 const JAVA_HEAP_FACTOR: f32 = 0.8;
@@ -35,11 +35,17 @@ fn construct_jvm_args(
     let logging_framework = zk.logging_framework();
 
     let jvm_args = vec![
-      format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
-      format!("-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:/stackable/jmx/server.yaml"),
-      match logging_framework {
-            LoggingFramework::LOG4J => format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}"),
-            LoggingFramework::LOGBACK => format!("-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"),
+        format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
+        format!(
+            "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:/stackable/jmx/server.yaml"
+        ),
+        match logging_framework {
+            LoggingFramework::LOG4J => {
+                format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}")
+            }
+            LoggingFramework::LOGBACK => format!(
+                "-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"
+            ),
         },
     ];
 
@@ -93,7 +99,7 @@ fn is_heap_jvm_argument(jvm_argument: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crd::{v1alpha1::ZookeeperConfig, ZookeeperRole};
+    use crate::crd::{ZookeeperRole, v1alpha1::ZookeeperConfig};
 
     #[test]
     fn test_construct_jvm_arguments_defaults() {

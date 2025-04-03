@@ -11,12 +11,12 @@ use stackable_operator::{
     builder::{
         self,
         pod::{
+            PodBuilder,
             container::ContainerBuilder,
             volume::{
                 SecretFormat, SecretOperatorVolumeSourceBuilder,
                 SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
             },
-            PodBuilder,
         },
     },
     client::Client,
@@ -60,14 +60,21 @@ impl ZookeeperSecurity {
     // ports
     pub const CLIENT_PORT: u16 = 2181;
     pub const CLIENT_PORT_NAME: &'static str = "clientPort";
-    pub const SECURE_CLIENT_PORT: u16 = 2282;
-    pub const SECURE_CLIENT_PORT_NAME: &'static str = "secureClientPort";
     // directories
     pub const QUORUM_TLS_DIR: &'static str = "/stackable/quorum_tls";
     pub const QUORUM_TLS_MOUNT_DIR: &'static str = "/stackable/quorum_tls_mount";
+    pub const SECURE_CLIENT_PORT: u16 = 2282;
+    pub const SECURE_CLIENT_PORT_NAME: &'static str = "secureClientPort";
+    pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
     pub const SERVER_TLS_DIR: &'static str = "/stackable/server_tls";
     pub const SERVER_TLS_MOUNT_DIR: &'static str = "/stackable/server_tls_mount";
-    pub const SYSTEM_TRUST_STORE_DIR: &'static str = "/etc/pki/java/cacerts";
+    // Common TLS
+    pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
+    // Client TLS
+    pub const SSL_CLIENT_AUTH: &'static str = "ssl.clientAuth";
+    pub const SSL_HOST_NAME_VERIFICATION: &'static str = "ssl.hostnameVerification";
+    pub const SSL_KEY_STORE_LOCATION: &'static str = "ssl.keyStore.location";
+    pub const SSL_KEY_STORE_PASSWORD: &'static str = "ssl.keyStore.password";
     // Quorum TLS
     pub const SSL_QUORUM: &'static str = "sslQuorum";
     pub const SSL_QUORUM_CLIENT_AUTH: &'static str = "ssl.quorum.clientAuth";
@@ -76,18 +83,11 @@ impl ZookeeperSecurity {
     pub const SSL_QUORUM_KEY_STORE_PASSWORD: &'static str = "ssl.quorum.keyStore.password";
     pub const SSL_QUORUM_TRUST_STORE_LOCATION: &'static str = "ssl.quorum.trustStore.location";
     pub const SSL_QUORUM_TRUST_STORE_PASSWORD: &'static str = "ssl.quorum.trustStore.password";
-    // Client TLS
-    pub const SSL_CLIENT_AUTH: &'static str = "ssl.clientAuth";
-    pub const SSL_HOST_NAME_VERIFICATION: &'static str = "ssl.hostnameVerification";
-    pub const SSL_KEY_STORE_LOCATION: &'static str = "ssl.keyStore.location";
-    pub const SSL_KEY_STORE_PASSWORD: &'static str = "ssl.keyStore.password";
     pub const SSL_TRUST_STORE_LOCATION: &'static str = "ssl.trustStore.location";
     pub const SSL_TRUST_STORE_PASSWORD: &'static str = "ssl.trustStore.password";
-    // Common TLS
-    pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
-    pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
     // Mis
     pub const STORE_PASSWORD_ENV: &'static str = "STORE_PASSWORD";
+    pub const SYSTEM_TRUST_STORE_DIR: &'static str = "/etc/pki/java/cacerts";
 
     /// Create a `ZookeeperSecurity` struct from the Zookeeper custom resource and resolve
     /// all provided `AuthenticationClass` references.

@@ -1,9 +1,9 @@
 use stackable_operator::{
-    commons::affinity::{affinity_between_role_pods, StackableAffinityFragment},
+    commons::affinity::{StackableAffinityFragment, affinity_between_role_pods},
     k8s_openapi::api::core::v1::PodAntiAffinity,
 };
 
-use crate::crd::{ZookeeperRole, APP_NAME};
+use crate::crd::{APP_NAME, ZookeeperRole};
 
 pub fn get_affinity(cluster_name: &str, role: &ZookeeperRole) -> StackableAffinityFragment {
     let affinity_between_role_pods =
