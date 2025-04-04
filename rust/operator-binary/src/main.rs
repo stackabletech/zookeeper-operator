@@ -1,11 +1,11 @@
-use std::sync::Arc;
+use std::{ops::Deref as _, sync::Arc};
 
 use clap::Parser;
 use crd::{APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperZnode, v1alpha1};
 use futures::{StreamExt, pin_mut};
 use stackable_operator::{
     YamlSchema,
-    cli::{Command, ProductOperatorRun},
+    cli::{Command, ProductOperatorRun, RollingPeriod},
     k8s_openapi::api::{
         apps::v1::StatefulSet,
         core::v1::{ConfigMap, Endpoints, Service},
@@ -23,6 +23,8 @@ use stackable_operator::{
     logging::controller::report_controller_reconciled,
     shared::yaml::SerializeOptions,
 };
+use stackable_telemetry::{Tracing, tracing::settings::Settings};
+use tracing::level_filters::LevelFilter;
 
 use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
 
@@ -38,8 +40,10 @@ mod znode_controller;
 
 mod built_info {
     include!(concat!(env!("OUT_DIR"), "/built.rs"));
-    pub const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 }
+
+// TODO (@NickLarsenNZ): Change the variable to `CONSOLE_LOG`
+pub const ENV_VAR_CONSOLE_LOG: &str = "ZOOKEEPER_OPERATOR_LOG";
 
 #[derive(clap::Parser)]
 #[clap(about, author)]
@@ -61,14 +65,47 @@ async fn main() -> anyhow::Result<()> {
         Command::Run(ProductOperatorRun {
             product_config,
             watch_namespace,
-            tracing_target,
+            telemetry_arguments,
             cluster_info_opts,
         }) => {
-            stackable_operator::logging::initialize_logging(
-                "ZOOKEEPER_OPERATOR_LOG",
-                APP_NAME,
-                tracing_target,
-            );
+            let _tracing_guard = Tracing::builder()
+                .service_name("zookeeper-operator")
+                .with_console_output((
+                    ENV_VAR_CONSOLE_LOG,
+                    LevelFilter::INFO,
+                    !telemetry_arguments.no_console_output,
+                ))
+                // NOTE (@NickLarsenNZ): Before stackable-telemetry was used, the log directory was
+                // set via an env: `ZOOKEEPER_OPERATOR_LOG_DIRECTORY`.
+                // See: https://github.com/stackabletech/operator-rs/blob/f035997fca85a54238c8de895389cc50b4d421e2/crates/stackable-operator/src/logging/mod.rs#L40
+                // Now it will be `ROLLING_LOGS` (or via `--rolling-logs <DIRECTORY>`).
+                .with_file_output(telemetry_arguments.rolling_logs.map(|log_directory| {
+                    let rotation_period = telemetry_arguments
+                        .rolling_logs_period
+                        .unwrap_or(RollingPeriod::Never)
+                        .deref()
+                        .clone();
+
+                    Settings::builder()
+                        .with_environment_variable(ENV_VAR_CONSOLE_LOG)
+                        .with_default_level(LevelFilter::INFO)
+                        .file_log_settings_builder(log_directory, "tracing-rs.log")
+                        .with_rotation_period(rotation_period)
+                        .build()
+                }))
+                .with_otlp_log_exporter((
+                    "OTLP_LOG",
+                    LevelFilter::DEBUG,
+                    telemetry_arguments.otlp_logs,
+                ))
+                .with_otlp_trace_exporter((
+                    "OTLP_TRACE",
+                    LevelFilter::DEBUG,
+                    telemetry_arguments.otlp_traces,
+                ))
+                .build()
+                .init()?;
+
             tracing::info!(
                 built_info.pkg_version = built_info::PKG_VERSION,
                 built_info.git_version = built_info::GIT_VERSION,
