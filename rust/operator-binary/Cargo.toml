@@ -10,6 +10,7 @@ publish = false
 build = "build.rs"
 
 [dependencies]
+product-config.workspace = true
 stackable-operator.workspace = true
 stackable-telemetry.workspace = true
 stackable-versioned.workspace = true
@@ -21,7 +22,6 @@ fnv.workspace = true
 futures.workspace = true
 indoc.workspace = true
 pin-project.workspace = true
-product-config.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
