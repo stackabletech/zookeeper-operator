@@ -6,9 +6,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Replace stackable-operator `initialize_logging` with stackable-telemetry `Tracing` ([#927]).
-  - BREAKING: The file log directory was set by `ZOOKEEPER_OPERATOR_LOG_DIRECTORY`,
-    and is now set by `ROLLING_LOGS` (or via `--rolling-logs <DIRECTORY>`).
+- BREAKING: Replace stackable-operator `initialize_logging` with stackable-telemetry `Tracing` ([#927], [#934]).
+  - The console log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now set by `CONSOLE_LOG`.
+  - The file log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now set by `FILE_LOG`.
+  - The file log directory was set by `ZOOKEEPER_OPERATOR_LOG_DIRECTORY`, and is now set
+    by `ROLLING_LOGS_DIR` (or via `--rolling-logs <DIRECTORY>`).
   - Replace stackable-operator `print_startup_string` with `tracing::info!` with fields.
 - BREAKING: Inject the vector aggregator address into the vector config using the env var `VECTOR_AGGREGATOR_ADDRESS` instead
     of having the operator write it to the vector config ([#933]).
@@ -18,8 +20,9 @@ All notable changes to this project will be documented in this file.
 - Use `json` file extension for log files ([#932]).
 
 [#927]: https://github.com/stackabletech/zookeeper-operator/pull/927
-[#933]: https://github.com/stackabletech/zookeeper-operator/pull/XXX
+[#933]: https://github.com/stackabletech/zookeeper-operator/pull/934
 [#932]: https://github.com/stackabletech/zookeeper-operator/pull/932
+[#934]: https://github.com/stackabletech/zookeeper-operator/pull/xxx
 
 ## [25.3.0] - 2025-03-21
 
