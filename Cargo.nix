@@ -948,9 +948,9 @@ rec {
       };
       "backon" = rec {
         crateName = "backon";
-        version = "1.4.1";
+        version = "1.5.0";
         edition = "2021";
-        sha256 = "1drv0gvhjs3g0q88f1mknqjdyhh6qg8pvb9nkfasba011ibr23cp";
+        sha256 = "15k4p6xyxi4lkiyw5yxrmcws3wwnwjacgcqqmd2dvfldnyqm02zx";
         dependencies = [
           {
             name = "fastrand";
@@ -12757,10 +12757,10 @@ rec {
       };
       "xml-rs" = rec {
         crateName = "xml-rs";
-        version = "0.8.25";
+        version = "0.8.26";
         edition = "2021";
         crateBin = [];
-        sha256 = "1i73ajf6scni5bi1a51r19xykgrambdx5fkks0fyg5jqqbml1ff5";
+        sha256 = "1nkbzksai36pvx3ag1fn9b5cffwb1ldl66aglwcip42nkdnyfb56";
         libName = "xml";
         authors = [
           "Vladimir Matveev <vmatveev@citrine.cc>"
