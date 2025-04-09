@@ -79,7 +79,7 @@ use crate::{
     },
     discovery::{self, build_discovery_configmaps},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
-    product_logging::{extend_role_group_config_map, resolve_vector_aggregator_address},
+    product_logging::extend_role_group_config_map,
     utils::build_recommended_labels,
 };
 
@@ -212,10 +212,8 @@ pub enum Error {
         source: stackable_operator::cluster_resources::Error,
     },
 
-    #[snafu(display("failed to resolve the Vector aggregator address"))]
-    ResolveVectorAggregatorAddress {
-        source: crate::product_logging::Error,
-    },
+    #[snafu(display("vector agent is enabled but vector aggregator ConfigMap is missing"))]
+    VectorAggregatorConfigMapMissing,
 
     #[snafu(display("failed to add the logging configuration to the ConfigMap {cm_name}"))]
     InvalidLoggingConfig {
@@ -301,7 +299,7 @@ impl ReconcilerError for Error {
             Error::ApplyRoleBinding { .. } => None,
             Error::BuildRbacResources { .. } => None,
             Error::DeleteOrphans { .. } => None,
-            Error::ResolveVectorAggregatorAddress { .. } => None,
+            Error::VectorAggregatorConfigMapMissing { .. } => None,
             Error::InvalidLoggingConfig { .. } => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
             Error::FailedToResolveConfig { .. } => None,
@@ -373,10 +371,6 @@ pub async fn reconcile_zk(
         .map(Cow::Borrowed)
         .unwrap_or_default();
 
-    let vector_aggregator_address = resolve_vector_aggregator_address(zk, client)
-        .await
-        .context(ResolveVectorAggregatorAddressSnafu)?;
-
     let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, zk)
         .await
         .context(FailedToInitializeSecurityContextSnafu)?;
@@ -428,7 +422,6 @@ pub async fn reconcile_zk(
             &rolegroup,
             rolegroup_config,
             &resolved_product_image,
-            vector_aggregator_address.as_deref(),
             &zookeeper_security,
             &client.kubernetes_cluster_info,
         )?;
@@ -580,7 +573,6 @@ fn build_server_rolegroup_config_map(
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
     resolved_product_image: &ResolvedProductImage,
-    vector_aggregator_address: Option<&str>,
     zookeeper_security: &ZookeeperSecurity,
     cluster_info: &KubernetesClusterInfo,
 ) -> Result<ConfigMap> {
@@ -663,16 +655,11 @@ fn build_server_rolegroup_config_map(
             })?,
         );
 
-    extend_role_group_config_map(
-        zk,
-        role,
-        rolegroup,
-        vector_aggregator_address,
-        &mut cm_builder,
-    )
-    .context(InvalidLoggingConfigSnafu {
-        cm_name: rolegroup.object_name(),
-    })?;
+    extend_role_group_config_map(zk, role, rolegroup, &mut cm_builder).context(
+        InvalidLoggingConfigSnafu {
+            cm_name: rolegroup.object_name(),
+        },
+    )?;
 
     cm_builder
         .build()
@@ -1006,21 +993,29 @@ fn build_server_rolegroup_statefulset(
     }
 
     if logging.enable_vector_agent {
-        pod_builder.add_container(
-            product_logging::framework::vector_container(
-                resolved_product_image,
-                "config",
-                "log",
-                logging.containers.get(&v1alpha1::Container::Vector),
-                ResourceRequirementsBuilder::new()
-                    .with_cpu_request("250m")
-                    .with_cpu_limit("500m")
-                    .with_memory_request("128Mi")
-                    .with_memory_limit("128Mi")
-                    .build(),
-            )
-            .context(ConfigureLoggingSnafu)?,
-        );
+        match &zk.spec.cluster_config.vector_aggregator_config_map_name {
+            Some(vector_aggregator_config_map_name) => {
+                pod_builder.add_container(
+                    product_logging::framework::vector_container(
+                        resolved_product_image,
+                        "config",
+                        "log",
+                        logging.containers.get(&v1alpha1::Container::Vector),
+                        ResourceRequirementsBuilder::new()
+                            .with_cpu_request("250m")
+                            .with_cpu_limit("500m")
+                            .with_memory_request("128Mi")
+                            .with_memory_limit("128Mi")
+                            .build(),
+                        vector_aggregator_config_map_name,
+                    )
+                    .context(ConfigureLoggingSnafu)?,
+                );
+            }
+            None => {
+                VectorAggregatorConfigMapMissingSnafu.fail()?;
+            }
+        }
     }
 
     add_graceful_shutdown_config(merged_config, &mut pod_builder).context(GracefulShutdownSnafu)?;
@@ -1216,7 +1211,6 @@ mod tests {
                 .get("default")
                 .unwrap(),
             &resolved_product_image,
-            None,
             &zookeeper_security,
             &cluster_info,
         )

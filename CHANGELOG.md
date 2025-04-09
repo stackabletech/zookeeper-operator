@@ -10,12 +10,15 @@ All notable changes to this project will be documented in this file.
   - BREAKING: The file log directory was set by `ZOOKEEPER_OPERATOR_LOG_DIRECTORY`,
     and is now set by `ROLLING_LOGS` (or via `--rolling-logs <DIRECTORY>`).
   - Replace stackable-operator `print_startup_string` with `tracing::info!` with fields.
+- BREAKING: Inject the vector aggregator address into the vector config using the env var `VECTOR_AGGREGATOR_ADDRESS` instead
+    of having the operator write it to the vector config ([#933]).
 
 ### Fixed
 
 - Use `json` file extension for log files ([#932]).
 
 [#927]: https://github.com/stackabletech/zookeeper-operator/pull/927
+[#933]: https://github.com/stackabletech/zookeeper-operator/pull/XXX
 [#932]: https://github.com/stackabletech/zookeeper-operator/pull/932
 
 ## [25.3.0] - 2025-03-21
