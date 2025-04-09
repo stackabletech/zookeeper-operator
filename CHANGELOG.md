@@ -11,7 +11,12 @@ All notable changes to this project will be documented in this file.
     and is now set by `ROLLING_LOGS` (or via `--rolling-logs <DIRECTORY>`).
   - Replace stackable-operator `print_startup_string` with `tracing::info!` with fields.
 
+### Fixed
+
+- Use `json` file extension for log files ([#932]).
+
 [#927]: https://github.com/stackabletech/zookeeper-operator/pull/927
+[#932]: https://github.com/stackabletech/zookeeper-operator/pull/932
 
 ## [25.3.0] - 2025-03-21
 
