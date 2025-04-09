@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
-use stackable_operator::schemars::{self, JsonSchema};
-use stackable_versioned::versioned;
+use stackable_operator::{
+    schemars::{self, JsonSchema},
+    versioned::versioned,
+};
 
 const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
 

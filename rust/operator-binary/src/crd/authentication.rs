@@ -4,8 +4,8 @@ use stackable_operator::{
     client::Client,
     commons::authentication::{AuthenticationClass, AuthenticationClassProvider},
     schemars::{self, JsonSchema},
+    versioned::versioned,
 };
-use stackable_versioned::versioned;
 
 use crate::crd::ObjectRef;
 
