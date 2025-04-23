@@ -4,13 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Adds new telemetry CLI arguments and environment variables ([#938]).
+  - Use `--file-log-max-files` (or `FILE_LOG_MAX_FILES`) to limit the number of log files kept.
+  - Use `--file-log-rotation-period` (or `FILE_LOG_ROTATION_PERIOD`) to configure the frequency of rotation.
+  - Use `--console-log-format` (or `CONSOLE_LOG_FORMAT`) to set the format to `plain` (default) or `json`.
+
 ### Changed
 
-- BREAKING: Replace stackable-operator `initialize_logging` with stackable-telemetry `Tracing` ([#927], [#934]).
-  - The console log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now set by `CONSOLE_LOG`.
-  - The file log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now set by `FILE_LOG`.
+- BREAKING: Replace stackable-operator `initialize_logging` with stackable-telemetry `Tracing` ([#927], [#934], [#938]).
+  - The console log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now set by `CONSOLE_LOG_LEVEL`.
+  - The file log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now set by `FILE_LOG_LEVEL`.
   - The file log directory was set by `ZOOKEEPER_OPERATOR_LOG_DIRECTORY`, and is now set
-    by `ROLLING_LOGS_DIR` (or via `--rolling-logs <DIRECTORY>`).
+    by `FILE_LOG_DIRECTORY` (or via `--file-log-directory <DIRECTORY>`).
   - Replace stackable-operator `print_startup_string` with `tracing::info!` with fields.
 - BREAKING: Inject the vector aggregator address into the vector config using the env var `VECTOR_AGGREGATOR_ADDRESS` instead
     of having the operator write it to the vector config ([#933]).
@@ -23,6 +30,7 @@ All notable changes to this project will be documented in this file.
 [#933]: https://github.com/stackabletech/zookeeper-operator/pull/934
 [#932]: https://github.com/stackabletech/zookeeper-operator/pull/932
 [#934]: https://github.com/stackabletech/zookeeper-operator/pull/934
+[#938]: https://github.com/stackabletech/zookeeper-operator/pull/938
 
 ## [25.3.0] - 2025-03-21
 
