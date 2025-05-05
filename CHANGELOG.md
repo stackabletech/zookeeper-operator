@@ -28,7 +28,7 @@ All notable changes to this project will be documented in this file.
 
 ### Removed
 
-- test: ZooKeeper 3.9.2 removed ([#940]).
+- Remove support for ZooKeeper 3.9.2 ([#940]).
 
 [#927]: https://github.com/stackabletech/zookeeper-operator/pull/927
 [#933]: https://github.com/stackabletech/zookeeper-operator/pull/934
