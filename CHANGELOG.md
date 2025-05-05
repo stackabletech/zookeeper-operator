@@ -26,11 +26,16 @@ All notable changes to this project will be documented in this file.
 
 - Use `json` file extension for log files ([#932]).
 
+### Removed
+
+- Remove support for ZooKeeper 3.9.2 ([#940]).
+
 [#927]: https://github.com/stackabletech/zookeeper-operator/pull/927
 [#933]: https://github.com/stackabletech/zookeeper-operator/pull/934
 [#932]: https://github.com/stackabletech/zookeeper-operator/pull/932
 [#934]: https://github.com/stackabletech/zookeeper-operator/pull/934
 [#938]: https://github.com/stackabletech/zookeeper-operator/pull/938
+[#940]: https://github.com/stackabletech/zookeeper-operator/pull/940
 
 ## [25.3.0] - 2025-03-21
 
