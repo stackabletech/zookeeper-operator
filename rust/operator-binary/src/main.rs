@@ -95,13 +95,10 @@ async fn main() -> anyhow::Result<()> {
                 watcher::Config::default(),
             );
 
-            let zk_event_recorder = Arc::new(Recorder::new(
-                client.as_kube_client(),
-                Reporter {
-                    controller: ZK_FULL_CONTROLLER_NAME.to_string(),
-                    instance: None,
-                },
-            ));
+            let zk_event_recorder = Arc::new(Recorder::new(client.as_kube_client(), Reporter {
+                controller: ZK_FULL_CONTROLLER_NAME.to_string(),
+                instance: None,
+            }));
             let zk_store = zk_controller.store();
             let zk_controller = zk_controller
                 .owns(
@@ -165,13 +162,10 @@ async fn main() -> anyhow::Result<()> {
                 watch_namespace.get_api::<DeserializeGuard<v1alpha1::ZookeeperZnode>>(&client),
                 watcher::Config::default(),
             );
-            let znode_event_recorder = Arc::new(Recorder::new(
-                client.as_kube_client(),
-                Reporter {
-                    controller: ZNODE_FULL_CONTROLLER_NAME.to_string(),
-                    instance: None,
-                },
-            ));
+            let znode_event_recorder = Arc::new(Recorder::new(client.as_kube_client(), Reporter {
+                controller: ZNODE_FULL_CONTROLLER_NAME.to_string(),
+                instance: None,
+            }));
 
             let znode_store = znode_controller.store();
             let znode_controller = znode_controller
