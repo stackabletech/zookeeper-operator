@@ -20,7 +20,7 @@ use stackable_operator::{
         },
     },
     client::Client,
-    commons::authentication::AuthenticationClassProvider,
+    crd::authentication::core,
     k8s_openapi::api::core::v1::Volume,
     time::Duration,
 };
@@ -287,11 +287,13 @@ impl ZookeeperSecurity {
         self.resolved_authentication_classes
             .get_tls_authentication_class()
             .and_then(|auth_class| match &auth_class.spec.provider {
-                AuthenticationClassProvider::Tls(tls) => tls.client_cert_secret_class.as_ref(),
-                AuthenticationClassProvider::Ldap(_)
-                | AuthenticationClassProvider::Oidc(_)
-                | AuthenticationClassProvider::Static(_)
-                | AuthenticationClassProvider::Kerberos(_) => None,
+                core::v1alpha1::AuthenticationClassProvider::Tls(tls) => {
+                    tls.client_cert_secret_class.as_ref()
+                }
+                core::v1alpha1::AuthenticationClassProvider::Ldap(_)
+                | core::v1alpha1::AuthenticationClassProvider::Oidc(_)
+                | core::v1alpha1::AuthenticationClassProvider::Static(_)
+                | core::v1alpha1::AuthenticationClassProvider::Kerberos(_) => None,
             })
             .or(self.server_secret_class.as_ref())
     }

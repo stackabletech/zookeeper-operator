@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     client::Client,
-    commons::authentication::{AuthenticationClass, AuthenticationClassProvider},
+    crd::authentication::core,
     schemars::{self, JsonSchema},
     versioned::versioned,
 };
@@ -16,7 +16,7 @@ pub enum Error {
     #[snafu(display("failed to retrieve AuthenticationClass [{}]", authentication_class))]
     AuthenticationClassRetrieval {
         source: stackable_operator::client::Error,
-        authentication_class: ObjectRef<AuthenticationClass>,
+        authentication_class: ObjectRef<core::v1alpha1::AuthenticationClass>,
     },
     // TODO: Adapt message if multiple authentication classes are supported
     #[snafu(display(
@@ -27,7 +27,7 @@ pub enum Error {
         "failed to use authentication method [{method}] for authentication class [{authentication_class}] - supported mechanisms: {SUPPORTED_AUTHENTICATION_CLASS:?}",
     ))]
     AuthenticationMethodNotSupported {
-        authentication_class: ObjectRef<AuthenticationClass>,
+        authentication_class: ObjectRef<core::v1alpha1::AuthenticationClass>,
         method: String,
     },
 }
@@ -53,15 +53,18 @@ pub mod versioned {
 #[derive(Clone, Debug)]
 /// Helper struct that contains resolved AuthenticationClasses to reduce network API calls.
 pub struct ResolvedAuthenticationClasses {
-    resolved_authentication_classes: Vec<AuthenticationClass>,
+    resolved_authentication_classes: Vec<core::v1alpha1::AuthenticationClass>,
 }
 
 impl ResolvedAuthenticationClasses {
     /// Return the (first) TLS `AuthenticationClass` if available
-    pub fn get_tls_authentication_class(&self) -> Option<&AuthenticationClass> {
-        self.resolved_authentication_classes
-            .iter()
-            .find(|auth| matches!(auth.spec.provider, AuthenticationClassProvider::Tls(_)))
+    pub fn get_tls_authentication_class(&self) -> Option<&core::v1alpha1::AuthenticationClass> {
+        self.resolved_authentication_classes.iter().find(|auth| {
+            matches!(
+                auth.spec.provider,
+                core::v1alpha1::AuthenticationClassProvider::Tls(_)
+            )
+        })
     }
 
     /// Validates the resolved AuthenticationClasses.
@@ -75,11 +78,11 @@ impl ResolvedAuthenticationClasses {
 
         for auth_class in &self.resolved_authentication_classes {
             match &auth_class.spec.provider {
-                AuthenticationClassProvider::Tls(_) => {}
-                AuthenticationClassProvider::Ldap(_)
-                | AuthenticationClassProvider::Oidc(_)
-                | AuthenticationClassProvider::Static(_)
-                | AuthenticationClassProvider::Kerberos(_) => {
+                core::v1alpha1::AuthenticationClassProvider::Tls(_) => {}
+                core::v1alpha1::AuthenticationClassProvider::Ldap(_)
+                | core::v1alpha1::AuthenticationClassProvider::Oidc(_)
+                | core::v1alpha1::AuthenticationClassProvider::Static(_)
+                | core::v1alpha1::AuthenticationClassProvider::Kerberos(_) => {
                     return Err(Error::AuthenticationMethodNotSupported {
                         authentication_class: ObjectRef::from_obj(auth_class),
                         method: auth_class.spec.provider.to_string(),
@@ -107,14 +110,14 @@ pub async fn resolve_authentication_classes(
     client: &Client,
     auth_classes: &Vec<v1alpha1::ZookeeperAuthentication>,
 ) -> Result<ResolvedAuthenticationClasses, Error> {
-    let mut resolved_authentication_classes: Vec<AuthenticationClass> = vec![];
+    let mut resolved_authentication_classes: Vec<core::v1alpha1::AuthenticationClass> = vec![];
 
     for auth_class in auth_classes {
         resolved_authentication_classes.push(
-            AuthenticationClass::resolve(client, &auth_class.authentication_class)
+            core::v1alpha1::AuthenticationClass::resolve(client, &auth_class.authentication_class)
                 .await
                 .context(AuthenticationClassRetrievalSnafu {
-                    authentication_class: ObjectRef::<AuthenticationClass>::new(
+                    authentication_class: ObjectRef::<core::v1alpha1::AuthenticationClass>::new(
                         &auth_class.authentication_class,
                     ),
                 })?,
