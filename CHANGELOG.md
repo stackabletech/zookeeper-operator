@@ -23,6 +23,10 @@ All notable changes to this project will be documented in this file.
     of having the operator write it to the vector config ([#933]).
 - test: Bump to Vector 0.46.1 ([#942]).
 - Use versioned common structs ([#946]).
+- BREAKING: Previously this operator would hardcode the UID and GID of the Pods being created to 1000/0, this has changed now ([#950])
+  - The `runAsUser` and `runAsGroup` fields will not be set anymore by the operator
+  - The defaults from the docker images itself will now apply, which will be different from 1000/0 going forward
+  - This is marked as breaking because tools and policies might exist, which require these fields to be set
 
 ### Fixed
 
@@ -40,6 +44,7 @@ All notable changes to this project will be documented in this file.
 [#940]: https://github.com/stackabletech/zookeeper-operator/pull/940
 [#942]: https://github.com/stackabletech/zookeeper-operator/pull/942
 [#946]: https://github.com/stackabletech/zookeeper-operator/pull/946
+[#950]: https://github.com/stackabletech/zookeeper-operator/pull/950
 
 ## [25.3.0] - 2025-03-21
 
