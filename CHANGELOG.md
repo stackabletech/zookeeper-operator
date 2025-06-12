@@ -27,6 +27,8 @@ All notable changes to this project will be documented in this file.
   - The `runAsUser` and `runAsGroup` fields will not be set anymore by the operator
   - The defaults from the docker images itself will now apply, which will be different from 1000/0 going forward
   - This is marked as breaking because tools and policies might exist, which require these fields to be set
+- BREAKING: Replace JMX Exporter with built in Prometheus support. Hence, the metrics provided by the `/metrics` endpoint are named
+    differently now ([#955]).
 
 ### Fixed
 
@@ -45,6 +47,7 @@ All notable changes to this project will be documented in this file.
 [#942]: https://github.com/stackabletech/zookeeper-operator/pull/942
 [#946]: https://github.com/stackabletech/zookeeper-operator/pull/946
 [#950]: https://github.com/stackabletech/zookeeper-operator/pull/950
+[#955]: https://github.com/stackabletech/zookeeper-operator/pull/955
 
 ## [25.3.0] - 2025-03-21
 
