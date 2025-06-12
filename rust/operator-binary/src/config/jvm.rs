@@ -6,7 +6,7 @@ use stackable_operator::{
 
 use crate::crd::{
     JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, LoggingFramework,
-    METRICS_PORT, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
+    STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
     v1alpha1::{ZookeeperCluster, ZookeeperConfig, ZookeeperConfigFragment},
 };
 
@@ -36,9 +36,6 @@ fn construct_jvm_args(
 
     let jvm_args = vec![
         format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
-        format!(
-            "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:/stackable/jmx/server.yaml"
-        ),
         match logging_framework {
             LoggingFramework::LOG4J => {
                 format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}")
@@ -123,7 +120,6 @@ mod tests {
         assert_eq!(
             non_heap_jvm_args,
             "-Djava.security.properties=/stackable/config/security.properties \
-            -javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar=9505:/stackable/jmx/server.yaml \
             -Dlogback.configurationFile=/stackable/log_config/logback.xml"
         );
         assert_eq!(zk_server_heap_env, "409");
@@ -168,7 +164,6 @@ mod tests {
         assert_eq!(
             non_heap_jvm_args,
             "-Djava.security.properties=/stackable/config/security.properties \
-            -javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar=9505:/stackable/jmx/server.yaml \
             -Dlogback.configurationFile=/stackable/log_config/logback.xml \
             -Dhttps.proxyHost=proxy.my.corp \
             -Djava.net.preferIPv4Stack=true \
