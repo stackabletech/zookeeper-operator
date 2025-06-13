@@ -2,4 +2,23 @@
 :description: The managed ZooKeeper instances are automatically configured to export Prometheus metrics.
 
 The managed ZooKeeper instances are automatically configured to export Prometheus metrics.
-See xref:operators:monitoring.adoc[] for more details.
+See xref:operators:monitoring.adoc[window=_blank] for more details.
+
+Depending on the SDP version, different ZooKeeper monitoring systems are used to produce metrics.
+Previously, JMX in combination with JMX Exporter was used. Starting with SDP 25.7 the New Metrics System is utilized.
+The naming of the metrics differs between the two systems.
+
+== ZooKeeper New Metrics System
+
+Since SDP 25.7 ZooKeeper is configured to provide metrics by utilizing the New Metrics System. More on the New Metrics System in
+the https://zookeeper.apache.org/doc/current/zookeeperMonitor.html[ZooKeeper Monitor Guide,window=_blank].
+
+The configuration is located in the `zoo.cfg`:
+
+[source,properties]
+----
+metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider
+metricsProvider.httpPort=9505
+----
+
+The metrics can be accessed by calling the `/metrics` endpoint on the specified port.
