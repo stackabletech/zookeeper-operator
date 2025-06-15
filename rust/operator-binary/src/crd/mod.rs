@@ -47,8 +47,7 @@ pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
 
-pub const METRICS_PROVIDER_CLASS_NAME: &str =
-    "org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider";
+pub const METRICS_PROVIDER_HTTP_PORT_KEY: &str = "metricsProvider.httpPort";
 pub const METRICS_PROVIDER_HTTP_PORT: u16 = 9505;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
@@ -373,8 +372,6 @@ impl v1alpha1::ZookeeperConfig {
     pub const DATA_DIR: &'static str = "dataDir";
     const DEFAULT_SECRET_LIFETIME: Duration = Duration::from_days_unchecked(1);
     pub const INIT_LIMIT: &'static str = "initLimit";
-    const METRICS_PROVIDER_CLASS_NAME: &'static str = "metricsProvider.className";
-    const METRICS_PROVIDER_HTTP_PORT: &'static str = "metricsProvider.httpPort";
     pub const MYID_OFFSET: &'static str = "MYID_OFFSET";
     pub const SYNC_LIMIT: &'static str = "syncLimit";
     pub const TICK_TIME: &'static str = "tickTime";
@@ -473,11 +470,13 @@ impl Configuration for v1alpha1::ZookeeperConfigFragment {
                 Some(STACKABLE_DATA_DIR.to_string()),
             );
             result.insert(
-                v1alpha1::ZookeeperConfig::METRICS_PROVIDER_CLASS_NAME.to_string(),
-                Some(METRICS_PROVIDER_CLASS_NAME.to_string()),
+                "metricsProvider.className".to_string(),
+                Some(
+                    "org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider".to_string(),
+                ),
             );
             result.insert(
-                v1alpha1::ZookeeperConfig::METRICS_PROVIDER_HTTP_PORT.to_string(),
+                METRICS_PROVIDER_HTTP_PORT_KEY.to_string(),
                 Some(METRICS_PROVIDER_HTTP_PORT.to_string()),
             );
         }
