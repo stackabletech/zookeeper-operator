@@ -60,7 +60,18 @@ def check_ruok(hosts):
 
 def check_monitoring(hosts):
     for host in hosts:
-        url = host + ":9505/metrics"
+        # test for the jmx exporter metrics
+        url = host + ":9505"
+        response = try_get(url)
+
+        if response.ok:
+            continue
+        else:
+            print("Error for [" + url + "]: could not access monitoring")
+            exit(-1)
+
+        # test for the native metrics
+        url = host + ":7000/metrics"
         response = try_get(url)
 
         if response.ok:

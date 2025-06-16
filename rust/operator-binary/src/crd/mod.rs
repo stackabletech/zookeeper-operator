@@ -47,8 +47,9 @@ pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
 
+pub const METRICS_PORT: u16 = 9505;
 pub const METRICS_PROVIDER_HTTP_PORT_KEY: &str = "metricsProvider.httpPort";
-pub const METRICS_PROVIDER_HTTP_PORT: u16 = 9505;
+pub const METRICS_PROVIDER_HTTP_PORT: u16 = 7000;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";

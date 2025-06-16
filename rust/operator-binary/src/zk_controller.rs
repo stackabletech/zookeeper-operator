@@ -715,6 +715,12 @@ fn build_server_rolegroup_service(
             },
             ServicePort {
                 name: Some("metrics".to_string()),
+                port: 9505,
+                protocol: Some("TCP".to_string()),
+                ..ServicePort::default()
+            },
+            ServicePort {
+                name: Some("native-metrics".to_string()),
                 port: metrics_port_from_rolegroup_config(rolegroup_config).into(),
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
@@ -900,8 +906,9 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk", zookeeper_security.client_port().into())
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
+        .add_container_port("metrics", 9505)
         .add_container_port(
-            "metrics",
+            "native-metrics",
             metrics_port_from_rolegroup_config(server_config).into(),
         )
         .add_volume_mount("data", STACKABLE_DATA_DIR)
