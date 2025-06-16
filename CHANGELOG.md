@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
   - Use `--file-log-max-files` (or `FILE_LOG_MAX_FILES`) to limit the number of log files kept.
   - Use `--file-log-rotation-period` (or `FILE_LOG_ROTATION_PERIOD`) to configure the frequency of rotation.
   - Use `--console-log-format` (or `CONSOLE_LOG_FORMAT`) to set the format to `plain` (default) or `json`.
+- Add built-in Prometheus support and expose metrics on `/metrics` path of `native-metrics` port ([#955]).
 
 ### Changed
 
@@ -27,8 +28,6 @@ All notable changes to this project will be documented in this file.
   - The `runAsUser` and `runAsGroup` fields will not be set anymore by the operator
   - The defaults from the docker images itself will now apply, which will be different from 1000/0 going forward
   - This is marked as breaking because tools and policies might exist, which require these fields to be set
-- BREAKING: Replace JMX Exporter with built in Prometheus support. Hence, the metrics provided by the `/metrics` endpoint are named
-    differently now ([#955]).
 
 ### Fixed
 
