@@ -8,9 +8,9 @@ Depending on the SDP version, different ZooKeeper monitoring systems are used to
 Previously, JMX in combination with JMX Exporter was used. Starting with SDP 25.7 the New Metrics System is utilized.
 The naming of the metrics differs between the two systems.
 
-== ZooKeeper New Metrics System
+== Metrics
 
-Since SDP 25.7 ZooKeeper is configured to provide metrics by utilizing the New Metrics System. More on the New Metrics System in
+Starting with SDP 25.7 ZooKeeper is configured to export metrics using the built in Prometheus provider. More on the Prometheus provider in
 the https://zookeeper.apache.org/doc/current/zookeeperMonitor.html[ZooKeeper Monitor Guide,window=_blank].
 
 The configuration is located in the `zoo.cfg`:
