@@ -48,6 +48,8 @@ pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
 
 pub const METRICS_PORT: u16 = 9505;
+pub const METRICS_PROVIDER_HTTP_PORT_KEY: &str = "metricsProvider.httpPort";
+pub const METRICS_PROVIDER_HTTP_PORT: u16 = 7000;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
@@ -467,6 +469,16 @@ impl Configuration for v1alpha1::ZookeeperConfigFragment {
             result.insert(
                 v1alpha1::ZookeeperConfig::DATA_DIR.to_string(),
                 Some(STACKABLE_DATA_DIR.to_string()),
+            );
+            result.insert(
+                "metricsProvider.className".to_string(),
+                Some(
+                    "org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider".to_string(),
+                ),
+            );
+            result.insert(
+                METRICS_PROVIDER_HTTP_PORT_KEY.to_string(),
+                Some(METRICS_PROVIDER_HTTP_PORT.to_string()),
             );
         }
 

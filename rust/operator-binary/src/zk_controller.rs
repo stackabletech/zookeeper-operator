@@ -72,8 +72,9 @@ use crate::{
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
         DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
-        MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
-        STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE, ZookeeperRole,
+        MAX_ZK_LOG_FILES_SIZE, METRICS_PROVIDER_HTTP_PORT, METRICS_PROVIDER_HTTP_PORT_KEY,
+        STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
+        STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE, ZookeeperRole,
         security::{self, ZookeeperSecurity},
         v1alpha1,
     },
@@ -415,6 +416,7 @@ pub async fn reconcile_zk(
             &rolegroup,
             &resolved_product_image,
             &zookeeper_security,
+            rolegroup_config,
         )?;
         let rg_configmap = build_server_rolegroup_config_map(
             zk,
@@ -675,6 +677,7 @@ fn build_server_rolegroup_service(
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     resolved_product_image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
+    rolegroup_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
 ) -> Result<Service> {
     let prometheus_label =
         Label::try_from(("prometheus.io/scrape", "true")).context(BuildLabelSnafu)?;
@@ -713,6 +716,12 @@ fn build_server_rolegroup_service(
             ServicePort {
                 name: Some("metrics".to_string()),
                 port: 9505,
+                protocol: Some("TCP".to_string()),
+                ..ServicePort::default()
+            },
+            ServicePort {
+                name: Some("native-metrics".to_string()),
+                port: metrics_port_from_rolegroup_config(rolegroup_config).into(),
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
             },
@@ -898,6 +907,10 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk-leader", 2888)
         .add_container_port("zk-election", 3888)
         .add_container_port("metrics", 9505)
+        .add_container_port(
+            "native-metrics",
+            metrics_port_from_rolegroup_config(server_config).into(),
+        )
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
@@ -1061,6 +1074,27 @@ fn build_server_rolegroup_statefulset(
         spec: Some(statefulset_spec),
         status: None,
     })
+}
+
+fn metrics_port_from_rolegroup_config(
+    rolegroup_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
+) -> u16 {
+    let metrics_port = rolegroup_config
+        .get(&PropertyNameKind::File(
+            ZOOKEEPER_PROPERTIES_FILE.to_string(),
+        ))
+        .expect("{ZOOKEEPER_PROPERTIES_FILE} is present")
+        .get(METRICS_PROVIDER_HTTP_PORT_KEY)
+        .expect("{METRICS_PROVIDER_HTTP_PORT_KEY} is set");
+
+    match u16::from_str(metrics_port) {
+        Ok(port) => port,
+        Err(err) => {
+            tracing::error!("{err}");
+            tracing::info!("Defaulting to using {METRICS_PROVIDER_HTTP_PORT} as metrics port.");
+            METRICS_PROVIDER_HTTP_PORT
+        }
+    }
 }
 
 pub fn error_policy(
