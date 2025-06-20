@@ -64,9 +64,7 @@ def check_monitoring(hosts):
         url = host + ":9505"
         response = try_get(url)
 
-        if response.ok:
-            continue
-        else:
+        if not response.ok:
             print("Error for [" + url + "]: could not access monitoring")
             exit(-1)
 
@@ -81,7 +79,6 @@ def check_monitoring(hosts):
             else:
                 print("Error for [" + url + "]: missing metrics")
                 exit(-1)
-            continue
         else:
             print("Error for [" + url + "]: could not access monitoring")
             exit(-1)
