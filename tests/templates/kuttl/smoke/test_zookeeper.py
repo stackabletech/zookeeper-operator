@@ -74,9 +74,7 @@ def check_monitoring(hosts):
 
         if response.ok:
             # arbitrary metric was chosen to test if metrics are present in the response
-            if "quorum_size" in response.text:
-                continue
-            else:
+            if "quorum_size" not in response.text:
                 print("Error for [" + url + "]: missing metrics")
                 exit(-1)
         else:
