@@ -21,7 +21,12 @@ use stackable_operator::{
         self,
         configmap::ConfigMapBuilder,
         meta::ObjectMetaBuilder,
-        pod::{PodBuilder, container::ContainerBuilder, resources::ResourceRequirementsBuilder},
+        pod::{
+            PodBuilder,
+            container::ContainerBuilder,
+            resources::ResourceRequirementsBuilder,
+            volume::{ListenerOperatorVolumeSourceBuilder, ListenerReference},
+        },
     },
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::{product_image_selection::ResolvedProductImage, rbac::build_rbac_resources},
@@ -31,8 +36,8 @@ use stackable_operator::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PodSecurityContext, Probe, Service,
-                ServiceAccount, ServicePort, ServiceSpec, Volume,
+                ExecAction, ObjectFieldSelector, PersistentVolumeClaim, PodSecurityContext, Probe,
+                Service, ServiceAccount, ServicePort, ServiceSpec, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
@@ -56,7 +61,7 @@ use stackable_operator::{
             CustomContainerLogConfig,
         },
     },
-    role_utils::{GenericRoleConfig, RoleGroupRef},
+    role_utils::RoleGroupRef,
     status::condition::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
@@ -72,12 +77,14 @@ use crate::{
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
         DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
-        MAX_ZK_LOG_FILES_SIZE, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR,
-        STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_PROPERTIES_FILE, ZookeeperRole,
+        MAX_ZK_LOG_FILES_SIZE, METRICS_PORT, METRICS_PORT_NAME, STACKABLE_CONFIG_DIR,
+        STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+        ZOOKEEPER_PROPERTIES_FILE, ZookeeperRole,
         security::{self, ZookeeperSecurity},
-        v1alpha1,
+        v1alpha1::{self, ZookeeperServerRoleConfig},
     },
-    discovery::{self, build_discovery_configmaps},
+    discovery::{self, build_discovery_configmap, build_headless_role_group_metrics_service_name},
+    listener::build_role_listener,
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
     product_logging::extend_role_group_config_map,
     utils::build_recommended_labels,
@@ -85,6 +92,8 @@ use crate::{
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 pub const ZK_FULL_CONTROLLER_NAME: &str = concatcp!(ZK_CONTROLLER_NAME, '.', OPERATOR_NAME);
+pub const LISTENER_VOLUME_NAME: &str = "listener";
+pub const LISTENER_VOLUME_DIR: &str = "/stackable/listener";
 
 pub const ZK_UID: i64 = 1000;
 pub struct Ctx {
@@ -266,6 +275,21 @@ pub enum Error {
 
     #[snafu(display("failed to construct JVM arguments"))]
     ConstructJvmArguments { source: crate::config::jvm::Error },
+
+    #[snafu(display("failed to apply group listener"))]
+    ApplyGroupListener {
+        source: stackable_operator::cluster_resources::Error,
+    },
+
+    #[snafu(display("failed to configure listener"))]
+    ListenerConfiguration { source: crate::listener::Error },
+
+    // #[snafu(display("failed to configure listener"))]
+    // ListenerConfiguration { source: crate::listener::Error },
+    #[snafu(display("failed to build listener volume"))]
+    BuildListenerPersistentVolume {
+        source: stackable_operator::builder::pod::volume::ListenerOperatorVolumeSourceBuilderError,
+    },
 }
 
 impl ReconcilerError for Error {
@@ -276,7 +300,7 @@ impl ReconcilerError for Error {
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
             Error::MissingSecretLifetime => None,
-            Error::InvalidZookeeperCluster { source: _ } => None,
+            Error::InvalidZookeeperCluster { .. } => None,
             Error::CrdValidationFailure { .. } => None,
             Error::NoServerRole => None,
             Error::RoleParseFailure { .. } => None,
@@ -313,6 +337,9 @@ impl ReconcilerError for Error {
             Error::AddVolumeMount { .. } => None,
             Error::CreateClusterResources { .. } => None,
             Error::ConstructJvmArguments { .. } => None,
+            Error::ApplyGroupListener { .. } => None,
+            Error::BuildListenerPersistentVolume { .. } => None,
+            Error::ListenerConfiguration { .. } => None,
         }
     }
 }
@@ -394,14 +421,6 @@ pub async fn reconcile_zk(
         .await
         .context(ApplyRoleBindingSnafu)?;
 
-    let server_role_service = cluster_resources
-        .add(
-            client,
-            build_server_role_service(zk, &resolved_product_image, &zookeeper_security)?,
-        )
-        .await
-        .context(ApplyRoleServiceSnafu)?;
-
     let mut ss_cond_builder = StatefulSetConditionBuilder::default();
 
     let zk_role = ZookeeperRole::Server;
@@ -411,12 +430,7 @@ pub async fn reconcile_zk(
             .merged_config(&ZookeeperRole::Server, &rolegroup)
             .context(FailedToResolveConfigSnafu)?;
 
-        let rg_service = build_server_rolegroup_service(
-            zk,
-            &rolegroup,
-            &resolved_product_image,
-            &zookeeper_security,
-        )?;
+        let rg_service = build_server_rolegroup_service(zk, &rolegroup, &resolved_product_image)?;
         let rg_configmap = build_server_rolegroup_config_map(
             zk,
             &rolegroup,
@@ -435,6 +449,7 @@ pub async fn reconcile_zk(
             &merged_config,
             &rbac_sa,
         )?;
+
         cluster_resources
             .add(client, rg_service)
             .await
@@ -459,38 +474,49 @@ pub async fn reconcile_zk(
     }
 
     let role_config = zk.role_config(&zk_role);
-    if let Some(GenericRoleConfig {
-        pod_disruption_budget: pdb,
+    if let Some(ZookeeperServerRoleConfig {
+        common,
+        listener_class: _,
     }) = role_config
     {
-        add_pdbs(pdb, zk, &zk_role, client, &mut cluster_resources)
-            .await
-            .context(FailedToCreatePdbSnafu)?;
+        add_pdbs(
+            &common.pod_disruption_budget,
+            zk,
+            &zk_role,
+            client,
+            &mut cluster_resources,
+        )
+        .await
+        .context(FailedToCreatePdbSnafu)?;
     }
+
+    let listener = build_role_listener(zk, &zk_role, &resolved_product_image, &zookeeper_security)
+        .context(ListenerConfigurationSnafu)?;
+    cluster_resources
+        .add(client, listener.clone())
+        .await
+        .context(ApplyGroupListenerSnafu)?;
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
-    for discovery_cm in build_discovery_configmaps(
+    let discovery_cm = build_discovery_configmap(
         zk,
         zk,
-        client,
         ZK_CONTROLLER_NAME,
-        &server_role_service,
+        listener,
         None,
         &resolved_product_image,
         &zookeeper_security,
     )
-    .await
-    .context(BuildDiscoveryConfigSnafu)?
-    {
-        let discovery_cm = cluster_resources
-            .add(client, discovery_cm)
-            .await
-            .context(ApplyDiscoveryConfigSnafu)?;
-        if let Some(generation) = discovery_cm.metadata.resource_version {
-            discovery_hash.write(generation.as_bytes())
-        }
+    .context(BuildDiscoveryConfigSnafu)?;
+
+    let discovery_cm = cluster_resources
+        .add(client, discovery_cm)
+        .await
+        .context(ApplyDiscoveryConfigSnafu)?;
+    if let Some(generation) = discovery_cm.metadata.resource_version {
+        discovery_hash.write(generation.as_bytes())
     }
 
     let cluster_operation_cond_builder =
@@ -513,58 +539,6 @@ pub async fn reconcile_zk(
         .context(ApplyStatusSnafu)?;
 
     Ok(controller::Action::await_change())
-}
-
-/// The server-role service is the primary endpoint that should be used by clients that do not perform internal load balancing,
-/// including targets outside of the cluster.
-///
-/// Note that you should generally *not* hard-code clients to use these services; instead, create a [`v1alpha1::ZookeeperZnode`](`v1alpha1::ZookeeperZnode`)
-/// and use the connection string that it gives you.
-pub fn build_server_role_service(
-    zk: &v1alpha1::ZookeeperCluster,
-    resolved_product_image: &ResolvedProductImage,
-    zookeeper_security: &ZookeeperSecurity,
-) -> Result<Service> {
-    let role_name = ZookeeperRole::Server.to_string();
-    let role_svc_name = zk
-        .server_role_service_name()
-        .context(GlobalServiceNameNotFoundSnafu)?;
-
-    let metadata = ObjectMetaBuilder::new()
-        .name_and_namespace(zk)
-        .name(&role_svc_name)
-        .ownerreference_from_resource(zk, None, Some(true))
-        .context(ObjectMissingMetadataForOwnerRefSnafu)?
-        .with_recommended_labels(build_recommended_labels(
-            zk,
-            ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label,
-            &role_name,
-            "global",
-        ))
-        .context(ObjectMetaSnafu)?
-        .build();
-
-    let service_selector_labels =
-        Labels::role_selector(zk, APP_NAME, &role_name).context(BuildLabelSnafu)?;
-
-    let service_spec = ServiceSpec {
-        ports: Some(vec![ServicePort {
-            name: Some("zk".to_string()),
-            port: zookeeper_security.client_port().into(),
-            protocol: Some("TCP".to_string()),
-            ..ServicePort::default()
-        }]),
-        selector: Some(service_selector_labels.into()),
-        type_: Some(zk.spec.cluster_config.listener_class.k8s_service_type()),
-        ..ServiceSpec::default()
-    };
-
-    Ok(Service {
-        metadata,
-        spec: Some(service_spec),
-        status: None,
-    })
 }
 
 /// The rolegroup [`ConfigMap`] configures the rolegroup based on the configuration given by the administrator
@@ -675,14 +649,15 @@ fn build_server_rolegroup_service(
     zk: &v1alpha1::ZookeeperCluster,
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     resolved_product_image: &ResolvedProductImage,
-    zookeeper_security: &ZookeeperSecurity,
 ) -> Result<Service> {
     let prometheus_label =
         Label::try_from(("prometheus.io/scrape", "true")).context(BuildLabelSnafu)?;
 
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
-        .name(rolegroup.object_name())
+        .name(build_headless_role_group_metrics_service_name(
+            rolegroup.object_name(),
+        ))
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
         .with_recommended_labels(build_recommended_labels(
@@ -704,20 +679,12 @@ fn build_server_rolegroup_service(
         // Internal communication does not need to be exposed
         type_: Some("ClusterIP".to_string()),
         cluster_ip: Some("None".to_string()),
-        ports: Some(vec![
-            ServicePort {
-                name: Some("zk".to_string()),
-                port: zookeeper_security.client_port().into(),
-                protocol: Some("TCP".to_string()),
-                ..ServicePort::default()
-            },
-            ServicePort {
-                name: Some("metrics".to_string()),
-                port: 9505,
-                protocol: Some("TCP".to_string()),
-                ..ServicePort::default()
-            },
-        ]),
+        ports: Some(vec![ServicePort {
+            name: Some(METRICS_PORT_NAME.to_string()),
+            port: METRICS_PORT.into(),
+            protocol: Some("TCP".to_string()),
+            ..ServicePort::default()
+        }]),
         selector: Some(service_selector_labels.into()),
         publish_not_ready_addresses: Some(true),
         ..ServiceSpec::default()
@@ -728,6 +695,19 @@ fn build_server_rolegroup_service(
         spec: Some(service_spec),
         status: None,
     })
+}
+
+pub fn build_role_listener_pvc(
+    group_listener_name: &str,
+    unversioned_recommended_labels: &Labels,
+) -> Result<PersistentVolumeClaim, Error> {
+    ListenerOperatorVolumeSourceBuilder::new(
+        &ListenerReference::ListenerName(group_listener_name.to_string()),
+        unversioned_recommended_labels,
+    )
+    .expect("ListenerOperatorVolumeSourceBuilder::new always returns Ok()")
+    .build_pvc(LISTENER_VOLUME_NAME.to_string())
+    .context(BuildListenerPersistentVolumeSnafu)
 }
 
 /// The rolegroup [`StatefulSet`] runs the rolegroup, as configured by the administrator.
@@ -764,7 +744,7 @@ fn build_server_rolegroup_statefulset(
         })
         .collect::<Vec<_>>();
 
-    let (pvc, resources) = zk
+    let (original_pvcs, resources) = zk
         .resources(zk_role, rolegroup_ref)
         .context(CrdValidationFailureSnafu)?;
 
@@ -773,6 +753,31 @@ fn build_server_rolegroup_statefulset(
     let mut cb_zookeeper =
         ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
     let mut pod_builder = PodBuilder::new();
+
+    // Used for PVC templates that cannot be modified once they are deployed
+    let unversioned_recommended_labels = Labels::recommended(build_recommended_labels(
+        zk,
+        ZK_CONTROLLER_NAME,
+        // A version value is required, but we need to use something constant so that we don't run into immutabile field issues.
+        "none",
+        &rolegroup_ref.role,
+        &rolegroup_ref.role_group,
+    ))
+    .expect("todo: LabelBuildSnafu");
+    // .context(LabelBuildSnafu)?;
+
+    let listener_pvc = build_role_listener_pvc(
+        &zk.server_role_listener_name()
+            .expect("todo: get role from zk_role"),
+        &unversioned_recommended_labels,
+    )?;
+
+    let mut pvcs = original_pvcs;
+    pvcs.extend([listener_pvc]);
+
+    cb_zookeeper
+        .add_volume_mount(LISTENER_VOLUME_NAME, LISTENER_VOLUME_DIR)
+        .context(AddVolumeMountSnafu)?;
 
     let requested_secret_lifetime = merged_config
         .requested_secret_lifetime
@@ -1053,9 +1058,11 @@ fn build_server_rolegroup_statefulset(
             match_labels: Some(statefulset_match_labels.into()),
             ..LabelSelector::default()
         },
-        service_name: Some(rolegroup_ref.object_name()),
+        service_name: Some(build_headless_role_group_metrics_service_name(
+            rolegroup_ref.object_name(),
+        )),
         template: pod_template,
-        volume_claim_templates: Some(pvc),
+        volume_claim_templates: Some(pvcs),
         ..StatefulSetSpec::default()
     };
 

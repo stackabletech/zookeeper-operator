@@ -8,7 +8,8 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::product_image_selection::ResolvedProductImage,
-    k8s_openapi::api::core::v1::{ConfigMap, Service},
+    crd::listener,
+    k8s_openapi::api::core::v1::ConfigMap,
     kube::{
         self, Resource,
         api::ObjectMeta,
@@ -25,7 +26,7 @@ use tracing::{debug, info};
 use crate::{
     APP_NAME, OPERATOR_NAME,
     crd::{DOCKER_IMAGE_BASE_NAME, security::ZookeeperSecurity, v1alpha1},
-    discovery::{self, build_discovery_configmaps},
+    discovery::{self, build_discovery_configmap},
 };
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
@@ -284,9 +285,10 @@ async fn reconcile_apply(
         znode_path,
     })?;
 
-    let server_role_service = client
-        .get::<Service>(
-            &zk.server_role_service_name()
+    let listener = client
+        .get::<listener::v1alpha1::Listener>(
+            // TODO (@NickLarsenNZ): Check what this should be. Source it from the right place, or use a const
+            &zk.server_role_listener_name()
                 .with_context(|| NoZkSvcNameSnafu {
                     zk: ObjectRef::from_obj(&zk),
                 })?,
@@ -299,25 +301,23 @@ async fn reconcile_apply(
         .context(FindZkSvcSnafu {
             zk: ObjectRef::from_obj(&zk),
         })?;
-    for discovery_cm in build_discovery_configmaps(
+
+    let discovery_cm = build_discovery_configmap(
         &zk,
         znode,
-        client,
         ZNODE_CONTROLLER_NAME,
-        &server_role_service,
+        listener,
         Some(znode_path),
         resolved_product_image,
         &zookeeper_security,
     )
-    .await
-    .context(BuildDiscoveryConfigMapSnafu)?
-    {
-        let obj_ref = ObjectRef::from_obj(&discovery_cm);
-        cluster_resources
-            .add(client, discovery_cm)
-            .await
-            .with_context(|_| ApplyDiscoveryConfigMapSnafu { cm: obj_ref })?;
-    }
+    .context(BuildDiscoveryConfigMapSnafu)?;
+
+    let obj_ref = ObjectRef::from_obj(&discovery_cm);
+    cluster_resources
+        .add(client, discovery_cm)
+        .await
+        .with_context(|_| ApplyDiscoveryConfigMapSnafu { cm: obj_ref })?;
 
     cluster_resources
         .delete_orphaned_resources(client)
@@ -357,6 +357,7 @@ async fn reconcile_cleanup(
     Ok(controller::Action::await_change())
 }
 
+// TODO (@NickLarsenNZ): What to do here?
 fn zk_mgmt_addr(
     zk: &v1alpha1::ZookeeperCluster,
     zookeeper_security: &ZookeeperSecurity,
@@ -365,12 +366,13 @@ fn zk_mgmt_addr(
     // Rust ZooKeeper client does not support client-side load-balancing, so use
     // (load-balanced) global service instead.
     Ok(format!(
-        "{}:{}",
-        zk.server_role_service_fqdn(cluster_info)
+        "{hostname}:{port}",
+        hostname = zk
+            .server_role_listener_fqdn(cluster_info)
             .with_context(|| NoZkFqdnSnafu {
                 zk: ObjectRef::from_obj(zk),
             })?,
-        zookeeper_security.client_port(),
+        port = zookeeper_security.client_port(),
     ))
 }
 
