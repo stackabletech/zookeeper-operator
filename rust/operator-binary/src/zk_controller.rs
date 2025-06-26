@@ -492,8 +492,8 @@ pub async fn reconcile_zk(
 
     let listener = build_role_listener(zk, &zk_role, &resolved_product_image, &zookeeper_security)
         .context(ListenerConfigurationSnafu)?;
-    cluster_resources
-        .add(client, listener.clone())
+    let applied_listener = cluster_resources
+        .add(client, listener)
         .await
         .context(ApplyGroupListenerSnafu)?;
 
@@ -504,7 +504,7 @@ pub async fn reconcile_zk(
         zk,
         zk,
         ZK_CONTROLLER_NAME,
-        listener,
+        applied_listener,
         None,
         &resolved_product_image,
         &zookeeper_security,
