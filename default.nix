@@ -127,11 +127,6 @@ rec {
   pkgs = lib.warn "pkgs is not cross-compilation-aware, explicitly use either pkgsLocal or pkgsTarget" pkgsLocal;
   build = cargo.allWorkspaceMembers;
   entrypoint = build+"/bin/stackable-${meta.operator.name}";
-  # Run crds in the target environment, to avoid compiling everything twice
-  crds = pkgsTarget.runCommand "${meta.operator.name}-crds.yaml" {}
-  ''
-    ${entrypoint} crd > $out
-  '';
 
   # We're building the docker image *for* Linux, but we need to
   # build it in the local environment so that the generated load-image
@@ -177,10 +172,6 @@ rec {
     {
       name = "image-tag";
       path = pkgsLocal.writeText "${dockerImage.name}-tag" dockerImage.imageTag;
-    }
-    {
-      name = "crds.yaml";
-      path = crds;
     }
   ];
 
