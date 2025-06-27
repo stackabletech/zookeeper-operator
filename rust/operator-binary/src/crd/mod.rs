@@ -38,6 +38,7 @@ use crate::crd::affinity::get_affinity;
 
 pub mod affinity;
 pub mod authentication;
+pub mod person;
 pub mod security;
 pub mod tls;
 

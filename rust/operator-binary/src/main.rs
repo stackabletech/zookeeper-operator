@@ -3,9 +3,9 @@ use std::sync::Arc;
 use clap::Parser;
 use crd::{
     APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperClusterVersion, ZookeeperZnode,
-    ZookeeperZnodeVersion, v1alpha1,
+    ZookeeperZnodeVersion, person::Person, v1alpha1,
 };
-use futures::{StreamExt, pin_mut};
+use futures::{StreamExt, future::select, pin_mut};
 use stackable_operator::{
     YamlSchema,
     cli::{Command, ProductOperatorRun},
@@ -15,7 +15,7 @@ use stackable_operator::{
     },
     kube::{
         Resource,
-        core::DeserializeGuard,
+        core::{DeserializeGuard, conversion::ConversionReview},
         runtime::{
             Controller,
             events::{Recorder, Reporter},
@@ -27,6 +27,7 @@ use stackable_operator::{
     shared::yaml::SerializeOptions,
     telemetry::Tracing,
 };
+use stackable_webhook::servers::ConversionWebhookServer;
 
 use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
 
@@ -60,12 +61,15 @@ async fn main() -> anyhow::Result<()> {
                 .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
             ZookeeperZnode::merged_crd(ZookeeperZnodeVersion::V1Alpha1)?
                 .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
+            Person::merged_crd(crd::person::PersonVersion::V3)?
+                .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
         }
         Command::Run(ProductOperatorRun {
             product_config,
             watch_namespace,
             telemetry_arguments,
             cluster_info_opts,
+            operator_environment,
         }) => {
             // NOTE (@NickLarsenNZ): Before stackable-telemetry was used:
             // - The console log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now `CONSOLE_LOG` (when using Tracing::pre_configured).
@@ -227,9 +231,40 @@ async fn main() -> anyhow::Result<()> {
                     },
                 );
 
-            pin_mut!(zk_controller, znode_controller);
+            let crds_and_handlers = [
+                (
+                    ZookeeperCluster::merged_crd(ZookeeperClusterVersion::V1Alpha1).unwrap(),
+                    ZookeeperCluster::try_convert as fn(ConversionReview) -> ConversionReview,
+                ),
+                (
+                    ZookeeperZnode::merged_crd(ZookeeperZnodeVersion::V1Alpha1).unwrap(),
+                    ZookeeperZnode::try_convert as fn(ConversionReview) -> ConversionReview,
+                ),
+                (
+                    Person::merged_crd(crd::person::PersonVersion::V3).unwrap(),
+                    Person::try_convert as fn(ConversionReview) -> ConversionReview,
+                ),
+            ];
+            let conversion_webhook = ConversionWebhookServer::new(
+                crds_and_handlers,
+                stackable_webhook::Options::default(),
+                client.as_kube_client(),
+                OPERATOR_NAME,
+                operator_environment,
+            )
+            .await
+            .expect("TODO");
+
+            // Bootstrap CRDs first to avoid "too old resource version" error
+            conversion_webhook.reconcile_crds().await.expect("TODO");
+
+            let conversion_webhook = async move {
+                conversion_webhook.run().await.expect("TODO");
+            };
+
+            pin_mut!(zk_controller, znode_controller, conversion_webhook);
             // kube-runtime's Controller will tokio::spawn each reconciliation, so this only concerns the internal watch machinery
-            futures::future::select(zk_controller, znode_controller).await;
+            select(zk_controller, select(znode_controller, conversion_webhook)).await;
         }
     }
 

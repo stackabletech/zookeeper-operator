@@ -1,0 +1,84 @@
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: Person
+metadata:
+  name: sbernauer1
+spec:
+  username: sbernauer1
+---
+apiVersion: zookeeper.stackable.tech/v1alpha2
+kind: Person
+metadata:
+  name: sbernauer2
+spec:
+  username: sbernauer2
+  firstName: Sebastian
+  lastName: Bernauer
+---
+apiVersion: zookeeper.stackable.tech/v1beta1
+kind: Person
+metadata:
+  name: sbernauer3
+spec:
+  username: sbernauer3
+  firstName: Sebastian
+  lastName: Bernauer
+---
+apiVersion: zookeeper.stackable.tech/v2
+kind: Person
+metadata:
+  name: sbernauer4
+spec:
+  username: sbernauer4
+  firstName: Sebastian
+  lastName: Bernauer
+  gender: Male
+---
+apiVersion: zookeeper.stackable.tech/v3
+kind: Person
+metadata:
+  name: sbernauer5
+spec:
+  username: sbernauer5
+  firstName: Sebastian
+  lastName: Bernauer
+  gender: Male
+
+
+
+
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: Person
+metadata:
+  name: sbernauer40
+spec:
+  username: sbernauer40
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: Person
+metadata:
+  name: sbernauer41
+spec:
+  username: sbernauer41
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: Person
+metadata:
+  name: sbernauer42
+spec:
+  username: sbernauer42
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: Person
+metadata:
+  name: sbernauer43
+spec:
+  username: sbernauer43
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: Person
+metadata:
+  name: sbernauer44
+spec:
+  username: sbernauer44

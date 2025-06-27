@@ -891,3 +891,152 @@ spec:
     storage: true
     subresources:
       status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: persons.zookeeper.stackable.tech
+spec:
+  group: zookeeper.stackable.tech
+  names:
+    categories: []
+    kind: Person
+    plural: persons
+    shortNames: []
+    singular: person
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns: []
+    name: v3
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for PersonSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              firstName:
+                type: string
+              gender:
+                type: string
+              lastName:
+                type: string
+              username:
+                type: string
+            required:
+            - firstName
+            - gender
+            - lastName
+            - username
+            type: object
+        required:
+        - spec
+        title: Person
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+  - additionalPrinterColumns: []
+    name: v2
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for PersonSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              firstName:
+                type: string
+              gender:
+                enum:
+                - Unknown
+                - Male
+                - Female
+                type: string
+              lastName:
+                type: string
+              username:
+                type: string
+            required:
+            - firstName
+            - gender
+            - lastName
+            - username
+            type: object
+        required:
+        - spec
+        title: Person
+        type: object
+    served: true
+    storage: false
+    subresources: {}
+  - additionalPrinterColumns: []
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for PersonSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              firstName:
+                type: string
+              lastName:
+                type: string
+              username:
+                type: string
+            required:
+            - firstName
+            - lastName
+            - username
+            type: object
+        required:
+        - spec
+        title: Person
+        type: object
+    served: true
+    storage: false
+    subresources: {}
+  - additionalPrinterColumns: []
+    name: v1alpha2
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for PersonSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              firstName:
+                type: string
+              lastName:
+                type: string
+              username:
+                type: string
+            required:
+            - firstName
+            - lastName
+            - username
+            type: object
+        required:
+        - spec
+        title: Person
+        type: object
+    served: true
+    storage: false
+    subresources: {}
+  - additionalPrinterColumns: []
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for PersonSpec via `CustomResource`
+        properties:
+          spec:
+            properties:
+              username:
+                type: string
+            required:
+            - username
+            type: object
+        required:
+        - spec
+        title: Person
+        type: object
+    served: true
+    storage: false
+    subresources: {}

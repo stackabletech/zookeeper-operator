@@ -12,6 +12,7 @@ repository = "https://github.com/stackabletech/zookeeper-operator"
 [workspace.dependencies]
 product-config = { git = "https://github.com/stackabletech/product-config.git", tag = "0.7.0" }
 stackable-operator = { git = "https://github.com/stackabletech/operator-rs.git", features = ["telemetry", "versioned"], tag = "stackable-operator-0.93.1" }
+stackable-webhook = { git = "https://github.com/stackabletech/operator-rs.git", tag = "stackable-operator-0.93.1" }
 
 anyhow = "1.0"
 built = { version = "0.8", features = ["chrono", "git2"] }
@@ -34,6 +35,7 @@ tracing = "0.1"
 [patch."https://github.com/stackabletech/operator-rs"]
 # stackable-operator = { git = "https://github.com/stackabletech//operator-rs.git", branch = "main" }
 stackable-operator = { path = "/home/sbernauer/stackable/operator-rs/main/crates/stackable-operator" }
+stackable-webhook = { path = "/home/sbernauer/stackable/operator-rs/main/crates/stackable-webhook" }
 
 [patch.crates-io]
 # tokio-zookeeper = { path = "../tokio-zookeeper" }
