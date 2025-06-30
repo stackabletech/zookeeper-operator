@@ -255,9 +255,6 @@ async fn main() -> anyhow::Result<()> {
             .await
             .expect("TODO");
 
-            // Bootstrap CRDs first to avoid "too old resource version" error
-            conversion_webhook.reconcile_crds().await.expect("TODO");
-
             let conversion_webhook = async move {
                 conversion_webhook.run().await.expect("TODO");
             };

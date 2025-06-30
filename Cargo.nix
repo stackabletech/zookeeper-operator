@@ -380,6 +380,19 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" "std" ];
       };
+      "arc-swap" = rec {
+        crateName = "arc-swap";
+        version = "1.7.1";
+        edition = "2018";
+        sha256 = "0mrl9a9r9p9bln74q6aszvf22q1ijiw089jkrmabfqkbj31zixv9";
+        libName = "arc_swap";
+        authors = [
+          "Michal 'vorner' Vaner <vorner@vorner.cz>"
+        ];
+        features = {
+          "serde" = [ "dep:serde" ];
+        };
+      };
       "async-broadcast" = rec {
         crateName = "async-broadcast";
         version = "0.7.2";
@@ -10041,6 +10054,10 @@ rec {
           "Stackable GmbH <info@stackable.de>"
         ];
         dependencies = [
+          {
+            name = "arc-swap";
+            packageId = "arc-swap";
+          }
           {
             name = "axum";
             packageId = "axum";
