@@ -15,7 +15,7 @@ use stackable_operator::{
     },
     kube::{
         Resource,
-        core::{DeserializeGuard, conversion::ConversionReview},
+        core::DeserializeGuard,
         runtime::{
             Controller,
             events::{Recorder, Reporter},
@@ -233,16 +233,16 @@ async fn main() -> anyhow::Result<()> {
 
             let crds_and_handlers = [
                 (
-                    ZookeeperCluster::merged_crd(ZookeeperClusterVersion::V1Alpha1).unwrap(),
-                    ZookeeperCluster::try_convert as fn(ConversionReview) -> ConversionReview,
+                    ZookeeperCluster::merged_crd(ZookeeperClusterVersion::V1Alpha1)?,
+                    ZookeeperCluster::try_convert as fn(_) -> _,
                 ),
                 (
-                    ZookeeperZnode::merged_crd(ZookeeperZnodeVersion::V1Alpha1).unwrap(),
-                    ZookeeperZnode::try_convert as fn(ConversionReview) -> ConversionReview,
+                    ZookeeperZnode::merged_crd(ZookeeperZnodeVersion::V1Alpha1)?,
+                    ZookeeperZnode::try_convert as fn(_) -> _,
                 ),
                 (
-                    Person::merged_crd(crd::person::PersonVersion::V3).unwrap(),
-                    Person::try_convert as fn(ConversionReview) -> ConversionReview,
+                    Person::merged_crd(crd::person::PersonVersion::V3)?,
+                    Person::try_convert as fn(_) -> _,
                 ),
             ];
             let conversion_webhook = ConversionWebhookServer::new(

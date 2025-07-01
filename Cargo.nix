@@ -10093,6 +10093,10 @@ rec {
             packageId = "opentelemetry";
           }
           {
+            name = "rand";
+            packageId = "rand 0.9.1";
+          }
+          {
             name = "serde_json";
             packageId = "serde_json";
           }
