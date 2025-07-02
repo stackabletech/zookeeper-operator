@@ -274,6 +274,7 @@ async fn reconcile_apply(
         &znode.object_ref(&()),
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
     )
+    // TODO (@NickLarsenNZ): Handle this error properly. znode should contain namespace/name, but there is no guarantee
     .unwrap();
 
     znode_mgmt::ensure_znode_exists(

@@ -16,6 +16,12 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Snafu, Debug)]
 pub enum Error {
+    #[snafu(display("Role {zk_role:?} is not defined in the ZooKeeperCluster spec"))]
+    InvalidRole {
+        source: crate::crd::Error,
+        zk_role: String,
+    },
+
     #[snafu(display("object is missing metadata to build owner reference"))]
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::builder::meta::Error,
@@ -33,11 +39,12 @@ pub fn build_role_listener(
     resolved_product_image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<listener::v1alpha1::Listener> {
-    // TODO (@NickLarsenNZ): Move this to a common function that takes a zk and a zk_role so that we can use it in other places like the PVC generation
     let listener_name = role_listener_name(zk, zk_role);
     let listener_class = &zk
         .role(zk_role)
-        .expect("handle error: valid role")
+        .with_context(|_| InvalidRoleSnafu {
+            zk_role: zk_role.to_string(),
+        })?
         .role_config
         .listener_class;
 

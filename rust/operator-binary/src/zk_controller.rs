@@ -834,8 +834,7 @@ fn build_server_rolegroup_statefulset(
         &rolegroup_ref.role,
         &rolegroup_ref.role_group,
     ))
-    .expect("todo: LabelBuildSnafu");
-    // .context(LabelBuildSnafu)?;
+    .context(BuildLabelSnafu)?;
 
     let listener_pvc = build_role_listener_pvc(
         &role_listener_name(zk, &ZookeeperRole::Server),
@@ -970,6 +969,7 @@ fn build_server_rolegroup_statefulset(
             period_seconds: Some(1),
             ..Probe::default()
         })
+        // TODO (@NickLarsenNZ): Use consts for the port names (since they are used in multiple places)
         .add_container_port("zk", zookeeper_security.client_port().into())
         .add_container_port("zk-leader", ZOOKEEPER_LEADER_PORT as i32)
         .add_container_port("zk-election", ZOOKEEPER_ELECTION_PORT as i32)
