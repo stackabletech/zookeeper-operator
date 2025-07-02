@@ -73,7 +73,7 @@ pub fn build_role_listener(
 }
 
 // TODO (@NickLarsenNZ): This could be a method we can put on a Resource that takes a role_name
-fn role_listener_name(zk: &v1alpha1::ZookeeperCluster, zk_role: &ZookeeperRole) -> String {
+pub fn role_listener_name(zk: &v1alpha1::ZookeeperCluster, zk_role: &ZookeeperRole) -> String {
     // TODO (@NickLarsenNZ): Make a convention, do we use name_any() and allow empty string? or metadata.name.expect, or handle the error?
     format!("{zk}-{zk_role}", zk = zk.name_any())
 }

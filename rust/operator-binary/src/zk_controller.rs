@@ -79,12 +79,15 @@ use crate::{
         DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
         MAX_ZK_LOG_FILES_SIZE, METRICS_PORT, METRICS_PORT_NAME, STACKABLE_CONFIG_DIR,
         STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
-        ZOOKEEPER_PROPERTIES_FILE, ZookeeperRole,
+        ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_LEADER_PORT, ZOOKEEPER_PROPERTIES_FILE, ZookeeperRole,
         security::{self, ZookeeperSecurity},
         v1alpha1::{self, ZookeeperServerRoleConfig},
     },
-    discovery::{self, build_discovery_configmap, build_headless_role_group_metrics_service_name},
-    listener::build_role_listener,
+    discovery::{
+        self, build_discovery_configmap, build_role_group_headless_service_name,
+        build_role_group_metrics_service_name,
+    },
+    listener::{build_role_listener, role_listener_name},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
     product_logging::extend_role_group_config_map,
     utils::build_recommended_labels,
@@ -430,7 +433,10 @@ pub async fn reconcile_zk(
             .merged_config(&ZookeeperRole::Server, &rolegroup)
             .context(FailedToResolveConfigSnafu)?;
 
-        let rg_service = build_server_rolegroup_service(zk, &rolegroup, &resolved_product_image)?;
+        let rg_headless_service =
+            build_server_rolegroup_headless_service(zk, &rolegroup, &resolved_product_image)?;
+        let rg_metrics_service =
+            build_server_rolegroup_metrics_service(zk, &rolegroup, &resolved_product_image)?;
         let rg_configmap = build_server_rolegroup_config_map(
             zk,
             &rolegroup,
@@ -451,7 +457,13 @@ pub async fn reconcile_zk(
         )?;
 
         cluster_resources
-            .add(client, rg_service)
+            .add(client, rg_headless_service)
+            .await
+            .with_context(|_| ApplyRoleGroupServiceSnafu {
+                rolegroup: rolegroup.clone(),
+            })?;
+        cluster_resources
+            .add(client, rg_metrics_service)
             .await
             .with_context(|_| ApplyRoleGroupServiceSnafu {
                 rolegroup: rolegroup.clone(),
@@ -556,11 +568,11 @@ fn build_server_rolegroup_config_map(
         .flatten()
         .map(|pod| {
             (
-                format!("server.{}", pod.zookeeper_myid),
+                format!("server.{id}", id = pod.zookeeper_myid),
                 format!(
-                    "{}:2888:3888;{}",
-                    pod.fqdn(cluster_info),
-                    zookeeper_security.client_port()
+                    "{internal_fqdn}:{ZOOKEEPER_LEADER_PORT}:{ZOOKEEPER_ELECTION_PORT};{client_port}",
+                    internal_fqdn = pod.internal_fqdn(cluster_info),
+                    client_port = zookeeper_security.client_port()
                 ),
             )
         })
@@ -642,10 +654,69 @@ fn build_server_rolegroup_config_map(
         })
 }
 
-/// The rolegroup [`Service`] is a headless service that allows direct access to the instances of a certain rolegroup
+/// The rolegroup [`Service`] is a headless service that allows internal access to the instances of a certain rolegroup
 ///
 /// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
-fn build_server_rolegroup_service(
+fn build_server_rolegroup_headless_service(
+    zk: &v1alpha1::ZookeeperCluster,
+    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
+    resolved_product_image: &ResolvedProductImage,
+) -> Result<Service> {
+    let metadata = ObjectMetaBuilder::new()
+        .name_and_namespace(zk)
+        .name(build_role_group_headless_service_name(
+            rolegroup.object_name(),
+        ))
+        .ownerreference_from_resource(zk, None, Some(true))
+        .context(ObjectMissingMetadataForOwnerRefSnafu)?
+        .with_recommended_labels(build_recommended_labels(
+            zk,
+            ZK_CONTROLLER_NAME,
+            &resolved_product_image.app_version_label,
+            &rolegroup.role,
+            &rolegroup.role_group,
+        ))
+        .context(ObjectMetaSnafu)?
+        .build();
+
+    let service_selector_labels =
+        Labels::role_group_selector(zk, APP_NAME, &rolegroup.role, &rolegroup.role_group)
+            .context(BuildLabelSnafu)?;
+
+    let service_spec = ServiceSpec {
+        // Internal communication does not need to be exposed
+        type_: Some("ClusterIP".to_string()),
+        cluster_ip: Some("None".to_string()),
+        ports: Some(vec![
+            ServicePort {
+                // TODO (@NickLarsenNZ): Use a const
+                name: Some("zk-leader".to_string()),
+                port: ZOOKEEPER_LEADER_PORT as i32,
+                protocol: Some("TCP".to_string()),
+                ..ServicePort::default()
+            },
+            ServicePort {
+                // TODO (@NickLarsenNZ): Use a const
+                name: Some("zk-election".to_string()),
+                port: ZOOKEEPER_ELECTION_PORT as i32,
+                protocol: Some("TCP".to_string()),
+                ..ServicePort::default()
+            },
+        ]),
+        selector: Some(service_selector_labels.into()),
+        publish_not_ready_addresses: Some(true),
+        ..ServiceSpec::default()
+    };
+
+    Ok(Service {
+        metadata,
+        spec: Some(service_spec),
+        status: None,
+    })
+}
+
+/// The rolegroup [`Service`] for exposing metrics
+fn build_server_rolegroup_metrics_service(
     zk: &v1alpha1::ZookeeperCluster,
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     resolved_product_image: &ResolvedProductImage,
@@ -655,7 +726,7 @@ fn build_server_rolegroup_service(
 
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
-        .name(build_headless_role_group_metrics_service_name(
+        .name(build_role_group_metrics_service_name(
             rolegroup.object_name(),
         ))
         .ownerreference_from_resource(zk, None, Some(true))
@@ -767,8 +838,7 @@ fn build_server_rolegroup_statefulset(
     // .context(LabelBuildSnafu)?;
 
     let listener_pvc = build_role_listener_pvc(
-        &zk.server_role_listener_name()
-            .expect("todo: get role from zk_role"),
+        &role_listener_name(zk, &ZookeeperRole::Server),
         &unversioned_recommended_labels,
     )?;
 
@@ -901,8 +971,8 @@ fn build_server_rolegroup_statefulset(
             ..Probe::default()
         })
         .add_container_port("zk", zookeeper_security.client_port().into())
-        .add_container_port("zk-leader", 2888)
-        .add_container_port("zk-election", 3888)
+        .add_container_port("zk-leader", ZOOKEEPER_LEADER_PORT as i32)
+        .add_container_port("zk-election", ZOOKEEPER_ELECTION_PORT as i32)
         .add_container_port("metrics", 9505)
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
@@ -1058,7 +1128,7 @@ fn build_server_rolegroup_statefulset(
             match_labels: Some(statefulset_match_labels.into()),
             ..LabelSelector::default()
         },
-        service_name: Some(build_headless_role_group_metrics_service_name(
+        service_name: Some(build_role_group_headless_service_name(
             rolegroup_ref.object_name(),
         )),
         template: pod_template,

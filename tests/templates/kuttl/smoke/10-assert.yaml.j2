@@ -83,3 +83,38 @@ status:
   expectedPods: 3
   currentHealthy: 3
   disruptionsAllowed: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server
+spec:
+  type: ClusterIP # listenerClass: cluster-internal
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-primary-headless
+spec:
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-primary-metrics
+spec:
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-secondary-headless
+spec:
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-secondary-metrics
+spec:
+  type: ClusterIP

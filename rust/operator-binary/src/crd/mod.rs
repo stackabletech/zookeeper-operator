@@ -34,7 +34,11 @@ use stackable_operator::{
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
-use crate::crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig};
+use crate::{
+    crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig},
+    discovery::build_role_group_headless_service_name,
+    listener::role_listener_name,
+};
 
 pub mod affinity;
 pub mod authentication;
@@ -46,6 +50,9 @@ pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
+
+pub const ZOOKEEPER_LEADER_PORT: u16 = 2888;
+pub const ZOOKEEPER_ELECTION_PORT: u16 = 3888;
 
 pub const METRICS_PORT_NAME: &str = "metrics";
 pub const METRICS_PORT: u16 = 9505;
@@ -335,7 +342,7 @@ pub enum ZookeeperRole {
 /// Used for service discovery.
 pub struct ZookeeperPodRef {
     pub namespace: String,
-    pub role_group_service_name: String,
+    pub role_group_headless_service_name: String,
     pub pod_name: String,
     pub zookeeper_myid: u16,
 }
@@ -488,12 +495,11 @@ impl HasStatusCondition for v1alpha1::ZookeeperCluster {
 }
 
 impl ZookeeperPodRef {
-    // TODO (@NickLarsenNZ): What to do here?
-    pub fn fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
+    pub fn internal_fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
         format!(
             "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}",
             pod_name = self.pod_name,
-            service_name = self.role_group_service_name,
+            service_name = self.role_group_headless_service_name,
             namespace = self.namespace,
             cluster_domain = cluster_info.cluster_domain
         )
@@ -524,13 +530,6 @@ impl v1alpha1::ZookeeperCluster {
         }
     }
 
-    /// The name of the role-level [Listener]
-    ///
-    /// [Listener]: stackable_operator::crd::listener::v1alpha1::Listener
-    pub fn server_role_listener_name(&self) -> Option<String> {
-        self.metadata.name.clone()
-    }
-
     /// The fully-qualified domain name of the role-level [Listener]
     ///
     /// [Listener]: stackable_operator::crd::listener::v1alpha1::Listener
@@ -540,7 +539,7 @@ impl v1alpha1::ZookeeperCluster {
     ) -> Option<String> {
         Some(format!(
             "{role_listener_name}.{namespace}.svc.{cluster_domain}",
-            role_listener_name = self.server_role_listener_name()?,
+            role_listener_name = role_listener_name(self, &ZookeeperRole::Server),
             namespace = self.metadata.namespace.as_ref()?,
             cluster_domain = cluster_info.cluster_domain
         ))
@@ -626,8 +625,10 @@ impl v1alpha1::ZookeeperCluster {
             for i in 0..rolegroup.replicas.unwrap_or(1) {
                 pod_refs.push(ZookeeperPodRef {
                     namespace: ns.clone(),
-                    role_group_service_name: rolegroup_ref.object_name(),
-                    pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
+                    role_group_headless_service_name: build_role_group_headless_service_name(
+                        rolegroup_ref.object_name(),
+                    ),
+                    pod_name: format!("{role_group}-{i}", role_group = rolegroup_ref.object_name()),
                     zookeeper_myid: i + myid_offset,
                 });
             }

@@ -25,8 +25,9 @@ use tracing::{debug, info};
 
 use crate::{
     APP_NAME, OPERATOR_NAME,
-    crd::{DOCKER_IMAGE_BASE_NAME, security::ZookeeperSecurity, v1alpha1},
+    crd::{DOCKER_IMAGE_BASE_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
     discovery::{self, build_discovery_configmap},
+    listener::role_listener_name,
 };
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
@@ -287,11 +288,7 @@ async fn reconcile_apply(
 
     let listener = client
         .get::<listener::v1alpha1::Listener>(
-            // TODO (@NickLarsenNZ): Check what this should be. Source it from the right place, or use a const
-            &zk.server_role_listener_name()
-                .with_context(|| NoZkSvcNameSnafu {
-                    zk: ObjectRef::from_obj(&zk),
-                })?,
+            &role_listener_name(&zk, &ZookeeperRole::Server),
             zk.metadata
                 .namespace
                 .as_deref()
@@ -357,7 +354,16 @@ async fn reconcile_cleanup(
     Ok(controller::Action::await_change())
 }
 
-// TODO (@NickLarsenNZ): What to do here?
+/// Get the ZooKeeper management host:port for the operator to manage the ZooKeeper cluster.
+///
+/// This uses the _Server_ Role [Listener] address because it covers ZooKeeper replicas across all
+/// RoleGroups.
+/// This does mean that when the listenerClass is `external-stable`, the operator will need to be
+/// able to access the external adress (eg: Load Balancer).
+///
+/// [Listener]: ::stackable_operator::crd::listener::v1alpha1::Listener
+// NOTE (@NickLarsenNZ): If we want to keep this traffic internal, we would need to choose one of
+// the RoleGroups headless services - or make a dedicated ClusterIP service for the operator to use.
 fn zk_mgmt_addr(
     zk: &v1alpha1::ZookeeperCluster,
     zookeeper_security: &ZookeeperSecurity,

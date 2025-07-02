@@ -4,9 +4,9 @@
 NAMESPACE=$1
 
 {% if test_scenario['values']['use-client-auth-tls'] == 'true' or test_scenario['values']['use-server-tls'] == 'true' %}
-SERVER="test-zk-server-primary-1.test-zk-server-primary.${NAMESPACE}.svc.cluster.local:2282"
+SERVER="test-zk-server.${NAMESPACE}.svc.cluster.local:2282"
 {% else %}
-SERVER="test-zk-server-primary-1.test-zk-server-primary.${NAMESPACE}.svc.cluster.local:2181"
+SERVER="test-zk-server.${NAMESPACE}.svc.cluster.local:2181"
 {% endif %}
 
 # just to be safe...

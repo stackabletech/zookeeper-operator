@@ -46,7 +46,7 @@ pub enum Error {
     },
 
     #[snafu(display("{listener} has no ingress addresses"))]
-    NoListnerAddresses {
+    NoListenerIngressAddresses {
         listener: ObjectRef<listener::v1alpha1::Listener>,
     },
 
@@ -157,8 +157,7 @@ fn listener_addresses(
         .status
         .as_ref()
         .and_then(|listener_status| listener_status.ingress_addresses.as_ref())
-        // TODO (@NickLarsenNZ): Rename error variant
-        .context(NoListnerAddressesSnafu { listener })?
+        .context(NoListenerIngressAddressesSnafu { listener })?
         .iter()
         // Filter the addresses that have the port we are interested in (they likely all have it though)
         .filter_map(|listener_ingress| {
@@ -185,7 +184,13 @@ fn listener_addresses(
 }
 
 // TODO (@NickLarsenNZ): Implement this directly on RoleGroupRef, ie:
-// RoleGroupRef<K: Resource>::metrics_service_name(&self)
-pub fn build_headless_role_group_metrics_service_name(name: String) -> String {
+// RoleGroupRef<K: Resource>::metrics_service_name(&self) to restrict what _name_ can be.
+pub fn build_role_group_headless_service_name(name: String) -> String {
+    format!("{name}-headless")
+}
+
+// TODO (@NickLarsenNZ): Implement this directly on RoleGroupRef, ie:
+// RoleGroupRef<K: Resource>::metrics_service_name(&self) to restrict what _name_ can be.
+pub fn build_role_group_metrics_service_name(name: String) -> String {
     format!("{name}-metrics")
 }
