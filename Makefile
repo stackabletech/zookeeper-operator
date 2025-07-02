@@ -105,7 +105,6 @@ compile-chart: version crds config
 
 chart-clean:
 	rm -rf "deploy/helm/${OPERATOR_NAME}/configs"
-	rm -rf "deploy/helm/${OPERATOR_NAME}/crds"
 
 version:
 	cat "deploy/helm/${OPERATOR_NAME}/Chart.yaml" | yq ".version = \"${VERSION}\" | .appVersion = \"${VERSION}\"" > "deploy/helm/${OPERATOR_NAME}/Chart.yaml.new"
@@ -117,9 +116,10 @@ config:
 		cp -r deploy/config-spec/* "deploy/helm/${OPERATOR_NAME}/configs";\
 	fi
 
+# We generate a crds.yaml as preview, so that the effect of code changes are visible.
+# The operator will take care of the CRD rollout itself.
 crds:
-	mkdir -p deploy/helm/"${OPERATOR_NAME}"/crds
-	cargo run --bin stackable-"${OPERATOR_NAME}" -- crd | yq eval '.metadata.annotations["helm.sh/resource-policy"]="keep"' - > "deploy/helm/${OPERATOR_NAME}/crds/crds.yaml"
+	cargo run --bin stackable-"${OPERATOR_NAME}" -- crd > crds.yaml
 
 chart-lint: compile-chart
 	docker run -it -v $(shell pwd):/build/helm-charts -w /build/helm-charts quay.io/helmpack/chart-testing:v3.5.0  ct lint --config deploy/helm/ct.yaml

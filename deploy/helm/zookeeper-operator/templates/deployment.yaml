@@ -47,6 +47,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.annotations['internal.stackable.tech/image']
+            - name: OPERATOR_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: OPERATOR_SERVICE_NAME
+              value: {{ include "operator.fullname" . }}
             {{- if .Values.kubernetesClusterDomain }}
             - name: KUBERNETES_CLUSTER_DOMAIN
               value: {{ .Values.kubernetesClusterDomain | quote }}

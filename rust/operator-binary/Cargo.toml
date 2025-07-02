@@ -12,6 +12,7 @@ build = "build.rs"
 [dependencies]
 product-config.workspace = true
 stackable-operator.workspace = true
+stackable-webhook.workspace = true
 
 anyhow.workspace = true
 clap.workspace = true
