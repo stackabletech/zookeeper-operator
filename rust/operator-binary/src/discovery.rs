@@ -123,18 +123,6 @@ pub fn build_discovery_configmap(
         .context(BuildConfigMapSnafu)
 }
 
-// /// Lists all Pods FQDNs expected to host the [`v1alpha1::ZookeeperCluster`]
-// fn pod_hosts<'a>(
-//     zk: &'a v1alpha1::ZookeeperCluster,
-//     zookeeper_security: &'a ZookeeperSecurity,
-//     cluster_info: &'a KubernetesClusterInfo,
-// ) -> Result<impl IntoIterator<Item = (String, u16)> + 'a> {
-//     Ok(zk
-//         .pods()
-//         .context(ExpectedPodsSnafu)?
-//         .map(|pod_ref| (pod_ref.fqdn(cluster_info), zookeeper_security.client_port())))
-// }
-
 /// Lists all listener address and port number pairs for a given `port_name` for Pods participating in the [`Listener`][1]
 ///
 /// This returns pairs of `(Address, Port)`, where address could be a hostname or IP address of a node, clusterIP or external
