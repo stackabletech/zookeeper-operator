@@ -77,8 +77,9 @@ use crate::{
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
         DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
-        MAX_ZK_LOG_FILES_SIZE, METRICS_PORT, METRICS_PORT_NAME, STACKABLE_CONFIG_DIR,
-        STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+        MAX_ZK_LOG_FILES_SIZE, METRICS_PORT, METRICS_PORT_NAME, METRICS_PROVIDER_HTTP_PORT,
+        METRICS_PROVIDER_HTTP_PORT_KEY, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+        STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
         ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_LEADER_PORT, ZOOKEEPER_PROPERTIES_FILE, ZookeeperRole,
         security::{self, ZookeeperSecurity},
         v1alpha1::{self, ZookeeperServerRoleConfig},
@@ -98,7 +99,6 @@ pub const ZK_FULL_CONTROLLER_NAME: &str = concatcp!(ZK_CONTROLLER_NAME, '.', OPE
 pub const LISTENER_VOLUME_NAME: &str = "listener";
 pub const LISTENER_VOLUME_DIR: &str = "/stackable/listener";
 
-pub const ZK_UID: i64 = 1000;
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
     pub product_config: ProductConfigManager,
@@ -435,8 +435,12 @@ pub async fn reconcile_zk(
 
         let rg_headless_service =
             build_server_rolegroup_headless_service(zk, &rolegroup, &resolved_product_image)?;
-        let rg_metrics_service =
-            build_server_rolegroup_metrics_service(zk, &rolegroup, &resolved_product_image)?;
+        let rg_metrics_service = build_server_rolegroup_metrics_service(
+            zk,
+            &rolegroup,
+            &resolved_product_image,
+            rolegroup_config,
+        )?;
         let rg_configmap = build_server_rolegroup_config_map(
             zk,
             &rolegroup,
@@ -720,6 +724,7 @@ fn build_server_rolegroup_metrics_service(
     zk: &v1alpha1::ZookeeperCluster,
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     resolved_product_image: &ResolvedProductImage,
+    rolegroup_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
 ) -> Result<Service> {
     let prometheus_label =
         Label::try_from(("prometheus.io/scrape", "true")).context(BuildLabelSnafu)?;
@@ -750,12 +755,21 @@ fn build_server_rolegroup_metrics_service(
         // Internal communication does not need to be exposed
         type_: Some("ClusterIP".to_string()),
         cluster_ip: Some("None".to_string()),
-        ports: Some(vec![ServicePort {
-            name: Some(METRICS_PORT_NAME.to_string()),
-            port: METRICS_PORT.into(),
-            protocol: Some("TCP".to_string()),
-            ..ServicePort::default()
-        }]),
+        ports: Some(vec![
+            ServicePort {
+                name: Some(METRICS_PORT_NAME.to_string()),
+                port: METRICS_PORT.into(),
+                protocol: Some("TCP".to_string()),
+                ..ServicePort::default()
+            },
+            ServicePort {
+                // TODO (@NickLarsenNZ): Use a const: METRICS_PROVIDER_HTTP_PORT_NAME
+                name: Some("native-metrics".to_string()),
+                port: metrics_port_from_rolegroup_config(rolegroup_config).into(),
+                protocol: Some("TCP".to_string()),
+                ..ServicePort::default()
+            },
+        ]),
         selector: Some(service_selector_labels.into()),
         publish_not_ready_addresses: Some(true),
         ..ServiceSpec::default()
@@ -974,6 +988,10 @@ fn build_server_rolegroup_statefulset(
         .add_container_port("zk-leader", ZOOKEEPER_LEADER_PORT as i32)
         .add_container_port("zk-election", ZOOKEEPER_ELECTION_PORT as i32)
         .add_container_port("metrics", 9505)
+        .add_container_port(
+            "native-metrics",
+            metrics_port_from_rolegroup_config(server_config).into(),
+        )
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
@@ -1030,8 +1048,6 @@ fn build_server_rolegroup_statefulset(
         )
         .context(AddVolumeSnafu)?
         .security_context(PodSecurityContext {
-            run_as_user: Some(ZK_UID),
-            run_as_group: Some(0),
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
@@ -1141,6 +1157,27 @@ fn build_server_rolegroup_statefulset(
         spec: Some(statefulset_spec),
         status: None,
     })
+}
+
+fn metrics_port_from_rolegroup_config(
+    rolegroup_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
+) -> u16 {
+    let metrics_port = rolegroup_config
+        .get(&PropertyNameKind::File(
+            ZOOKEEPER_PROPERTIES_FILE.to_string(),
+        ))
+        .expect("{ZOOKEEPER_PROPERTIES_FILE} is present")
+        .get(METRICS_PROVIDER_HTTP_PORT_KEY)
+        .expect("{METRICS_PROVIDER_HTTP_PORT_KEY} is set");
+
+    match u16::from_str(metrics_port) {
+        Ok(port) => port,
+        Err(err) => {
+            tracing::error!("{err}");
+            tracing::info!("Defaulting to using {METRICS_PROVIDER_HTTP_PORT} as metrics port.");
+            METRICS_PROVIDER_HTTP_PORT
+        }
+    }
 }
 
 pub fn error_policy(

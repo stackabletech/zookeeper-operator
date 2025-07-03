@@ -60,11 +60,23 @@ def check_ruok(hosts):
 
 def check_monitoring(hosts):
     for host in hosts:
+        # test for the jmx exporter metrics
         url = host + ":9505"
         response = try_get(url)
 
+        if not response.ok:
+            print("Error for [" + url + "]: could not access monitoring")
+            exit(-1)
+
+        # test for the native metrics
+        url = host + ":7000/metrics"
+        response = try_get(url)
+
         if response.ok:
-            continue
+            # arbitrary metric was chosen to test if metrics are present in the response
+            if "quorum_size" not in response.text:
+                print("Error for [" + url + "]: missing metrics")
+                exit(-1)
         else:
             print("Error for [" + url + "]: could not access monitoring")
             exit(-1)
@@ -78,21 +90,12 @@ if __name__ == "__main__":
     args = vars(all_args.parse_args())
     namespace = args["namespace"]
 
-    host_primary_0 = (
-        "http://test-zk-server-primary-0.test-zk-server-primary-headless."
-        + namespace
-        + ".svc.cluster.local"
-    )
-    host_primary_1 = (
-        "http://test-zk-server-primary-1.test-zk-server-primary-headless."
-        + namespace
-        + ".svc.cluster.local"
-    )
-    host_secondary = (
-        "http://test-zk-server-secondary-0.test-zk-server-secondary-headless."
-        + namespace
-        + ".svc.cluster.local"
-    )
+    # Pod FQDNs via the headless service. Note: Metrics will still be accessible
+    # even though they are exposed on a different service. ie:
+    # test-zk-server-primary-mertrics.{namespace}.svc.cluster.local
+    host_primary_0 = f"http://test-zk-server-primary-0.test-zk-server-primary-headless.{namespace}.svc.cluster.local"
+    host_primary_1 = f"http://test-zk-server-primary-1.test-zk-server-primary-headless.{namespace}.svc.cluster.local"
+    host_secondary = f"http://test-zk-server-secondary-0.test-zk-server-secondary-headless.{namespace}.svc.cluster.local"
 
     hosts = [host_primary_0, host_primary_1, host_secondary]
 
