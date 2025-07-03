@@ -360,7 +360,7 @@ async fn reconcile_cleanup(
 /// This uses the _Server_ Role [Listener] address because it covers ZooKeeper replicas across all
 /// RoleGroups.
 /// This does mean that when the listenerClass is `external-stable`, the operator will need to be
-/// able to access the external adress (eg: Load Balancer).
+/// able to access the external address (eg: Load Balancer).
 ///
 /// [Listener]: ::stackable_operator::crd::listener::v1alpha1::Listener
 // NOTE (@NickLarsenNZ): If we want to keep this traffic internal, we would need to choose one of

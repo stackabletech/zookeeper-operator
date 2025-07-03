@@ -164,7 +164,7 @@ pub mod versioned {
         #[serde(flatten)]
         pub common: GenericRoleConfig,
 
-        /// This field controls which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html) is used to expose the ZooKeeper nodes.
+        /// This field controls which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html) is used to expose the ZooKeeper servers.
         #[serde(default = "default_listener_class")]
         pub listener_class: String,
     }

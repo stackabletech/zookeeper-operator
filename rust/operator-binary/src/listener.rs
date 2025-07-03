@@ -64,7 +64,7 @@ pub fn build_role_listener(
                 ZK_CONTROLLER_NAME,
                 &resolved_product_image.app_version_label,
                 &zk_role.to_string(),
-                "global", // TODO (@NickLarsenNZ): update build_recommended_labels to have an optional role_group
+                "none", // TODO (@NickLarsenNZ): update build_recommended_labels to have an optional role_group
             ))
             .context(RecommendedLabelsSnafu)?
             .build(),
@@ -81,7 +81,7 @@ pub fn build_role_listener(
 
 // TODO (@NickLarsenNZ): This could be a method we can put on a Resource that takes a role_name
 pub fn role_listener_name(zk: &v1alpha1::ZookeeperCluster, zk_role: &ZookeeperRole) -> String {
-    // TODO (@NickLarsenNZ): Make a convention, do we use name_any() and allow empty string? or metadata.name.expect, or handle the error?
+    // TODO (@NickLarsenNZ): Make a convention, do we use name_any() and allow empty string? or handle the error (as unlikely as it would be)?
     format!("{zk}-{zk_role}", zk = zk.name_any())
 }
 
