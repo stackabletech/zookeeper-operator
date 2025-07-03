@@ -124,6 +124,11 @@ pub enum Error {
 
     #[snafu(display("failed to initialize security context"))]
     FailedToInitializeSecurityContext { source: crate::crd::security::Error },
+
+    #[snafu(display("OwnerRef missing expected keys (name and/or namespace)"))]
+    OwnerRefMissingExpectedKeys {
+        source: stackable_operator::cluster_resources::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -155,7 +160,7 @@ impl ReconcilerError for Error {
 
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
-            Error::InvalidZookeeperZnode { source: _ } => None,
+            Error::InvalidZookeeperZnode { .. } => None,
             Error::ObjectMissingMetadata => None,
             Error::InvalidZkReference => None,
             Error::FindZk { zk, .. } => Some(zk.clone().erase()),
@@ -165,13 +170,14 @@ impl ReconcilerError for Error {
             Error::NoZkFqdn { zk } => Some(zk.clone().erase()),
             Error::EnsureZnode { zk, .. } => Some(zk.clone().erase()),
             Error::EnsureZnodeMissing { zk, .. } => Some(zk.clone().erase()),
-            Error::BuildDiscoveryConfigMap { source: _ } => None,
+            Error::BuildDiscoveryConfigMap { .. } => None,
             Error::ApplyDiscoveryConfigMap { cm, .. } => Some(cm.clone().erase()),
             Error::ApplyStatus { .. } => None,
-            Error::Finalizer { source: _ } => None,
-            Error::DeleteOrphans { source: _ } => None,
+            Error::Finalizer { .. } => None,
+            Error::DeleteOrphans { .. } => None,
             Error::ObjectHasNoNamespace => None,
-            Error::FailedToInitializeSecurityContext { source: _ } => None,
+            Error::FailedToInitializeSecurityContext { .. } => None,
+            Error::OwnerRefMissingExpectedKeys { .. } => None,
         }
     }
 }
@@ -274,8 +280,7 @@ async fn reconcile_apply(
         &znode.object_ref(&()),
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
     )
-    // TODO (@NickLarsenNZ): Handle this error properly. znode should contain namespace/name, but there is no guarantee
-    .unwrap();
+    .context(OwnerRefMissingExpectedKeysSnafu)?;
 
     znode_mgmt::ensure_znode_exists(
         &zk_mgmt_addr(&zk, &zookeeper_security, &client.kubernetes_cluster_info)?,
