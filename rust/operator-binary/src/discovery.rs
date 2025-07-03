@@ -10,7 +10,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
+    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
     utils::build_recommended_labels,
 };
 
@@ -75,7 +75,7 @@ pub fn build_discovery_configmap(
     let name = owner.name_unchecked();
     let namespace = owner.namespace().context(NoNamespaceSnafu)?;
 
-    let listener_addresses = listener_addresses(&listener, "zk")?;
+    let listener_addresses = listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)?;
 
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"

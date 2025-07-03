@@ -5,8 +5,8 @@ use stackable_operator::{
 };
 
 use crate::crd::{
-    JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, LoggingFramework,
-    METRICS_PORT, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
+    JMX_METRICS_PORT, JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
+    LoggingFramework, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
     v1alpha1::{
         ZookeeperCluster, ZookeeperConfig, ZookeeperConfigFragment, ZookeeperServerRoleConfig,
     },
@@ -39,7 +39,7 @@ fn construct_jvm_args(
     let jvm_args = vec![
         format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
         format!(
-            "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:/stackable/jmx/server.yaml"
+            "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={JMX_METRICS_PORT}:/stackable/jmx/server.yaml"
         ),
         match logging_framework {
             LoggingFramework::LOG4J => {

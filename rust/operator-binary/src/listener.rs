@@ -7,7 +7,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
+    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
     utils::build_recommended_labels,
     zk_controller::ZK_CONTROLLER_NAME,
 };
@@ -85,11 +85,10 @@ pub fn role_listener_name(zk: &v1alpha1::ZookeeperCluster, zk_role: &ZookeeperRo
     format!("{zk}-{zk_role}", zk = zk.name_any())
 }
 
-// We only use the http port here and intentionally omit
-// the metrics one.
+// We only use the server port here and intentionally omit the metrics one.
 fn listener_ports(zookeeper_security: &ZookeeperSecurity) -> Vec<listener::v1alpha1::ListenerPort> {
     vec![listener::v1alpha1::ListenerPort {
-        name: "zk".to_string(),
+        name: ZOOKEEPER_SERVER_PORT_NAME.to_string(),
         port: zookeeper_security.client_port().into(),
         protocol: Some("TCP".to_string()),
     }]

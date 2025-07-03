@@ -76,11 +76,14 @@ use crate::{
     command::create_init_container_command_args,
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
-        DOCKER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
-        MAX_ZK_LOG_FILES_SIZE, METRICS_PORT, METRICS_PORT_NAME, METRICS_PROVIDER_HTTP_PORT,
-        METRICS_PROVIDER_HTTP_PORT_KEY, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+        DOCKER_IMAGE_BASE_NAME, JMX_METRICS_PORT, JMX_METRICS_PORT_NAME,
+        JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE,
+        METRICS_PROVIDER_HTTP_PORT, METRICS_PROVIDER_HTTP_PORT_KEY,
+        METRICS_PROVIDER_HTTP_PORT_NAME, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
         STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
-        ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_LEADER_PORT, ZOOKEEPER_PROPERTIES_FILE, ZookeeperRole,
+        ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_LEADER_PORT,
+        ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_PROPERTIES_FILE, ZOOKEEPER_SERVER_PORT_NAME,
+        ZookeeperRole,
         security::{self, ZookeeperSecurity},
         v1alpha1::{self, ZookeeperServerRoleConfig},
     },
@@ -693,15 +696,13 @@ fn build_server_rolegroup_headless_service(
         cluster_ip: Some("None".to_string()),
         ports: Some(vec![
             ServicePort {
-                // TODO (@NickLarsenNZ): Use a const
-                name: Some("zk-leader".to_string()),
+                name: Some(ZOOKEEPER_LEADER_PORT_NAME.to_string()),
                 port: ZOOKEEPER_LEADER_PORT as i32,
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
             },
             ServicePort {
-                // TODO (@NickLarsenNZ): Use a const
-                name: Some("zk-election".to_string()),
+                name: Some(ZOOKEEPER_ELECTION_PORT_NAME.to_string()),
                 port: ZOOKEEPER_ELECTION_PORT as i32,
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
@@ -757,15 +758,14 @@ fn build_server_rolegroup_metrics_service(
         cluster_ip: Some("None".to_string()),
         ports: Some(vec![
             ServicePort {
-                name: Some(METRICS_PORT_NAME.to_string()),
-                port: METRICS_PORT.into(),
+                name: Some(JMX_METRICS_PORT_NAME.to_string()),
+                port: JMX_METRICS_PORT as i32,
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
             },
             ServicePort {
-                // TODO (@NickLarsenNZ): Use a const: METRICS_PROVIDER_HTTP_PORT_NAME
-                name: Some("native-metrics".to_string()),
-                port: metrics_port_from_rolegroup_config(rolegroup_config).into(),
+                name: Some(METRICS_PROVIDER_HTTP_PORT_NAME.to_string()),
+                port: metrics_port_from_rolegroup_config(rolegroup_config) as i32,
                 protocol: Some("TCP".to_string()),
                 ..ServicePort::default()
             },
@@ -983,13 +983,15 @@ fn build_server_rolegroup_statefulset(
             period_seconds: Some(1),
             ..Probe::default()
         })
-        // TODO (@NickLarsenNZ): Use consts for the port names (since they are used in multiple places)
-        .add_container_port("zk", zookeeper_security.client_port().into())
-        .add_container_port("zk-leader", ZOOKEEPER_LEADER_PORT as i32)
-        .add_container_port("zk-election", ZOOKEEPER_ELECTION_PORT as i32)
-        .add_container_port("metrics", 9505)
         .add_container_port(
-            "native-metrics",
+            ZOOKEEPER_SERVER_PORT_NAME,
+            zookeeper_security.client_port() as i32,
+        )
+        .add_container_port(ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_LEADER_PORT as i32)
+        .add_container_port(ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_ELECTION_PORT as i32)
+        .add_container_port(JMX_METRICS_PORT_NAME, 9505)
+        .add_container_port(
+            METRICS_PROVIDER_HTTP_PORT_NAME,
             metrics_port_from_rolegroup_config(server_config).into(),
         )
         .add_volume_mount("data", STACKABLE_DATA_DIR)
