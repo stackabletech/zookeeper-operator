@@ -62,8 +62,6 @@ pub enum Error {
 }
 
 /// Build a discovery [`ConfigMap`] containing connection details for a [`v1alpha1::ZookeeperCluster`] from a [`listener::v1alpha1::Listener`].
-///
-/// `hosts` will usually come from either [`pod_hosts`] or [`nodeport_hosts`].
 #[allow(clippy::too_many_arguments)]
 pub fn build_discovery_configmap(
     zk: &v1alpha1::ZookeeperCluster,
