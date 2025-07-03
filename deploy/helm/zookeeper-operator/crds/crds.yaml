@@ -437,7 +437,7 @@ spec:
                       properties:
                         listenerClass:
                           default: cluster-internal
-                          description: This field controls which [ListenerClass](https://docs.stackable.tech/home/nightly/listener-operator/listenerclass.html) is used to expose the ZooKeeper nodes.
+                          description: This field controls which [ListenerClass](https://docs.stackable.tech/home/nightly/listener-operator/listenerclass.html) is used to expose the ZooKeeper servers.
                           type: string
                         podDisruptionBudget:
                           default:
