@@ -125,9 +125,10 @@ pub enum Error {
     #[snafu(display("failed to initialize security context"))]
     FailedToInitializeSecurityContext { source: crate::crd::security::Error },
 
-    #[snafu(display("OwnerRef missing expected keys (name and/or namespace)"))]
-    OwnerRefMissingExpectedKeys {
+    #[snafu(display("Znode {znode:?} missing expected keys (name and/or namespace)"))]
+    ZnodeMissingExpectedKeys {
         source: stackable_operator::cluster_resources::Error,
+        znode: ObjectRef<v1alpha1::ZookeeperZnode>,
     },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -177,7 +178,7 @@ impl ReconcilerError for Error {
             Error::DeleteOrphans { .. } => None,
             Error::ObjectHasNoNamespace => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
-            Error::OwnerRefMissingExpectedKeys { .. } => None,
+            Error::ZnodeMissingExpectedKeys { .. } => None,
         }
     }
 }
@@ -280,7 +281,7 @@ async fn reconcile_apply(
         &znode.object_ref(&()),
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
     )
-    .context(OwnerRefMissingExpectedKeysSnafu)?;
+    .context(ZnodeMissingExpectedKeysSnafu { znode })?;
 
     znode_mgmt::ensure_znode_exists(
         &zk_mgmt_addr(&zk, &zookeeper_security, &client.kubernetes_cluster_info)?,
