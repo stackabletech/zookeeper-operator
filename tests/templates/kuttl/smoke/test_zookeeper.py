@@ -90,21 +90,12 @@ if __name__ == "__main__":
     args = vars(all_args.parse_args())
     namespace = args["namespace"]
 
-    host_primary_0 = (
-        "http://test-zk-server-primary-0.test-zk-server-primary."
-        + namespace
-        + ".svc.cluster.local"
-    )
-    host_primary_1 = (
-        "http://test-zk-server-primary-1.test-zk-server-primary."
-        + namespace
-        + ".svc.cluster.local"
-    )
-    host_secondary = (
-        "http://test-zk-server-secondary-0.test-zk-server-secondary."
-        + namespace
-        + ".svc.cluster.local"
-    )
+    # Pod FQDNs via the headless service. Note: Metrics will still be accessible
+    # even though they are exposed on a different service. ie:
+    # test-zk-server-primary-mertrics.{namespace}.svc.cluster.local
+    host_primary_0 = f"http://test-zk-server-primary-0.test-zk-server-primary-headless.{namespace}.svc.cluster.local"
+    host_primary_1 = f"http://test-zk-server-primary-1.test-zk-server-primary-headless.{namespace}.svc.cluster.local"
+    host_secondary = f"http://test-zk-server-secondary-0.test-zk-server-secondary-headless.{namespace}.svc.cluster.local"
 
     hosts = [host_primary_0, host_primary_1, host_secondary]
 

@@ -8,7 +8,8 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::product_image_selection::ResolvedProductImage,
-    k8s_openapi::api::core::v1::{ConfigMap, Service},
+    crd::listener,
+    k8s_openapi::api::core::v1::ConfigMap,
     kube::{
         self, Resource,
         api::ObjectMeta,
@@ -24,8 +25,9 @@ use tracing::{debug, info};
 
 use crate::{
     APP_NAME, OPERATOR_NAME,
-    crd::{DOCKER_IMAGE_BASE_NAME, security::ZookeeperSecurity, v1alpha1},
-    discovery::{self, build_discovery_configmaps},
+    crd::{DOCKER_IMAGE_BASE_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
+    discovery::{self, build_discovery_configmap},
+    listener::role_listener_name,
 };
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
@@ -52,7 +54,7 @@ pub enum Error {
     #[snafu(display("object does not refer to ZookeeperCluster"))]
     InvalidZkReference,
 
-    #[snafu(display("could not find {}", zk))]
+    #[snafu(display("could not find {zk:?}"))]
     FindZk {
         source: stackable_operator::client::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
@@ -63,30 +65,30 @@ pub enum Error {
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("could not find server role service name for {}", zk))]
+    #[snafu(display("could not find server role service name for {zk:?}"))]
     NoZkSvcName {
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("could not find server role service for {}", zk))]
+    #[snafu(display("could not find server role service for {zk:?}"))]
     FindZkSvc {
         source: stackable_operator::client::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("failed to calculate FQDN for {}", zk))]
+    #[snafu(display("failed to calculate FQDN for {zk:?}"))]
     NoZkFqdn {
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("failed to ensure that ZNode {} exists in {}", znode_path, zk))]
+    #[snafu(display("failed to ensure that ZNode {znode_path:?} exists in {zk:?}"))]
     EnsureZnode {
         source: znode_mgmt::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
         znode_path: String,
     },
 
-    #[snafu(display("failed to ensure that ZNode {} is missing from {}", znode_path, zk))]
+    #[snafu(display("failed to ensure that ZNode {znode_path:?} is missing from {zk:?}"))]
     EnsureZnodeMissing {
         source: znode_mgmt::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
@@ -96,7 +98,7 @@ pub enum Error {
     #[snafu(display("failed to build discovery information"))]
     BuildDiscoveryConfigMap { source: discovery::Error },
 
-    #[snafu(display("failed to save discovery information to {}", cm))]
+    #[snafu(display("failed to save discovery information to {cm:?}"))]
     ApplyDiscoveryConfigMap {
         source: stackable_operator::cluster_resources::Error,
         cm: ObjectRef<ConfigMap>,
@@ -122,6 +124,12 @@ pub enum Error {
 
     #[snafu(display("failed to initialize security context"))]
     FailedToInitializeSecurityContext { source: crate::crd::security::Error },
+
+    #[snafu(display("Znode {znode:?} missing expected keys (name and/or namespace)"))]
+    ZnodeMissingExpectedKeys {
+        source: stackable_operator::cluster_resources::Error,
+        znode: ObjectRef<v1alpha1::ZookeeperZnode>,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -153,7 +161,7 @@ impl ReconcilerError for Error {
 
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
-            Error::InvalidZookeeperZnode { source: _ } => None,
+            Error::InvalidZookeeperZnode { .. } => None,
             Error::ObjectMissingMetadata => None,
             Error::InvalidZkReference => None,
             Error::FindZk { zk, .. } => Some(zk.clone().erase()),
@@ -163,13 +171,14 @@ impl ReconcilerError for Error {
             Error::NoZkFqdn { zk } => Some(zk.clone().erase()),
             Error::EnsureZnode { zk, .. } => Some(zk.clone().erase()),
             Error::EnsureZnodeMissing { zk, .. } => Some(zk.clone().erase()),
-            Error::BuildDiscoveryConfigMap { source: _ } => None,
+            Error::BuildDiscoveryConfigMap { .. } => None,
             Error::ApplyDiscoveryConfigMap { cm, .. } => Some(cm.clone().erase()),
             Error::ApplyStatus { .. } => None,
-            Error::Finalizer { source: _ } => None,
-            Error::DeleteOrphans { source: _ } => None,
+            Error::Finalizer { .. } => None,
+            Error::DeleteOrphans { .. } => None,
             Error::ObjectHasNoNamespace => None,
-            Error::FailedToInitializeSecurityContext { source: _ } => None,
+            Error::FailedToInitializeSecurityContext { .. } => None,
+            Error::ZnodeMissingExpectedKeys { .. } => None,
         }
     }
 }
@@ -272,7 +281,7 @@ async fn reconcile_apply(
         &znode.object_ref(&()),
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
     )
-    .unwrap();
+    .context(ZnodeMissingExpectedKeysSnafu { znode })?;
 
     znode_mgmt::ensure_znode_exists(
         &zk_mgmt_addr(&zk, &zookeeper_security, &client.kubernetes_cluster_info)?,
@@ -284,12 +293,9 @@ async fn reconcile_apply(
         znode_path,
     })?;
 
-    let server_role_service = client
-        .get::<Service>(
-            &zk.server_role_service_name()
-                .with_context(|| NoZkSvcNameSnafu {
-                    zk: ObjectRef::from_obj(&zk),
-                })?,
+    let listener = client
+        .get::<listener::v1alpha1::Listener>(
+            &role_listener_name(&zk, &ZookeeperRole::Server),
             zk.metadata
                 .namespace
                 .as_deref()
@@ -299,25 +305,23 @@ async fn reconcile_apply(
         .context(FindZkSvcSnafu {
             zk: ObjectRef::from_obj(&zk),
         })?;
-    for discovery_cm in build_discovery_configmaps(
+
+    let discovery_cm = build_discovery_configmap(
         &zk,
         znode,
-        client,
         ZNODE_CONTROLLER_NAME,
-        &server_role_service,
+        listener,
         Some(znode_path),
         resolved_product_image,
         &zookeeper_security,
     )
-    .await
-    .context(BuildDiscoveryConfigMapSnafu)?
-    {
-        let obj_ref = ObjectRef::from_obj(&discovery_cm);
-        cluster_resources
-            .add(client, discovery_cm)
-            .await
-            .with_context(|_| ApplyDiscoveryConfigMapSnafu { cm: obj_ref })?;
-    }
+    .context(BuildDiscoveryConfigMapSnafu)?;
+
+    let obj_ref = ObjectRef::from_obj(&discovery_cm);
+    cluster_resources
+        .add(client, discovery_cm)
+        .await
+        .with_context(|_| ApplyDiscoveryConfigMapSnafu { cm: obj_ref })?;
 
     cluster_resources
         .delete_orphaned_resources(client)
@@ -357,6 +361,16 @@ async fn reconcile_cleanup(
     Ok(controller::Action::await_change())
 }
 
+/// Get the ZooKeeper management host:port for the operator to manage the ZooKeeper cluster.
+///
+/// This uses the _Server_ Role [Listener] address because it covers ZooKeeper replicas across all
+/// RoleGroups.
+/// This does mean that when the listenerClass is `external-stable`, the operator will need to be
+/// able to access the external address (eg: Load Balancer).
+///
+/// [Listener]: ::stackable_operator::crd::listener::v1alpha1::Listener
+// NOTE (@NickLarsenNZ): If we want to keep this traffic internal, we would need to choose one of
+// the RoleGroups headless services - or make a dedicated ClusterIP service for the operator to use.
 fn zk_mgmt_addr(
     zk: &v1alpha1::ZookeeperCluster,
     zookeeper_security: &ZookeeperSecurity,
@@ -365,12 +379,13 @@ fn zk_mgmt_addr(
     // Rust ZooKeeper client does not support client-side load-balancing, so use
     // (load-balanced) global service instead.
     Ok(format!(
-        "{}:{}",
-        zk.server_role_service_fqdn(cluster_info)
+        "{hostname}:{port}",
+        hostname = zk
+            .server_role_listener_fqdn(cluster_info)
             .with_context(|| NoZkFqdnSnafu {
                 zk: ObjectRef::from_obj(zk),
             })?,
-        zookeeper_security.client_port(),
+        port = zookeeper_security.client_port(),
     ))
 }
 
@@ -427,34 +442,34 @@ mod znode_mgmt {
             source: std::io::Error,
             addr: String,
         },
-        #[snafu(display("address {} did not resolve to any socket addresses", addr))]
+        #[snafu(display("address {addr:?} did not resolve to any socket addresses"))]
         AddrResolution { addr: String },
-        #[snafu(display("failed to connect to {}", addr))]
+        #[snafu(display("failed to connect to {addr:?}"))]
         Connect {
             source: tokio_zookeeper::error::Error,
             addr: SocketAddr,
         },
-        #[snafu(display("protocol error creating znode {}", path))]
+        #[snafu(display("protocol error creating znode {path:?}"))]
         CreateZnodeProtocol {
             source: tokio_zookeeper::error::Error,
             path: String,
         },
-        #[snafu(display("failed to create znode {}", path))]
+        #[snafu(display("failed to create znode {path:?}"))]
         CreateZnode {
             source: tokio_zookeeper::error::Create,
             path: String,
         },
-        #[snafu(display("protocol error deleting znode {}", path))]
+        #[snafu(display("protocol error deleting znode {path:?}"))]
         DeleteZnodeProtocol {
             source: tokio_zookeeper::error::Error,
             path: String,
         },
-        #[snafu(display("failed to delete znode {}", path))]
+        #[snafu(display("failed to delete znode {path:?}"))]
         DeleteZnode {
             source: tokio_zookeeper::error::Delete,
             path: String,
         },
-        #[snafu(display("failed to find children to delete of {}", path))]
+        #[snafu(display("failed to find children to delete of {path:?}"))]
         DeleteZnodeFindChildrenProtocol {
             source: tokio_zookeeper::error::Error,
             path: String,

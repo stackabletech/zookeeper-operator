@@ -8,7 +8,7 @@ use stackable_operator::{
     cli::{Command, ProductOperatorRun},
     k8s_openapi::api::{
         apps::v1::StatefulSet,
-        core::v1::{ConfigMap, Endpoints, Service},
+        core::v1::{ConfigMap, Service},
     },
     kube::{
         Resource,
@@ -31,6 +31,7 @@ mod command;
 mod config;
 pub mod crd;
 mod discovery;
+mod listener;
 mod operations;
 mod product_logging;
 mod utils;
@@ -102,29 +103,10 @@ async fn main() -> anyhow::Result<()> {
                     instance: None,
                 },
             ));
-            let zk_store = zk_controller.store();
             let zk_controller = zk_controller
                 .owns(
                     watch_namespace.get_api::<DeserializeGuard<Service>>(&client),
                     watcher::Config::default(),
-                )
-                .watches(
-                    watch_namespace.get_api::<DeserializeGuard<Endpoints>>(&client),
-                    watcher::Config::default(),
-                    move |endpoints| {
-                        zk_store
-                            .state()
-                            .into_iter()
-                            .filter(move |zk| {
-                                let Ok(zk) = &zk.0 else {
-                                    return false;
-                                };
-                                let endpoints_meta = endpoints.meta();
-                                zk.metadata.namespace == endpoints_meta.namespace
-                                    && zk.server_role_service_name() == endpoints_meta.name
-                            })
-                            .map(|zk| ObjectRef::from_obj(&*zk))
-                    },
                 )
                 .owns(
                     watch_namespace.get_api::<DeserializeGuard<StatefulSet>>(&client),

@@ -25,7 +25,13 @@ use stackable_operator::{
     time::Duration,
 };
 
-use crate::crd::{authentication, authentication::ResolvedAuthenticationClasses, tls, v1alpha1};
+use crate::{
+    crd::{
+        authentication::{self, ResolvedAuthenticationClasses},
+        tls, v1alpha1,
+    },
+    zk_controller::LISTENER_VOLUME_NAME,
+};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -158,7 +164,7 @@ impl ZookeeperSecurity {
                 .add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR)
                 .context(AddVolumeMountSnafu)?;
             pod_builder
-                .add_volume(Self::create_tls_volume(
+                .add_volume(Self::create_server_tls_volume(
                     tls_volume_name,
                     secret_class,
                     requested_secret_lifetime,
@@ -172,7 +178,7 @@ impl ZookeeperSecurity {
             .add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR)
             .context(AddVolumeMountSnafu)?;
         pod_builder
-            .add_volume(Self::create_tls_volume(
+            .add_volume(Self::create_quorum_tls_volume(
                 tls_volume_name,
                 &self.quorum_secret_class,
                 requested_secret_lifetime,
@@ -298,8 +304,34 @@ impl ZookeeperSecurity {
             .or(self.server_secret_class.as_ref())
     }
 
-    /// Creates ephemeral volumes to mount the `SecretClass` into the Pods
-    fn create_tls_volume(
+    /// Creates ephemeral volumes to mount the `SecretClass` with the listener-volume scope into the Pods.
+    ///
+    /// The resulting volume will contain TLS certificates with the FQDN reported in the applicable [ListenerStatus].
+    ///
+    /// [ListenerStatus]: ::stackable_operator::crd::listener::v1alpha1::ListenerStatus
+    fn create_server_tls_volume(
+        volume_name: &str,
+        secret_class_name: &str,
+        requested_secret_lifetime: &Duration,
+    ) -> Result<Volume> {
+        let volume = VolumeBuilder::new(volume_name)
+            .ephemeral(
+                SecretOperatorVolumeSourceBuilder::new(secret_class_name)
+                    .with_listener_volume_scope(LISTENER_VOLUME_NAME)
+                    .with_format(SecretFormat::TlsPkcs12)
+                    .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
+                    .build()
+                    .context(BuildTlsVolumeSnafu { volume_name })?,
+            )
+            .build();
+
+        Ok(volume)
+    }
+
+    /// Creates ephemeral volumes to mount the `SecretClass` with the pod scope into the Pods.
+    ///
+    /// The resulting volume will contain TLS certificates with the FQDN of the Pod in relation to the StatefulSet's headless service.
+    fn create_quorum_tls_volume(
         volume_name: &str,
         secret_class_name: &str,
         requested_secret_lifetime: &Duration,
@@ -308,7 +340,6 @@ impl ZookeeperSecurity {
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(secret_class_name)
                     .with_pod_scope()
-                    .with_node_scope()
                     .with_format(SecretFormat::TlsPkcs12)
                     .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                     .build()

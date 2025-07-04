@@ -4,13 +4,13 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
     commons::product_image_selection::ResolvedProductImage,
-    k8s_openapi::api::core::v1::{ConfigMap, Endpoints, Service},
+    crd::listener,
+    k8s_openapi::api::core::v1::ConfigMap,
     kube::{Resource, ResourceExt, runtime::reflector::ObjectRef},
-    utils::cluster_info::KubernetesClusterInfo,
 };
 
 use crate::{
-    crd::{ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
+    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
     utils::build_recommended_labels,
 };
 
@@ -27,29 +27,28 @@ pub enum Error {
     #[snafu(display("chroot path {} was relative (must be absolute)", chroot))]
     RelativeChroot { chroot: String },
 
-    #[snafu(display("object has no name associated"))]
-    NoName,
-
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
 
     #[snafu(display("failed to list expected pods"))]
     ExpectedPods { source: crate::crd::Error },
 
-    #[snafu(display("could not find service port with name {}", port_name))]
-    NoServicePort { port_name: String },
-
-    #[snafu(display("service port with name {} does not have a nodePort", port_name))]
-    NoNodePort { port_name: String },
-
-    #[snafu(display("could not find Endpoints for {}", svc))]
-    FindEndpoints {
-        source: stackable_operator::client::Error,
-        svc: ObjectRef<Service>,
+    #[snafu(display("{listener} does not have a port with the name {port_name:?}"))]
+    PortNotFound {
+        port_name: String,
+        listener: ObjectRef<listener::v1alpha1::Listener>,
     },
 
-    #[snafu(display("nodePort was out of range"))]
-    InvalidNodePort { source: TryFromIntError },
+    #[snafu(display("expected an unsigned 16-bit port, got {port_number}"))]
+    InvalidPort {
+        source: TryFromIntError,
+        port_number: i32,
+    },
+
+    #[snafu(display("{listener} has no ingress addresses"))]
+    NoListenerIngressAddresses {
+        listener: ObjectRef<listener::v1alpha1::Listener>,
+    },
 
     #[snafu(display("failed to build ConfigMap"))]
     BuildConfigMap {
@@ -62,75 +61,31 @@ pub enum Error {
     },
 }
 
-/// Builds discovery [`ConfigMap`]s for connecting to a [`v1alpha1::ZookeeperCluster`] for all expected scenarios
+/// Build a discovery [`ConfigMap`] containing connection details for a [`v1alpha1::ZookeeperCluster`] from a [`listener::v1alpha1::Listener`].
 #[allow(clippy::too_many_arguments)]
-pub async fn build_discovery_configmaps(
+pub fn build_discovery_configmap(
     zk: &v1alpha1::ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
-    client: &stackable_operator::client::Client,
     controller_name: &str,
-    svc: &Service,
+    listener: listener::v1alpha1::Listener,
     chroot: Option<&str>,
     resolved_product_image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
-) -> Result<Vec<ConfigMap>> {
+) -> Result<ConfigMap> {
     let name = owner.name_unchecked();
     let namespace = owner.namespace().context(NoNamespaceSnafu)?;
 
-    let mut discovery_configmaps = vec![build_discovery_configmap(
-        zk,
-        owner,
-        zookeeper_security,
-        name.as_str(),
-        &namespace,
-        controller_name,
-        chroot,
-        pod_hosts(zk, zookeeper_security, &client.kubernetes_cluster_info)?,
-        resolved_product_image,
-    )?];
-    if zk.spec.cluster_config.listener_class
-        == crate::crd::v1alpha1::CurrentlySupportedListenerClasses::ExternalUnstable
-    {
-        discovery_configmaps.push(build_discovery_configmap(
-            zk,
-            owner,
-            zookeeper_security,
-            &format!("{}-nodeport", name),
-            &namespace,
-            controller_name,
-            chroot,
-            nodeport_hosts(client, svc, "zk").await?,
-            resolved_product_image,
-        )?);
-    }
+    let listener_addresses = listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)?;
 
-    Ok(discovery_configmaps)
-}
-
-/// Build a discovery [`ConfigMap`] containing information about how to connect to a certain [`v1alpha1::ZookeeperCluster`]
-///
-/// `hosts` will usually come from either [`pod_hosts`] or [`nodeport_hosts`].
-#[allow(clippy::too_many_arguments)]
-fn build_discovery_configmap(
-    zk: &v1alpha1::ZookeeperCluster,
-    owner: &impl Resource<DynamicType = ()>,
-    zookeeper_security: &ZookeeperSecurity,
-    name: &str,
-    namespace: &str,
-    controller_name: &str,
-    chroot: Option<&str>,
-    hosts: impl IntoIterator<Item = (impl Into<String>, u16)>,
-    resolved_product_image: &ResolvedProductImage,
-) -> Result<ConfigMap> {
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"
     // See https://zookeeper.apache.org/doc/current/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-
-    let hosts = hosts
+    let listener_addresses = listener_addresses
         .into_iter()
-        .map(|(host, port)| format!("{}:{}", host.into(), port))
+        .map(|(host, port)| format!("{host}:{port}"))
         .collect::<Vec<_>>()
         .join(",");
-    let mut conn_str = hosts.clone();
+    let mut conn_str = listener_addresses.clone();
     if let Some(chroot) = chroot {
         if !chroot.starts_with('/') {
             return RelativeChrootSnafu { chroot }.fail();
@@ -158,7 +113,7 @@ fn build_discovery_configmap(
         )
         .add_data("ZOOKEEPER", conn_str)
         // Some clients don't support ZooKeeper's merged `hosts/chroot` format, so export them separately for these clients
-        .add_data("ZOOKEEPER_HOSTS", hosts)
+        .add_data("ZOOKEEPER_HOSTS", listener_addresses)
         .add_data(
             "ZOOKEEPER_CLIENT_PORT",
             zookeeper_security.client_port().to_string(),
@@ -168,57 +123,60 @@ fn build_discovery_configmap(
         .context(BuildConfigMapSnafu)
 }
 
-/// Lists all Pods FQDNs expected to host the [`v1alpha1::ZookeeperCluster`]
-fn pod_hosts<'a>(
-    zk: &'a v1alpha1::ZookeeperCluster,
-    zookeeper_security: &'a ZookeeperSecurity,
-    cluster_info: &'a KubernetesClusterInfo,
-) -> Result<impl IntoIterator<Item = (String, u16)> + 'a> {
-    Ok(zk
-        .pods()
-        .context(ExpectedPodsSnafu)?
-        .map(|pod_ref| (pod_ref.fqdn(cluster_info), zookeeper_security.client_port())))
-}
-
-/// Lists all nodes currently hosting Pods participating in the [`Service`]
-async fn nodeport_hosts(
-    client: &stackable_operator::client::Client,
-    svc: &Service,
+/// Lists all listener address and port number pairs for a given `port_name` for Pods participating in the [`Listener`][1]
+///
+/// This returns pairs of `(Address, Port)`, where address could be a hostname or IP address of a node, clusterIP or external
+/// load balancer depending on the Service type.
+///
+/// ## Errors
+///
+/// An error will be returned if there is no address found for the `port_name`.
+///
+/// [1]: listener::v1alpha1::Listener
+// TODO (@NickLarsenNZ): Move this to stackable-operator, so it can be used as listener.addresses_for_port(port_name)
+fn listener_addresses(
+    listener: &listener::v1alpha1::Listener,
     port_name: &str,
 ) -> Result<impl IntoIterator<Item = (String, u16)>> {
-    let svc_port = svc
-        .spec
+    // Get addresses port pairs for addresses that have a port with the name that matches the one we are interested in
+    let address_port_pairs = listener
+        .status
         .as_ref()
-        .and_then(|svc_spec| {
-            svc_spec
-                .ports
-                .as_ref()?
-                .iter()
-                .find(|port| port.name.as_deref() == Some(port_name))
+        .and_then(|listener_status| listener_status.ingress_addresses.as_ref())
+        .context(NoListenerIngressAddressesSnafu { listener })?
+        .iter()
+        // Filter the addresses that have the port we are interested in (they likely all have it though)
+        .filter_map(|listener_ingress| {
+            Some(listener_ingress.address.clone()).zip(listener_ingress.ports.get(port_name))
         })
-        .context(NoServicePortSnafu { port_name })?;
-    let node_port = svc_port.node_port.context(NoNodePortSnafu { port_name })?;
-    let endpoints = client
-        .get::<Endpoints>(
-            svc.metadata.name.as_deref().context(NoNameSnafu)?,
-            svc.metadata
-                .namespace
-                .as_deref()
-                .context(NoNamespaceSnafu)?,
-        )
-        .await
-        .with_context(|_| FindEndpointsSnafu {
-            svc: ObjectRef::from_obj(svc),
-        })?;
-    let nodes = endpoints
-        .subsets
-        .into_iter()
-        .flatten()
-        .flat_map(|subset| subset.addresses)
-        .flatten()
-        .flat_map(|addr| addr.node_name);
-    let addrs = nodes
-        .map(|node| Ok((node, node_port.try_into().context(InvalidNodePortSnafu)?)))
+        // Convert the port from i32 to u16
+        .map(|(listener_address, &port_number)| {
+            let port_number: u16 = port_number
+                .try_into()
+                .context(InvalidPortSnafu { port_number })?;
+            Ok((listener_address, port_number))
+        })
         .collect::<Result<BTreeSet<_>, _>>()?;
-    Ok(addrs)
+
+    // An empty list is considered an error
+    match address_port_pairs.is_empty() {
+        true => PortNotFoundSnafu {
+            port_name,
+            listener,
+        }
+        .fail(),
+        false => Ok(address_port_pairs),
+    }
+}
+
+// TODO (@NickLarsenNZ): Implement this directly on RoleGroupRef, ie:
+// RoleGroupRef<K: Resource>::metrics_service_name(&self) to restrict what _name_ can be.
+pub fn build_role_group_headless_service_name(name: String) -> String {
+    format!("{name}-headless")
+}
+
+// TODO (@NickLarsenNZ): Implement this directly on RoleGroupRef, ie:
+// RoleGroupRef<K: Resource>::metrics_service_name(&self) to restrict what _name_ can be.
+pub fn build_role_group_metrics_service_name(name: String) -> String {
+    format!("{name}-metrics")
 }

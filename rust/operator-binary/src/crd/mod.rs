@@ -34,7 +34,11 @@ use stackable_operator::{
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
-use crate::crd::affinity::get_affinity;
+use crate::{
+    crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig},
+    discovery::build_role_group_headless_service_name,
+    listener::role_listener_name,
+};
 
 pub mod affinity;
 pub mod authentication;
@@ -47,8 +51,16 @@ pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
 
-pub const METRICS_PORT: u16 = 9505;
+pub const ZOOKEEPER_SERVER_PORT_NAME: &str = "zk";
+pub const ZOOKEEPER_LEADER_PORT_NAME: &str = "zk-leader";
+pub const ZOOKEEPER_LEADER_PORT: u16 = 2888;
+pub const ZOOKEEPER_ELECTION_PORT_NAME: &str = "zk-election";
+pub const ZOOKEEPER_ELECTION_PORT: u16 = 3888;
+
+pub const JMX_METRICS_PORT_NAME: &str = "metrics";
+pub const JMX_METRICS_PORT: u16 = 9505;
 pub const METRICS_PROVIDER_HTTP_PORT_KEY: &str = "metricsProvider.httpPort";
+pub const METRICS_PROVIDER_HTTP_PORT_NAME: &str = "native-metrics";
 pub const METRICS_PROVIDER_HTTP_PORT: u16 = 7000;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
@@ -74,6 +86,7 @@ pub const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
 pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 
 const DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_minutes_unchecked(2);
+pub const DEFAULT_LISTENER_CLASS: &str = "cluster-internal";
 
 mod built_info {
     pub const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -141,7 +154,19 @@ pub mod versioned {
 
         // no doc - it's in the struct.
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub servers: Option<Role<ZookeeperConfigFragment, GenericRoleConfig, JavaCommonConfig>>,
+        pub servers:
+            Option<Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>>,
+    }
+
+    #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ZookeeperServerRoleConfig {
+        #[serde(flatten)]
+        pub common: GenericRoleConfig,
+
+        /// This field controls which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html) is used to expose the ZooKeeper servers.
+        #[serde(default = "default_listener_class")]
+        pub listener_class: String,
     }
 
     #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -166,29 +191,6 @@ pub mod versioned {
             skip_serializing_if = "Option::is_none"
         )]
         pub tls: Option<tls::v1alpha1::ZookeeperTls>,
-
-        /// This field controls which type of Service the Operator creates for this ZookeeperCluster:
-        ///
-        /// * cluster-internal: Use a ClusterIP service
-        ///
-        /// * external-unstable: Use a NodePort service
-        ///
-        /// This is a temporary solution with the goal to keep yaml manifests forward compatible.
-        /// In the future, this setting will control which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html)
-        /// will be used to expose the service, and ListenerClass names will stay the same, allowing for a non-breaking change.
-        #[serde(default)]
-        pub listener_class: CurrentlySupportedListenerClasses,
-    }
-
-    // TODO: Temporary solution until listener-operator is finished
-    #[derive(Clone, Debug, Default, Display, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
-    #[serde(rename_all = "PascalCase")]
-    pub enum CurrentlySupportedListenerClasses {
-        #[default]
-        #[serde(rename = "cluster-internal")]
-        ClusterInternal,
-        #[serde(rename = "external-unstable")]
-        ExternalUnstable,
     }
 
     #[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
@@ -346,7 +348,7 @@ pub enum ZookeeperRole {
 /// Used for service discovery.
 pub struct ZookeeperPodRef {
     pub namespace: String,
-    pub role_group_service_name: String,
+    pub role_group_headless_service_name: String,
     pub pod_name: String,
     pub zookeeper_myid: u16,
 }
@@ -356,15 +358,18 @@ fn cluster_config_default() -> v1alpha1::ZookeeperClusterConfig {
         authentication: vec![],
         vector_aggregator_config_map_name: None,
         tls: tls::default_zookeeper_tls(),
-        listener_class: v1alpha1::CurrentlySupportedListenerClasses::default(),
     }
 }
 
-impl v1alpha1::CurrentlySupportedListenerClasses {
-    pub fn k8s_service_type(&self) -> String {
-        match self {
-            v1alpha1::CurrentlySupportedListenerClasses::ClusterInternal => "ClusterIP".to_string(),
-            v1alpha1::CurrentlySupportedListenerClasses::ExternalUnstable => "NodePort".to_string(),
+fn default_listener_class() -> String {
+    DEFAULT_LISTENER_CLASS.to_owned()
+}
+
+impl Default for ZookeeperServerRoleConfig {
+    fn default() -> Self {
+        Self {
+            listener_class: default_listener_class(),
+            common: Default::default(),
         }
     }
 }
@@ -506,11 +511,11 @@ impl HasStatusCondition for v1alpha1::ZookeeperCluster {
 }
 
 impl ZookeeperPodRef {
-    pub fn fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
+    pub fn internal_fqdn(&self, cluster_info: &KubernetesClusterInfo) -> String {
         format!(
             "{pod_name}.{service_name}.{namespace}.svc.{cluster_domain}",
             pod_name = self.pod_name,
-            service_name = self.role_group_service_name,
+            service_name = self.role_group_headless_service_name,
             namespace = self.namespace,
             cluster_domain = cluster_info.cluster_domain
         )
@@ -541,16 +546,16 @@ impl v1alpha1::ZookeeperCluster {
         }
     }
 
-    /// The name of the role-level load-balanced Kubernetes `Service`
-    pub fn server_role_service_name(&self) -> Option<String> {
-        self.metadata.name.clone()
-    }
-
-    /// The fully-qualified domain name of the role-level load-balanced Kubernetes `Service`
-    pub fn server_role_service_fqdn(&self, cluster_info: &KubernetesClusterInfo) -> Option<String> {
+    /// The fully-qualified domain name of the role-level [Listener]
+    ///
+    /// [Listener]: stackable_operator::crd::listener::v1alpha1::Listener
+    pub fn server_role_listener_fqdn(
+        &self,
+        cluster_info: &KubernetesClusterInfo,
+    ) -> Option<String> {
         Some(format!(
-            "{role_service_name}.{namespace}.svc.{cluster_domain}",
-            role_service_name = self.server_role_service_name()?,
+            "{role_listener_name}.{namespace}.svc.{cluster_domain}",
+            role_listener_name = role_listener_name(self, &ZookeeperRole::Server),
             namespace = self.metadata.namespace.as_ref()?,
             cluster_domain = cluster_info.cluster_domain
         ))
@@ -560,8 +565,10 @@ impl v1alpha1::ZookeeperCluster {
     pub fn role(
         &self,
         role_variant: &ZookeeperRole,
-    ) -> Result<&Role<v1alpha1::ZookeeperConfigFragment, GenericRoleConfig, JavaCommonConfig>, Error>
-    {
+    ) -> Result<
+        &Role<v1alpha1::ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
+        Error,
+    > {
         match role_variant {
             ZookeeperRole::Server => self.spec.servers.as_ref(),
         }
@@ -602,7 +609,7 @@ impl v1alpha1::ZookeeperCluster {
         }
     }
 
-    pub fn role_config(&self, role: &ZookeeperRole) -> Option<&GenericRoleConfig> {
+    pub fn role_config(&self, role: &ZookeeperRole) -> Option<&ZookeeperServerRoleConfig> {
         match role {
             ZookeeperRole::Server => self.spec.servers.as_ref().map(|s| &s.role_config),
         }
@@ -634,8 +641,10 @@ impl v1alpha1::ZookeeperCluster {
             for i in 0..rolegroup.replicas.unwrap_or(1) {
                 pod_refs.push(ZookeeperPodRef {
                     namespace: ns.clone(),
-                    role_group_service_name: rolegroup_ref.object_name(),
-                    pod_name: format!("{}-{}", rolegroup_ref.object_name(), i),
+                    role_group_headless_service_name: build_role_group_headless_service_name(
+                        rolegroup_ref.object_name(),
+                    ),
+                    pod_name: format!("{role_group}-{i}", role_group = rolegroup_ref.object_name()),
                     zookeeper_myid: i + myid_offset,
                 });
             }

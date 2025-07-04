@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
   - Use `--file-log-rotation-period` (or `FILE_LOG_ROTATION_PERIOD`) to configure the frequency of rotation.
   - Use `--console-log-format` (or `CONSOLE_LOG_FORMAT`) to set the format to `plain` (default) or `json`.
 - Add built-in Prometheus support and expose metrics on `/metrics` path of `native-metrics` port ([#955]).
+- BREAKING: Add listener support ([#957]).
 
 ### Changed
 
@@ -47,6 +48,7 @@ All notable changes to this project will be documented in this file.
 [#946]: https://github.com/stackabletech/zookeeper-operator/pull/946
 [#950]: https://github.com/stackabletech/zookeeper-operator/pull/950
 [#955]: https://github.com/stackabletech/zookeeper-operator/pull/955
+[#957]: https://github.com/stackabletech/zookeeper-operator/pull/957
 
 ## [25.3.0] - 2025-03-21
 

@@ -1,13 +1,15 @@
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     memory::{BinaryMultiple, MemoryQuantity},
-    role_utils::{self, GenericRoleConfig, JavaCommonConfig, JvmArgumentOverrides, Role},
+    role_utils::{self, JavaCommonConfig, JvmArgumentOverrides, Role},
 };
 
 use crate::crd::{
-    JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, LoggingFramework,
-    METRICS_PORT, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
-    v1alpha1::{ZookeeperCluster, ZookeeperConfig, ZookeeperConfigFragment},
+    JMX_METRICS_PORT, JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
+    LoggingFramework, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
+    v1alpha1::{
+        ZookeeperCluster, ZookeeperConfig, ZookeeperConfigFragment, ZookeeperServerRoleConfig,
+    },
 };
 
 const JAVA_HEAP_FACTOR: f32 = 0.8;
@@ -29,7 +31,7 @@ pub enum Error {
 /// All JVM arguments.
 fn construct_jvm_args(
     zk: &ZookeeperCluster,
-    role: &Role<ZookeeperConfigFragment, GenericRoleConfig, JavaCommonConfig>,
+    role: &Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
     role_group: &str,
 ) -> Result<Vec<String>, Error> {
     let logging_framework = zk.logging_framework();
@@ -37,7 +39,7 @@ fn construct_jvm_args(
     let jvm_args = vec![
         format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
         format!(
-            "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={METRICS_PORT}:/stackable/jmx/server.yaml"
+            "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={JMX_METRICS_PORT}:/stackable/jmx/server.yaml"
         ),
         match logging_framework {
             LoggingFramework::LOG4J => {
@@ -63,7 +65,7 @@ fn construct_jvm_args(
 /// [`construct_zk_server_heap_env`]).
 pub fn construct_non_heap_jvm_args(
     zk: &ZookeeperCluster,
-    role: &Role<ZookeeperConfigFragment, GenericRoleConfig, JavaCommonConfig>,
+    role: &Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
     role_group: &str,
 ) -> Result<String, Error> {
     let mut jvm_args = construct_jvm_args(zk, role, role_group)?;
@@ -99,7 +101,10 @@ fn is_heap_jvm_argument(jvm_argument: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crd::{ZookeeperRole, v1alpha1::ZookeeperConfig};
+    use crate::crd::{
+        ZookeeperRole,
+        v1alpha1::{ZookeeperConfig, ZookeeperServerRoleConfig},
+    };
 
     #[test]
     fn test_construct_jvm_arguments_defaults() {
@@ -182,7 +187,7 @@ mod tests {
     ) -> (
         ZookeeperCluster,
         ZookeeperConfig,
-        Role<ZookeeperConfigFragment, GenericRoleConfig, JavaCommonConfig>,
+        Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
         String,
     ) {
         let zookeeper: ZookeeperCluster =
