@@ -494,7 +494,6 @@ pub async fn reconcile_zk(
 
     let role_config = zk.role_config(&zk_role);
     if let Some(ZookeeperServerRoleConfig { common, .. }) = role_config {
-    {
         add_pdbs(
             &common.pod_disruption_budget,
             zk,
