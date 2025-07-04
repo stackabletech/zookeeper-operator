@@ -54,7 +54,7 @@ pub enum Error {
     #[snafu(display("object does not refer to ZookeeperCluster"))]
     InvalidZkReference,
 
-    #[snafu(display("could not find {}", zk))]
+    #[snafu(display("could not find {zk:?}"))]
     FindZk {
         source: stackable_operator::client::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
@@ -65,30 +65,30 @@ pub enum Error {
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("could not find server role service name for {}", zk))]
+    #[snafu(display("could not find server role service name for {zk:?}"))]
     NoZkSvcName {
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("could not find server role service for {}", zk))]
+    #[snafu(display("could not find server role service for {zk:?}"))]
     FindZkSvc {
         source: stackable_operator::client::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("failed to calculate FQDN for {}", zk))]
+    #[snafu(display("failed to calculate FQDN for {zk:?}"))]
     NoZkFqdn {
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("failed to ensure that ZNode {} exists in {}", znode_path, zk))]
+    #[snafu(display("failed to ensure that ZNode {znode_path:?} exists in {zk:?}"))]
     EnsureZnode {
         source: znode_mgmt::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
         znode_path: String,
     },
 
-    #[snafu(display("failed to ensure that ZNode {} is missing from {}", znode_path, zk))]
+    #[snafu(display("failed to ensure that ZNode {znode_path:?} is missing from {zk:?}"))]
     EnsureZnodeMissing {
         source: znode_mgmt::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
@@ -98,7 +98,7 @@ pub enum Error {
     #[snafu(display("failed to build discovery information"))]
     BuildDiscoveryConfigMap { source: discovery::Error },
 
-    #[snafu(display("failed to save discovery information to {}", cm))]
+    #[snafu(display("failed to save discovery information to {cm:?}"))]
     ApplyDiscoveryConfigMap {
         source: stackable_operator::cluster_resources::Error,
         cm: ObjectRef<ConfigMap>,
@@ -442,34 +442,34 @@ mod znode_mgmt {
             source: std::io::Error,
             addr: String,
         },
-        #[snafu(display("address {} did not resolve to any socket addresses", addr))]
+        #[snafu(display("address {addr:?} did not resolve to any socket addresses"))]
         AddrResolution { addr: String },
-        #[snafu(display("failed to connect to {}", addr))]
+        #[snafu(display("failed to connect to {addr:?}"))]
         Connect {
             source: tokio_zookeeper::error::Error,
             addr: SocketAddr,
         },
-        #[snafu(display("protocol error creating znode {}", path))]
+        #[snafu(display("protocol error creating znode {path:?}"))]
         CreateZnodeProtocol {
             source: tokio_zookeeper::error::Error,
             path: String,
         },
-        #[snafu(display("failed to create znode {}", path))]
+        #[snafu(display("failed to create znode {path:?}"))]
         CreateZnode {
             source: tokio_zookeeper::error::Create,
             path: String,
         },
-        #[snafu(display("protocol error deleting znode {}", path))]
+        #[snafu(display("protocol error deleting znode {path:?}"))]
         DeleteZnodeProtocol {
             source: tokio_zookeeper::error::Error,
             path: String,
         },
-        #[snafu(display("failed to delete znode {}", path))]
+        #[snafu(display("failed to delete znode {path:?}"))]
         DeleteZnode {
             source: tokio_zookeeper::error::Delete,
             path: String,
         },
-        #[snafu(display("failed to find children to delete of {}", path))]
+        #[snafu(display("failed to find children to delete of {path:?}"))]
         DeleteZnodeFindChildrenProtocol {
             source: tokio_zookeeper::error::Error,
             path: String,
