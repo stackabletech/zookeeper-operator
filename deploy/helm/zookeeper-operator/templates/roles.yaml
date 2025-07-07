@@ -18,6 +18,9 @@ rules:
     verbs:
       - list
       - watch
+  - apiGroups: [""]
+    resources: [nodes/proxy]
+    verbs: [get]
   - apiGroups:
       - ""
     resources:
