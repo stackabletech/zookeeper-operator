@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
   - Use `--console-log-format` (or `CONSOLE_LOG_FORMAT`) to set the format to `plain` (default) or `json`.
 - Add built-in Prometheus support and expose metrics on `/metrics` path of `native-metrics` port ([#955]).
 - BREAKING: Add listener support ([#957]).
+- Add RBAC rule to helm template for automatic cluster domain detection ([#961]).
 
 ### Changed
 
@@ -29,6 +30,7 @@ All notable changes to this project will be documented in this file.
   - The `runAsUser` and `runAsGroup` fields will not be set anymore by the operator
   - The defaults from the docker images itself will now apply, which will be different from 1000/0 going forward
   - This is marked as breaking because tools and policies might exist, which require these fields to be set
+- Bump stackable-operator to 0.94.0 and update other dependencies (#[961]).
 
 ### Fixed
 
@@ -49,6 +51,7 @@ All notable changes to this project will be documented in this file.
 [#950]: https://github.com/stackabletech/zookeeper-operator/pull/950
 [#955]: https://github.com/stackabletech/zookeeper-operator/pull/955
 [#957]: https://github.com/stackabletech/zookeeper-operator/pull/957
+[#961]: https://github.com/stackabletech/zookeeper-operator/pull/961
 
 ## [25.3.0] - 2025-03-21
 
