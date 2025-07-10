@@ -30,7 +30,7 @@ All notable changes to this project will be documented in this file.
   - The `runAsUser` and `runAsGroup` fields will not be set anymore by the operator
   - The defaults from the docker images itself will now apply, which will be different from 1000/0 going forward
   - This is marked as breaking because tools and policies might exist, which require these fields to be set
-- Bump stackable-operator to 0.94.0 and update other dependencies (#[961]).
+- Bump stackable-operator to 0.94.0 and update other dependencies ([#961]).
 
 ### Fixed
 
