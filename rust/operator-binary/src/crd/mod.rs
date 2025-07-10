@@ -119,24 +119,27 @@ pub enum LoggingFramework {
     LOGBACK,
 }
 
-#[versioned(version(name = "v1alpha1"))]
+#[versioned(
+    version(name = "v1alpha1"),
+    crates(
+        kube_core = "stackable_operator::kube::core",
+        kube_client = "stackable_operator::kube::client",
+        k8s_openapi = "stackable_operator::k8s_openapi",
+        schemars = "stackable_operator::schemars",
+        versioned = "stackable_operator::versioned",
+    )
+)]
 pub mod versioned {
     /// A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper.
     /// Find more information on how to use it and the resources that the operator generates in the
     /// [operator documentation](DOCS_BASE_URL_PLACEHOLDER/zookeeper/).
     #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-    #[versioned(k8s(
+    #[versioned(crd(
         group = "zookeeper.stackable.tech",
-        kind = "ZookeeperCluster",
         plural = "zookeeperclusters",
         shortname = "zk",
         status = "v1alpha1::ZookeeperClusterStatus",
         namespaced,
-        crates(
-            kube_core = "stackable_operator::kube::core",
-            k8s_openapi = "stackable_operator::k8s_openapi",
-            schemars = "stackable_operator::schemars"
-        )
     ))]
     #[serde(rename_all = "camelCase")]
     pub struct ZookeeperClusterSpec {
@@ -293,19 +296,13 @@ pub mod versioned {
     /// You can learn more about this in the
     /// [Isolating clients with ZNodes usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/isolating_clients_with_znodes).
     #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
-    #[versioned(k8s(
+    #[versioned(crd(
         group = "zookeeper.stackable.tech",
-        kind = "ZookeeperZnode",
         plural = "zookeeperznodes",
         shortname = "zno",
         shortname = "znode",
         status = "v1alpha1::ZookeeperZnodeStatus",
         namespaced,
-        crates(
-            kube_core = "stackable_operator::kube::core",
-            k8s_openapi = "stackable_operator::k8s_openapi",
-            schemars = "stackable_operator::schemars"
-        )
     ))]
     #[serde(rename_all = "camelCase")]
     pub struct ZookeeperZnodeSpec {

@@ -1,7 +1,13 @@
+// TODO: Look into how to properly resolve `clippy::result_large_err`.
+// This will need changes in our and upstream error types.
+#![allow(clippy::result_large_err)]
 use std::sync::Arc;
 
 use clap::Parser;
-use crd::{APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperZnode, v1alpha1};
+use crd::{
+    APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperClusterVersion, ZookeeperZnode,
+    ZookeeperZnodeVersion, v1alpha1,
+};
 use futures::{StreamExt, pin_mut};
 use stackable_operator::{
     YamlSchema,
@@ -54,9 +60,9 @@ async fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
     match opts.cmd {
         Command::Crd => {
-            ZookeeperCluster::merged_crd(ZookeeperCluster::V1Alpha1)?
+            ZookeeperCluster::merged_crd(ZookeeperClusterVersion::V1Alpha1)?
                 .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
-            ZookeeperZnode::merged_crd(ZookeeperZnode::V1Alpha1)?
+            ZookeeperZnode::merged_crd(ZookeeperZnodeVersion::V1Alpha1)?
                 .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
         }
         Command::Run(ProductOperatorRun {
