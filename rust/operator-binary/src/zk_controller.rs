@@ -329,7 +329,7 @@ impl ReconcilerError for Error {
             Error::ApplyRoleBinding { .. } => None,
             Error::BuildRbacResources { .. } => None,
             Error::DeleteOrphans { .. } => None,
-            Error::VectorAggregatorConfigMapMissing { .. } => None,
+            Error::VectorAggregatorConfigMapMissing => None,
             Error::InvalidLoggingConfig { .. } => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
             Error::FailedToResolveConfig { .. } => None,
@@ -786,7 +786,6 @@ pub fn build_role_listener_pvc(
         &ListenerReference::ListenerName(group_listener_name.to_string()),
         unversioned_recommended_labels,
     )
-    .expect("ListenerOperatorVolumeSourceBuilder::new always returns Ok()")
     .build_pvc(LISTENER_VOLUME_NAME.to_string())
     .context(BuildListenerPersistentVolumeSnafu)
 }
