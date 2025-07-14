@@ -8,7 +8,7 @@ spec:
     productVersion: 3.9.3
   servers:
     roleConfig:
-      listenerClass: external-unstable
+      listenerClass: cluster-internal
     roleGroups:
       default:
         replicas: 3
