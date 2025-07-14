@@ -4,11 +4,11 @@ kind: ZookeeperCluster
 metadata:
   name: simple-zk
 spec:
-  clusterConfig:
-    listenerClass: external-unstable
   image:
     productVersion: 3.9.3
   servers:
+    roleConfig:
+      listenerClass: cluster-internal
     roleGroups:
       default:
         replicas: 3
