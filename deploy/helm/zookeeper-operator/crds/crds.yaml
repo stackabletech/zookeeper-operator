@@ -23,7 +23,7 @@ spec:
           description: Auto-generated derived type for ZookeeperClusterSpec via `CustomResource`
           properties:
             spec:
-              description: A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper. Find more information on how to use it and the resources that the operator generates in the [operator documentation](https://docs.stackable.tech/home/nightly/zookeeper/).
+              description: A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper. Find more information on how to use it and the resources that the operator generates in the [operator documentation](https://docs.stackable.tech/home/25.7/zookeeper/).
               properties:
                 clusterConfig:
                   default:
@@ -35,7 +35,7 @@ spec:
                   properties:
                     authentication:
                       default: []
-                      description: Authentication settings for ZooKeeper like mTLS authentication. Read more in the [authentication usage guide](https://docs.stackable.tech/home/nightly/zookeeper/usage_guide/authentication).
+                      description: Authentication settings for ZooKeeper like mTLS authentication. Read more in the [authentication usage guide](https://docs.stackable.tech/home/25.7/zookeeper/usage_guide/authentication).
                       items:
                         properties:
                           authenticationClass:
@@ -56,27 +56,27 @@ spec:
                       default:
                         quorumSecretClass: tls
                         serverSecretClass: tls
-                      description: TLS encryption settings for ZooKeeper (server, quorum). Read more in the [encryption usage guide](https://docs.stackable.tech/home/nightly/zookeeper/usage_guide/encryption).
+                      description: TLS encryption settings for ZooKeeper (server, quorum). Read more in the [encryption usage guide](https://docs.stackable.tech/home/25.7/zookeeper/usage_guide/encryption).
                       nullable: true
                       properties:
                         quorumSecretClass:
                           default: tls
                           description: |-
-                            The [SecretClass](https://docs.stackable.tech/home/nightly/secret-operator/secretclass) to use for internal quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server
+                            The [SecretClass](https://docs.stackable.tech/home/25.7/secret-operator/secretclass) to use for internal quorum communication. Use mutual verification between Zookeeper Nodes (mandatory). This setting controls: - Which cert the servers should use to authenticate themselves against other servers - Which ca.crt to use when validating the other server
 
                             Defaults to `tls`
                           type: string
                         serverSecretClass:
                           default: tls
                           description: |-
-                            The [SecretClass](https://docs.stackable.tech/home/nightly/secret-operator/secretclass) to use for client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client
+                            The [SecretClass](https://docs.stackable.tech/home/25.7/secret-operator/secretclass) to use for client connections. This setting controls: - If TLS encryption is used at all - Which cert the servers should use to authenticate themselves against the client
 
                             Defaults to `tls`.
                           nullable: true
                           type: string
                       type: object
                     vectorAggregatorConfigMapName:
-                      description: Name of the Vector aggregator [discovery ConfigMap](https://docs.stackable.tech/home/nightly/concepts/service_discovery). It must contain the key `ADDRESS` with the address of the Vector aggregator. Follow the [logging tutorial](https://docs.stackable.tech/home/nightly/tutorials/logging-vector-aggregator) to learn how to configure log aggregation with Vector.
+                      description: Name of the Vector aggregator [discovery ConfigMap](https://docs.stackable.tech/home/25.7/concepts/service_discovery). It must contain the key `ADDRESS` with the address of the Vector aggregator. Follow the [logging tutorial](https://docs.stackable.tech/home/25.7/tutorials/logging-vector-aggregator) to learn how to configure log aggregation with Vector.
                       nullable: true
                       type: string
                   type: object
@@ -84,7 +84,7 @@ spec:
                   default:
                     reconciliationPaused: false
                     stopped: false
-                  description: '[Cluster operations](https://docs.stackable.tech/home/nightly/concepts/operations/cluster_operations) properties, allow stopping the product instance as well as pausing reconciliation.'
+                  description: '[Cluster operations](https://docs.stackable.tech/home/25.7/concepts/operations/cluster_operations) properties, allow stopping the product instance as well as pausing reconciliation.'
                   properties:
                     reconciliationPaused:
                       default: false
@@ -105,7 +105,7 @@ spec:
                   description: |-
                     Specify which image to use, the easiest way is to only configure the `productVersion`. You can also configure a custom image registry to pull from, as well as completely custom images.
 
-                    Consult the [Product image selection documentation](https://docs.stackable.tech/home/nightly/concepts/product_image_selection) for details.
+                    Consult the [Product image selection documentation](https://docs.stackable.tech/home/25.7/concepts/product_image_selection) for details.
                   properties:
                     custom:
                       description: Overwrite the docker image. Specify the full docker image name, e.g. `oci.stackable.tech/sdp/superset:1.4.1-stackable2.1.0`
@@ -144,7 +144,7 @@ spec:
                       type: string
                   type: object
                 servers:
-                  description: This struct represents a role - e.g. HDFS datanodes or Trino workers. It has a key-value-map containing all the roleGroups that are part of this role. Additionally, there is a `config`, which is configurable at the role *and* roleGroup level. Everything at roleGroup level is merged on top of what is configured on role level. There is also a second form of config, which can only be configured at role level, the `roleConfig`. You can learn more about this in the [Roles and role group concept documentation](https://docs.stackable.tech/home/nightly/concepts/roles-and-role-groups).
+                  description: This struct represents a role - e.g. HDFS datanodes or Trino workers. It has a key-value-map containing all the roleGroups that are part of this role. Additionally, there is a `config`, which is configurable at the role *and* roleGroup level. Everything at roleGroup level is merged on top of what is configured on role level. There is also a second form of config, which can only be configured at role level, the `roleConfig`. You can learn more about this in the [Roles and role group concept documentation](https://docs.stackable.tech/home/25.7/concepts/roles-and-role-groups).
                   nullable: true
                   properties:
                     cliOverrides:
@@ -161,7 +161,7 @@ spec:
                             nodeSelector: null
                             podAffinity: null
                             podAntiAffinity: null
-                          description: These configuration settings control [Pod placement](https://docs.stackable.tech/home/nightly/concepts/operations/pod_placement).
+                          description: These configuration settings control [Pod placement](https://docs.stackable.tech/home/25.7/concepts/operations/pod_placement).
                           properties:
                             nodeAffinity:
                               description: Same as the `spec.affinity.nodeAffinity` field on the Pod, see the [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node)
@@ -198,7 +198,7 @@ spec:
                           default:
                             containers: {}
                             enableVectorAgent: null
-                          description: Logging configuration, learn more in the [logging concept documentation](https://docs.stackable.tech/home/nightly/concepts/logging).
+                          description: Logging configuration, learn more in the [logging concept documentation](https://docs.stackable.tech/home/25.7/concepts/logging).
                           properties:
                             containers:
                               additionalProperties:
@@ -388,20 +388,20 @@ spec:
                           type: string
                         type: object
                       default: {}
-                      description: The `configOverrides` can be used to configure properties in product config files that are not exposed in the CRD. Read the [config overrides documentation](https://docs.stackable.tech/home/nightly/concepts/overrides#config-overrides) and consult the operator specific usage guide documentation for details on the available config files and settings for the specific product.
+                      description: The `configOverrides` can be used to configure properties in product config files that are not exposed in the CRD. Read the [config overrides documentation](https://docs.stackable.tech/home/25.7/concepts/overrides#config-overrides) and consult the operator specific usage guide documentation for details on the available config files and settings for the specific product.
                       type: object
                     envOverrides:
                       additionalProperties:
                         type: string
                       default: {}
-                      description: '`envOverrides` configure environment variables to be set in the Pods. It is a map from strings to strings - environment variables and the value to set. Read the [environment variable overrides documentation](https://docs.stackable.tech/home/nightly/concepts/overrides#env-overrides) for more information and consult the operator specific usage guide to find out about the product specific environment variables that are available.'
+                      description: '`envOverrides` configure environment variables to be set in the Pods. It is a map from strings to strings - environment variables and the value to set. Read the [environment variable overrides documentation](https://docs.stackable.tech/home/25.7/concepts/overrides#env-overrides) for more information and consult the operator specific usage guide to find out about the product specific environment variables that are available.'
                       type: object
                     jvmArgumentOverrides:
                       default:
                         add: []
                         remove: []
                         removeRegex: []
-                      description: Allows overriding JVM arguments. Please read on the [JVM argument overrides documentation](https://docs.stackable.tech/home/nightly/concepts/overrides#jvm-argument-overrides) for details on the usage.
+                      description: Allows overriding JVM arguments. Please read on the [JVM argument overrides documentation](https://docs.stackable.tech/home/25.7/concepts/overrides#jvm-argument-overrides) for details on the usage.
                       properties:
                         add:
                           default: []
@@ -424,7 +424,7 @@ spec:
                       type: object
                     podOverrides:
                       default: {}
-                      description: In the `podOverrides` property you can define a [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#podtemplatespec-v1-core) to override any property that can be set on a Kubernetes Pod. Read the [Pod overrides documentation](https://docs.stackable.tech/home/nightly/concepts/overrides#pod-overrides) for more information.
+                      description: In the `podOverrides` property you can define a [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#podtemplatespec-v1-core) to override any property that can be set on a Kubernetes Pod. Read the [Pod overrides documentation](https://docs.stackable.tech/home/25.7/concepts/overrides#pod-overrides) for more information.
                       type: object
                       x-kubernetes-preserve-unknown-fields: true
                     roleConfig:
@@ -437,7 +437,7 @@ spec:
                       properties:
                         listenerClass:
                           default: cluster-internal
-                          description: This field controls which [ListenerClass](https://docs.stackable.tech/home/nightly/listener-operator/listenerclass.html) is used to expose the ZooKeeper servers.
+                          description: This field controls which [ListenerClass](https://docs.stackable.tech/home/25.7/listener-operator/listenerclass.html) is used to expose the ZooKeeper servers.
                           type: string
                         podDisruptionBudget:
                           default:
@@ -448,7 +448,7 @@ spec:
 
                             1. If PodDisruptionBudgets are created by the operator 2. The allowed number of Pods to be unavailable (`maxUnavailable`)
 
-                            Learn more in the [allowed Pod disruptions documentation](https://docs.stackable.tech/home/nightly/concepts/operations/pod_disruptions).
+                            Learn more in the [allowed Pod disruptions documentation](https://docs.stackable.tech/home/25.7/concepts/operations/pod_disruptions).
                           properties:
                             enabled:
                               default: true
@@ -479,7 +479,7 @@ spec:
                                   nodeSelector: null
                                   podAffinity: null
                                   podAntiAffinity: null
-                                description: These configuration settings control [Pod placement](https://docs.stackable.tech/home/nightly/concepts/operations/pod_placement).
+                                description: These configuration settings control [Pod placement](https://docs.stackable.tech/home/25.7/concepts/operations/pod_placement).
                                 properties:
                                   nodeAffinity:
                                     description: Same as the `spec.affinity.nodeAffinity` field on the Pod, see the [Kubernetes docs](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node)
@@ -516,7 +516,7 @@ spec:
                                 default:
                                   containers: {}
                                   enableVectorAgent: null
-                                description: Logging configuration, learn more in the [logging concept documentation](https://docs.stackable.tech/home/nightly/concepts/logging).
+                                description: Logging configuration, learn more in the [logging concept documentation](https://docs.stackable.tech/home/25.7/concepts/logging).
                                 properties:
                                   containers:
                                     additionalProperties:
@@ -706,20 +706,20 @@ spec:
                                 type: string
                               type: object
                             default: {}
-                            description: The `configOverrides` can be used to configure properties in product config files that are not exposed in the CRD. Read the [config overrides documentation](https://docs.stackable.tech/home/nightly/concepts/overrides#config-overrides) and consult the operator specific usage guide documentation for details on the available config files and settings for the specific product.
+                            description: The `configOverrides` can be used to configure properties in product config files that are not exposed in the CRD. Read the [config overrides documentation](https://docs.stackable.tech/home/25.7/concepts/overrides#config-overrides) and consult the operator specific usage guide documentation for details on the available config files and settings for the specific product.
                             type: object
                           envOverrides:
                             additionalProperties:
                               type: string
                             default: {}
-                            description: '`envOverrides` configure environment variables to be set in the Pods. It is a map from strings to strings - environment variables and the value to set. Read the [environment variable overrides documentation](https://docs.stackable.tech/home/nightly/concepts/overrides#env-overrides) for more information and consult the operator specific usage guide to find out about the product specific environment variables that are available.'
+                            description: '`envOverrides` configure environment variables to be set in the Pods. It is a map from strings to strings - environment variables and the value to set. Read the [environment variable overrides documentation](https://docs.stackable.tech/home/25.7/concepts/overrides#env-overrides) for more information and consult the operator specific usage guide to find out about the product specific environment variables that are available.'
                             type: object
                           jvmArgumentOverrides:
                             default:
                               add: []
                               remove: []
                               removeRegex: []
-                            description: Allows overriding JVM arguments. Please read on the [JVM argument overrides documentation](https://docs.stackable.tech/home/nightly/concepts/overrides#jvm-argument-overrides) for details on the usage.
+                            description: Allows overriding JVM arguments. Please read on the [JVM argument overrides documentation](https://docs.stackable.tech/home/25.7/concepts/overrides#jvm-argument-overrides) for details on the usage.
                             properties:
                               add:
                                 default: []
@@ -742,7 +742,7 @@ spec:
                             type: object
                           podOverrides:
                             default: {}
-                            description: In the `podOverrides` property you can define a [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#podtemplatespec-v1-core) to override any property that can be set on a Kubernetes Pod. Read the [Pod overrides documentation](https://docs.stackable.tech/home/nightly/concepts/overrides#pod-overrides) for more information.
+                            description: In the `podOverrides` property you can define a [PodTemplateSpec](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.27/#podtemplatespec-v1-core) to override any property that can be set on a Kubernetes Pod. Read the [Pod overrides documentation](https://docs.stackable.tech/home/25.7/concepts/overrides#pod-overrides) for more information.
                             type: object
                             x-kubernetes-preserve-unknown-fields: true
                           replicas:
@@ -845,7 +845,7 @@ spec:
 
                 `ZookeeperZnode` is *not* designed to manage the contents of this ZNode. Instead, it should be used to create a chroot for an installation of an application to work inside. Initializing the contents is the responsibility of the application.
 
-                You can learn more about this in the [Isolating clients with ZNodes usage guide](https://docs.stackable.tech/home/nightly/zookeeper/usage_guide/isolating_clients_with_znodes).
+                You can learn more about this in the [Isolating clients with ZNodes usage guide](https://docs.stackable.tech/home/25.7/zookeeper/usage_guide/isolating_clients_with_znodes).
               properties:
                 clusterRef:
                   default:
