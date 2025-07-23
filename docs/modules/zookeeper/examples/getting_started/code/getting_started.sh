@@ -21,20 +21,20 @@ case "$1" in
 "helm")
 echo "Installing Operators with Helm"
 # tag::helm-install-operators[]
-helm install --wait commons-operator oci://oci.stackable.tech/sdp-charts/commons-operator --version 25.7.0-rc1
-helm install --wait secret-operator oci://oci.stackable.tech/sdp-charts/secret-operator --version 25.7.0-rc1
-helm install --wait listener-operator oci://oci.stackable.tech/sdp-charts/listener-operator --version 25.7.0-rc1
-helm install --wait zookeeper-operator oci://oci.stackable.tech/sdp-charts/zookeeper-operator --version 25.7.0-rc1
+helm install --wait commons-operator oci://oci.stackable.tech/sdp-charts/commons-operator --version 25.7.0
+helm install --wait secret-operator oci://oci.stackable.tech/sdp-charts/secret-operator --version 25.7.0
+helm install --wait listener-operator oci://oci.stackable.tech/sdp-charts/listener-operator --version 25.7.0
+helm install --wait zookeeper-operator oci://oci.stackable.tech/sdp-charts/zookeeper-operator --version 25.7.0
 # end::helm-install-operators[]
 ;;
 "stackablectl")
 echo "installing Operators with stackablectl"
 # tag::stackablectl-install-operators[]
 stackablectl operator install \
-  commons=25.7.0-rc1 \
-  secret=25.7.0-rc1 \
-  listener=25.7.0-rc1 \
-  zookeeper=25.7.0-rc1
+  commons=25.7.0 \
+  secret=25.7.0 \
+  listener=25.7.0 \
+  zookeeper=25.7.0
 # end::stackablectl-install-operators[]
 ;;
 *)
@@ -63,7 +63,7 @@ zkCli_ls() {
 # tag::zkcli-ls[]
 kubectl run my-pod \
   --stdin --tty --quiet --restart=Never \
-  --image oci.stackable.tech/sdp/zookeeper:3.9.3-stackable25.7.0-rc1 -- \
+  --image oci.stackable.tech/sdp/zookeeper:3.9.3-stackable25.7.0 -- \
   bin/zkCli.sh -server simple-zk-server:2282 ls / > /dev/null && \
   kubectl logs my-pod && \
   kubectl delete pods my-pod
