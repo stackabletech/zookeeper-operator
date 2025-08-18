@@ -364,7 +364,8 @@ pub async fn reconcile_zk(
     let resolved_product_image = zk
         .spec
         .image
-        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION);
+        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION)
+        .expect("TODO error handling");
 
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
@@ -376,7 +377,7 @@ pub async fn reconcile_zk(
     .context(CreateClusterResourcesSnafu)?;
 
     let validated_config = validate_all_roles_and_groups_config(
-        &resolved_product_image.app_version_label,
+        &resolved_product_image.app_version_label_value,
         &transform_all_roles_to_config(
             zk,
             [(
@@ -622,7 +623,7 @@ fn build_server_rolegroup_config_map(
                 .with_recommended_labels(build_recommended_labels(
                     zk,
                     ZK_CONTROLLER_NAME,
-                    &resolved_product_image.app_version_label,
+                    &resolved_product_image.app_version_label_value,
                     &rolegroup.role,
                     &rolegroup.role_group,
                 ))
@@ -675,7 +676,7 @@ fn build_server_rolegroup_headless_service(
         .with_recommended_labels(build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.app_version_label_value,
             &rolegroup.role,
             &rolegroup.role_group,
         ))
@@ -736,7 +737,7 @@ fn build_server_rolegroup_metrics_service(
         .with_recommended_labels(build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.app_version_label_value,
             &rolegroup.role,
             &rolegroup.role_group,
         ))
@@ -1006,7 +1007,7 @@ fn build_server_rolegroup_statefulset(
         .with_recommended_labels(build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.app_version_label_value,
             &rolegroup_ref.role,
             &rolegroup_ref.role_group,
         ))
@@ -1120,7 +1121,7 @@ fn build_server_rolegroup_statefulset(
         .with_recommended_labels(build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.app_version_label_value,
             &rolegroup_ref.role,
             &rolegroup_ref.role_group,
         ))
@@ -1275,10 +1276,11 @@ mod tests {
         let resolved_product_image = zookeeper
             .spec
             .image
-            .resolve(DOCKER_IMAGE_BASE_NAME, "0.0.0-dev");
+            .resolve(DOCKER_IMAGE_BASE_NAME, "0.0.0-dev")
+            .expect("TODO error handling");
 
         let validated_config = validate_all_roles_and_groups_config(
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.app_version_label_value,
             &transform_all_roles_to_config(
                 &zookeeper,
                 [(

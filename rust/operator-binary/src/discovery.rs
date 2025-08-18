@@ -104,7 +104,7 @@ pub fn build_discovery_configmap(
                 .with_recommended_labels(build_recommended_labels(
                     owner,
                     controller_name,
-                    &resolved_product_image.app_version_label,
+                    &resolved_product_image.app_version_label_value,
                     &ZookeeperRole::Server.to_string(),
                     "discovery",
                 ))

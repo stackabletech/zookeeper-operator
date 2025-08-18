@@ -1,0 +1,51 @@
+---
+apiVersion: test.stackable.tech/v1alpha1
+kind: Person
+metadata:
+  name: sbernauer1
+spec:
+  username: sbernauer1
+  socials:
+    email: sebastian.bernauer@stackable.tech
+# ---
+# apiVersion: test.stackable.tech/v1alpha2
+# kind: Person
+# metadata:
+#   name: sbernauer2
+# spec:
+#   username: sbernauer2
+#   firstName: Sebastian
+#   lastName: Bernauer
+# ---
+# apiVersion: test.stackable.tech/v1beta1
+# kind: Person
+# metadata:
+#   name: sbernauer3
+# spec:
+#   username: sbernauer3
+#   firstName: Sebastian
+#   lastName: Bernauer
+# ---
+# apiVersion: test.stackable.tech/v2
+# kind: Person
+# metadata:
+#   name: sbernauer4
+# spec:
+#   username: sbernauer4
+#   firstName: Sebastian
+#   lastName: Bernauer
+#   gender: Male
+---
+apiVersion: test.stackable.tech/v3
+kind: Person
+metadata:
+  name: sbernauer5
+spec:
+  username: sbernauer5
+  firstName: Sebastian
+  lastName: Bernauer
+  gender: Male
+  socials:
+    email: sebastian.bernauer@stackable.tech
+    mastodon: FOO
+  

@@ -42,6 +42,7 @@ use crate::{
 
 pub mod affinity;
 pub mod authentication;
+pub mod person;
 pub mod security;
 pub mod tls;
 
@@ -528,6 +529,7 @@ impl v1alpha1::ZookeeperCluster {
                 DOCKER_IMAGE_BASE_NAME,
                 crate::crd::built_info::CARGO_PKG_VERSION,
             )
+            .expect("TODO error handling")
             .product_version;
         let zookeeper_versions_with_log4j = [
             "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",

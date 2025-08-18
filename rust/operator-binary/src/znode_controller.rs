@@ -247,7 +247,8 @@ pub async fn reconcile_znode(
                     let resolved_product_image = zk
                         .spec
                         .image
-                        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION);
+                        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION)
+                        .expect("TODO error handling");
                     reconcile_apply(client, &znode, Ok(zk), &znode_path, &resolved_product_image)
                         .await
                 }

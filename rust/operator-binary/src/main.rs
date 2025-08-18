@@ -3,21 +3,24 @@
 #![allow(clippy::result_large_err)]
 use std::sync::Arc;
 
+use anyhow::Context;
 use clap::Parser;
 use crd::{
     APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperClusterVersion, ZookeeperZnode,
-    ZookeeperZnodeVersion, v1alpha1,
+    ZookeeperZnodeVersion,
+    person::{Person, PersonVersion},
+    v1alpha1,
 };
-use futures::{StreamExt, pin_mut};
+use futures::{StreamExt, future::select, pin_mut};
 use stackable_operator::{
     YamlSchema,
-    cli::{Command, ProductOperatorRun},
+    cli::{Command, OperatorEnvironmentOptions, ProductOperatorRun},
     k8s_openapi::api::{
         apps::v1::StatefulSet,
         core::v1::{ConfigMap, Service},
     },
     kube::{
-        Resource,
+        Client, Resource,
         core::DeserializeGuard,
         runtime::{
             Controller,
@@ -29,6 +32,10 @@ use stackable_operator::{
     logging::controller::report_controller_reconciled,
     shared::yaml::SerializeOptions,
     telemetry::Tracing,
+};
+use stackable_webhook::{
+    constants::CONVERSION_WEBHOOK_HTTPS_PORT,
+    servers::{ConversionWebhookOptions, ConversionWebhookServer},
 };
 
 use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
@@ -64,19 +71,21 @@ async fn main() -> anyhow::Result<()> {
                 .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
             ZookeeperZnode::merged_crd(ZookeeperZnodeVersion::V1Alpha1)?
                 .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
+            Person::merged_crd(PersonVersion::V3)?
+                .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
         }
         Command::Run(ProductOperatorRun {
             product_config,
             watch_namespace,
-            telemetry_arguments,
-            cluster_info_opts,
+            operator_environment,
+            telemetry,
+            cluster_info,
         }) => {
             // NOTE (@NickLarsenNZ): Before stackable-telemetry was used:
             // - The console log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now `CONSOLE_LOG` (when using Tracing::pre_configured).
             // - The file log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now set via `FILE_LOG` (when using Tracing::pre_configured).
             // - The file log directory was set by `ZOOKEEPER_OPERATOR_LOG_DIRECTORY`, and is now set by `ROLLING_LOGS_DIR` (or via `--rolling-logs <DIRECTORY>`).
-            let _tracing_guard =
-                Tracing::pre_configured(built_info::PKG_NAME, telemetry_arguments).init()?;
+            let _tracing_guard = Tracing::pre_configured(built_info::PKG_NAME, telemetry).init()?;
 
             tracing::info!(
                 built_info.pkg_version = built_info::PKG_VERSION,
@@ -93,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
             ])?;
             let client = stackable_operator::client::initialize_operator(
                 Some(OPERATOR_NAME.to_string()),
-                &cluster_info_opts,
+                &cluster_info,
             )
             .await?;
 
@@ -212,11 +221,53 @@ async fn main() -> anyhow::Result<()> {
                     },
                 );
 
-            pin_mut!(zk_controller, znode_controller);
+            let conversion_webhook =
+                create_conversion_webhook(client.as_kube_client(), operator_environment)
+                    .await
+                    .context("failed to create conversion webhook")?;
+
+            let conversion_webhook = async move {
+                conversion_webhook
+                    .run()
+                    .await
+                    .expect("failed to run conversion webhook")
+            };
+            pin_mut!(zk_controller, znode_controller, conversion_webhook);
             // kube-runtime's Controller will tokio::spawn each reconciliation, so this only concerns the internal watch machinery
-            futures::future::select(zk_controller, znode_controller).await;
+            select(zk_controller, select(znode_controller, conversion_webhook)).await;
         }
     }
 
     Ok(())
+}
+
+async fn create_conversion_webhook(
+    client: Client,
+    operator_environment: OperatorEnvironmentOptions,
+) -> anyhow::Result<ConversionWebhookServer> {
+    let crds_and_handlers = [
+        (
+            ZookeeperCluster::merged_crd(ZookeeperClusterVersion::V1Alpha1)?,
+            ZookeeperCluster::try_convert as fn(_) -> _,
+        ),
+        (
+            ZookeeperZnode::merged_crd(ZookeeperZnodeVersion::V1Alpha1)?,
+            ZookeeperZnode::try_convert as fn(_) -> _,
+        ),
+        (
+            Person::merged_crd(crd::person::PersonVersion::V1Alpha1)?,
+            Person::try_convert as fn(_) -> _,
+        ),
+    ];
+
+    let options = ConversionWebhookOptions {
+        socket_addr: format!("0.0.0.0:{CONVERSION_WEBHOOK_HTTPS_PORT}")
+            .parse()
+            .expect("static address is always valid"),
+        field_manager: OPERATOR_NAME.to_owned(),
+        namespace: operator_environment.operator_namespace,
+        service_name: operator_environment.operator_service_name,
+    };
+
+    Ok(ConversionWebhookServer::new(crds_and_handlers, options, client).await?)
 }
