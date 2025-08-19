@@ -1,4 +1,0 @@
-instance-size: medium
-disk: 100
-nodes: 8
-parallelism: 1
