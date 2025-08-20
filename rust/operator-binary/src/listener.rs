@@ -62,7 +62,7 @@ pub fn build_role_listener(
             .with_recommended_labels(build_recommended_labels(
                 zk,
                 ZK_CONTROLLER_NAME,
-                &resolved_product_image.app_version_label,
+                &resolved_product_image.app_version_label_value,
                 &zk_role.to_string(),
                 "none", // TODO (@NickLarsenNZ): update build_recommended_labels to have an optional role_group
             ))

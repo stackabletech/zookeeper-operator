@@ -29,7 +29,10 @@ use stackable_operator::{
         },
     },
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::{product_image_selection::ResolvedProductImage, rbac::build_rbac_resources},
+    commons::{
+        product_image_selection::{self, ResolvedProductImage},
+        rbac::build_rbac_resources,
+    },
     k8s_openapi::{
         DeepMerge,
         api::{
@@ -296,6 +299,11 @@ pub enum Error {
     BuildListenerPersistentVolume {
         source: stackable_operator::builder::pod::volume::ListenerOperatorVolumeSourceBuilderError,
     },
+
+    #[snafu(display("failed to resolve product image"))]
+    ResolveProductImage {
+        source: product_image_selection::Error,
+    },
 }
 
 impl ReconcilerError for Error {
@@ -346,6 +354,7 @@ impl ReconcilerError for Error {
             Error::ApplyGroupListener { .. } => None,
             Error::BuildListenerPersistentVolume { .. } => None,
             Error::ListenerConfiguration { .. } => None,
+            Error::ResolveProductImage { .. } => None,
         }
     }
 }
@@ -364,7 +373,8 @@ pub async fn reconcile_zk(
     let resolved_product_image = zk
         .spec
         .image
-        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION);
+        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION)
+        .context(ResolveProductImageSnafu)?;
 
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
@@ -376,7 +386,7 @@ pub async fn reconcile_zk(
     .context(CreateClusterResourcesSnafu)?;
 
     let validated_config = validate_all_roles_and_groups_config(
-        &resolved_product_image.app_version_label,
+        &resolved_product_image.product_version,
         &transform_all_roles_to_config(
             zk,
             [(
@@ -622,7 +632,7 @@ fn build_server_rolegroup_config_map(
                 .with_recommended_labels(build_recommended_labels(
                     zk,
                     ZK_CONTROLLER_NAME,
-                    &resolved_product_image.app_version_label,
+                    &resolved_product_image.app_version_label_value,
                     &rolegroup.role,
                     &rolegroup.role_group,
                 ))
@@ -644,11 +654,16 @@ fn build_server_rolegroup_config_map(
             })?,
         );
 
-    extend_role_group_config_map(zk, role, rolegroup, &mut cm_builder).context(
-        InvalidLoggingConfigSnafu {
-            cm_name: rolegroup.object_name(),
-        },
-    )?;
+    extend_role_group_config_map(
+        zk,
+        role,
+        rolegroup,
+        &mut cm_builder,
+        &resolved_product_image.product_version,
+    )
+    .context(InvalidLoggingConfigSnafu {
+        cm_name: rolegroup.object_name(),
+    })?;
 
     cm_builder
         .build()
@@ -675,7 +690,7 @@ fn build_server_rolegroup_headless_service(
         .with_recommended_labels(build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.app_version_label_value,
             &rolegroup.role,
             &rolegroup.role_group,
         ))
@@ -736,7 +751,7 @@ fn build_server_rolegroup_metrics_service(
         .with_recommended_labels(build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.app_version_label_value,
             &rolegroup.role,
             &rolegroup.role_group,
         ))
@@ -953,8 +968,13 @@ fn build_server_rolegroup_statefulset(
         )
         .add_env_var(
             "SERVER_JVMFLAGS",
-            construct_non_heap_jvm_args(zk, role, &rolegroup_ref.role_group)
-                .context(ConstructJvmArgumentsSnafu)?,
+            construct_non_heap_jvm_args(
+                zk,
+                role,
+                &rolegroup_ref.role_group,
+                &resolved_product_image.product_version,
+            )
+            .context(ConstructJvmArgumentsSnafu)?,
         )
         .add_env_var(
             "CONTAINERDEBUG_LOG_DIRECTORY",
@@ -1006,7 +1026,7 @@ fn build_server_rolegroup_statefulset(
         .with_recommended_labels(build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.app_version_label_value,
             &rolegroup_ref.role,
             &rolegroup_ref.role_group,
         ))
@@ -1120,7 +1140,7 @@ fn build_server_rolegroup_statefulset(
         .with_recommended_labels(build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.app_version_label_value,
             &rolegroup_ref.role,
             &rolegroup_ref.role_group,
         ))
@@ -1275,10 +1295,11 @@ mod tests {
         let resolved_product_image = zookeeper
             .spec
             .image
-            .resolve(DOCKER_IMAGE_BASE_NAME, "0.0.0-dev");
+            .resolve(DOCKER_IMAGE_BASE_NAME, "0.0.0-dev")
+            .expect("test resolved product image is always valid");
 
         let validated_config = validate_all_roles_and_groups_config(
-            &resolved_product_image.app_version_label,
+            &resolved_product_image.product_version,
             &transform_all_roles_to_config(
                 &zookeeper,
                 [(

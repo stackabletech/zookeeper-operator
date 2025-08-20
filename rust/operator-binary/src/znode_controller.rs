@@ -7,7 +7,7 @@ use const_format::concatcp;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::product_image_selection::ResolvedProductImage,
+    commons::product_image_selection::{self, ResolvedProductImage},
     crd::listener,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::{
@@ -130,6 +130,11 @@ pub enum Error {
         source: stackable_operator::cluster_resources::Error,
         znode: ObjectRef<v1alpha1::ZookeeperZnode>,
     },
+
+    #[snafu(display("failed to resolve product image"))]
+    ResolveProductImage {
+        source: product_image_selection::Error,
+    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -179,6 +184,7 @@ impl ReconcilerError for Error {
             Error::ObjectHasNoNamespace => None,
             Error::FailedToInitializeSecurityContext { .. } => None,
             Error::ZnodeMissingExpectedKeys { .. } => None,
+            Error::ResolveProductImage { .. } => None,
         }
     }
 }
@@ -247,7 +253,8 @@ pub async fn reconcile_znode(
                     let resolved_product_image = zk
                         .spec
                         .image
-                        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION);
+                        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION)
+                        .context(ResolveProductImageSnafu)?;
                     reconcile_apply(client, &znode, Ok(zk), &znode_path, &resolved_product_image)
                         .await
                 }

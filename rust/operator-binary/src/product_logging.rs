@@ -45,6 +45,7 @@ pub fn extend_role_group_config_map(
     role: ZookeeperRole,
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     cm_builder: &mut ConfigMapBuilder,
+    product_version: &str,
 ) -> Result<()> {
     let logging = zk
         .logging(&role, rolegroup)
@@ -54,7 +55,7 @@ pub fn extend_role_group_config_map(
         choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
     }) = logging.containers.get(&v1alpha1::Container::Zookeeper)
     {
-        match zk.logging_framework() {
+        match zk.logging_framework(product_version) {
             LoggingFramework::LOG4J => {
                 cm_builder.add_data(
                     LOG4J_CONFIG_FILE,
