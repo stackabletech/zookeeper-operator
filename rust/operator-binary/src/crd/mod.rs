@@ -27,8 +27,8 @@ use stackable_operator::{
     product_logging::{self, spec::Logging},
     role_utils::{GenericRoleConfig, JavaCommonConfig, Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
+    shared::time::Duration,
     status::condition::{ClusterCondition, HasStatusCondition},
-    time::Duration,
     utils::cluster_info::KubernetesClusterInfo,
     versioned::versioned,
 };
@@ -87,10 +87,6 @@ pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
 
 const DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_minutes_unchecked(2);
 pub const DEFAULT_LISTENER_CLASS: &str = "cluster-internal";
-
-mod built_info {
-    pub const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
-}
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -520,22 +516,14 @@ impl ZookeeperPodRef {
 }
 
 impl v1alpha1::ZookeeperCluster {
-    pub fn logging_framework(&self) -> LoggingFramework {
-        let version = self
-            .spec
-            .image
-            .resolve(
-                DOCKER_IMAGE_BASE_NAME,
-                crate::crd::built_info::CARGO_PKG_VERSION,
-            )
-            .product_version;
+    pub fn logging_framework(&self, product_version: &str) -> LoggingFramework {
         let zookeeper_versions_with_log4j = [
             "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
         ];
 
         if zookeeper_versions_with_log4j
             .into_iter()
-            .any(|prefix| version.starts_with(prefix))
+            .any(|prefix| product_version.starts_with(prefix))
         {
             LoggingFramework::LOG4J
         } else {

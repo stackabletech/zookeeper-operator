@@ -33,8 +33,9 @@ fn construct_jvm_args(
     zk: &ZookeeperCluster,
     role: &Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
     role_group: &str,
+    product_version: &str,
 ) -> Result<Vec<String>, Error> {
-    let logging_framework = zk.logging_framework();
+    let logging_framework = zk.logging_framework(product_version);
 
     let jvm_args = vec![
         format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
@@ -67,8 +68,9 @@ pub fn construct_non_heap_jvm_args(
     zk: &ZookeeperCluster,
     role: &Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
     role_group: &str,
+    product_version: &str,
 ) -> Result<String, Error> {
-    let mut jvm_args = construct_jvm_args(zk, role, role_group)?;
+    let mut jvm_args = construct_jvm_args(zk, role, role_group, product_version)?;
     jvm_args.retain(|arg| !is_heap_jvm_argument(arg));
 
     Ok(jvm_args.join(" "))
@@ -122,8 +124,15 @@ mod tests {
                 replicas: 1
         "#;
         let (zookeeper, merged_config, role, rolegroup) = construct_boilerplate(input);
-        let non_heap_jvm_args = construct_non_heap_jvm_args(&zookeeper, &role, &rolegroup).unwrap();
-        let zk_server_heap_env = construct_zk_server_heap_env(&merged_config).unwrap();
+        let non_heap_jvm_args = construct_non_heap_jvm_args(
+            &zookeeper,
+            &role,
+            &rolegroup,
+            zookeeper.spec.image.product_version(),
+        )
+        .expect("test: function must pass");
+        let zk_server_heap_env =
+            construct_zk_server_heap_env(&merged_config).expect("test: function must pass");
 
         assert_eq!(
             non_heap_jvm_args,
@@ -167,8 +176,15 @@ mod tests {
                     - -Dhttps.proxyPort=1234
         "#;
         let (zookeeper, merged_config, role, rolegroup) = construct_boilerplate(input);
-        let non_heap_jvm_args = construct_non_heap_jvm_args(&zookeeper, &role, &rolegroup).unwrap();
-        let zk_server_heap_env = construct_zk_server_heap_env(&merged_config).unwrap();
+        let non_heap_jvm_args = construct_non_heap_jvm_args(
+            &zookeeper,
+            &role,
+            &rolegroup,
+            zookeeper.spec.image.product_version(),
+        )
+        .expect("test: function must pass");
+        let zk_server_heap_env =
+            construct_zk_server_heap_env(&merged_config).expect("test: function must pass");
 
         assert_eq!(
             non_heap_jvm_args,
@@ -197,8 +213,12 @@ mod tests {
         let rolegroup_ref = zookeeper.server_rolegroup_ref("default");
         let merged_config = zookeeper
             .merged_config(&zookeeper_role, &rolegroup_ref)
-            .unwrap();
-        let role = zookeeper.spec.servers.clone().unwrap();
+            .expect("test: merged config can be created");
+        let role = zookeeper
+            .spec
+            .servers
+            .clone()
+            .expect("test: server role is defined in the ZookeeperCluster");
 
         (zookeeper, merged_config, role, "default".to_owned())
     }

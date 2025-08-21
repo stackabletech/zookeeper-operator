@@ -22,7 +22,7 @@ use stackable_operator::{
     client::Client,
     crd::authentication::core,
     k8s_openapi::api::core::v1::Volume,
-    time::Duration,
+    shared::time::Duration,
 };
 
 use crate::{
