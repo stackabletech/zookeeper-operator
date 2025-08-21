@@ -27,8 +27,8 @@ use stackable_operator::{
     product_logging::{self, spec::Logging},
     role_utils::{GenericRoleConfig, JavaCommonConfig, Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
+    shared::time::Duration,
     status::condition::{ClusterCondition, HasStatusCondition},
-    time::Duration,
     utils::cluster_info::KubernetesClusterInfo,
     versioned::versioned,
 };

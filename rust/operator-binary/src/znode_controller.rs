@@ -17,7 +17,7 @@ use stackable_operator::{
         runtime::{controller, finalizer, reflector::ObjectRef},
     },
     logging::controller::ReconcilerError,
-    time::Duration,
+    shared::time::Duration,
     utils::cluster_info::KubernetesClusterInfo,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
