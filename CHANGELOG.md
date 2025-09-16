@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Helm: Allow Pod `priorityClassName` to be configured ([#974]).
+
+[#974]: https://github.com/stackabletech/zookeeper-operator/pull/974
+
 ## [25.7.0] - 2025-07-23
 
 ## [25.7.0-rc1] - 2025-07-18
