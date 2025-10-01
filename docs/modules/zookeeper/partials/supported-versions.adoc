@@ -2,4 +2,5 @@
 // This is a separate file, since it is used by both the direct ZooKeeper documentation, and the overarching
 // Stackable Platform documentation.
 
-- 3.9.3 (LTS)
+- 3.9.4 (LTS)
+- 3.9.3 (deprecated)
