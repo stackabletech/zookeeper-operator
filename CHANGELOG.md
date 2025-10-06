@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Add end-of-support checker ([#976]).
 - Helm: Allow Pod `priorityClassName` to be configured ([#974]).
 - Add support for `3.9.4` ([#977]).
 
@@ -14,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Deprecate support for `3.9.3` ([#977]).
 
 [#974]: https://github.com/stackabletech/zookeeper-operator/pull/974
+[#976]: https://github.com/stackabletech/zookeeper-operator/pull/976
 [#977]: https://github.com/stackabletech/zookeeper-operator/pull/977
 
 ## [25.7.0] - 2025-07-23
