@@ -8,7 +8,7 @@ use crd::{
     APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperClusterVersion, ZookeeperZnode,
     ZookeeperZnodeVersion, v1alpha1,
 };
-use futures::{StreamExt, pin_mut};
+use futures::{FutureExt, StreamExt};
 use stackable_operator::{
     YamlSchema,
     cli::{Command, RunArguments},
@@ -92,7 +92,8 @@ async fn main() -> anyhow::Result<()> {
 
             let eos_checker =
                 EndOfSupportChecker::new(built_info::BUILT_TIME_UTC, maintenance.end_of_support)?
-                    .run();
+                    .run()
+                    .map(anyhow::Ok);
 
             let product_config = product_config.load(&[
                 "deploy/config-spec/properties.yaml",
@@ -155,7 +156,8 @@ async fn main() -> anyhow::Result<()> {
                             .await;
                         }
                     },
-                );
+                )
+                .map(anyhow::Ok);
 
             let znode_controller = Controller::new(
                 watch_namespace.get_api::<DeserializeGuard<v1alpha1::ZookeeperZnode>>(&client),
@@ -218,12 +220,11 @@ async fn main() -> anyhow::Result<()> {
                             .await;
                         }
                     },
-                );
+                )
+                .map(anyhow::Ok);
 
-            pin_mut!(zk_controller, znode_controller);
             // kube-runtime's Controller will tokio::spawn each reconciliation, so this only concerns the internal watch machinery
-            let controller_futures = futures::future::select(zk_controller, znode_controller);
-            tokio::join!(controller_futures, eos_checker);
+            futures::try_join!(zk_controller, znode_controller, eos_checker)?;
         }
     }
 
