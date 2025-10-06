@@ -8,10 +8,11 @@ use crd::{
     APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperClusterVersion, ZookeeperZnode,
     ZookeeperZnodeVersion, v1alpha1,
 };
-use futures::{StreamExt, pin_mut};
+use futures::{FutureExt, StreamExt};
 use stackable_operator::{
     YamlSchema,
-    cli::{Command, ProductOperatorRun},
+    cli::{Command, RunArguments},
+    eos::EndOfSupportChecker,
     k8s_openapi::api::{
         apps::v1::StatefulSet,
         core::v1::{ConfigMap, Service},
@@ -65,18 +66,19 @@ async fn main() -> anyhow::Result<()> {
             ZookeeperZnode::merged_crd(ZookeeperZnodeVersion::V1Alpha1)?
                 .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
         }
-        Command::Run(ProductOperatorRun {
+        Command::Run(RunArguments {
             product_config,
             watch_namespace,
             operator_environment: _,
-            telemetry,
-            cluster_info,
+            maintenance,
+            common,
         }) => {
             // NOTE (@NickLarsenNZ): Before stackable-telemetry was used:
             // - The console log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now `CONSOLE_LOG` (when using Tracing::pre_configured).
             // - The file log level was set by `ZOOKEEPER_OPERATOR_LOG`, and is now set via `FILE_LOG` (when using Tracing::pre_configured).
             // - The file log directory was set by `ZOOKEEPER_OPERATOR_LOG_DIRECTORY`, and is now set by `ROLLING_LOGS_DIR` (or via `--rolling-logs <DIRECTORY>`).
-            let _tracing_guard = Tracing::pre_configured(built_info::PKG_NAME, telemetry).init()?;
+            let _tracing_guard =
+                Tracing::pre_configured(built_info::PKG_NAME, common.telemetry).init()?;
 
             tracing::info!(
                 built_info.pkg_version = built_info::PKG_VERSION,
@@ -87,13 +89,20 @@ async fn main() -> anyhow::Result<()> {
                 "Starting {description}",
                 description = built_info::PKG_DESCRIPTION
             );
+
+            let eos_checker =
+                EndOfSupportChecker::new(built_info::BUILT_TIME_UTC, maintenance.end_of_support)?
+                    .run()
+                    .map(anyhow::Ok);
+
             let product_config = product_config.load(&[
                 "deploy/config-spec/properties.yaml",
                 "/etc/stackable/zookeeper-operator/config-spec/properties.yaml",
             ])?;
+
             let client = stackable_operator::client::initialize_operator(
                 Some(OPERATOR_NAME.to_string()),
-                &cluster_info,
+                &common.cluster_info,
             )
             .await?;
 
@@ -147,7 +156,8 @@ async fn main() -> anyhow::Result<()> {
                             .await;
                         }
                     },
-                );
+                )
+                .map(anyhow::Ok);
 
             let znode_controller = Controller::new(
                 watch_namespace.get_api::<DeserializeGuard<v1alpha1::ZookeeperZnode>>(&client),
@@ -210,11 +220,11 @@ async fn main() -> anyhow::Result<()> {
                             .await;
                         }
                     },
-                );
+                )
+                .map(anyhow::Ok);
 
-            pin_mut!(zk_controller, znode_controller);
             // kube-runtime's Controller will tokio::spawn each reconciliation, so this only concerns the internal watch machinery
-            futures::future::select(zk_controller, znode_controller).await;
+            futures::try_join!(zk_controller, znode_controller, eos_checker)?;
         }
     }
 

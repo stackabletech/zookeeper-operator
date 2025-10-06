@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Add end-of-support checker which can be controlled with environment variables and CLI arguments ([#976]).
+  - `EOS_CHECK_MODE` (`--eos-check-mode`) to set the EoS check mode. Currently, only "offline" is supported.
+  - `EOS_INTERVAL` (`--eos-interval`) to set the interval in which the operator checks if it is EoS.
+  - `EOS_DISABLED` (`--eos-disabled`) to disable the EoS checker completely.
 - Helm: Allow Pod `priorityClassName` to be configured ([#974]).
 - Add support for `3.9.4` ([#977]).
 
@@ -14,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - Deprecate support for `3.9.3` ([#977]).
 
 [#974]: https://github.com/stackabletech/zookeeper-operator/pull/974
+[#976]: https://github.com/stackabletech/zookeeper-operator/pull/976
 [#977]: https://github.com/stackabletech/zookeeper-operator/pull/977
 
 ## [25.7.0] - 2025-07-23

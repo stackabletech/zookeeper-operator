@@ -35,6 +35,8 @@ helm_crds, helm_non_crds = filter_yaml(
       namespace="stackable-operators",
       set=[
          'image.repository=' + registry + '/' + operator_name,
+         # Comment out to enable trace-level logging of framework specific messages
+         # 'telemetry.consoleLog.level=stackable_operator=trace'
       ],
    ),
    api_version = "^apiextensions\\.k8s\\.io/.*$",
