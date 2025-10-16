@@ -90,10 +90,7 @@ use crate::{
         security::{self, ZookeeperSecurity},
         v1alpha1::{self, ZookeeperServerRoleConfig},
     },
-    discovery::{
-        self, build_discovery_configmap, build_role_group_headless_service_name,
-        build_role_group_metrics_service_name,
-    },
+    discovery::{self, build_discovery_configmap},
     listener::{build_role_listener, role_listener_name},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
     product_logging::extend_role_group_config_map,
@@ -138,19 +135,6 @@ pub enum Error {
 
     #[snafu(display("internal operator failure"))]
     InternalOperatorFailure { source: crate::crd::Error },
-
-    #[snafu(display("failed to calculate global service name"))]
-    GlobalServiceNameNotFound,
-
-    #[snafu(display("failed to calculate service name for role {}", rolegroup))]
-    RoleGroupServiceNameNotFound {
-        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    },
-
-    #[snafu(display("failed to apply global Service"))]
-    ApplyRoleService {
-        source: stackable_operator::cluster_resources::Error,
-    },
 
     #[snafu(display("failed to apply Service for {}", rolegroup))]
     ApplyRoleGroupService {
@@ -319,9 +303,6 @@ impl ReconcilerError for Error {
             Error::NoServerRole => None,
             Error::RoleParseFailure { .. } => None,
             Error::InternalOperatorFailure { .. } => None,
-            Error::GlobalServiceNameNotFound => None,
-            Error::RoleGroupServiceNameNotFound { .. } => None,
-            Error::ApplyRoleService { .. } => None,
             Error::ApplyRoleGroupService { .. } => None,
             Error::BuildRoleGroupConfig { .. } => None,
             Error::ApplyRoleGroupConfig { .. } => None,
@@ -682,9 +663,7 @@ fn build_server_rolegroup_headless_service(
 ) -> Result<Service> {
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
-        .name(build_role_group_headless_service_name(
-            rolegroup.object_name(),
-        ))
+        .name(rolegroup.rolegroup_headless_service_name())
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
         .with_recommended_labels(build_recommended_labels(
@@ -743,9 +722,7 @@ fn build_server_rolegroup_metrics_service(
 
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
-        .name(build_role_group_metrics_service_name(
-            rolegroup.object_name(),
-        ))
+        .name(rolegroup.rolegroup_metrics_service_name())
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
         .with_recommended_labels(build_recommended_labels(
@@ -1161,9 +1138,7 @@ fn build_server_rolegroup_statefulset(
             match_labels: Some(statefulset_match_labels.into()),
             ..LabelSelector::default()
         },
-        service_name: Some(build_role_group_headless_service_name(
-            rolegroup_ref.object_name(),
-        )),
+        service_name: Some(rolegroup_ref.rolegroup_headless_service_name()),
         template: pod_template,
         volume_claim_templates: Some(pvcs),
         ..StatefulSetSpec::default()

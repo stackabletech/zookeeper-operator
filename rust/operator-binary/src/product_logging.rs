@@ -16,21 +16,6 @@ use crate::crd::{
 
 #[derive(Snafu, Debug)]
 pub enum Error {
-    #[snafu(display("object has no namespace"))]
-    ObjectHasNoNamespace,
-
-    #[snafu(display("failed to retrieve the ConfigMap {cm_name}"))]
-    ConfigMapNotFound {
-        source: stackable_operator::client::Error,
-        cm_name: String,
-    },
-
-    #[snafu(display("failed to retrieve the entry {entry} for ConfigMap {cm_name}"))]
-    MissingConfigMapEntry {
-        entry: &'static str,
-        cm_name: String,
-    },
-
     #[snafu(display("crd validation failure"))]
     CrdValidationFailure { source: crate::crd::Error },
 }

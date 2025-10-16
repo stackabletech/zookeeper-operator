@@ -36,7 +36,6 @@ use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
 use crate::{
     crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig},
-    discovery::build_role_group_headless_service_name,
     listener::role_listener_name,
 };
 
@@ -626,9 +625,8 @@ impl v1alpha1::ZookeeperCluster {
             for i in 0..rolegroup.replicas.unwrap_or(1) {
                 pod_refs.push(ZookeeperPodRef {
                     namespace: ns.clone(),
-                    role_group_headless_service_name: build_role_group_headless_service_name(
-                        rolegroup_ref.object_name(),
-                    ),
+                    role_group_headless_service_name: rolegroup_ref
+                        .rolegroup_headless_service_name(),
                     pod_name: format!("{role_group}-{i}", role_group = rolegroup_ref.object_name()),
                     zookeeper_myid: i + myid_offset,
                 });

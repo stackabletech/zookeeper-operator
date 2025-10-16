@@ -168,15 +168,3 @@ fn listener_addresses(
         false => Ok(address_port_pairs),
     }
 }
-
-// TODO (@NickLarsenNZ): Implement this directly on RoleGroupRef, ie:
-// RoleGroupRef<K: Resource>::metrics_service_name(&self) to restrict what _name_ can be.
-pub fn build_role_group_headless_service_name(name: String) -> String {
-    format!("{name}-headless")
-}
-
-// TODO (@NickLarsenNZ): Implement this directly on RoleGroupRef, ie:
-// RoleGroupRef<K: Resource>::metrics_service_name(&self) to restrict what _name_ can be.
-pub fn build_role_group_metrics_service_name(name: String) -> String {
-    format!("{name}-metrics")
-}
