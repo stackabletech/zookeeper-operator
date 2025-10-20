@@ -40,7 +40,7 @@ use stackable_operator::{
             core::v1::{
                 ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
                 ExecAction, ObjectFieldSelector, PersistentVolumeClaim, PodSecurityContext, Probe,
-                Service, ServiceAccount, ServicePort, ServiceSpec, Volume,
+                ServiceAccount, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
@@ -51,7 +51,7 @@ use stackable_operator::{
         core::{DeserializeGuard, error_boundary},
         runtime::controller,
     },
-    kvp::{Label, LabelError, Labels},
+    kvp::{LabelError, Labels},
     logging::controller::ReconcilerError,
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
@@ -79,14 +79,12 @@ use crate::{
     command::create_init_container_command_args,
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
-        DOCKER_IMAGE_BASE_NAME, JMX_METRICS_PORT, JMX_METRICS_PORT_NAME,
-        JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE,
-        METRICS_PROVIDER_HTTP_PORT, METRICS_PROVIDER_HTTP_PORT_KEY,
-        METRICS_PROVIDER_HTTP_PORT_NAME, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
-        STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
-        ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_LEADER_PORT,
-        ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_PROPERTIES_FILE, ZOOKEEPER_SERVER_PORT_NAME,
-        ZookeeperRole,
+        DOCKER_IMAGE_BASE_NAME, JMX_METRICS_PORT_NAME, JVM_SECURITY_PROPERTIES_FILE,
+        MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE, METRICS_PROVIDER_HTTP_PORT_NAME,
+        STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
+        STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME,
+        ZOOKEEPER_LEADER_PORT, ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_PROPERTIES_FILE,
+        ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole,
         security::{self, ZookeeperSecurity},
         v1alpha1::{self, ZookeeperServerRoleConfig},
     },
@@ -94,6 +92,10 @@ use crate::{
     listener::{build_role_listener, role_listener_name},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
     product_logging::extend_role_group_config_map,
+    service::{
+        self, build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
+        metrics_port_from_rolegroup_config,
+    },
     utils::build_recommended_labels,
 };
 
@@ -242,7 +244,7 @@ pub enum Error {
     #[snafu(display("failed to build label"))]
     BuildLabel { source: LabelError },
 
-    #[snafu(display("failed to build object  meta data"))]
+    #[snafu(display("failed to build object meta data"))]
     ObjectMeta {
         source: stackable_operator::builder::meta::Error,
     },
@@ -288,6 +290,9 @@ pub enum Error {
     ResolveProductImage {
         source: product_image_selection::Error,
     },
+
+    #[snafu(display("failed to build service"))]
+    BuildService { source: service::Error },
 }
 
 impl ReconcilerError for Error {
@@ -336,6 +341,7 @@ impl ReconcilerError for Error {
             Error::BuildListenerPersistentVolume { .. } => None,
             Error::ListenerConfiguration { .. } => None,
             Error::ResolveProductImage { .. } => None,
+            Error::BuildService { .. } => None,
         }
     }
 }
@@ -428,13 +434,15 @@ pub async fn reconcile_zk(
             .context(FailedToResolveConfigSnafu)?;
 
         let rg_headless_service =
-            build_server_rolegroup_headless_service(zk, &rolegroup, &resolved_product_image)?;
+            build_server_rolegroup_headless_service(zk, &rolegroup, &resolved_product_image)
+                .context(BuildServiceSnafu)?;
         let rg_metrics_service = build_server_rolegroup_metrics_service(
             zk,
             &rolegroup,
             &resolved_product_image,
             rolegroup_config,
-        )?;
+        )
+        .context(BuildServiceSnafu)?;
         let rg_configmap = build_server_rolegroup_config_map(
             zk,
             &rolegroup,
@@ -651,123 +659,6 @@ fn build_server_rolegroup_config_map(
         .with_context(|_| BuildRoleGroupConfigSnafu {
             rolegroup: rolegroup.clone(),
         })
-}
-
-/// The rolegroup [`Service`] is a headless service that allows internal access to the instances of a certain rolegroup
-///
-/// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
-fn build_server_rolegroup_headless_service(
-    zk: &v1alpha1::ZookeeperCluster,
-    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    resolved_product_image: &ResolvedProductImage,
-) -> Result<Service> {
-    let metadata = ObjectMetaBuilder::new()
-        .name_and_namespace(zk)
-        .name(rolegroup.rolegroup_headless_service_name())
-        .ownerreference_from_resource(zk, None, Some(true))
-        .context(ObjectMissingMetadataForOwnerRefSnafu)?
-        .with_recommended_labels(build_recommended_labels(
-            zk,
-            ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label_value,
-            &rolegroup.role,
-            &rolegroup.role_group,
-        ))
-        .context(ObjectMetaSnafu)?
-        .build();
-
-    let service_selector_labels =
-        Labels::role_group_selector(zk, APP_NAME, &rolegroup.role, &rolegroup.role_group)
-            .context(BuildLabelSnafu)?;
-
-    let service_spec = ServiceSpec {
-        // Internal communication does not need to be exposed
-        type_: Some("ClusterIP".to_string()),
-        cluster_ip: Some("None".to_string()),
-        ports: Some(vec![
-            ServicePort {
-                name: Some(ZOOKEEPER_LEADER_PORT_NAME.to_string()),
-                port: ZOOKEEPER_LEADER_PORT as i32,
-                protocol: Some("TCP".to_string()),
-                ..ServicePort::default()
-            },
-            ServicePort {
-                name: Some(ZOOKEEPER_ELECTION_PORT_NAME.to_string()),
-                port: ZOOKEEPER_ELECTION_PORT as i32,
-                protocol: Some("TCP".to_string()),
-                ..ServicePort::default()
-            },
-        ]),
-        selector: Some(service_selector_labels.into()),
-        publish_not_ready_addresses: Some(true),
-        ..ServiceSpec::default()
-    };
-
-    Ok(Service {
-        metadata,
-        spec: Some(service_spec),
-        status: None,
-    })
-}
-
-/// The rolegroup [`Service`] for exposing metrics
-fn build_server_rolegroup_metrics_service(
-    zk: &v1alpha1::ZookeeperCluster,
-    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    resolved_product_image: &ResolvedProductImage,
-    rolegroup_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
-) -> Result<Service> {
-    let prometheus_label =
-        Label::try_from(("prometheus.io/scrape", "true")).context(BuildLabelSnafu)?;
-
-    let metadata = ObjectMetaBuilder::new()
-        .name_and_namespace(zk)
-        .name(rolegroup.rolegroup_metrics_service_name())
-        .ownerreference_from_resource(zk, None, Some(true))
-        .context(ObjectMissingMetadataForOwnerRefSnafu)?
-        .with_recommended_labels(build_recommended_labels(
-            zk,
-            ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label_value,
-            &rolegroup.role,
-            &rolegroup.role_group,
-        ))
-        .context(ObjectMetaSnafu)?
-        .with_label(prometheus_label)
-        .build();
-
-    let service_selector_labels =
-        Labels::role_group_selector(zk, APP_NAME, &rolegroup.role, &rolegroup.role_group)
-            .context(BuildLabelSnafu)?;
-
-    let service_spec = ServiceSpec {
-        // Internal communication does not need to be exposed
-        type_: Some("ClusterIP".to_string()),
-        cluster_ip: Some("None".to_string()),
-        ports: Some(vec![
-            ServicePort {
-                name: Some(JMX_METRICS_PORT_NAME.to_string()),
-                port: JMX_METRICS_PORT as i32,
-                protocol: Some("TCP".to_string()),
-                ..ServicePort::default()
-            },
-            ServicePort {
-                name: Some(METRICS_PROVIDER_HTTP_PORT_NAME.to_string()),
-                port: metrics_port_from_rolegroup_config(rolegroup_config) as i32,
-                protocol: Some("TCP".to_string()),
-                ..ServicePort::default()
-            },
-        ]),
-        selector: Some(service_selector_labels.into()),
-        publish_not_ready_addresses: Some(true),
-        ..ServiceSpec::default()
-    };
-
-    Ok(Service {
-        metadata,
-        spec: Some(service_spec),
-        status: None,
-    })
 }
 
 pub fn build_role_listener_pvc(
@@ -1149,27 +1040,6 @@ fn build_server_rolegroup_statefulset(
         spec: Some(statefulset_spec),
         status: None,
     })
-}
-
-fn metrics_port_from_rolegroup_config(
-    rolegroup_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
-) -> u16 {
-    let metrics_port = rolegroup_config
-        .get(&PropertyNameKind::File(
-            ZOOKEEPER_PROPERTIES_FILE.to_string(),
-        ))
-        .expect("{ZOOKEEPER_PROPERTIES_FILE} is present")
-        .get(METRICS_PROVIDER_HTTP_PORT_KEY)
-        .expect("{METRICS_PROVIDER_HTTP_PORT_KEY} is set");
-
-    match u16::from_str(metrics_port) {
-        Ok(port) => port,
-        Err(err) => {
-            tracing::error!("{err}");
-            tracing::info!("Defaulting to using {METRICS_PROVIDER_HTTP_PORT} as metrics port.");
-            METRICS_PROVIDER_HTTP_PORT
-        }
-    }
 }
 
 pub fn error_policy(
