@@ -675,7 +675,7 @@ pub fn build_role_listener_pvc(
 
 /// The rolegroup [`StatefulSet`] runs the rolegroup, as configured by the administrator.
 ///
-/// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding headless [`Service`] (from [`build_server_rolegroup_headless_service`]).
+/// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding headless [`stackable_operator::k8s_openapi::api::core::v1::Service`] (from [`build_server_rolegroup_headless_service`]).
 #[allow(clippy::too_many_arguments)]
 fn build_server_rolegroup_statefulset(
     zk: &v1alpha1::ZookeeperCluster,
