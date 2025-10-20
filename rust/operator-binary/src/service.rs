@@ -4,7 +4,6 @@ use std::{
 };
 
 use product_config::types::PropertyNameKind;
-use serde::de::IntoDeserializer;
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::meta::ObjectMetaBuilder,
