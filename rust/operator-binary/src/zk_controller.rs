@@ -293,6 +293,9 @@ pub enum Error {
 
     #[snafu(display("failed to build service"))]
     BuildService { source: service::Error },
+
+    #[snafu(display("failed to retrieve metrics port from config"))]
+    RetrieveMetricsPortFromConfig { source: service::Error },
 }
 
 impl ReconcilerError for Error {
@@ -342,6 +345,7 @@ impl ReconcilerError for Error {
             Error::ListenerConfiguration { .. } => None,
             Error::ResolveProductImage { .. } => None,
             Error::BuildService { .. } => None,
+            Error::RetrieveMetricsPortFromConfig { .. } => None,
         }
     }
 }
@@ -875,7 +879,9 @@ fn build_server_rolegroup_statefulset(
         .add_container_port(JMX_METRICS_PORT_NAME, 9505)
         .add_container_port(
             METRICS_PROVIDER_HTTP_PORT_NAME,
-            metrics_port_from_rolegroup_config(server_config).into(),
+            metrics_port_from_rolegroup_config(server_config)
+                .context(RetrieveMetricsPortFromConfigSnafu)?
+                .into(),
         )
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?

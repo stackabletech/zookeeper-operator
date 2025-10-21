@@ -4,7 +4,7 @@ use std::{
 };
 
 use product_config::types::PropertyNameKind;
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::meta::ObjectMetaBuilder,
     commons::product_image_selection::ResolvedProductImage,
@@ -40,6 +40,12 @@ pub enum Error {
     BuildLabel {
         source: stackable_operator::kvp::LabelError,
     },
+
+    #[snafu(display("missing zookeeper properties file {ZOOKEEPER_PROPERTIES_FILE} in config"))]
+    MissingPropertiesFile,
+
+    #[snafu(display("missing provider http port key {METRICS_PROVIDER_HTTP_PORT_KEY} in config"))]
+    MissingProviderHttpPortKey,
 }
 
 /// The rolegroup [`Service`] is a headless service that allows internal access to the instances of a certain rolegroup
@@ -106,7 +112,7 @@ pub(crate) fn build_server_rolegroup_metrics_service(
     resolved_product_image: &ResolvedProductImage,
     rolegroup_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
 ) -> Result<Service, Error> {
-    let metrics_port = metrics_port_from_rolegroup_config(rolegroup_config);
+    let metrics_port = metrics_port_from_rolegroup_config(rolegroup_config)?;
 
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
@@ -162,23 +168,25 @@ pub(crate) fn build_server_rolegroup_metrics_service(
 
 pub(crate) fn metrics_port_from_rolegroup_config(
     rolegroup_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
-) -> u16 {
+) -> Result<u16, Error> {
     let metrics_port = rolegroup_config
         .get(&PropertyNameKind::File(
             ZOOKEEPER_PROPERTIES_FILE.to_string(),
         ))
-        .expect("{ZOOKEEPER_PROPERTIES_FILE} is present")
+        .context(MissingPropertiesFileSnafu)?
         .get(METRICS_PROVIDER_HTTP_PORT_KEY)
-        .expect("{METRICS_PROVIDER_HTTP_PORT_KEY} is set");
+        .context(MissingProviderHttpPortKeySnafu)?;
 
-    match u16::from_str(metrics_port) {
+    let port = match u16::from_str(metrics_port) {
         Ok(port) => port,
         Err(err) => {
             tracing::error!("{err}");
             tracing::info!("Defaulting to using {METRICS_PROVIDER_HTTP_PORT} as metrics port.");
             METRICS_PROVIDER_HTTP_PORT
         }
-    }
+    };
+
+    Ok(port)
 }
 
 /// Common labels for Prometheus
