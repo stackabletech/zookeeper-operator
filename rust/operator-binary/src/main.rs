@@ -41,6 +41,7 @@ mod discovery;
 mod listener;
 mod operations;
 mod product_logging;
+mod service;
 mod utils;
 mod zk_controller;
 mod znode_controller;
