@@ -56,10 +56,10 @@ pub const ZOOKEEPER_LEADER_PORT: u16 = 2888;
 pub const ZOOKEEPER_ELECTION_PORT_NAME: &str = "zk-election";
 pub const ZOOKEEPER_ELECTION_PORT: u16 = 3888;
 
-pub const JMX_METRICS_PORT_NAME: &str = "metrics";
+pub const JMX_METRICS_PORT_NAME: &str = "jmx-metrics";
 pub const JMX_METRICS_PORT: u16 = 9505;
 pub const METRICS_PROVIDER_HTTP_PORT_KEY: &str = "metricsProvider.httpPort";
-pub const METRICS_PROVIDER_HTTP_PORT_NAME: &str = "native-metrics";
+pub const METRICS_PROVIDER_HTTP_PORT_NAME: &str = "metrics";
 pub const METRICS_PROVIDER_HTTP_PORT: u16 = 7000;
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
