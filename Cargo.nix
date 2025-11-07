@@ -8333,7 +8333,7 @@ rec {
       };
       "stackable-zookeeper-operator" = rec {
         crateName = "stackable-zookeeper-operator";
-        version = "25.11.0-rc1";
+        version = "25.11.0";
         edition = "2021";
         crateBin = [
           {
