@@ -2517,7 +2517,7 @@ dependencies = [
 
 [[package]]
 name = "stackable-zookeeper-operator"
-version = "25.11.0-rc1"
+version = "25.11.0"
 dependencies = [
  "anyhow",
  "built",
