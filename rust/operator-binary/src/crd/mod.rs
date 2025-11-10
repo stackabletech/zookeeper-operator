@@ -154,6 +154,9 @@ pub mod versioned {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub servers:
             Option<Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>>,
+
+        /// TODO docs
+        pub object_overrides: Option<String>,
     }
 
     #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
