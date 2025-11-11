@@ -287,7 +287,7 @@ async fn reconcile_apply(
         ZNODE_CONTROLLER_NAME,
         &znode.object_ref(&()),
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
-        zk.spec.object_overrides.as_ref(),
+        &znode.spec.object_overrides,
     )
     .context(ZnodeMissingExpectedKeysSnafu { znode })?;
 
