@@ -416,16 +416,24 @@ impl Configuration for v1alpha1::ZookeeperConfigFragment {
         resource: &Self::Configurable,
         _role_name: &str,
     ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
-        Ok([(
-            v1alpha1::ZookeeperConfig::MYID_OFFSET.to_string(),
-            self.myid_offset
-                .or(v1alpha1::ZookeeperConfig::default_server_config(
-                    &resource.name_any(),
-                    &ZookeeperRole::Server,
-                )
-                .myid_offset)
-                .map(|myid_offset| myid_offset.to_string()),
-        )]
+        Ok([
+            (
+                v1alpha1::ZookeeperConfig::MYID_OFFSET.to_string(),
+                self.myid_offset
+                    .or(v1alpha1::ZookeeperConfig::default_server_config(
+                        &resource.name_any(),
+                        &ZookeeperRole::Server,
+                    )
+                    .myid_offset)
+                    .map(|myid_offset| myid_offset.to_string()),
+            ),
+            // This is used by zkEnv.sh and for the shell scripts in bin/
+            // If unset it tries to find the conf directory automatically and that fails
+            (
+                "ZOOCFGDIR".to_string(),
+                Some(STACKABLE_RW_CONFIG_DIR.to_string()),
+            ),
+        ]
         .into())
     }
 
