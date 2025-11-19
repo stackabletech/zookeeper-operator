@@ -186,6 +186,13 @@ spec:
                       nullable: true
                       type: string
                   type: object
+                objectOverrides:
+                  default: []
+                  description: TODO docs
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  type: array
                 servers:
                   description: |-
                     This struct represents a role - e.g. HDFS datanodes or Trino workers. It has a key-value-map containing
@@ -1029,6 +1036,13 @@ spec:
                       nullable: true
                       type: string
                   type: object
+                objectOverrides:
+                  default: []
+                  description: TODO docs
+                  items:
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  type: array
               type: object
             status:
               nullable: true
