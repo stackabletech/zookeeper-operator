@@ -23,6 +23,7 @@ use stackable_operator::{
     },
     kube::{CustomResource, ResourceExt, runtime::reflector::ObjectRef},
     memory::{BinaryMultiple, MemoryQuantity},
+    patchinator::ObjectOverrides,
     product_config_utils::{self, Configuration},
     product_logging::{self, spec::Logging},
     role_utils::{GenericRoleConfig, JavaCommonConfig, Role, RoleGroup, RoleGroupRef},
@@ -128,7 +129,7 @@ pub mod versioned {
     /// A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper.
     /// Find more information on how to use it and the resources that the operator generates in the
     /// [operator documentation](DOCS_BASE_URL_PLACEHOLDER/zookeeper/).
-    #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+    #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, Serialize)]
     #[versioned(crd(
         group = "zookeeper.stackable.tech",
         plural = "zookeeperclusters",
@@ -154,6 +155,9 @@ pub mod versioned {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub servers:
             Option<Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>>,
+
+        #[serde(flatten)]
+        pub object_overrides: ObjectOverrides,
     }
 
     #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -290,7 +294,7 @@ pub mod versioned {
     ///
     /// You can learn more about this in the
     /// [Isolating clients with ZNodes usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/isolating_clients_with_znodes).
-    #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+    #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, Serialize)]
     #[versioned(crd(
         group = "zookeeper.stackable.tech",
         plural = "zookeeperznodes",
@@ -304,6 +308,9 @@ pub mod versioned {
         /// The reference to the ZookeeperCluster that this ZNode belongs to.
         #[serde(default)]
         pub cluster_ref: ClusterRef<ZookeeperCluster>,
+
+        #[serde(flatten)]
+        pub object_overrides: ObjectOverrides,
     }
 
     #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]

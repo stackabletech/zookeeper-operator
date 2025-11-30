@@ -373,6 +373,7 @@ pub async fn reconcile_zk(
         ZK_CONTROLLER_NAME,
         &zk.object_ref(&()),
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
+        &zk.spec.object_overrides,
     )
     .context(CreateClusterResourcesSnafu)?;
 
