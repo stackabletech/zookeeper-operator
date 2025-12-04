@@ -573,12 +573,20 @@ fn build_server_rolegroup_config_map(
         .into_iter()
         .flatten()
         .map(|pod| {
+            let port = if zookeeper_security.tls_enabled() {
+                // The docs state for TLS-only server
+                // server.5 = <host>:<leader_port>:<election_port>;;<secureClientPort> (TLS-only server)
+                format!(";{port}", port = zookeeper_security.client_port())
+            } else {
+                // The docs state for non-TLS server
+                // server.5 = <host>:<leader_port>:<election_port>;<clientPort> (TLS-only server)
+                format!("{port}", port = zookeeper_security.client_port())
+            };
             (
                 format!("server.{id}", id = pod.zookeeper_myid),
                 format!(
-                    "{internal_fqdn}:{ZOOKEEPER_LEADER_PORT}:{ZOOKEEPER_ELECTION_PORT};{client_port}",
+                    "{internal_fqdn}:{ZOOKEEPER_LEADER_PORT}:{ZOOKEEPER_ELECTION_PORT};{port}",
                     internal_fqdn = pod.internal_fqdn(cluster_info),
-                    client_port = zookeeper_security.client_port()
                 ),
             )
         })
@@ -859,11 +867,10 @@ fn build_server_rolegroup_statefulset(
                 command: Some(vec![
                     "bash".to_string(),
                     "-c".to_string(),
-                    // We don't have telnet or netcat in the container images, but
-                    // we can use Bash's virtual /dev/tcp filesystem to accomplish the same thing
+                    // NOTE: the adminPort property is currently generated in the product config machinery properties.yaml.
                     format!(
-                        "exec 3<>/dev/tcp/127.0.0.1/{} && echo srvr >&3 && grep '^Mode: ' <&3",
-                        zookeeper_security.client_port()
+                        r#"curl -s http://127.0.0.1:{admin_port}/commands/mntr | grep -q '"server_state"[ ]*:[ ]*"\(leader\|follower\)"'"#,
+                        admin_port = ZookeeperSecurity::ADMIN_PORT
                     ),
                 ]),
             }),
