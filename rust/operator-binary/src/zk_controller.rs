@@ -869,7 +869,7 @@ fn build_server_rolegroup_statefulset(
                     "-c".to_string(),
                     // NOTE: the adminPort property is currently generated in the product config machinery properties.yaml.
                     format!(
-                        r#"curl -s http://127.0.0.1:{admin_port}/commands/mntr | grep -q '"server_state"[ ]*:[ ]*"\(leader\|follower\)"'"#,
+                        r#"curl -s http://127.0.0.1:{admin_port}/commands/mntr | grep -q '"server_state"[ ]*:[ ]*"\(leader\|follower\|standalone\)"'"#,
                         admin_port = ZookeeperSecurity::ADMIN_PORT
                     ),
                 ]),
