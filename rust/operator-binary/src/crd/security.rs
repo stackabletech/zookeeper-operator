@@ -63,13 +63,11 @@ pub struct ZookeeperSecurity {
 }
 
 impl ZookeeperSecurity {
-    // ports
-    pub const CLIENT_PORT: u16 = 2181;
-    pub const SECURE_CLIENT_PORT: u16 = 2282;
     pub const ADMIN_PORT: u16 = 8080;
-    // directories
+    pub const CLIENT_PORT: u16 = 2181;
     pub const QUORUM_TLS_DIR: &'static str = "/stackable/quorum_tls";
     pub const QUORUM_TLS_MOUNT_DIR: &'static str = "/stackable/quorum_tls_mount";
+    pub const SECURE_CLIENT_PORT: u16 = 2282;
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
     pub const SERVER_TLS_DIR: &'static str = "/stackable/server_tls";
     pub const SERVER_TLS_MOUNT_DIR: &'static str = "/stackable/server_tls_mount";

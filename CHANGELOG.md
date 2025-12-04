@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Adapted to [ZOOKEEPER-4276](https://issues.apache.org/jira/browse/ZOOKEEPER-4276). Removed `clientPort` and `secureClientPort` as well as 
+- Adapted to [ZOOKEEPER-4276](https://issues.apache.org/jira/browse/ZOOKEEPER-4276). Removed `clientPort` and `secureClientPort` as well as
   `client.portUnification` from the `zoo.cfg` config. Secure ZooKeeper clusters now do not accept plain text connections anymore. ([#996]).
 
 [#988]: https://github.com/stackabletech/zookeeper-operator/pull/988
