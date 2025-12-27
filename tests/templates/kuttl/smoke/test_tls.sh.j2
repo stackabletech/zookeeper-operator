@@ -18,12 +18,12 @@ echo "Start TLS testing..."
 ############################################################################
 # Test the plaintext unsecured connection
 ############################################################################
-if ! /stackable/zookeeper/bin/zkCli.sh -server "${SERVER}" ls / &> /dev/null;
+if /stackable/zookeeper/bin/zkCli.sh -server "${SERVER}" ls / &> /dev/null;
 then
-  echo "[ERROR] Could not establish unsecure connection!"
+  echo "[ERROR] Could establish unsecure connection!"
   exit 1
 fi
-echo "[SUCCESS] Unsecure client connection established!"
+echo "[SUCCESS] Could not establish unsecure connection!"
 
 ############################################################################
 # We set the correct client tls credentials and expect to be able to connect

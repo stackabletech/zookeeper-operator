@@ -63,14 +63,11 @@ pub struct ZookeeperSecurity {
 }
 
 impl ZookeeperSecurity {
-    // ports
+    pub const ADMIN_PORT: u16 = 8080;
     pub const CLIENT_PORT: u16 = 2181;
-    pub const CLIENT_PORT_NAME: &'static str = "clientPort";
-    // directories
     pub const QUORUM_TLS_DIR: &'static str = "/stackable/quorum_tls";
     pub const QUORUM_TLS_MOUNT_DIR: &'static str = "/stackable/quorum_tls_mount";
     pub const SECURE_CLIENT_PORT: u16 = 2282;
-    pub const SECURE_CLIENT_PORT_NAME: &'static str = "secureClientPort";
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
     pub const SERVER_TLS_DIR: &'static str = "/stackable/server_tls";
     pub const SERVER_TLS_MOUNT_DIR: &'static str = "/stackable/server_tls_mount";
@@ -220,42 +217,6 @@ impl ZookeeperSecurity {
 
         // Server TLS
         if self.tls_enabled() {
-            // We set only the clientPort and portUnification here because otherwise there is a port bind exception
-            // See: https://issues.apache.org/jira/browse/ZOOKEEPER-4276
-            // --> Normally we would like to only set the secureClientPort (check out commented code below)
-            // What we tried:
-            // 1) Set clientPort and secureClientPort will fail with
-            // "static.config different from dynamic config .. "
-            // config.insert(
-            //     Self::CLIENT_PORT_NAME.to_string(),
-            //     CLIENT_PORT.to_string(),
-            // );
-            // config.insert(
-            //     Self::SECURE_CLIENT_PORT_NAME.to_string(),
-            //     SECURE_CLIENT_PORT.to_string(),
-            // );
-
-            // 2) Setting only secureClientPort will config in the above mentioned bind exception.
-            // The NettyFactory tries to bind multiple times on the secureClientPort.
-            // config.insert(
-            //     Self::SECURE_CLIENT_PORT_NAME.to_string(),
-            //     self.client_port(.to_string()),
-            // );
-
-            // 3) Using the clientPort and portUnification still allows plaintext connection without
-            // authentication, but at least TLS and authentication works when connecting securely.
-            config.insert(
-                Self::CLIENT_PORT_NAME.to_string(),
-                self.client_port().to_string(),
-            );
-            config.insert("client.portUnification".to_string(), "true".to_string());
-            // TODO: Remove clientPort and portUnification (above) in favor of secureClientPort once the bug is fixed
-            // config.insert(
-            //     Self::SECURE_CLIENT_PORT_NAME.to_string(),
-            //     self.client_port(.to_string()),
-            // );
-            // END TICKET
-
             config.insert(
                 Self::SSL_HOST_NAME_VERIFICATION.to_string(),
                 "true".to_string(),
@@ -278,11 +239,6 @@ impl ZookeeperSecurity {
             {
                 config.insert(Self::SSL_CLIENT_AUTH.to_string(), "need".to_string());
             }
-        } else {
-            config.insert(
-                Self::CLIENT_PORT_NAME.to_string(),
-                self.client_port().to_string(),
-            );
         }
 
         config
