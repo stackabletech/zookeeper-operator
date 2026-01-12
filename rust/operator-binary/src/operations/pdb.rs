@@ -28,7 +28,7 @@ pub async fn add_pdbs(
     zookeeper: &v1alpha1::ZookeeperCluster,
     role: &ZookeeperRole,
     client: &Client,
-    cluster_resources: &mut ClusterResources,
+    cluster_resources: &mut ClusterResources<'_>,
 ) -> Result<(), Error> {
     if !pdb.enabled {
         return Ok(());
