@@ -17,6 +17,7 @@ use stackable_operator::{
         merge::Merge,
     },
     crd::ClusterRef,
+    deep_merger::ObjectOverrides,
     k8s_openapi::{
         api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
         apimachinery::pkg::api::resource::Quantity,
@@ -146,6 +147,10 @@ pub mod versioned {
         // no doc - it's in the struct.
         #[serde(default)]
         pub cluster_operation: ClusterOperation,
+
+        // no doc - it's in the struct.
+        #[serde(default)]
+        pub object_overrides: ObjectOverrides,
 
         // no doc - it's in the struct.
         pub image: ProductImage,
@@ -304,6 +309,10 @@ pub mod versioned {
         /// The reference to the ZookeeperCluster that this ZNode belongs to.
         #[serde(default)]
         pub cluster_ref: ClusterRef<ZookeeperCluster>,
+
+        // no doc - it's in the struct.
+        #[serde(default)]
+        pub object_overrides: ObjectOverrides,
     }
 
     #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
