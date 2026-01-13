@@ -33,6 +33,7 @@ use stackable_operator::{
         product_image_selection::{self, ResolvedProductImage},
         rbac::build_rbac_resources,
     },
+    constants::RESTART_CONTROLLER_ENABLED_LABEL,
     k8s_openapi::{
         DeepMerge,
         api::{
@@ -51,7 +52,7 @@ use stackable_operator::{
         core::{DeserializeGuard, error_boundary},
         runtime::controller,
     },
-    kvp::{Label, LabelError, Labels},
+    kvp::{LabelError, Labels},
     logging::controller::ReconcilerError,
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
@@ -1023,10 +1024,7 @@ fn build_server_rolegroup_statefulset(
             &rolegroup_ref.role_group,
         ))
         .context(ObjectMetaSnafu)?
-        .with_label(
-            Label::try_from(("restarter.stackable.tech/enabled", "true"))
-                .expect("static label is always valid"),
-        )
+        .with_label(RESTART_CONTROLLER_ENABLED_LABEL.to_owned())
         .build();
 
     let statefulset_match_labels =
