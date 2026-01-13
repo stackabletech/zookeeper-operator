@@ -51,7 +51,7 @@ use stackable_operator::{
         core::{DeserializeGuard, error_boundary},
         runtime::controller,
     },
-    kvp::{LabelError, Labels},
+    kvp::{Label, LabelError, Labels},
     logging::controller::ReconcilerError,
     product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
@@ -486,6 +486,9 @@ pub async fn reconcile_zk(
                 rolegroup: rolegroup.clone(),
             })?;
 
+        // Note: The StatefulSet needs to be applied after all ConfigMaps and Secrets it mounts
+        // to prevent unnecessary Pod restarts.
+        // See https://github.com/stackabletech/commons-operator/issues/111 for details.
         ss_cond_builder.add(
             cluster_resources
                 .add(client, rg_statefulset)
@@ -1019,10 +1022,11 @@ fn build_server_rolegroup_statefulset(
             &rolegroup_ref.role,
             &rolegroup_ref.role_group,
         ))
-        // The initial restart muddles up the integration tests. This can be re-enabled as soon
-        // as https://github.com/stackabletech/commons-operator/issues/111 is implemented.
-        // .with_label("restarter.stackable.tech/enabled", "true")
         .context(ObjectMetaSnafu)?
+        .with_label(
+            Label::try_from(("restarter.stackable.tech/enabled", "true"))
+                .expect("static label is always valid"),
+        )
         .build();
 
     let statefulset_match_labels =
