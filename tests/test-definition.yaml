@@ -2,15 +2,14 @@
 dimensions:
   - name: zookeeper
     values:
-      - 3.9.3
       - 3.9.4
       # To use a custom image, add a comma and the full name after the product version
-      # - 3.9.3,oci.stackable.tech/sdp/zookeeper:3.9.3-stackable0.0.0-dev
+      # - x.x.x,oci.stackable.tech/sdp/zookeeper:x.x.x-stackable0.0.0-dev
   - name: zookeeper-latest
     values:
       - 3.9.4
       # To use a custom image, add a comma and the full name after the product version
-      # - 3.9.3,oci.stackable.tech/sdp/zookeeper:3.9.3-stackable0.0.0-dev
+      # - x.x.x,oci.stackable.tech/sdp/zookeeper:x.x.x-stackable0.0.0-dev
   - name: use-server-tls
     values:
       - "true"
