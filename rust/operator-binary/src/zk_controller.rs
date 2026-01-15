@@ -33,6 +33,7 @@ use stackable_operator::{
         product_image_selection::{self, ResolvedProductImage},
         rbac::build_rbac_resources,
     },
+    constants::RESTART_CONTROLLER_ENABLED_LABEL,
     k8s_openapi::{
         DeepMerge,
         api::{
@@ -486,6 +487,9 @@ pub async fn reconcile_zk(
                 rolegroup: rolegroup.clone(),
             })?;
 
+        // Note: The StatefulSet needs to be applied after all ConfigMaps and Secrets it mounts
+        // to prevent unnecessary Pod restarts.
+        // See https://github.com/stackabletech/commons-operator/issues/111 for details.
         ss_cond_builder.add(
             cluster_resources
                 .add(client, rg_statefulset)
@@ -1019,10 +1023,8 @@ fn build_server_rolegroup_statefulset(
             &rolegroup_ref.role,
             &rolegroup_ref.role_group,
         ))
-        // The initial restart muddles up the integration tests. This can be re-enabled as soon
-        // as https://github.com/stackabletech/commons-operator/issues/111 is implemented.
-        // .with_label("restarter.stackable.tech/enabled", "true")
         .context(ObjectMetaSnafu)?
+        .with_label(RESTART_CONTROLLER_ENABLED_LABEL.to_owned())
         .build();
 
     let statefulset_match_labels =
