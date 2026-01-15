@@ -10,6 +10,8 @@ kind: StatefulSet
 metadata:
   name: test-zk-server-primary
   generation: 1 # There should be no unneeded Pod restarts
+  labels:
+    restarter.stackable.tech/enabled: "true"
 spec:
   template:
     spec:
