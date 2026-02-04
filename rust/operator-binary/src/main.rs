@@ -30,6 +30,7 @@ use stackable_operator::{
     logging::controller::report_controller_reconciled,
     shared::yaml::SerializeOptions,
     telemetry::Tracing,
+    utils::signal::SignalWatcher,
 };
 
 use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
@@ -91,9 +92,13 @@ async fn main() -> anyhow::Result<()> {
                 description = built_info::PKG_DESCRIPTION
             );
 
+            // Watches for the SIGTERM signal and sends a signal to all receivers, which gracefully
+            // shuts down all concurrent tasks below (EoS checker, controller).
+            let sigterm_watcher = SignalWatcher::sigterm()?;
+
             let eos_checker =
                 EndOfSupportChecker::new(built_info::BUILT_TIME_UTC, maintenance.end_of_support)?
-                    .run()
+                    .run(sigterm_watcher.handle())
                     .map(anyhow::Ok);
 
             let product_config = product_config.load(&[
@@ -132,7 +137,7 @@ async fn main() -> anyhow::Result<()> {
                     watch_namespace.get_api::<DeserializeGuard<ConfigMap>>(&client),
                     watcher::Config::default(),
                 )
-                .shutdown_on_signal()
+                .graceful_shutdown_on(sigterm_watcher.handle())
                 .run(
                     zk_controller::reconcile_zk,
                     zk_controller::error_policy,
@@ -197,7 +202,7 @@ async fn main() -> anyhow::Result<()> {
                             .map(|znode| ObjectRef::from_obj(&*znode))
                     },
                 )
-                .shutdown_on_signal()
+                .graceful_shutdown_on(sigterm_watcher.handle())
                 .run(
                     znode_controller::reconcile_znode,
                     znode_controller::error_policy,
