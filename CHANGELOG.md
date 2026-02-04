@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
   See [objectOverrides concepts page](https://docs.stackable.tech/home/nightly/concepts/overrides/#object-overrides) for details ([#987]).
 - Enable the [restart-controller](https://docs.stackable.tech/home/nightly/commons-operator/restarter/), so that the Pods are automatically restarted on config changes ([#999]).
 
+### Changed
+
+- Gracefully shutdown all concurrent tasks by forwarding the SIGTERM signal ([#1004]).
+
 ### Removed
 
 - Remove support for ZooKeeper 3.9.3 ([#1001]).
@@ -19,6 +23,7 @@ All notable changes to this project will be documented in this file.
 [#988]: https://github.com/stackabletech/zookeeper-operator/pull/988
 [#999]: https://github.com/stackabletech/zookeeper-operator/pull/999
 [#1001]: https://github.com/stackabletech/zookeeper-operator/pull/1001
+[#1004]: https://github.com/stackabletech/zookeeper-operator/pull/1004
 
 ## [25.11.0] - 2025-11-07
 
