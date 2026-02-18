@@ -47,6 +47,7 @@ pub mod tls;
 
 pub const APP_NAME: &str = "zookeeper";
 pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
+pub const FIELD_MANAGER: &str = "zookeeper-operator";
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
