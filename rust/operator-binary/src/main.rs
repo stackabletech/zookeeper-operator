@@ -3,12 +3,13 @@
 #![allow(clippy::result_large_err)]
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use clap::Parser;
 use crd::{
     APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperClusterVersion, ZookeeperZnode,
     ZookeeperZnodeVersion, v1alpha1,
 };
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt, TryFutureExt};
 use stackable_operator::{
     YamlSchema,
     cli::{Command, RunArguments},
@@ -33,7 +34,10 @@ use stackable_operator::{
     utils::signal::SignalWatcher,
 };
 
-use crate::{zk_controller::ZK_FULL_CONTROLLER_NAME, znode_controller::ZNODE_FULL_CONTROLLER_NAME};
+use crate::{
+    webhooks::conversion::create_webhook_server, zk_controller::ZK_FULL_CONTROLLER_NAME,
+    znode_controller::ZNODE_FULL_CONTROLLER_NAME,
+};
 
 mod command;
 mod config;
@@ -44,6 +48,7 @@ mod operations;
 mod product_logging;
 mod service;
 mod utils;
+mod webhooks;
 mod zk_controller;
 mod znode_controller;
 
@@ -69,9 +74,9 @@ async fn main() -> anyhow::Result<()> {
                 .print_yaml_schema(built_info::PKG_VERSION, SerializeOptions::default())?;
         }
         Command::Run(RunArguments {
-            product_config,
+            operator_environment,
             watch_namespace,
-            operator_environment: _,
+            product_config,
             maintenance,
             common,
         }) => {
@@ -101,16 +106,27 @@ async fn main() -> anyhow::Result<()> {
                     .run(sigterm_watcher.handle())
                     .map(anyhow::Ok);
 
-            let product_config = product_config.load(&[
-                "deploy/config-spec/properties.yaml",
-                "/etc/stackable/zookeeper-operator/config-spec/properties.yaml",
-            ])?;
-
             let client = stackable_operator::client::initialize_operator(
                 Some(OPERATOR_NAME.to_string()),
                 &common.cluster_info,
             )
             .await?;
+
+            let webhook_server = create_webhook_server(
+                &operator_environment,
+                maintenance.disable_crd_maintenance,
+                client.as_kube_client(),
+            )
+            .await?;
+
+            let webhook_server = webhook_server
+                .run(sigterm_watcher.handle())
+                .map_err(|err| anyhow!(err).context("failed to run webhook server"));
+
+            let product_config = product_config.load(&[
+                "deploy/config-spec/properties.yaml",
+                "/etc/stackable/zookeeper-operator/config-spec/properties.yaml",
+            ])?;
 
             let zk_controller = Controller::new(
                 watch_namespace.get_api::<DeserializeGuard<v1alpha1::ZookeeperCluster>>(&client),
@@ -230,7 +246,7 @@ async fn main() -> anyhow::Result<()> {
                 .map(anyhow::Ok);
 
             // kube-runtime's Controller will tokio::spawn each reconciliation, so this only concerns the internal watch machinery
-            futures::try_join!(zk_controller, znode_controller, eos_checker)?;
+            futures::try_join!(zk_controller, znode_controller, eos_checker, webhook_server)?;
         }
     }
 

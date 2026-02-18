@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Add conversion webhook ([#1007]).
 - Add `ZOOCFGDIR` env var to `/stackable/rwconfig` to improve shell script usage like `zkCleanup.sh` ([#988]).
 - Support objectOverrides using `.spec.objectOverrides`.
   See [objectOverrides concepts page](https://docs.stackable.tech/home/nightly/concepts/overrides/#object-overrides) for details ([#987]).
@@ -24,6 +25,7 @@ All notable changes to this project will be documented in this file.
 [#999]: https://github.com/stackabletech/zookeeper-operator/pull/999
 [#1001]: https://github.com/stackabletech/zookeeper-operator/pull/1001
 [#1004]: https://github.com/stackabletech/zookeeper-operator/pull/1004
+[#1007]: https://github.com/stackabletech/zookeeper-operator/pull/1007
 
 ## [25.11.0] - 2025-11-07
 
