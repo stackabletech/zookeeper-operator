@@ -413,9 +413,9 @@ async fn find_zk_of_znode(
             Ok(zk) => Ok(zk),
             Err(err) => match &err {
                 stackable_operator::client::Error::GetResource {
-                    source: kube::Error::Api(kube::core::ErrorResponse { ref reason, .. }),
+                    source: kube::Error::Api(s),
                     ..
-                } if reason == "NotFound" => Err(err).with_context(|_| ZkDoesNotExistSnafu {
+                } if s.is_not_found() => Err(err).with_context(|_| ZkDoesNotExistSnafu {
                     zk: ObjectRef::new(zk_name).within(zk_ns),
                 }),
                 _ => Err(err).with_context(|_| FindZkSnafu {
