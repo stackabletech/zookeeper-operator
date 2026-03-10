@@ -103,8 +103,11 @@ rules:
       {{- if .Values.maintenance.customResourceDefinitions.maintain }}
       - create
       - patch
-      {{- end }}
       - get
+      # Required for startup condition
+      - list
+      - watch
+      {{- end }}
   - apiGroups:
       - authentication.stackable.tech
     resources:

@@ -19,7 +19,7 @@ use stackable_operator::{
         core::v1::{ConfigMap, Service},
     },
     kube::{
-        Resource,
+        CustomResourceExt as _, Resource,
         core::DeserializeGuard,
         runtime::{
             Controller,
@@ -31,7 +31,7 @@ use stackable_operator::{
     logging::controller::report_controller_reconciled,
     shared::yaml::SerializeOptions,
     telemetry::Tracing,
-    utils::signal::SignalWatcher,
+    utils::signal::{self, SignalWatcher},
 };
 
 use crate::{
@@ -245,8 +245,19 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .map(anyhow::Ok);
 
+            let delayed_zk_controller = async {
+                signal::crd_established(&client, v1alpha1::ZookeeperCluster::crd_name(), None)
+                    .await?;
+                zk_controller.await
+            };
+
             // kube-runtime's Controller will tokio::spawn each reconciliation, so this only concerns the internal watch machinery
-            futures::try_join!(zk_controller, znode_controller, eos_checker, webhook_server)?;
+            futures::try_join!(
+                delayed_zk_controller,
+                znode_controller,
+                eos_checker,
+                webhook_server
+            )?;
         }
     }
 
