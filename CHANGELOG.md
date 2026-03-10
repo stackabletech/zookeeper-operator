@@ -17,6 +17,10 @@ All notable changes to this project will be documented in this file.
 - Bump stackable-operator to 0.108.0, snafu to 0.9, strum to 0.28 ([#1011], [#1013]).
 - Gracefully shutdown all concurrent tasks by forwarding the SIGTERM signal ([#1004]).
 
+### Fixed
+
+- Fix "404 page not found" error for the initial object list ([#1013]).
+
 ### Removed
 
 - Remove support for ZooKeeper 3.9.3 ([#1001]).
