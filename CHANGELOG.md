@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Bump stackable-operator to 0.106.2, snafu to 0.9, strum to 0.28 ([#1011]).
+- Bump stackable-operator to 0.108.0, snafu to 0.9, strum to 0.28 ([#1011], [#1013]).
 - Gracefully shutdown all concurrent tasks by forwarding the SIGTERM signal ([#1004]).
 
 ### Removed
@@ -28,6 +28,7 @@ All notable changes to this project will be documented in this file.
 [#1004]: https://github.com/stackabletech/zookeeper-operator/pull/1004
 [#1007]: https://github.com/stackabletech/zookeeper-operator/pull/1007
 [#1011]: https://github.com/stackabletech/zookeeper-operator/pull/1011
+[#1013]: https://github.com/stackabletech/zookeeper-operator/pull/1013
 
 ## [25.11.0] - 2025-11-07
 
