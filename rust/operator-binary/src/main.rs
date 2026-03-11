@@ -251,10 +251,16 @@ async fn main() -> anyhow::Result<()> {
                 zk_controller.await
             };
 
+            let delayed_znode_controller = async {
+                signal::crd_established(&client, v1alpha1::ZookeeperZnode::crd_name(), None)
+                    .await?;
+                znode_controller.await
+            };
+
             // kube-runtime's Controller will tokio::spawn each reconciliation, so this only concerns the internal watch machinery
             futures::try_join!(
                 delayed_zk_controller,
-                znode_controller,
+                delayed_znode_controller,
                 eos_checker,
                 webhook_server
             )?;
