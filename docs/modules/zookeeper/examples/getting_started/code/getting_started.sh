@@ -43,6 +43,13 @@ exit 1
 ;;
 esac
 
+# TODO: Remove once https://github.com/stackabletech/issues/issues/828 has been
+# implemented (see that issue for details).
+until kubectl get crd zookeeperclusters.zookeeper.stackable.tech >/dev/null 2>&1; do
+  echo "Waiting for CRDs to be installed"
+  sleep 1
+done
+
 echo "Creating ZooKeeper cluster"
 # tag::install-zookeeper[]
 kubectl apply -f zookeeper.yaml
