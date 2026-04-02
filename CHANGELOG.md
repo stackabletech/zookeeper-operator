@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Helm deployed RBAC permissions documented, with unnecessary permissions removed ([#1020]).
+- Document Helm deployed RBAC permissions and remove unnecessary permissions ([#1020]).
 
 [#1020]: https://github.com/stackabletech/zookeeper-operator/pull/1020
 
