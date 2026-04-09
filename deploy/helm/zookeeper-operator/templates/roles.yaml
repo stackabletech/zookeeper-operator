@@ -166,14 +166,6 @@ metadata:
   labels:
   {{- include "operator.labels" . | nindent 4 }}
 rules:
-  # ZooKeeper pods emit events to report operational status.
-  - apiGroups:
-      - events.k8s.io
-    resources:
-      - events
-    verbs:
-      - create
-      - patch
 {{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
   # Required on OpenShift to allow ZooKeeper pods to run as a non-root user.
   - apiGroups:
