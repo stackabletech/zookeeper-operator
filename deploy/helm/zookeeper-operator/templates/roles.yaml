@@ -100,10 +100,10 @@ rules:
       {{- if .Values.maintenance.customResourceDefinitions.maintain }}
       - create
       - patch
+      {{- end }}
       # Required for startup condition
       - list
       - watch
-      {{- end }}
   # AuthenticationClasses are read to resolve TLS and client authentication configuration.
   - apiGroups:
       - authentication.stackable.tech
