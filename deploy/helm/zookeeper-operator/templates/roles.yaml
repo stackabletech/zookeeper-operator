@@ -88,6 +88,8 @@ rules:
       - get
       - list
       - patch
+  # Required for maintaining the CRDs (including the conversion webhook certificate).
+  # Also required for the startup condition check.
   - apiGroups:
       - apiextensions.k8s.io
     resources:
