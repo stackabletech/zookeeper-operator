@@ -1,0 +1,21 @@
+---
+# Product ClusterRole: bound (via per ZookeeperCluster RoleBinding) to the ServiceAccount that
+# ZooKeeper workload pods run as.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "operator.name" . }}-clusterrole
+  labels:
+  {{- include "operator.labels" . | nindent 4 }}
+rules:
+{{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
+  # Required on OpenShift to allow ZooKeeper pods to run as a non-root user.
+  - apiGroups:
+      - security.openshift.io
+    resources:
+      - securitycontextconstraints
+    resourceNames:
+      - nonroot-v2
+    verbs:
+      - use
+{{ end }}
