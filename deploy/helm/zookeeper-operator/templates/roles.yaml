@@ -173,17 +173,6 @@ metadata:
   labels:
   {{- include "operator.labels" . | nindent 4 }}
 rules:
-  # ZooKeeper pods read their own ConfigMap for runtime configuration, their Secret for
-  # TLS credentials (mounted by secret-operator), and their ServiceAccount token for
-  # Kubernetes API authentication.
-  - apiGroups:
-      - ""
-    resources:
-      - configmaps
-      - secrets
-      - serviceaccounts
-    verbs:
-      - get
   # ZooKeeper pods emit events to report operational status.
   - apiGroups:
       - events.k8s.io
