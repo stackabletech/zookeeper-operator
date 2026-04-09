@@ -14,7 +14,7 @@ rules:
     verbs:
       - get
   # Manage core workload resources created per ZookeeperCluster.
-  # All resources are applied via Server-Side Apply (create + patch) and tracked for
+  # All resources are applied via SSA (create + patch) and tracked for
   # orphan cleanup (list + delete).
   - apiGroups:
       - ""
