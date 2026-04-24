@@ -1,7 +1,6 @@
 # Default values for zookeeper-operator.
 ---
 image:
-  repository: oci.stackable.tech/sdp/zookeeper-operator
   pullPolicy: IfNotPresent
   pullSecrets: []
 
