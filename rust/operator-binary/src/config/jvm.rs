@@ -1,15 +1,13 @@
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     memory::{BinaryMultiple, MemoryQuantity},
-    role_utils::{self, JavaCommonConfig, JvmArgumentOverrides, Role},
+    role_utils::{self, JvmArgumentOverrides},
 };
 
 use crate::crd::{
     JMX_METRICS_PORT, JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
-    LoggingFramework, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
-    v1alpha1::{
-        ZookeeperCluster, ZookeeperConfig, ZookeeperConfigFragment, ZookeeperServerRoleConfig,
-    },
+    LoggingFramework, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR, ZookeeperServerRoleType,
+    v1alpha1::{ZookeeperCluster, ZookeeperConfig},
 };
 
 const JAVA_HEAP_FACTOR: f32 = 0.8;
@@ -31,7 +29,7 @@ pub enum Error {
 /// All JVM arguments.
 fn construct_jvm_args(
     zk: &ZookeeperCluster,
-    role: &Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
+    role: &ZookeeperServerRoleType,
     role_group: &str,
     product_version: &str,
 ) -> Result<Vec<String>, Error> {
@@ -66,7 +64,7 @@ fn construct_jvm_args(
 /// [`construct_zk_server_heap_env`]).
 pub fn construct_non_heap_jvm_args(
     zk: &ZookeeperCluster,
-    role: &Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
+    role: &ZookeeperServerRoleType,
     role_group: &str,
     product_version: &str,
 ) -> Result<String, Error> {
@@ -103,10 +101,7 @@ fn is_heap_jvm_argument(jvm_argument: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::crd::{
-        ZookeeperRole,
-        v1alpha1::{ZookeeperConfig, ZookeeperServerRoleConfig},
-    };
+    use crate::crd::ZookeeperRole;
 
     #[test]
     fn test_construct_jvm_arguments_defaults() {
@@ -203,7 +198,7 @@ mod tests {
     ) -> (
         ZookeeperCluster,
         ZookeeperConfig,
-        Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
+        ZookeeperServerRoleType,
         String,
     ) {
         let zookeeper: ZookeeperCluster =

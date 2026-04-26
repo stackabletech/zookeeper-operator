@@ -20,6 +20,7 @@ use stackable_operator::{
         },
     },
     client::Client,
+    commons::secret_class::SecretClassVolumeProvisionParts,
     crd::authentication::core,
     k8s_openapi::api::core::v1::Volume,
     shared::time::Duration,
@@ -316,12 +317,15 @@ impl ZookeeperSecurity {
     ) -> Result<Volume> {
         let volume = VolumeBuilder::new(volume_name)
             .ephemeral(
-                SecretOperatorVolumeSourceBuilder::new(secret_class_name)
-                    .with_listener_volume_scope(LISTENER_VOLUME_NAME)
-                    .with_format(SecretFormat::TlsPkcs12)
-                    .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
-                    .build()
-                    .context(BuildTlsVolumeSnafu { volume_name })?,
+                SecretOperatorVolumeSourceBuilder::new(
+                    secret_class_name,
+                    SecretClassVolumeProvisionParts::PublicPrivate,
+                )
+                .with_listener_volume_scope(LISTENER_VOLUME_NAME)
+                .with_format(SecretFormat::TlsPkcs12)
+                .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
+                .build()
+                .context(BuildTlsVolumeSnafu { volume_name })?,
             )
             .build();
 
@@ -338,12 +342,15 @@ impl ZookeeperSecurity {
     ) -> Result<Volume> {
         let volume = VolumeBuilder::new(volume_name)
             .ephemeral(
-                SecretOperatorVolumeSourceBuilder::new(secret_class_name)
-                    .with_pod_scope()
-                    .with_format(SecretFormat::TlsPkcs12)
-                    .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
-                    .build()
-                    .context(BuildTlsVolumeSnafu { volume_name })?,
+                SecretOperatorVolumeSourceBuilder::new(
+                    secret_class_name,
+                    SecretClassVolumeProvisionParts::PublicPrivate,
+                )
+                .with_pod_scope()
+                .with_format(SecretFormat::TlsPkcs12)
+                .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
+                .build()
+                .context(BuildTlsVolumeSnafu { volume_name })?,
             )
             .build();
 

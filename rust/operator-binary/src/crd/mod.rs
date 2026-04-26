@@ -16,6 +16,7 @@ use stackable_operator::{
         fragment::{self, Fragment, ValidationError},
         merge::Merge,
     },
+    config_overrides::{KeyValueConfigOverrides, KeyValueOverridesProvider},
     crd::ClusterRef,
     deep_merger::ObjectOverrides,
     k8s_openapi::{
@@ -51,6 +52,34 @@ pub const FIELD_MANAGER: &str = "zookeeper-operator";
 
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
+
+/// Typed config overrides for ZooKeeper. Each field corresponds to a known config file.
+#[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZookeeperConfigOverrides {
+    #[serde(rename = "zoo.cfg", default)]
+    pub zoo_cfg: KeyValueConfigOverrides,
+
+    #[serde(rename = "security.properties", default)]
+    pub security_properties: KeyValueConfigOverrides,
+}
+
+impl KeyValueOverridesProvider for ZookeeperConfigOverrides {
+    fn get_key_value_overrides(&self, file: &str) -> BTreeMap<String, Option<String>> {
+        match file {
+            ZOOKEEPER_PROPERTIES_FILE => self.zoo_cfg.as_product_config_overrides(),
+            JVM_SECURITY_PROPERTIES_FILE => self.security_properties.as_product_config_overrides(),
+            _ => BTreeMap::new(),
+        }
+    }
+}
+
+pub type ZookeeperServerRoleType = Role<
+    v1alpha1::ZookeeperConfigFragment,
+    ZookeeperConfigOverrides,
+    ZookeeperServerRoleConfig,
+    JavaCommonConfig,
+>;
 
 pub const ZOOKEEPER_SERVER_PORT_NAME: &str = "zk";
 pub const ZOOKEEPER_LEADER_PORT_NAME: &str = "zk-leader";
@@ -158,8 +187,14 @@ pub mod versioned {
 
         // no doc - it's in the struct.
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub servers:
-            Option<Role<ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>>,
+        pub servers: Option<
+            Role<
+                ZookeeperConfigFragment,
+                ZookeeperConfigOverrides,
+                ZookeeperServerRoleConfig,
+                JavaCommonConfig,
+            >,
+        >,
     }
 
     #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -564,13 +599,7 @@ impl v1alpha1::ZookeeperCluster {
     }
 
     /// Returns a reference to the role. Raises an error if the role is not defined.
-    pub fn role(
-        &self,
-        role_variant: &ZookeeperRole,
-    ) -> Result<
-        &Role<v1alpha1::ZookeeperConfigFragment, ZookeeperServerRoleConfig, JavaCommonConfig>,
-        Error,
-    > {
+    pub fn role(&self, role_variant: &ZookeeperRole) -> Result<&ZookeeperServerRoleType, Error> {
         match role_variant {
             ZookeeperRole::Server => self.spec.servers.as_ref(),
         }
@@ -583,7 +612,10 @@ impl v1alpha1::ZookeeperCluster {
     pub fn rolegroup(
         &self,
         rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    ) -> Result<RoleGroup<v1alpha1::ZookeeperConfigFragment, JavaCommonConfig>, Error> {
+    ) -> Result<
+        RoleGroup<v1alpha1::ZookeeperConfigFragment, JavaCommonConfig, ZookeeperConfigOverrides>,
+        Error,
+    > {
         let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
             UnknownZookeeperRoleSnafu {
                 role: rolegroup_ref.role.to_owned(),

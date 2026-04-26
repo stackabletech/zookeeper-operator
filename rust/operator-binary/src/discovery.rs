@@ -101,7 +101,7 @@ pub fn build_discovery_configmap(
                 .with_context(|_| ObjectMissingMetadataForOwnerRefSnafu {
                     zk: ObjectRef::from_obj(zk),
                 })?
-                .with_recommended_labels(build_recommended_labels(
+                .with_recommended_labels(&build_recommended_labels(
                     owner,
                     controller_name,
                     &resolved_product_image.app_version_label_value,
