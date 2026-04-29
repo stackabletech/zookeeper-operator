@@ -4,16 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- BREAKING: Add required CLI argument and env var to set the image repository used to construct final product image names: `IMAGE_REPOSITORY` (`--image-repository`), eg. `oci.example.org/my/namespace` ([#1028]).
+
 ### Changed
 
 - Document Helm deployed RBAC permissions and remove unnecessary permissions ([#1020]).
 - BREAKING: `configOverrides` now only accepts the known config files (`zoo.cfg` and
   `security.properties`).
   Previously, arbitrary file names were silently accepted and ignored ([#1027]).
-- Bump `stackable-operator` to 0.110.1 ([#1027]).
+- Bump `stackable-operator` to 0.111.1 ([#1027], [#1028]).
 
 [#1020]: https://github.com/stackabletech/zookeeper-operator/pull/1020
 [#1027]: https://github.com/stackabletech/zookeeper-operator/pull/1027
+[#1028]: https://github.com/stackabletech/zookeeper-operator/pull/1028
 
 ## [26.3.0] - 2026-03-16
 
