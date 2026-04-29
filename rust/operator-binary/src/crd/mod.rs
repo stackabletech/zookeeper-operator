@@ -53,30 +53,9 @@ pub const FIELD_MANAGER: &str = "zookeeper-operator";
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
 
-/// Typed config overrides for ZooKeeper. Each field corresponds to a known config file.
-#[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ZookeeperConfigOverrides {
-    #[serde(rename = "zoo.cfg", default)]
-    pub zoo_cfg: KeyValueConfigOverrides,
-
-    #[serde(rename = "security.properties", default)]
-    pub security_properties: KeyValueConfigOverrides,
-}
-
-impl KeyValueOverridesProvider for ZookeeperConfigOverrides {
-    fn get_key_value_overrides(&self, file: &str) -> BTreeMap<String, Option<String>> {
-        match file {
-            ZOOKEEPER_PROPERTIES_FILE => self.zoo_cfg.as_product_config_overrides(),
-            JVM_SECURITY_PROPERTIES_FILE => self.security_properties.as_product_config_overrides(),
-            _ => BTreeMap::new(),
-        }
-    }
-}
-
 pub type ZookeeperServerRoleType = Role<
     v1alpha1::ZookeeperConfigFragment,
-    ZookeeperConfigOverrides,
+    v1alpha1::ZookeeperConfigOverrides,
     ZookeeperServerRoleConfig,
     JavaCommonConfig,
 >;
@@ -187,14 +166,7 @@ pub mod versioned {
 
         // no doc - it's in the struct.
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub servers: Option<
-            Role<
-                ZookeeperConfigFragment,
-                ZookeeperConfigOverrides,
-                ZookeeperServerRoleConfig,
-                JavaCommonConfig,
-            >,
-        >,
+        pub servers: Option<ZookeeperServerRoleType>,
     }
 
     #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -310,6 +282,20 @@ pub mod versioned {
         Zookeeper,
     }
 
+    #[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ZookeeperConfigOverrides {
+        #[serde(default, rename = "zoo.cfg", skip_serializing_if = "Option::is_none")]
+        pub zoo_cfg: Option<KeyValueConfigOverrides>,
+
+        #[serde(
+            default,
+            rename = "security.properties",
+            skip_serializing_if = "Option::is_none"
+        )]
+        pub security_properties: Option<KeyValueConfigOverrides>,
+    }
+
     #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
     #[serde(rename_all = "camelCase")]
     pub struct ZookeeperClusterStatus {
@@ -358,6 +344,19 @@ pub mod versioned {
         ///
         /// This can be set explicitly by an administrator, such as when restoring from a backup.
         pub znode_path: Option<String>,
+    }
+}
+
+impl KeyValueOverridesProvider for v1alpha1::ZookeeperConfigOverrides {
+    fn get_key_value_overrides(&self, file: &str) -> BTreeMap<String, Option<String>> {
+        let field = match file {
+            ZOOKEEPER_PROPERTIES_FILE => self.zoo_cfg.as_ref(),
+            JVM_SECURITY_PROPERTIES_FILE => self.security_properties.as_ref(),
+            _ => None,
+        };
+        field
+            .map(KeyValueConfigOverrides::as_product_config_overrides)
+            .unwrap_or_default()
     }
 }
 
@@ -613,7 +612,11 @@ impl v1alpha1::ZookeeperCluster {
         &self,
         rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     ) -> Result<
-        RoleGroup<v1alpha1::ZookeeperConfigFragment, JavaCommonConfig, ZookeeperConfigOverrides>,
+        RoleGroup<
+            v1alpha1::ZookeeperConfigFragment,
+            JavaCommonConfig,
+            v1alpha1::ZookeeperConfigOverrides,
+        >,
         Error,
     > {
         let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
