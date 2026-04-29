@@ -28,6 +28,7 @@ use stackable_operator::{
             volume::{ListenerOperatorVolumeSourceBuilder, ListenerReference},
         },
     },
+    cli::OperatorEnvironmentOptions,
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::{
         product_image_selection::{self, ResolvedProductImage},
@@ -80,7 +81,7 @@ use crate::{
     command::create_init_container_command_args,
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
-        DOCKER_IMAGE_BASE_NAME, JMX_METRICS_PORT_NAME, JVM_SECURITY_PROPERTIES_FILE,
+        CONTAINER_IMAGE_BASE_NAME, JMX_METRICS_PORT_NAME, JVM_SECURITY_PROPERTIES_FILE,
         MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE, METRICS_PROVIDER_HTTP_PORT_NAME,
         STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
         STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME,
@@ -108,6 +109,7 @@ pub const LISTENER_VOLUME_DIR: &str = "/stackable/listener";
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
     pub product_config: ProductConfigManager,
+    pub operator_environment: OperatorEnvironmentOptions,
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -365,7 +367,11 @@ pub async fn reconcile_zk(
     let resolved_product_image = zk
         .spec
         .image
-        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION)
+        .resolve(
+            CONTAINER_IMAGE_BASE_NAME,
+            &ctx.operator_environment.image_repository,
+            crate::built_info::PKG_VERSION,
+        )
         .context(ResolveProductImageSnafu)?;
 
     let mut cluster_resources = ClusterResources::new(
@@ -1149,7 +1155,7 @@ mod tests {
         let resolved_product_image = zookeeper
             .spec
             .image
-            .resolve(DOCKER_IMAGE_BASE_NAME, "0.0.0-dev")
+            .resolve(CONTAINER_IMAGE_BASE_NAME, "oci.example.org", "0.0.0-dev")
             .expect("test resolved product image is always valid");
 
         let validated_config = validate_all_roles_and_groups_config(

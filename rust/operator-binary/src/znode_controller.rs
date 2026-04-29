@@ -6,6 +6,7 @@ use std::{borrow::Cow, convert::Infallible, sync::Arc};
 use const_format::concatcp;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
+    cli::OperatorEnvironmentOptions,
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::product_image_selection::{self, ResolvedProductImage},
     crd::listener,
@@ -25,7 +26,7 @@ use tracing::{debug, info};
 
 use crate::{
     APP_NAME, OPERATOR_NAME,
-    crd::{DOCKER_IMAGE_BASE_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
+    crd::{CONTAINER_IMAGE_BASE_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
     discovery::{self, build_discovery_configmap},
     listener::role_listener_name,
 };
@@ -35,6 +36,7 @@ pub const ZNODE_FULL_CONTROLLER_NAME: &str = concatcp!(ZNODE_CONTROLLER_NAME, '.
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
+    pub operator_environment: OperatorEnvironmentOptions,
 }
 
 #[derive(Snafu, Debug, EnumDiscriminants)]
@@ -253,7 +255,11 @@ pub async fn reconcile_znode(
                     let resolved_product_image = zk
                         .spec
                         .image
-                        .resolve(DOCKER_IMAGE_BASE_NAME, crate::built_info::PKG_VERSION)
+                        .resolve(
+                            CONTAINER_IMAGE_BASE_NAME,
+                            &ctx.operator_environment.image_repository,
+                            crate::built_info::PKG_VERSION,
+                        )
                         .context(ResolveProductImageSnafu)?;
                     reconcile_apply(client, &znode, Ok(zk), &znode_path, &resolved_product_image)
                         .await
