@@ -85,7 +85,7 @@ pub const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
     unit: BinaryMultiple::Mebi,
 };
 
-pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
+pub const CONTAINER_IMAGE_BASE_NAME: &str = "zookeeper";
 
 const DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_minutes_unchecked(2);
 pub const DEFAULT_LISTENER_CLASS: &str = "cluster-internal";
@@ -750,6 +750,8 @@ impl v1alpha1::ZookeeperCluster {
 
 #[cfg(test)]
 mod tests {
+    use stackable_operator::versioned::test_utils::RoundtripTestData;
+
     use super::*;
 
     fn get_server_secret_class(zk: &v1alpha1::ZookeeperCluster) -> Option<&str> {
@@ -928,5 +930,17 @@ mod tests {
             get_quorum_secret_class(&zookeeper),
             tls::quorum_tls_default().as_str()
         );
+    }
+
+    impl RoundtripTestData for v1alpha1::ZookeeperClusterSpec {
+        fn roundtrip_test_data() -> Vec<Self> {
+            vec![]
+        }
+    }
+
+    impl RoundtripTestData for v1alpha1::ZookeeperZnodeSpec {
+        fn roundtrip_test_data() -> Vec<Self> {
+            vec![]
+        }
     }
 }
