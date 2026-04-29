@@ -319,6 +319,7 @@ impl ZookeeperSecurity {
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(
                     secret_class_name,
+                    // Both the keystore and truststore are required for server TLS.
                     SecretClassVolumeProvisionParts::PublicPrivate,
                 )
                 .with_listener_volume_scope(LISTENER_VOLUME_NAME)
@@ -344,6 +345,7 @@ impl ZookeeperSecurity {
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(
                     secret_class_name,
+                    // Both the keystore and truststore are required for quorum TLS.
                     SecretClassVolumeProvisionParts::PublicPrivate,
                 )
                 .with_pod_scope()
