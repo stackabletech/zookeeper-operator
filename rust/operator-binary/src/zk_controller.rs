@@ -378,20 +378,24 @@ pub async fn reconcile_zk(
     )
     .context(CreateClusterResourcesSnafu)?;
 
-    let roles = HashMap::from([(
-        ZookeeperRole::Server.to_string(),
-        (
-            vec![
-                PropertyNameKind::Env,
-                PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
-                PropertyNameKind::File(JVM_SECURITY_PROPERTIES_FILE.to_string()),
-            ],
-            zk.spec.servers.clone().context(NoServerRoleSnafu)?,
-        ),
-    )]);
     let validated_config = validate_all_roles_and_groups_config(
         &resolved_product_image.product_version,
-        &transform_all_roles_to_config(zk, &roles).context(GenerateProductConfigSnafu)?,
+        &transform_all_roles_to_config(
+            zk,
+            &[(
+                ZookeeperRole::Server.to_string(),
+                (
+                    vec![
+                        PropertyNameKind::Env,
+                        PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
+                        PropertyNameKind::File(JVM_SECURITY_PROPERTIES_FILE.to_string()),
+                    ],
+                    zk.spec.servers.clone().context(NoServerRoleSnafu)?,
+                ),
+            )]
+            .into(),
+        )
+        .context(GenerateProductConfigSnafu)?,
         &ctx.product_config,
         false,
         false,
@@ -1148,20 +1152,24 @@ mod tests {
             .resolve(DOCKER_IMAGE_BASE_NAME, "0.0.0-dev")
             .expect("test resolved product image is always valid");
 
-        let roles = HashMap::from([(
-            ZookeeperRole::Server.to_string(),
-            (
-                vec![
-                    PropertyNameKind::Env,
-                    PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
-                    PropertyNameKind::File(JVM_SECURITY_PROPERTIES_FILE.to_string()),
-                ],
-                zookeeper.spec.servers.clone().unwrap(),
-            ),
-        )]);
         let validated_config = validate_all_roles_and_groups_config(
             &resolved_product_image.product_version,
-            &transform_all_roles_to_config(&zookeeper, &roles).unwrap(),
+            &transform_all_roles_to_config(
+                &zookeeper,
+                &[(
+                    ZookeeperRole::Server.to_string(),
+                    (
+                        vec![
+                            PropertyNameKind::Env,
+                            PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
+                            PropertyNameKind::File(JVM_SECURITY_PROPERTIES_FILE.to_string()),
+                        ],
+                        zookeeper.spec.servers.clone().unwrap(),
+                    ),
+                )]
+                .into(),
+            )
+            .unwrap(),
             // Using this instead of ProductConfigManager::from_yaml_file, as that did not find the file
             &ProductConfigManager::from_str(include_str!(
                 "../../../deploy/config-spec/properties.yaml"

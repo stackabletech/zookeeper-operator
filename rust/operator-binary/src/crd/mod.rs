@@ -53,13 +53,6 @@ pub const FIELD_MANAGER: &str = "zookeeper-operator";
 pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
 pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
 
-pub type ZookeeperServerRoleType = Role<
-    v1alpha1::ZookeeperConfigFragment,
-    v1alpha1::ZookeeperConfigOverrides,
-    ZookeeperServerRoleConfig,
-    JavaCommonConfig,
->;
-
 pub const ZOOKEEPER_SERVER_PORT_NAME: &str = "zk";
 pub const ZOOKEEPER_LEADER_PORT_NAME: &str = "zk-leader";
 pub const ZOOKEEPER_LEADER_PORT: u16 = 2888;
@@ -123,6 +116,13 @@ pub enum LoggingFramework {
     LOG4J,
     LOGBACK,
 }
+
+pub type ZookeeperServerRoleType = Role<
+    v1alpha1::ZookeeperConfigFragment,
+    v1alpha1::ZookeeperConfigOverrides,
+    ZookeeperServerRoleConfig,
+    JavaCommonConfig,
+>;
 
 #[versioned(
     version(name = "v1alpha1"),
@@ -283,7 +283,6 @@ pub mod versioned {
     }
 
     #[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
-    #[serde(rename_all = "camelCase")]
     pub struct ZookeeperConfigOverrides {
         #[serde(default, rename = "zoo.cfg", skip_serializing_if = "Option::is_none")]
         pub zoo_cfg: Option<KeyValueConfigOverrides>,
