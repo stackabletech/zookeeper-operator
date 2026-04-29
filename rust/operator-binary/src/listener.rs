@@ -59,7 +59,7 @@ pub fn build_role_listener(
             // in turn requires RoleGroup stuff)
             // TODO (@NickLarsenNZ): Make separate functions for with_recommended_labels with/without rolegroups
             // .with_labels(manual_labels).build()
-            .with_recommended_labels(build_recommended_labels(
+            .with_recommended_labels(&build_recommended_labels(
                 zk,
                 ZK_CONTROLLER_NAME,
                 &resolved_product_image.app_version_label_value,

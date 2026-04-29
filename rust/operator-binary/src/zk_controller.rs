@@ -382,7 +382,7 @@ pub async fn reconcile_zk(
         &resolved_product_image.product_version,
         &transform_all_roles_to_config(
             zk,
-            [(
+            &[(
                 ZookeeperRole::Server.to_string(),
                 (
                     vec![
@@ -627,7 +627,7 @@ fn build_server_rolegroup_config_map(
                 .name(rolegroup.object_name())
                 .ownerreference_from_resource(zk, None, Some(true))
                 .context(ObjectMissingMetadataForOwnerRefSnafu)?
-                .with_recommended_labels(build_recommended_labels(
+                .with_recommended_labels(&build_recommended_labels(
                     zk,
                     ZK_CONTROLLER_NAME,
                     &resolved_product_image.app_version_label_value,
@@ -727,7 +727,7 @@ fn build_server_rolegroup_statefulset(
     let mut pod_builder = PodBuilder::new();
 
     // Used for PVC templates that cannot be modified once they are deployed
-    let unversioned_recommended_labels = Labels::recommended(build_recommended_labels(
+    let unversioned_recommended_labels = Labels::recommended(&build_recommended_labels(
         zk,
         ZK_CONTROLLER_NAME,
         // A version value is required, but we need to use something constant so that we don't run into immutabile field issues.
@@ -902,7 +902,7 @@ fn build_server_rolegroup_statefulset(
         .build();
 
     let pb_metadata = ObjectMetaBuilder::new()
-        .with_recommended_labels(build_recommended_labels(
+        .with_recommended_labels(&build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
             &resolved_product_image.app_version_label_value,
@@ -1016,7 +1016,7 @@ fn build_server_rolegroup_statefulset(
         .name(rolegroup_ref.object_name())
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
-        .with_recommended_labels(build_recommended_labels(
+        .with_recommended_labels(&build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
             &resolved_product_image.app_version_label_value,
@@ -1156,7 +1156,7 @@ mod tests {
             &resolved_product_image.product_version,
             &transform_all_roles_to_config(
                 &zookeeper,
-                [(
+                &[(
                     ZookeeperRole::Server.to_string(),
                     (
                         vec![

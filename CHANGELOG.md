@@ -7,8 +7,13 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Document Helm deployed RBAC permissions and remove unnecessary permissions ([#1020]).
+- BREAKING: `configOverrides` now only accepts the known config files (`zoo.cfg` and
+  `security.properties`).
+  Previously, arbitrary file names were silently accepted and ignored ([#1027]).
+- Bump `stackable-operator` to 0.110.1 ([#1027]).
 
 [#1020]: https://github.com/stackabletech/zookeeper-operator/pull/1020
+[#1027]: https://github.com/stackabletech/zookeeper-operator/pull/1027
 
 ## [26.3.0] - 2026-03-16
 

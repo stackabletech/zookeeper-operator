@@ -61,7 +61,7 @@ pub(crate) fn build_server_rolegroup_headless_service(
         .name(rolegroup.rolegroup_headless_service_name())
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
-        .with_recommended_labels(build_recommended_labels(
+        .with_recommended_labels(&build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
             &resolved_product_image.app_version_label_value,
@@ -119,7 +119,7 @@ pub(crate) fn build_server_rolegroup_metrics_service(
         .name(rolegroup.rolegroup_metrics_service_name())
         .ownerreference_from_resource(zk, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
-        .with_recommended_labels(build_recommended_labels(
+        .with_recommended_labels(&build_recommended_labels(
             zk,
             ZK_CONTROLLER_NAME,
             &resolved_product_image.app_version_label_value,
