@@ -158,6 +158,7 @@ async fn main() -> anyhow::Result<()> {
                     zk_controller::reconcile_zk,
                     zk_controller::error_policy,
                     Arc::new(zk_controller::Ctx {
+                        operator_environment: operator_environment.clone(),
                         client: client.clone(),
                         product_config,
                     }),
@@ -224,6 +225,7 @@ async fn main() -> anyhow::Result<()> {
                     znode_controller::error_policy,
                     Arc::new(znode_controller::Ctx {
                         client: client.clone(),
+                        operator_environment,
                     }),
                 )
                 // We can let the reporting happen in the background

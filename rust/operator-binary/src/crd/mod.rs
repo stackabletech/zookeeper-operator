@@ -85,7 +85,7 @@ pub const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
     unit: BinaryMultiple::Mebi,
 };
 
-pub const DOCKER_IMAGE_BASE_NAME: &str = "zookeeper";
+pub const CONTAINER_IMAGE_BASE_NAME: &str = "zookeeper";
 
 const DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_minutes_unchecked(2);
 pub const DEFAULT_LISTENER_CLASS: &str = "cluster-internal";
@@ -750,6 +750,8 @@ impl v1alpha1::ZookeeperCluster {
 
 #[cfg(test)]
 mod tests {
+    use stackable_operator::versioned::test_utils::RoundtripTestData;
+
     use super::*;
 
     fn get_server_secret_class(zk: &v1alpha1::ZookeeperCluster) -> Option<&str> {
@@ -928,5 +930,64 @@ mod tests {
             get_quorum_secret_class(&zookeeper),
             tls::quorum_tls_default().as_str()
         );
+    }
+
+    impl RoundtripTestData for v1alpha1::ZookeeperClusterSpec {
+        fn roundtrip_test_data() -> Vec<Self> {
+            stackable_operator::utils::yaml_from_str_singleton_map(indoc::indoc! {r#"
+              - image:
+                  productVersion: 1.2.3
+                  pullPolicy: IfNotPresent
+                clusterOperation:
+                  reconciliationPaused: false
+                  stopped: true
+                clusterConfig:
+                  authentication:
+                    - authenticationClass: my-auth-class
+                  tls:
+                    quorumSecretClass: null
+                    serverSecretClass: tls
+                  vectorAggregatorConfigMapName: vector-aggregator-discovery
+                servers:
+                  envOverrides:
+                    COMMON_VAR: role-value
+                    ROLE_VAR: role-value
+                  config:
+                    logging:
+                      enableVectorAgent: true
+                    requestedSecretLifetime: 7d
+                    gracefulShutdownTimeout: 30s
+                    initLimit: 5
+                    syncLimit: 2
+                    tickTime: 2000
+                    myidOffset: 1
+                  configOverrides:
+                    zoo.cfg:
+                      maxClientCnxns: "60"
+                  roleConfig:
+                    listenerClass: cluster-internal
+                  roleGroups:
+                    default:
+                      replicas: 1
+                      configOverrides:
+                        zoo.cfg:
+                          maxClientCnxns: "120"
+                      envOverrides:
+                        COMMON_VAR: group-value
+                        GROUP_VAR: group-value
+        "#})
+            .expect("Failed to parse ZookeeperClusterSpec YAML")
+        }
+    }
+
+    impl RoundtripTestData for v1alpha1::ZookeeperZnodeSpec {
+        fn roundtrip_test_data() -> Vec<Self> {
+            stackable_operator::utils::yaml_from_str_singleton_map(indoc::indoc! {"
+              - clusterRef:
+                  name: test-zk
+                  namespace: default
+        "})
+            .expect("Failed to parse ZookeeperZnodeSpec YAML")
+        }
     }
 }
