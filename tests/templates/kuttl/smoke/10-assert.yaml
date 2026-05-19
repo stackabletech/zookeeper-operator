@@ -1,0 +1,8 @@
+---
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+metadata:
+  name: install-test-zk
+timeout: 300
+commands:
+  - script: kubectl -n $NAMESPACE wait --for=condition=available=true zookeeperclusters.zookeeper.stackable.tech/test-zk --timeout 301s
