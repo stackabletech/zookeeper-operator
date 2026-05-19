@@ -8,11 +8,11 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::product_image_selection::{self, ResolvedProductImage},
+    commons::product_image_selection::ResolvedProductImage,
     crd::listener,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::{
-        self, Resource,
+        Resource,
         api::ObjectMeta,
         core::{DeserializeGuard, DynamicObject, error_boundary},
         runtime::{controller, finalizer, reflector::ObjectRef},
@@ -26,10 +26,13 @@ use tracing::{debug, info};
 
 use crate::{
     APP_NAME, OPERATOR_NAME,
-    crd::{CONTAINER_IMAGE_BASE_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
+    crd::{ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
     discovery::{self, build_discovery_configmap},
     listener::role_listener_name,
 };
+
+mod dereference;
+mod validate;
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
 pub const ZNODE_FULL_CONTROLLER_NAME: &str = concatcp!(ZNODE_CONTROLLER_NAME, '.', OPERATOR_NAME);
@@ -48,24 +51,16 @@ pub enum Error {
         source: error_boundary::InvalidObject,
     },
 
+    #[snafu(display("failed to dereference resources"))]
+    Dereference { source: dereference::Error },
+
+    #[snafu(display("failed to validate cluster"))]
+    ValidateCluster { source: validate::Error },
+
     #[snafu(display(
         "object is missing metadata that should be created by the Kubernetes cluster",
     ))]
     ObjectMissingMetadata,
-
-    #[snafu(display("object does not refer to ZookeeperCluster"))]
-    InvalidZkReference,
-
-    #[snafu(display("could not find {zk:?}"))]
-    FindZk {
-        source: stackable_operator::client::Error,
-        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
-    },
-
-    ZkDoesNotExist {
-        source: stackable_operator::client::Error,
-        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
-    },
 
     #[snafu(display("could not find server role service name for {zk:?}"))]
     NoZkSvcName {
@@ -124,18 +119,10 @@ pub enum Error {
     #[snafu(display("object has no namespace"))]
     ObjectHasNoNamespace,
 
-    #[snafu(display("failed to initialize security context"))]
-    FailedToInitializeSecurityContext { source: crate::crd::security::Error },
-
     #[snafu(display("Znode {znode:?} missing expected keys (name and/or namespace)"))]
     ZnodeMissingExpectedKeys {
         source: stackable_operator::cluster_resources::Error,
         znode: ObjectRef<v1alpha1::ZookeeperZnode>,
-    },
-
-    #[snafu(display("failed to resolve product image"))]
-    ResolveProductImage {
-        source: product_image_selection::Error,
     },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -169,10 +156,9 @@ impl ReconcilerError for Error {
     fn secondary_object(&self) -> Option<ObjectRef<DynamicObject>> {
         match self {
             Error::InvalidZookeeperZnode { .. } => None,
+            Error::Dereference { .. } => None,
+            Error::ValidateCluster { .. } => None,
             Error::ObjectMissingMetadata => None,
-            Error::InvalidZkReference => None,
-            Error::FindZk { zk, .. } => Some(zk.clone().erase()),
-            Error::ZkDoesNotExist { zk, .. } => Some(zk.clone().erase()),
             Error::NoZkSvcName { zk } => Some(zk.clone().erase()),
             Error::FindZkSvc { zk, .. } => Some(zk.clone().erase()),
             Error::NoZkFqdn { zk } => Some(zk.clone().erase()),
@@ -184,9 +170,7 @@ impl ReconcilerError for Error {
             Error::Finalizer { .. } => None,
             Error::DeleteOrphans { .. } => None,
             Error::ObjectHasNoNamespace => None,
-            Error::FailedToInitializeSecurityContext { .. } => None,
             Error::ZnodeMissingExpectedKeys { .. } => None,
-            Error::ResolveProductImage { .. } => None,
         }
     }
 }
@@ -213,7 +197,8 @@ pub async fn reconcile_znode(
     };
     let client = &ctx.client;
 
-    let zk = find_zk_of_znode(client, znode).await;
+    // dereference (client required) — replaces find_zk_of_znode
+    let dereferenced_objects = dereference::dereference(client, znode).await;
     let mut default_status_updates: Option<v1alpha1::ZookeeperZnodeStatus> = None;
     // Store the znode path in the status rather than the object itself, to ensure that only K8s administrators can override it
     let znode_path = match znode.status.as_ref().and_then(|s| s.znode_path.as_deref()) {
@@ -251,21 +236,37 @@ pub async fn reconcile_znode(
         |ev| async {
             match ev {
                 finalizer::Event::Apply(znode) => {
-                    let zk = zk?;
-                    let resolved_product_image = zk
-                        .spec
-                        .image
-                        .resolve(
-                            CONTAINER_IMAGE_BASE_NAME,
-                            &ctx.operator_environment.image_repository,
-                            crate::built_info::PKG_VERSION,
-                        )
-                        .context(ResolveProductImageSnafu)?;
-                    reconcile_apply(client, &znode, Ok(zk), &znode_path, &resolved_product_image)
-                        .await
+                    let dereferenced = dereferenced_objects.context(DereferenceSnafu)?;
+                    let validate::ValidatedInputs {
+                        resolved_product_image,
+                        zookeeper_security,
+                    } = validate::validate(&znode, &dereferenced, &ctx.operator_environment)
+                        .context(ValidateClusterSnafu)?;
+                    reconcile_apply(
+                        client,
+                        &znode,
+                        dereferenced.zk,
+                        &zookeeper_security,
+                        &znode_path,
+                        &resolved_product_image,
+                    )
+                    .await
                 }
-                finalizer::Event::Cleanup(_znode) => {
-                    reconcile_cleanup(client, zk, &znode_path).await
+                finalizer::Event::Cleanup(znode) => {
+                    let dereferenced = match dereferenced_objects {
+                        Ok(d) => d,
+                        Err(dereference::Error::ZkDoesNotExist { zk, .. }) => {
+                            tracing::info!(%zk, "Tried to clean up ZookeeperZnode bound to a ZookeeperCluster that does not exist, assuming it is already gone");
+                            return Ok(controller::Action::await_change());
+                        }
+                        Err(e) => return Err(e).context(DereferenceSnafu),
+                    };
+                    let validate::ValidatedInputs {
+                        zookeeper_security, ..
+                    } = validate::validate(&znode, &dereferenced, &ctx.operator_environment)
+                        .context(ValidateClusterSnafu)?;
+                    reconcile_cleanup(client, dereferenced.zk, &zookeeper_security, &znode_path)
+                        .await
                 }
             }
         },
@@ -277,16 +278,11 @@ pub async fn reconcile_znode(
 async fn reconcile_apply(
     client: &stackable_operator::client::Client,
     znode: &v1alpha1::ZookeeperZnode,
-    zk: Result<v1alpha1::ZookeeperCluster>,
+    zk: v1alpha1::ZookeeperCluster,
+    zookeeper_security: &ZookeeperSecurity,
     znode_path: &str,
     resolved_product_image: &ResolvedProductImage,
 ) -> Result<controller::Action> {
-    let zk = zk?;
-
-    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, &zk)
-        .await
-        .context(FailedToInitializeSecurityContextSnafu)?;
-
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
         OPERATOR_NAME,
@@ -298,7 +294,7 @@ async fn reconcile_apply(
     .context(ZnodeMissingExpectedKeysSnafu { znode })?;
 
     znode_mgmt::ensure_znode_exists(
-        &zk_mgmt_addr(&zk, &zookeeper_security, &client.kubernetes_cluster_info)?,
+        &zk_mgmt_addr(&zk, zookeeper_security, &client.kubernetes_cluster_info)?,
         znode_path,
     )
     .await
@@ -327,7 +323,7 @@ async fn reconcile_apply(
         listener,
         Some(znode_path),
         resolved_product_image,
-        &zookeeper_security,
+        zookeeper_security,
     )
     .context(BuildDiscoveryConfigMapSnafu)?;
 
@@ -346,24 +342,13 @@ async fn reconcile_apply(
 
 async fn reconcile_cleanup(
     client: &stackable_operator::client::Client,
-    zk: Result<v1alpha1::ZookeeperCluster>,
+    zk: v1alpha1::ZookeeperCluster,
+    zookeeper_security: &ZookeeperSecurity,
     znode_path: &str,
 ) -> Result<controller::Action> {
-    let zk = match zk {
-        Err(Error::ZkDoesNotExist { zk, .. }) => {
-            tracing::info!(%zk, "Tried to clean up ZookeeperZnode bound to a ZookeeperCluster that does not exist, assuming it is already gone");
-            return Ok(controller::Action::await_change());
-        }
-        res => res?,
-    };
-
-    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, &zk)
-        .await
-        .context(FailedToInitializeSecurityContextSnafu)?;
-
     // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
     znode_mgmt::ensure_znode_missing(
-        &zk_mgmt_addr(&zk, &zookeeper_security, &client.kubernetes_cluster_info)?,
+        &zk_mgmt_addr(&zk, zookeeper_security, &client.kubernetes_cluster_info)?,
         znode_path,
     )
     .await
@@ -401,37 +386,6 @@ fn zk_mgmt_addr(
             })?,
         port = zookeeper_security.client_port(),
     ))
-}
-
-async fn find_zk_of_znode(
-    client: &stackable_operator::client::Client,
-    znode: &v1alpha1::ZookeeperZnode,
-) -> Result<v1alpha1::ZookeeperCluster> {
-    let zk_ref = &znode.spec.cluster_ref;
-    if let (Some(zk_name), Some(zk_ns)) = (
-        zk_ref.name.as_deref(),
-        zk_ref.namespace_relative_from(znode),
-    ) {
-        match client
-            .get::<v1alpha1::ZookeeperCluster>(zk_name, zk_ns)
-            .await
-        {
-            Ok(zk) => Ok(zk),
-            Err(err) => match &err {
-                stackable_operator::client::Error::GetResource {
-                    source: kube::Error::Api(s),
-                    ..
-                } if s.is_not_found() => Err(err).with_context(|_| ZkDoesNotExistSnafu {
-                    zk: ObjectRef::new(zk_name).within(zk_ns),
-                }),
-                _ => Err(err).with_context(|_| FindZkSnafu {
-                    zk: ObjectRef::new(zk_name).within(zk_ns),
-                }),
-            },
-        }
-    } else {
-        InvalidZkReferenceSnafu.fail()
-    }
 }
 
 pub fn error_policy(
