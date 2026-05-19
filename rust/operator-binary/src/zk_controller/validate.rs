@@ -17,9 +17,7 @@ use stackable_operator::{
 use crate::{
     crd::{
         CONTAINER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, ZOOKEEPER_PROPERTIES_FILE,
-        ZookeeperRole,
-        security::ZookeeperSecurity,
-        v1alpha1,
+        ZookeeperRole, security::ZookeeperSecurity, v1alpha1,
     },
     zk_controller::dereference::DereferencedObjects,
 };
