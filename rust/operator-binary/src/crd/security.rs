@@ -102,13 +102,24 @@ impl ZookeeperSecurity {
         client: &Client,
         zk: &v1alpha1::ZookeeperCluster,
     ) -> Result<Self, Error> {
-        Ok(ZookeeperSecurity {
-            resolved_authentication_classes: authentication::resolve_authentication_classes(
-                client,
-                &zk.spec.cluster_config.authentication,
-            )
-            .await
-            .context(InvalidAuthenticationClassConfigurationSnafu)?,
+        let resolved_authentication_classes = authentication::resolve_authentication_classes(
+            client,
+            &zk.spec.cluster_config.authentication,
+        )
+        .await
+        .context(InvalidAuthenticationClassConfigurationSnafu)?;
+        Ok(Self::new(zk, resolved_authentication_classes))
+    }
+
+    /// Build a `ZookeeperSecurity` from a [`v1alpha1::ZookeeperCluster`] and already-resolved
+    /// [`ResolvedAuthenticationClasses`]. Synchronous; intended to be called from the validate
+    /// step of the controllers.
+    pub fn new(
+        zk: &v1alpha1::ZookeeperCluster,
+        resolved_authentication_classes: ResolvedAuthenticationClasses,
+    ) -> Self {
+        ZookeeperSecurity {
+            resolved_authentication_classes,
             server_secret_class: zk
                 .spec
                 .cluster_config
@@ -122,7 +133,7 @@ impl ZookeeperSecurity {
                 .as_ref()
                 .map(|tls| tls.quorum_secret_class.clone())
                 .unwrap_or_else(tls::quorum_tls_default),
-        })
+        }
     }
 
     /// Check if TLS encryption is enabled. This could be due to:
