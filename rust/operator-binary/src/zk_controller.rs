@@ -31,7 +31,7 @@ use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
     commons::{
-        product_image_selection::{self, ResolvedProductImage},
+        product_image_selection::ResolvedProductImage,
         rbac::build_rbac_resources,
     },
     constants::RESTART_CONTROLLER_ENABLED_LABEL,
@@ -55,7 +55,6 @@ use stackable_operator::{
     },
     kvp::{LabelError, Labels},
     logging::controller::ReconcilerError,
-    product_config_utils::{transform_all_roles_to_config, validate_all_roles_and_groups_config},
     product_logging::{
         self,
         framework::{
@@ -81,7 +80,7 @@ use crate::{
     command::create_init_container_command_args,
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
-        CONTAINER_IMAGE_BASE_NAME, JMX_METRICS_PORT_NAME, JVM_SECURITY_PROPERTIES_FILE,
+        JMX_METRICS_PORT_NAME, JVM_SECURITY_PROPERTIES_FILE,
         MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE, METRICS_PROVIDER_HTTP_PORT_NAME,
         STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
         STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME,
@@ -100,6 +99,9 @@ use crate::{
     },
     utils::build_recommended_labels,
 };
+
+mod dereference;
+mod validate;
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 pub const ZK_FULL_CONTROLLER_NAME: &str = concatcp!(ZK_CONTROLLER_NAME, '.', OPERATOR_NAME);
@@ -126,11 +128,14 @@ pub enum Error {
         source: error_boundary::InvalidObject,
     },
 
+    #[snafu(display("failed to dereference resources"))]
+    Dereference { source: dereference::Error },
+
+    #[snafu(display("failed to validate cluster"))]
+    ValidateCluster { source: validate::Error },
+
     #[snafu(display("crd validation failure"))]
     CrdValidationFailure { source: crate::crd::Error },
-
-    #[snafu(display("object defines no server role"))]
-    NoServerRole,
 
     #[snafu(display("could not parse role [{role}]"))]
     RoleParseFailure {
@@ -163,16 +168,6 @@ pub enum Error {
     ApplyRoleGroupStatefulSet {
         source: stackable_operator::cluster_resources::Error,
         rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    },
-
-    #[snafu(display("failed to generate product config"))]
-    GenerateProductConfig {
-        source: stackable_operator::product_config_utils::Error,
-    },
-
-    #[snafu(display("invalid product config"))]
-    InvalidProductConfig {
-        source: stackable_operator::product_config_utils::Error,
     },
 
     #[snafu(display("failed to serialize [{ZOOKEEPER_PROPERTIES_FILE}] for {}", rolegroup))]
@@ -227,9 +222,6 @@ pub enum Error {
         source: crate::product_logging::Error,
         cm_name: String,
     },
-
-    #[snafu(display("failed to initialize security context"))]
-    FailedToInitializeSecurityContext { source: crate::crd::security::Error },
 
     #[snafu(display("failed to resolve and merge config for role and role group"))]
     FailedToResolveConfig { source: crate::crd::Error },
@@ -289,11 +281,6 @@ pub enum Error {
         source: stackable_operator::builder::pod::volume::ListenerOperatorVolumeSourceBuilderError,
     },
 
-    #[snafu(display("failed to resolve product image"))]
-    ResolveProductImage {
-        source: product_image_selection::Error,
-    },
-
     #[snafu(display("failed to build service"))]
     BuildService { source: service::Error },
 
@@ -310,16 +297,15 @@ impl ReconcilerError for Error {
         match self {
             Error::MissingSecretLifetime => None,
             Error::InvalidZookeeperCluster { .. } => None,
+            Error::Dereference { .. } => None,
+            Error::ValidateCluster { .. } => None,
             Error::CrdValidationFailure { .. } => None,
-            Error::NoServerRole => None,
             Error::RoleParseFailure { .. } => None,
             Error::InternalOperatorFailure { .. } => None,
             Error::ApplyRoleGroupService { .. } => None,
             Error::BuildRoleGroupConfig { .. } => None,
             Error::ApplyRoleGroupConfig { .. } => None,
             Error::ApplyRoleGroupStatefulSet { .. } => None,
-            Error::GenerateProductConfig { .. } => None,
-            Error::InvalidProductConfig { .. } => None,
             Error::SerializeZooCfg { .. } => None,
             Error::ObjectMissingMetadataForOwnerRef { .. } => None,
             Error::BuildDiscoveryConfig { .. } => None,
@@ -331,7 +317,6 @@ impl ReconcilerError for Error {
             Error::DeleteOrphans { .. } => None,
             Error::VectorAggregatorConfigMapMissing => None,
             Error::InvalidLoggingConfig { .. } => None,
-            Error::FailedToInitializeSecurityContext { .. } => None,
             Error::FailedToResolveConfig { .. } => None,
             Error::FailedToCreatePdb { .. } => None,
             Error::GracefulShutdown { .. } => None,
@@ -346,7 +331,6 @@ impl ReconcilerError for Error {
             Error::ApplyGroupListener { .. } => None,
             Error::BuildListenerPersistentVolume { .. } => None,
             Error::ListenerConfiguration { .. } => None,
-            Error::ResolveProductImage { .. } => None,
             Error::BuildService { .. } => None,
             Error::RetrieveMetricsPortFromConfig { .. } => None,
         }
@@ -364,15 +348,23 @@ pub async fn reconcile_zk(
             .context(InvalidZookeeperClusterSnafu)?;
     let client = &ctx.client;
 
-    let resolved_product_image = zk
-        .spec
-        .image
-        .resolve(
-            CONTAINER_IMAGE_BASE_NAME,
-            &ctx.operator_environment.image_repository,
-            crate::built_info::PKG_VERSION,
-        )
-        .context(ResolveProductImageSnafu)?;
+    // dereference (client required)
+    let dereferenced_objects = dereference::dereference(client, zk)
+        .await
+        .context(DereferenceSnafu)?;
+
+    // validate (no client required)
+    let validate::ValidatedInputs {
+        resolved_product_image,
+        zookeeper_security,
+        validated_role_config,
+    } = validate::validate(
+        zk,
+        &dereferenced_objects,
+        &ctx.operator_environment,
+        &ctx.product_config,
+    )
+    .context(ValidateClusterSnafu)?;
 
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
@@ -384,38 +376,10 @@ pub async fn reconcile_zk(
     )
     .context(CreateClusterResourcesSnafu)?;
 
-    let validated_config = validate_all_roles_and_groups_config(
-        &resolved_product_image.product_version,
-        &transform_all_roles_to_config(
-            zk,
-            &[(
-                ZookeeperRole::Server.to_string(),
-                (
-                    vec![
-                        PropertyNameKind::Env,
-                        PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
-                        PropertyNameKind::File(JVM_SECURITY_PROPERTIES_FILE.to_string()),
-                    ],
-                    zk.spec.servers.clone().context(NoServerRoleSnafu)?,
-                ),
-            )]
-            .into(),
-        )
-        .context(GenerateProductConfigSnafu)?,
-        &ctx.product_config,
-        false,
-        false,
-    )
-    .context(InvalidProductConfigSnafu)?;
-
-    let role_server_config = validated_config
+    let role_server_config = validated_role_config
         .get(&ZookeeperRole::Server.to_string())
         .map(Cow::Borrowed)
         .unwrap_or_default();
-
-    let zookeeper_security = ZookeeperSecurity::new_from_zookeeper_cluster(client, zk)
-        .await
-        .context(FailedToInitializeSecurityContextSnafu)?;
 
     let (rbac_sa, rbac_rolebinding) = build_rbac_resources(
         zk,
@@ -1072,9 +1036,15 @@ pub fn error_policy(
 
 #[cfg(test)]
 mod tests {
-    use stackable_operator::commons::networking::DomainName;
+    use stackable_operator::{
+        commons::networking::DomainName,
+        product_config_utils::{
+            transform_all_roles_to_config, validate_all_roles_and_groups_config,
+        },
+    };
 
     use super::*;
+    use crate::crd::CONTAINER_IMAGE_BASE_NAME;
 
     #[test]
     fn test_default_config() {
