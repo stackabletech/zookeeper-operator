@@ -27,18 +27,20 @@ commands:
       ZOOKEEPER: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
       ZOOKEEPER_CHROOT: /
       ZOOKEEPER_CLIENT_PORT: "{{ zk_client_port }}"
-      ZOOKEEPER_HOSTS: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
+      ZOOKEEPER_HOSTS: test-zk-server.__NAMESPACE__.svc.domainexample.local:{{ zk_client_port }}
       YAMLEOF
       )
       actual=$(kubectl -n $NAMESPACE get cm test-zk -o yaml | yq -o=json '.data')
-      if [ "$expected" != "$actual" ]; then
+      expected_file=$(mktemp) && actual_file=$(mktemp)
+      printf '%s\n' "$expected" > "$expected_file"
+      printf '%s\n' "$actual" > "$actual_file"
+      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
         echo "ERROR: ConfigMap test-zk data drifted from snapshot."
-        echo "=== expected ==="
-        printf '%s\n' "$expected"
-        echo "=== actual ==="
-        printf '%s\n' "$actual"
+        printf '%s\n' "$diff_out"
+        rm -f "$expected_file" "$actual_file"
         exit 1
       fi
+      rm -f "$expected_file" "$actual_file"
   - script: |
       ZNODE_UID=$(kubectl -n $NAMESPACE get zookeeperznode test-znode -o jsonpath='{.metadata.uid}')
       expected=$(cat <<'YAMLEOF' | sed -e "s|__NAMESPACE__|$NAMESPACE|g" -e "s|__ZNODE_UID__|$ZNODE_UID|g" | yq -o=json
@@ -49,14 +51,16 @@ commands:
       YAMLEOF
       )
       actual=$(kubectl -n $NAMESPACE get cm test-znode -o yaml | yq -o=json '.data')
-      if [ "$expected" != "$actual" ]; then
+      expected_file=$(mktemp) && actual_file=$(mktemp)
+      printf '%s\n' "$expected" > "$expected_file"
+      printf '%s\n' "$actual" > "$actual_file"
+      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
         echo "ERROR: ConfigMap test-znode data drifted from snapshot."
-        echo "=== expected ==="
-        printf '%s\n' "$expected"
-        echo "=== actual ==="
-        printf '%s\n' "$actual"
+        printf '%s\n' "$diff_out"
+        rm -f "$expected_file" "$actual_file"
         exit 1
       fi
+      rm -f "$expected_file" "$actual_file"
   - script: |
       expected=$(cat <<'YAMLEOF' | sed "s|__NAMESPACE__|$NAMESPACE|g" | yq -o=json
       logback.xml: |
@@ -149,14 +153,16 @@ commands:
       YAMLEOF
       )
       actual=$(kubectl -n $NAMESPACE get cm test-zk-server-primary -o yaml | yq -o=json '.data')
-      if [ "$expected" != "$actual" ]; then
+      expected_file=$(mktemp) && actual_file=$(mktemp)
+      printf '%s\n' "$expected" > "$expected_file"
+      printf '%s\n' "$actual" > "$actual_file"
+      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
         echo "ERROR: ConfigMap test-zk-server-primary data drifted from snapshot."
-        echo "=== expected ==="
-        printf '%s\n' "$expected"
-        echo "=== actual ==="
-        printf '%s\n' "$actual"
+        printf '%s\n' "$diff_out"
+        rm -f "$expected_file" "$actual_file"
         exit 1
       fi
+      rm -f "$expected_file" "$actual_file"
   - script: |
       expected=$(cat <<'YAMLEOF' | sed "s|__NAMESPACE__|$NAMESPACE|g" | yq -o=json
       logback.xml: |
@@ -248,11 +254,13 @@ commands:
       YAMLEOF
       )
       actual=$(kubectl -n $NAMESPACE get cm test-zk-server-secondary -o yaml | yq -o=json '.data')
-      if [ "$expected" != "$actual" ]; then
+      expected_file=$(mktemp) && actual_file=$(mktemp)
+      printf '%s\n' "$expected" > "$expected_file"
+      printf '%s\n' "$actual" > "$actual_file"
+      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
         echo "ERROR: ConfigMap test-zk-server-secondary data drifted from snapshot."
-        echo "=== expected ==="
-        printf '%s\n' "$expected"
-        echo "=== actual ==="
-        printf '%s\n' "$actual"
+        printf '%s\n' "$diff_out"
+        rm -f "$expected_file" "$actual_file"
         exit 1
       fi
+      rm -f "$expected_file" "$actual_file"
