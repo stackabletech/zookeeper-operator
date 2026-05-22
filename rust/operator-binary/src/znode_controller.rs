@@ -198,6 +198,7 @@ pub async fn reconcile_znode(
     let client = &ctx.client;
 
     // dereference (client required)
+    // Capturing the Result here (rather than the inner value) is intentional as ZkDoesNotExist will be handled explicitly below
     let dereferenced_objects = dereference::dereference(client, znode).await;
     let mut default_status_updates: Option<v1alpha1::ZookeeperZnodeStatus> = None;
     // Store the znode path in the status rather than the object itself, to ensure that only K8s administrators can override it
