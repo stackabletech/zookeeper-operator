@@ -15,13 +15,14 @@ use crate::crd::{
 
 #[derive(Snafu, Debug)]
 pub enum Error {
-    #[snafu(display("failed to resolve authentication classes"))]
-    ResolveAuthenticationClasses { source: authentication::Error },
+    #[snafu(display("failed to fetch authentication classes"))]
+    FetchAuthenticationClasses { source: authentication::Error },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// Kubernetes objects referenced from the [`v1alpha1::ZookeeperCluster`] spec, already fetched.
+/// Kubernetes objects referenced from the [`v1alpha1::ZookeeperCluster`] spec, already fetched but
+/// not yet validated.
 pub struct DereferencedObjects {
     pub resolved_authentication_classes: ResolvedAuthenticationClasses,
 }
@@ -31,12 +32,12 @@ pub async fn dereference(
     client: &Client,
     zk: &v1alpha1::ZookeeperCluster,
 ) -> Result<DereferencedObjects> {
-    let resolved_authentication_classes = authentication::resolve_authentication_classes(
+    let resolved_authentication_classes = ResolvedAuthenticationClasses::fetch_references(
         client,
         &zk.spec.cluster_config.authentication,
     )
     .await
-    .context(ResolveAuthenticationClassesSnafu)?;
+    .context(FetchAuthenticationClassesSnafu)?;
 
     Ok(DereferencedObjects {
         resolved_authentication_classes,

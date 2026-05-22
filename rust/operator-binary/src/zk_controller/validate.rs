@@ -17,7 +17,7 @@ use stackable_operator::{
 use crate::{
     crd::{
         CONTAINER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, ZOOKEEPER_PROPERTIES_FILE,
-        ZookeeperRole, security::ZookeeperSecurity, v1alpha1,
+        ZookeeperRole, authentication, security::ZookeeperSecurity, v1alpha1,
     },
     zk_controller::dereference::DereferencedObjects,
 };
@@ -28,6 +28,9 @@ pub enum Error {
     ResolveProductImage {
         source: product_image_selection::Error,
     },
+
+    #[snafu(display("failed to validate authentication classes"))]
+    InvalidAuthenticationClassConfiguration { source: authentication::Error },
 
     #[snafu(display("object defines no server role"))]
     NoServerRole,
@@ -69,10 +72,12 @@ pub fn validate(
         )
         .context(ResolveProductImageSnafu)?;
 
-    let zookeeper_security = ZookeeperSecurity::new(
-        zk,
-        dereferenced_objects.resolved_authentication_classes.clone(),
-    );
+    let resolved_authentication_classes = dereferenced_objects
+        .resolved_authentication_classes
+        .validate()
+        .context(InvalidAuthenticationClassConfigurationSnafu)?;
+
+    let zookeeper_security = ZookeeperSecurity::new(zk, resolved_authentication_classes);
 
     let validated_role_config =
         validated_product_config(zk, &resolved_product_image.product_version, product_config)?;

@@ -57,6 +57,35 @@ pub struct ResolvedAuthenticationClasses {
 }
 
 impl ResolvedAuthenticationClasses {
+    /// Fetch the referenced AuthenticationClasses from the Kubernetes API without validating them.
+    ///
+    /// Call [`Self::validate`] on the result to enforce the constraints documented there.
+    pub async fn fetch_references(
+        client: &Client,
+        auth_classes: &Vec<v1alpha1::ZookeeperAuthentication>,
+    ) -> Result<ResolvedAuthenticationClasses, Error> {
+        let mut resolved_authentication_classes: Vec<core::v1alpha1::AuthenticationClass> = vec![];
+
+        for auth_class in auth_classes {
+            resolved_authentication_classes.push(
+                core::v1alpha1::AuthenticationClass::resolve(
+                    client,
+                    &auth_class.authentication_class,
+                )
+                .await
+                .context(AuthenticationClassRetrievalSnafu {
+                    authentication_class: ObjectRef::<core::v1alpha1::AuthenticationClass>::new(
+                        &auth_class.authentication_class,
+                    ),
+                })?,
+            );
+        }
+
+        Ok(ResolvedAuthenticationClasses {
+            resolved_authentication_classes,
+        })
+    }
+
     /// Return the (first) TLS `AuthenticationClass` if available
     pub fn get_tls_authentication_class(&self) -> Option<&core::v1alpha1::AuthenticationClass> {
         self.resolved_authentication_classes.iter().find(|auth| {
@@ -100,32 +129,4 @@ impl ResolvedAuthenticationClasses {
             resolved_authentication_classes: vec![],
         }
     }
-}
-
-/// Resolve provided AuthenticationClasses via API calls and validate the contents.
-/// Currently errors out if:
-/// - AuthenticationClass could not be resolved
-/// - Validation failed
-pub async fn resolve_authentication_classes(
-    client: &Client,
-    auth_classes: &Vec<v1alpha1::ZookeeperAuthentication>,
-) -> Result<ResolvedAuthenticationClasses, Error> {
-    let mut resolved_authentication_classes: Vec<core::v1alpha1::AuthenticationClass> = vec![];
-
-    for auth_class in auth_classes {
-        resolved_authentication_classes.push(
-            core::v1alpha1::AuthenticationClass::resolve(client, &auth_class.authentication_class)
-                .await
-                .context(AuthenticationClassRetrievalSnafu {
-                    authentication_class: ObjectRef::<core::v1alpha1::AuthenticationClass>::new(
-                        &auth_class.authentication_class,
-                    ),
-                })?,
-        );
-    }
-
-    ResolvedAuthenticationClasses {
-        resolved_authentication_classes,
-    }
-    .validate()
 }

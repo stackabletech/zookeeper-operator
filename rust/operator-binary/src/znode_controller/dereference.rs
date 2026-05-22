@@ -2,7 +2,8 @@
 //!
 //! Fetches the parent [`v1alpha1::ZookeeperCluster`] referenced by the znode's
 //! `spec.clusterRef`, plus the [`ResolvedAuthenticationClasses`] of that cluster. Both Apply
-//! and Cleanup paths in `reconcile_znode` share this output.
+//! and Cleanup paths in `reconcile_znode` share this output. Synchronous validation of the
+//! fetched objects happens in the validate step.
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
@@ -32,8 +33,8 @@ pub enum Error {
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("failed to resolve authentication classes"))]
-    ResolveAuthenticationClasses { source: authentication::Error },
+    #[snafu(display("failed to fetch authentication classes"))]
+    FetchAuthenticationClasses { source: authentication::Error },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -51,12 +52,12 @@ pub async fn dereference(
 ) -> Result<DereferencedObjects> {
     let zk = find_zk_of_znode(client, znode).await?;
 
-    let resolved_authentication_classes = authentication::resolve_authentication_classes(
+    let resolved_authentication_classes = ResolvedAuthenticationClasses::fetch_references(
         client,
         &zk.spec.cluster_config.authentication,
     )
     .await
-    .context(ResolveAuthenticationClassesSnafu)?;
+    .context(FetchAuthenticationClassesSnafu)?;
 
     Ok(DereferencedObjects {
         zk,
