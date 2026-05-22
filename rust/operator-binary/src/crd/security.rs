@@ -19,7 +19,6 @@ use stackable_operator::{
             },
         },
     },
-    client::Client,
     commons::secret_class::SecretClassVolumeProvisionParts,
     crd::authentication::core,
     k8s_openapi::api::core::v1::Volume,
@@ -27,10 +26,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{
-        authentication::{self, ResolvedAuthenticationClasses},
-        tls, v1alpha1,
-    },
+    crd::{authentication::ResolvedAuthenticationClasses, tls, v1alpha1},
     zk_controller::LISTENER_VOLUME_NAME,
 };
 
@@ -38,9 +34,6 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Snafu, Debug)]
 pub enum Error {
-    #[snafu(display("failed to process authentication class"))]
-    InvalidAuthenticationClassConfiguration { source: authentication::Error },
-
     #[snafu(display("failed to build TLS volume for {volume_name:?}"))]
     BuildTlsVolume {
         source: SecretOperatorVolumeSourceBuilderError,
@@ -96,19 +89,15 @@ impl ZookeeperSecurity {
     pub const STORE_PASSWORD_ENV: &'static str = "STORE_PASSWORD";
     pub const SYSTEM_TRUST_STORE_DIR: &'static str = "/etc/pki/java/cacerts";
 
-    /// Create a `ZookeeperSecurity` struct from the Zookeeper custom resource and resolve
-    /// all provided `AuthenticationClass` references.
-    pub async fn new_from_zookeeper_cluster(
-        client: &Client,
+    /// Build a `ZookeeperSecurity` from a [`v1alpha1::ZookeeperCluster`] and already-resolved
+    /// [`ResolvedAuthenticationClasses`]. Synchronous; intended to be called from the validate
+    /// step of the controllers.
+    pub fn new(
         zk: &v1alpha1::ZookeeperCluster,
-    ) -> Result<Self, Error> {
-        Ok(ZookeeperSecurity {
-            resolved_authentication_classes: authentication::resolve_authentication_classes(
-                client,
-                &zk.spec.cluster_config.authentication,
-            )
-            .await
-            .context(InvalidAuthenticationClassConfigurationSnafu)?,
+        resolved_authentication_classes: ResolvedAuthenticationClasses,
+    ) -> Self {
+        ZookeeperSecurity {
+            resolved_authentication_classes,
             server_secret_class: zk
                 .spec
                 .cluster_config
@@ -122,7 +111,7 @@ impl ZookeeperSecurity {
                 .as_ref()
                 .map(|tls| tls.quorum_secret_class.clone())
                 .unwrap_or_else(tls::quorum_tls_default),
-        })
+        }
     }
 
     /// Check if TLS encryption is enabled. This could be due to:

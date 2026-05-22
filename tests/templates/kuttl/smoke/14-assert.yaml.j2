@@ -1,0 +1,266 @@
+{# Templating flags used throughout this file. #}
+{% set use_client_tls = test_scenario['values']['use-server-tls'] == 'true'
+                     or test_scenario['values']['use-client-auth-tls'] == 'true' %}
+{% set use_client_auth = test_scenario['values']['use-client-auth-tls'] == 'true' %}
+{% set zk_client_port = 2282 if use_client_tls else 2181 %}
+---
+# Snapshot the full `.data` of each operator-managed ConfigMap.
+# Any code change that alters rendered config values will fail these diffs.
+#
+# Runs as its own step (after 13) so kuttl does not re-evaluate the heavy
+# heredocs on every 1-second readiness retry of the install step. By this
+# point the cluster is in steady state, so each script runs once.
+#
+# The heredoc is quoted (`<<'YAMLEOF'`) so shell substitution is disabled and
+# property-file escapes like `\:` survive verbatim. `__NAMESPACE__` is
+# substituted afterwards via `sed`, and for the test-znode CM also
+# `__ZNODE_UID__`, looked up at runtime from the ZookeeperZnode resource.
+# Both sides are normalized to canonical JSON via `yq -o=json`; keys are
+# already alphabetical on both sides (operator stores BTreeMap; kubectl
+# serializes maps sorted; the heredoc is hand-sorted).
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 60
+commands:
+  - script: |
+      expected=$(cat <<'YAMLEOF' | sed "s|__NAMESPACE__|$NAMESPACE|g" | yq -o=json
+      ZOOKEEPER: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
+      ZOOKEEPER_CHROOT: /
+      ZOOKEEPER_CLIENT_PORT: "{{ zk_client_port }}"
+      ZOOKEEPER_HOSTS: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
+      YAMLEOF
+      )
+      actual=$(kubectl -n $NAMESPACE get cm test-zk -o yaml | yq -o=json '.data')
+      expected_file=$(mktemp) && actual_file=$(mktemp)
+      printf '%s\n' "$expected" > "$expected_file"
+      printf '%s\n' "$actual" > "$actual_file"
+      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
+        echo "ERROR: ConfigMap test-zk data drifted from snapshot."
+        printf '%s\n' "$diff_out"
+        rm -f "$expected_file" "$actual_file"
+        exit 1
+      fi
+      rm -f "$expected_file" "$actual_file"
+  - script: |
+      ZNODE_UID=$(kubectl -n $NAMESPACE get zookeeperznode test-znode -o jsonpath='{.metadata.uid}')
+      expected=$(cat <<'YAMLEOF' | sed -e "s|__NAMESPACE__|$NAMESPACE|g" -e "s|__ZNODE_UID__|$ZNODE_UID|g" | yq -o=json
+      ZOOKEEPER: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}/znode-__ZNODE_UID__
+      ZOOKEEPER_CHROOT: /znode-__ZNODE_UID__
+      ZOOKEEPER_CLIENT_PORT: "{{ zk_client_port }}"
+      ZOOKEEPER_HOSTS: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
+      YAMLEOF
+      )
+      actual=$(kubectl -n $NAMESPACE get cm test-znode -o yaml | yq -o=json '.data')
+      expected_file=$(mktemp) && actual_file=$(mktemp)
+      printf '%s\n' "$expected" > "$expected_file"
+      printf '%s\n' "$actual" > "$actual_file"
+      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
+        echo "ERROR: ConfigMap test-znode data drifted from snapshot."
+        printf '%s\n' "$diff_out"
+        rm -f "$expected_file" "$actual_file"
+        exit 1
+      fi
+      rm -f "$expected_file" "$actual_file"
+  - script: |
+      expected=$(cat <<'YAMLEOF' | sed "s|__NAMESPACE__|$NAMESPACE|g" | yq -o=json
+      logback.xml: |
+        <configuration>
+          <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+              <pattern>%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n</pattern>
+            </encoder>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+              <level>INFO</level>
+            </filter>
+          </appender>
+
+          <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <File>/stackable/log/zookeeper/zookeeper.log4j.xml</File>
+            <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+              <layout class="ch.qos.logback.classic.log4j.XMLLayout" />
+            </encoder>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+              <level>INFO</level>
+            </filter>
+            <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+              <minIndex>1</minIndex>
+              <maxIndex>1</maxIndex>
+              <FileNamePattern>/stackable/log/zookeeper/zookeeper.log4j.xml.%i</FileNamePattern>
+            </rollingPolicy>
+            <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+              <MaxFileSize>5MB</MaxFileSize>
+              <!--
+                checkIncrement defines how often file sizes are checked, because
+                checking them is a relatively costly operation.
+                checkIncrement was introduced in the SizeBasedTriggeringPolicy in
+                logback 1.3.6/1.4.6 as an Integer representing milliseconds. In logback
+                1.3.12/1.4.12, it was changed to a Duration, also accepting a unit.
+                Without a given unit, milliseconds are assumed. The logback manual is
+                misleading: In logback 1.5.8, checkIncrement is no longer used for the
+                SizeAndTimeBasedFileNamingAndTriggeringPolicy, but it is still used for
+                the SizeBasedTriggeringPolicy!
+                In prior versions of logback, setting this option has no effect.
+              -->
+              <checkIncrement>5000</checkIncrement>
+            </triggeringPolicy>
+          </appender>
+
+
+
+          <root level="INFO">
+            <appender-ref ref="CONSOLE" />
+            <appender-ref ref="FILE" />
+          </root>
+        </configuration>
+      security.properties: |
+        networkaddress.cache.negative.ttl=0
+        networkaddress.cache.ttl=5
+      zoo.cfg: |
+        admin.serverPort=8080
+        authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider
+{% if use_client_tls %}
+        client.portUnification=true
+{% endif %}
+        clientPort={{ zk_client_port }}
+        dataDir=/stackable/data
+        initLimit=5
+        metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider
+        metricsProvider.httpPort=7000
+        prop.common=group
+        prop.group=group
+        prop.role=role
+        server.10=test-zk-server-primary-0.test-zk-server-primary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
+        server.11=test-zk-server-primary-1.test-zk-server-primary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
+        server.20=test-zk-server-secondary-0.test-zk-server-secondary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
+        serverCnxnFactory=org.apache.zookeeper.server.NettyServerCnxnFactory
+{% if use_client_auth %}
+        ssl.clientAuth=need
+{% endif %}
+{% if use_client_tls %}
+        ssl.hostnameVerification=true
+        ssl.keyStore.location=/stackable/server_tls/keystore.p12
+{% endif %}
+        ssl.quorum.clientAuth=need
+        ssl.quorum.hostnameVerification=true
+        ssl.quorum.keyStore.location=/stackable/quorum_tls/keystore.p12
+        ssl.quorum.trustStore.location=/stackable/quorum_tls/truststore.p12
+{% if use_client_tls %}
+        ssl.trustStore.location=/stackable/server_tls/truststore.p12
+{% endif %}
+        sslQuorum=true
+        syncLimit=2
+        tickTime=3000
+      YAMLEOF
+      )
+      actual=$(kubectl -n $NAMESPACE get cm test-zk-server-primary -o yaml | yq -o=json '.data')
+      expected_file=$(mktemp) && actual_file=$(mktemp)
+      printf '%s\n' "$expected" > "$expected_file"
+      printf '%s\n' "$actual" > "$actual_file"
+      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
+        echo "ERROR: ConfigMap test-zk-server-primary data drifted from snapshot."
+        printf '%s\n' "$diff_out"
+        rm -f "$expected_file" "$actual_file"
+        exit 1
+      fi
+      rm -f "$expected_file" "$actual_file"
+  - script: |
+      expected=$(cat <<'YAMLEOF' | sed "s|__NAMESPACE__|$NAMESPACE|g" | yq -o=json
+      logback.xml: |
+        <configuration>
+          <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+              <pattern>%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n</pattern>
+            </encoder>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+              <level>INFO</level>
+            </filter>
+          </appender>
+
+          <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+            <File>/stackable/log/zookeeper/zookeeper.log4j.xml</File>
+            <encoder class="ch.qos.logback.core.encoder.LayoutWrappingEncoder">
+              <layout class="ch.qos.logback.classic.log4j.XMLLayout" />
+            </encoder>
+            <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+              <level>INFO</level>
+            </filter>
+            <rollingPolicy class="ch.qos.logback.core.rolling.FixedWindowRollingPolicy">
+              <minIndex>1</minIndex>
+              <maxIndex>1</maxIndex>
+              <FileNamePattern>/stackable/log/zookeeper/zookeeper.log4j.xml.%i</FileNamePattern>
+            </rollingPolicy>
+            <triggeringPolicy class="ch.qos.logback.core.rolling.SizeBasedTriggeringPolicy">
+              <MaxFileSize>5MB</MaxFileSize>
+              <!--
+                checkIncrement defines how often file sizes are checked, because
+                checking them is a relatively costly operation.
+                checkIncrement was introduced in the SizeBasedTriggeringPolicy in
+                logback 1.3.6/1.4.6 as an Integer representing milliseconds. In logback
+                1.3.12/1.4.12, it was changed to a Duration, also accepting a unit.
+                Without a given unit, milliseconds are assumed. The logback manual is
+                misleading: In logback 1.5.8, checkIncrement is no longer used for the
+                SizeAndTimeBasedFileNamingAndTriggeringPolicy, but it is still used for
+                the SizeBasedTriggeringPolicy!
+                In prior versions of logback, setting this option has no effect.
+              -->
+              <checkIncrement>5000</checkIncrement>
+            </triggeringPolicy>
+          </appender>
+
+
+
+          <root level="INFO">
+            <appender-ref ref="CONSOLE" />
+            <appender-ref ref="FILE" />
+          </root>
+        </configuration>
+      security.properties: |
+        networkaddress.cache.negative.ttl=0
+        networkaddress.cache.ttl=5
+      zoo.cfg: |
+        admin.serverPort=8080
+        authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider
+{% if use_client_tls %}
+        client.portUnification=true
+{% endif %}
+        clientPort={{ zk_client_port }}
+        dataDir=/stackable/data
+        initLimit=5
+        metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider
+        metricsProvider.httpPort=7000
+        prop.common=role
+        prop.role=role
+        server.10=test-zk-server-primary-0.test-zk-server-primary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
+        server.11=test-zk-server-primary-1.test-zk-server-primary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
+        server.20=test-zk-server-secondary-0.test-zk-server-secondary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
+        serverCnxnFactory=org.apache.zookeeper.server.NettyServerCnxnFactory
+{% if use_client_auth %}
+        ssl.clientAuth=need
+{% endif %}
+{% if use_client_tls %}
+        ssl.hostnameVerification=true
+        ssl.keyStore.location=/stackable/server_tls/keystore.p12
+{% endif %}
+        ssl.quorum.clientAuth=need
+        ssl.quorum.hostnameVerification=true
+        ssl.quorum.keyStore.location=/stackable/quorum_tls/keystore.p12
+        ssl.quorum.trustStore.location=/stackable/quorum_tls/truststore.p12
+{% if use_client_tls %}
+        ssl.trustStore.location=/stackable/server_tls/truststore.p12
+{% endif %}
+        sslQuorum=true
+        syncLimit=2
+        tickTime=3000
+      YAMLEOF
+      )
+      actual=$(kubectl -n $NAMESPACE get cm test-zk-server-secondary -o yaml | yq -o=json '.data')
+      expected_file=$(mktemp) && actual_file=$(mktemp)
+      printf '%s\n' "$expected" > "$expected_file"
+      printf '%s\n' "$actual" > "$actual_file"
+      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
+        echo "ERROR: ConfigMap test-zk-server-secondary data drifted from snapshot."
+        printf '%s\n' "$diff_out"
+        rm -f "$expected_file" "$actual_file"
+        exit 1
+      fi
+      rm -f "$expected_file" "$actual_file"

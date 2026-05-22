@@ -1,0 +1,371 @@
+{# Templating flags used throughout this file. #}
+{% set use_client_tls = test_scenario['values']['use-server-tls'] == 'true'
+                     or test_scenario['values']['use-client-auth-tls'] == 'true' %}
+{% set use_client_auth = test_scenario['values']['use-client-auth-tls'] == 'true' %}
+{% set vector_enabled = lookup('env', 'VECTOR_AGGREGATOR') | length > 0 %}
+{% set zk_client_port = 2282 if use_client_tls else 2181 %}
+---
+# Declarative shape assertions for every operator-managed resource in the smoke
+# test except ConfigMap *.data* (covered in 14-assert.yaml.j2).
+#
+# kuttl performs subset matching: any field omitted here is not checked, and
+# the live object may carry additional keys/labels. We therefore omit fields
+# that are random per install (uids, resourceVersion, clusterIP, and the
+# `listener.stackable.tech/mnt.<UID>` selector on the cluster-internal Service).
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 60
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: test-zk-server-primary
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: primary
+    restarter.stackable.tech/enabled: "true"
+    stackable.tech/vendor: Stackable
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+spec:
+  podManagementPolicy: Parallel
+  replicas: 2
+  serviceName: test-zk-server-primary-headless
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: server
+        app.kubernetes.io/instance: test-zk
+        app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+        app.kubernetes.io/name: zookeeper
+        app.kubernetes.io/role-group: primary
+        stackable.tech/vendor: Stackable
+    spec:
+      serviceAccount: test-zk-serviceaccount
+      serviceAccountName: test-zk-serviceaccount
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: zookeeper
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 250m
+              memory: 512Mi
+{% if vector_enabled %}
+        - name: vector
+{% endif %}
+status:
+  readyReplicas: 2
+  replicas: 2
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: test-zk-server-secondary
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: secondary
+    restarter.stackable.tech/enabled: "true"
+    stackable.tech/vendor: Stackable
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+spec:
+  podManagementPolicy: Parallel
+  replicas: 1
+  serviceName: test-zk-server-secondary-headless
+  template:
+    spec:
+      serviceAccount: test-zk-serviceaccount
+      serviceAccountName: test-zk-serviceaccount
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: zookeeper
+          resources:
+            limits:
+              cpu: 600m # From podOverrides
+              memory: 512Mi
+            requests:
+              cpu: 300m # From podOverrides
+              memory: 512Mi
+{% if vector_enabled %}
+        - name: vector
+{% endif %}
+status:
+  readyReplicas: 1
+  replicas: 1
+---
+# Cluster-internal listener Service. `selector` is intentionally not asserted:
+# it carries a per-install `listener.stackable.tech/mnt.<UID>` key.
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk-server
+    app.kubernetes.io/managed-by: listeners.stackable.tech_listener
+    app.kubernetes.io/name: listener
+    stackable.tech/vendor: Stackable
+  ownerReferences:
+    - apiVersion: listeners.stackable.tech/v1alpha1
+      controller: true
+      kind: Listener
+      name: test-zk-server
+spec:
+  type: ClusterIP
+  ports:
+    - name: zk
+      port: {{ zk_client_port }}
+      protocol: TCP
+      targetPort: {{ zk_client_port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-primary-headless
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: primary
+    stackable.tech/vendor: Stackable
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: primary
+  ports:
+    - name: zk-leader
+      port: 2888
+      protocol: TCP
+      targetPort: 2888
+    - name: zk-election
+      port: 3888
+      protocol: TCP
+      targetPort: 3888
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-primary-metrics
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "7000"
+    prometheus.io/scheme: http
+    prometheus.io/scrape: "true"
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: primary
+    prometheus.io/scrape: "true"
+    stackable.tech/vendor: Stackable
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: primary
+  ports:
+    - name: jmx-metrics
+      port: 9505
+      protocol: TCP
+      targetPort: 9505
+    - name: metrics
+      port: 7000
+      protocol: TCP
+      targetPort: 7000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-secondary-headless
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: secondary
+    stackable.tech/vendor: Stackable
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: secondary
+  ports:
+    - name: zk-leader
+      port: 2888
+      protocol: TCP
+      targetPort: 2888
+    - name: zk-election
+      port: 3888
+      protocol: TCP
+      targetPort: 3888
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-secondary-metrics
+  annotations:
+    prometheus.io/path: /metrics
+    prometheus.io/port: "7000"
+    prometheus.io/scheme: http
+    prometheus.io/scrape: "true"
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: secondary
+    prometheus.io/scrape: "true"
+    stackable.tech/vendor: Stackable
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/name: zookeeper
+    app.kubernetes.io/role-group: secondary
+  ports:
+    - name: jmx-metrics
+      port: 9505
+      protocol: TCP
+      targetPort: 9505
+    - name: metrics
+      port: 7000
+      protocol: TCP
+      targetPort: 7000
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: test-zk-server
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+    app.kubernetes.io/name: zookeeper
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: server
+      app.kubernetes.io/instance: test-zk
+      app.kubernetes.io/name: zookeeper
+status:
+  currentHealthy: 3
+  disruptionsAllowed: 1
+  expectedPods: 3
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-zk-serviceaccount
+  labels:
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+    app.kubernetes.io/name: zookeeper
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-zk-rolebinding
+  labels:
+    app.kubernetes.io/instance: test-zk
+    app.kubernetes.io/managed-by: zookeeper.stackable.tech_zookeepercluster
+    app.kubernetes.io/name: zookeeper
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: zookeeper-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: test-zk-serviceaccount
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-test-zk-server-primary-0
+spec:
+  resources:
+    requests:
+      storage: 1Gi
+status:
+  phase: Bound
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-test-zk-server-primary-1
+spec:
+  resources:
+    requests:
+      storage: 1Gi
+status:
+  phase: Bound
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-test-zk-server-secondary-0
+spec:
+  resources:
+    requests:
+      storage: 2Gi
+status:
+  phase: Bound

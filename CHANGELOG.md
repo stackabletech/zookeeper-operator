@@ -15,10 +15,12 @@ All notable changes to this project will be documented in this file.
   `security.properties`).
   Previously, arbitrary file names were silently accepted and ignored ([#1027]).
 - Bump `stackable-operator` to 0.111.1 ([#1027], [#1028]).
+- Internal operator refactoring: introduce dereference() and validate() steps in the reconciler ([#1034]).
 
 [#1020]: https://github.com/stackabletech/zookeeper-operator/pull/1020
 [#1027]: https://github.com/stackabletech/zookeeper-operator/pull/1027
 [#1028]: https://github.com/stackabletech/zookeeper-operator/pull/1028
+[#1034]: https://github.com/stackabletech/zookeeper-operator/pull/1034
 
 ## [26.3.0] - 2026-03-16
 
