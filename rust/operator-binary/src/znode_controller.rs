@@ -252,7 +252,7 @@ pub async fn reconcile_znode(
                     )
                     .await
                 }
-                finalizer::Event::Cleanup(znode) => {
+                finalizer::Event::Cleanup(_znode) => {
                     let dereferenced = match dereferenced_objects {
                         Ok(d) => d,
                         Err(dereference::Error::ZkDoesNotExist { zk, .. }) => {
@@ -261,10 +261,13 @@ pub async fn reconcile_znode(
                         }
                         Err(e) => return Err(e).context(DereferenceSnafu),
                     };
-                    let validate::ValidatedInputs {
-                        zookeeper_security, ..
-                    } = validate::validate(&znode, &dereferenced, &ctx.operator_environment)
-                        .context(ValidateClusterSnafu)?;
+                    // Cleanup only needs ZookeeperSecurity to talk to the cluster; skip the
+                    // apply-time image resolution in `validate` so a bad image spec can't
+                    // block finalizer removal.
+                    let zookeeper_security = ZookeeperSecurity::new(
+                        &dereferenced.zk,
+                        dereferenced.resolved_authentication_classes.clone(),
+                    );
                     reconcile_cleanup(client, dereferenced.zk, &zookeeper_security, &znode_path)
                         .await
                 }
