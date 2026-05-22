@@ -51,19 +51,19 @@ pub mod versioned {
 }
 
 #[derive(Clone, Debug)]
-/// Helper struct that contains resolved AuthenticationClasses to reduce network API calls.
-pub struct ResolvedAuthenticationClasses {
+/// Helper struct that contains dereferenced AuthenticationClasses to reduce network API calls.
+pub struct DereferencedAuthenticationClasses {
     resolved_authentication_classes: Vec<core::v1alpha1::AuthenticationClass>,
 }
 
-impl ResolvedAuthenticationClasses {
+impl DereferencedAuthenticationClasses {
     /// Fetch the referenced AuthenticationClasses from the Kubernetes API without validating them.
     ///
     /// Call [`Self::validate`] on the result to enforce the constraints documented there.
     pub async fn fetch_references(
         client: &Client,
         auth_classes: &Vec<v1alpha1::ZookeeperAuthentication>,
-    ) -> Result<ResolvedAuthenticationClasses, Error> {
+    ) -> Result<DereferencedAuthenticationClasses, Error> {
         let mut resolved_authentication_classes: Vec<core::v1alpha1::AuthenticationClass> = vec![];
 
         for auth_class in auth_classes {
@@ -81,7 +81,7 @@ impl ResolvedAuthenticationClasses {
             );
         }
 
-        Ok(ResolvedAuthenticationClasses {
+        Ok(DereferencedAuthenticationClasses {
             resolved_authentication_classes,
         })
     }
@@ -96,7 +96,7 @@ impl ResolvedAuthenticationClasses {
         })
     }
 
-    /// Validates the resolved AuthenticationClasses.
+    /// Validates the dereferenced AuthenticationClasses.
     /// Currently errors out if:
     /// - More than one AuthenticationClass was provided
     /// - AuthenticationClass mechanism was not supported
@@ -125,7 +125,7 @@ impl ResolvedAuthenticationClasses {
 
     /// USE ONLY IN TESTS! We can not put it behind `#[cfg(test)]` because of <https://github.com/rust-lang/cargo/issues/8379>
     pub fn new_for_tests() -> Self {
-        ResolvedAuthenticationClasses {
+        DereferencedAuthenticationClasses {
             resolved_authentication_classes: vec![],
         }
     }

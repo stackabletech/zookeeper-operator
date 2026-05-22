@@ -9,7 +9,7 @@ use snafu::{ResultExt, Snafu};
 use stackable_operator::client::Client;
 
 use crate::crd::{
-    authentication::{self, ResolvedAuthenticationClasses},
+    authentication::{self, DereferencedAuthenticationClasses},
     v1alpha1,
 };
 
@@ -24,7 +24,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 /// Kubernetes objects referenced from the [`v1alpha1::ZookeeperCluster`] spec, already fetched but
 /// not yet validated.
 pub struct DereferencedObjects {
-    pub authentication_classes: ResolvedAuthenticationClasses,
+    pub authentication_classes: DereferencedAuthenticationClasses,
 }
 
 /// Fetches all Kubernetes objects referenced from the [`v1alpha1::ZookeeperCluster`] spec.
@@ -32,7 +32,7 @@ pub async fn dereference(
     client: &Client,
     zk: &v1alpha1::ZookeeperCluster,
 ) -> Result<DereferencedObjects> {
-    let authentication_classes = ResolvedAuthenticationClasses::fetch_references(
+    let authentication_classes = DereferencedAuthenticationClasses::fetch_references(
         client,
         &zk.spec.cluster_config.authentication,
     )
