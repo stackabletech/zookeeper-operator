@@ -26,7 +26,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{authentication::ResolvedAuthenticationClasses, tls, v1alpha1},
+    crd::{authentication::DereferencedAuthenticationClasses, tls, v1alpha1},
     zk_controller::LISTENER_VOLUME_NAME,
 };
 
@@ -51,7 +51,7 @@ pub enum Error {
 
 /// Helper struct combining TLS settings for server and quorum with the resolved AuthenticationClasses
 pub struct ZookeeperSecurity {
-    resolved_authentication_classes: ResolvedAuthenticationClasses,
+    resolved_authentication_classes: DereferencedAuthenticationClasses,
     server_secret_class: Option<String>,
     quorum_secret_class: String,
 }
@@ -90,11 +90,11 @@ impl ZookeeperSecurity {
     pub const SYSTEM_TRUST_STORE_DIR: &'static str = "/etc/pki/java/cacerts";
 
     /// Build a `ZookeeperSecurity` from a [`v1alpha1::ZookeeperCluster`] and already-resolved
-    /// [`ResolvedAuthenticationClasses`]. Synchronous; intended to be called from the validate
+    /// [`DereferencedAuthenticationClasses`]. Synchronous; intended to be called from the validate
     /// step of the controllers.
     pub fn new(
         zk: &v1alpha1::ZookeeperCluster,
-        resolved_authentication_classes: ResolvedAuthenticationClasses,
+        resolved_authentication_classes: DereferencedAuthenticationClasses,
     ) -> Self {
         ZookeeperSecurity {
             resolved_authentication_classes,
@@ -351,7 +351,7 @@ impl ZookeeperSecurity {
     /// USE ONLY IN TESTS! We can not put it behind `#[cfg(test)]` because of <https://github.com/rust-lang/cargo/issues/8379>
     pub fn new_for_tests() -> Self {
         ZookeeperSecurity {
-            resolved_authentication_classes: ResolvedAuthenticationClasses::new_for_tests(),
+            resolved_authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
             server_secret_class: Some("tls".to_owned()),
             quorum_secret_class: "tls".to_string(),
         }

@@ -10,7 +10,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{CONTAINER_IMAGE_BASE_NAME, security::ZookeeperSecurity, v1alpha1},
+    crd::{CONTAINER_IMAGE_BASE_NAME, authentication, security::ZookeeperSecurity, v1alpha1},
     znode_controller::dereference::DereferencedObjects,
 };
 
@@ -20,6 +20,9 @@ pub enum Error {
     ResolveProductImage {
         source: product_image_selection::Error,
     },
+
+    #[snafu(display("failed to validate authentication classes"))]
+    InvalidAuthenticationClassConfiguration { source: authentication::Error },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -47,10 +50,13 @@ pub fn validate(
         )
         .context(ResolveProductImageSnafu)?;
 
-    let zookeeper_security = ZookeeperSecurity::new(
-        &dereferenced_objects.zk,
-        dereferenced_objects.resolved_authentication_classes.clone(),
-    );
+    let resolved_authentication_classes = dereferenced_objects
+        .authentication_classes
+        .validate()
+        .context(InvalidAuthenticationClassConfigurationSnafu)?;
+
+    let zookeeper_security =
+        ZookeeperSecurity::new(&dereferenced_objects.zk, resolved_authentication_classes);
 
     Ok(ValidatedInputs {
         resolved_product_image,
