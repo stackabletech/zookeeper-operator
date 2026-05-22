@@ -27,7 +27,7 @@ commands:
       ZOOKEEPER: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
       ZOOKEEPER_CHROOT: /
       ZOOKEEPER_CLIENT_PORT: "{{ zk_client_port }}"
-      ZOOKEEPER_HOSTS: test-zk-server.__NAMESPACE__.svc.domainexample.local:{{ zk_client_port }}
+      ZOOKEEPER_HOSTS: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
       YAMLEOF
       )
       actual=$(kubectl -n $NAMESPACE get cm test-zk -o yaml | yq -o=json '.data')
