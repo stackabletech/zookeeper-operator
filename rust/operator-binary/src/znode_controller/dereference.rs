@@ -42,7 +42,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 /// Kubernetes objects referenced from the [`v1alpha1::ZookeeperZnode`] spec, already fetched.
 pub struct DereferencedObjects {
     pub zk: v1alpha1::ZookeeperCluster,
-    pub resolved_authentication_classes: ResolvedAuthenticationClasses,
+    pub authentication_classes: ResolvedAuthenticationClasses,
 }
 
 /// Fetches all Kubernetes objects referenced from the [`v1alpha1::ZookeeperZnode`] spec.
@@ -52,7 +52,7 @@ pub async fn dereference(
 ) -> Result<DereferencedObjects> {
     let zk = find_zk_of_znode(client, znode).await?;
 
-    let resolved_authentication_classes = ResolvedAuthenticationClasses::fetch_references(
+    let authentication_classes = ResolvedAuthenticationClasses::fetch_references(
         client,
         &zk.spec.cluster_config.authentication,
     )
@@ -61,7 +61,7 @@ pub async fn dereference(
 
     Ok(DereferencedObjects {
         zk,
-        resolved_authentication_classes,
+        authentication_classes,
     })
 }
 

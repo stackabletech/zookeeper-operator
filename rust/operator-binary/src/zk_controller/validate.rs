@@ -73,7 +73,7 @@ pub fn validate(
         .context(ResolveProductImageSnafu)?;
 
     let resolved_authentication_classes = dereferenced_objects
-        .resolved_authentication_classes
+        .authentication_classes
         .validate()
         .context(InvalidAuthenticationClassConfigurationSnafu)?;
 

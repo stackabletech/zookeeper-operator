@@ -24,7 +24,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 /// Kubernetes objects referenced from the [`v1alpha1::ZookeeperCluster`] spec, already fetched but
 /// not yet validated.
 pub struct DereferencedObjects {
-    pub resolved_authentication_classes: ResolvedAuthenticationClasses,
+    pub authentication_classes: ResolvedAuthenticationClasses,
 }
 
 /// Fetches all Kubernetes objects referenced from the [`v1alpha1::ZookeeperCluster`] spec.
@@ -32,7 +32,7 @@ pub async fn dereference(
     client: &Client,
     zk: &v1alpha1::ZookeeperCluster,
 ) -> Result<DereferencedObjects> {
-    let resolved_authentication_classes = ResolvedAuthenticationClasses::fetch_references(
+    let authentication_classes = ResolvedAuthenticationClasses::fetch_references(
         client,
         &zk.spec.cluster_config.authentication,
     )
@@ -40,6 +40,6 @@ pub async fn dereference(
     .context(FetchAuthenticationClassesSnafu)?;
 
     Ok(DereferencedObjects {
-        resolved_authentication_classes,
+        authentication_classes,
     })
 }

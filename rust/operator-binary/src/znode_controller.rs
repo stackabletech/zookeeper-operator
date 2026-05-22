@@ -267,7 +267,7 @@ pub async fn reconcile_znode(
                     // block finalizer removal.
                     let zookeeper_security = ZookeeperSecurity::new(
                         &dereferenced.zk,
-                        dereferenced.resolved_authentication_classes.clone(),
+                        dereferenced.authentication_classes.clone(),
                     );
                     reconcile_cleanup(client, dereferenced.zk, &zookeeper_security, &znode_path)
                         .await
