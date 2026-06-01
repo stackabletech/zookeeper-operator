@@ -1052,7 +1052,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.4"
+            productVersion: "3.9.5"
           servers:
             roleGroups:
               default:
@@ -1079,7 +1079,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.4"
+            productVersion: "3.9.5"
           servers:
             configOverrides:
               zoo.cfg:
