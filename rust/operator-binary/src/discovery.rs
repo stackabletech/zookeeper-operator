@@ -137,7 +137,7 @@ pub fn build_discovery_configmap(
 fn listener_addresses(
     listener: &listener::v1alpha1::Listener,
     port_name: &str,
-) -> Result<impl IntoIterator<Item = (String, u16)>> {
+) -> Result<impl IntoIterator<Item = (String, u16)> + use<>> {
     // Get addresses port pairs for addresses that have a port with the name that matches the one we are interested in
     let address_port_pairs = listener
         .status
