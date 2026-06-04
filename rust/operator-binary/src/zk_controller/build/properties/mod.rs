@@ -7,6 +7,8 @@
 
 use std::collections::BTreeMap;
 
+use stackable_operator::v2::config_overrides::KeyValueConfigOverrides;
+
 pub mod logging;
 pub mod security_properties;
 pub mod zoo_cfg;
@@ -20,22 +22,16 @@ pub enum ConfigFileName {
     SecurityProperties,
 }
 
-/// Applies user-provided key-value overrides to a property map: `Some(value)`
-/// sets the key, `None` removes it.
-pub(crate) fn apply_overrides(
-    target: &mut BTreeMap<String, String>,
-    overrides: BTreeMap<String, Option<String>>,
-) {
-    for (key, value) in overrides {
-        match value {
-            Some(value) => {
-                target.insert(key, value);
-            }
-            None => {
-                target.remove(&key);
-            }
-        }
-    }
+/// Resolves user-provided [`KeyValueConfigOverrides`] into the `(key, value)`
+/// pairs to merge into a config file, dropping entries whose value is unset
+/// (`None`).
+pub(crate) fn resolved_overrides(
+    overrides: KeyValueConfigOverrides,
+) -> impl Iterator<Item = (String, String)> {
+    overrides
+        .overrides
+        .into_iter()
+        .filter_map(|(key, value)| value.map(|value| (key, value)))
 }
 
 /// Converts a `key -> value` map into the `key -> Some(value)` shape expected by

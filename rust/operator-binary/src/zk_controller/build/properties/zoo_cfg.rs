@@ -7,17 +7,15 @@
 
 use std::collections::BTreeMap;
 
-use stackable_operator::config_overrides::KeyValueOverridesProvider;
-
 use crate::{
     crd::{
         METRICS_PROVIDER_HTTP_PORT, METRICS_PROVIDER_HTTP_PORT_KEY, STACKABLE_DATA_DIR,
-        ZOOKEEPER_PROPERTIES_FILE, security::ZookeeperSecurity, v1alpha1::ZookeeperConfig,
+        security::ZookeeperSecurity, v1alpha1::ZookeeperConfig,
     },
     zk_controller::validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
 };
 
-use super::apply_overrides;
+use super::resolved_overrides;
 
 const ADMIN_SERVER_PORT_KEY: &str = "admin.serverPort";
 const DEFAULT_ADMIN_SERVER_PORT: &str = "8080";
@@ -102,12 +100,9 @@ pub fn build(
     }
 
     // 5. configOverrides go last so they win.
-    apply_overrides(
-        &mut zoo_cfg,
-        rolegroup_config
-            .config_overrides
-            .get_key_value_overrides(ZOOKEEPER_PROPERTIES_FILE),
-    );
+    zoo_cfg.extend(resolved_overrides(
+        rolegroup_config.config_overrides.zoo_cfg.clone(),
+    ));
 
     zoo_cfg
 }

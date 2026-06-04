@@ -16,7 +16,6 @@ use stackable_operator::{
         fragment::{self, Fragment, ValidationError},
         merge::Merge,
     },
-    config_overrides::{KeyValueConfigOverrides, KeyValueOverridesProvider},
     crd::ClusterRef,
     deep_merger::ObjectOverrides,
     k8s_openapi::{
@@ -31,6 +30,7 @@ use stackable_operator::{
     shared::time::Duration,
     status::condition::{ClusterCondition, HasStatusCondition},
     utils::cluster_info::KubernetesClusterInfo,
+    v2::config_overrides::KeyValueConfigOverrides,
     versioned::versioned,
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
@@ -49,8 +49,6 @@ pub const APP_NAME: &str = "zookeeper";
 pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 pub const FIELD_MANAGER: &str = "zookeeper-operator";
 
-pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
-pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
 
 pub const ZOOKEEPER_SERVER_PORT_NAME: &str = "zk";
 pub const ZOOKEEPER_LEADER_PORT_NAME: &str = "zk-leader";
@@ -281,17 +279,13 @@ pub mod versioned {
         Zookeeper,
     }
 
-    #[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
+    #[derive(Clone, Debug, Default, Deserialize, Merge, JsonSchema, PartialEq, Serialize)]
     pub struct ZookeeperConfigOverrides {
-        #[serde(default, rename = "zoo.cfg", skip_serializing_if = "Option::is_none")]
-        pub zoo_cfg: Option<KeyValueConfigOverrides>,
+        #[serde(default, rename = "zoo.cfg")]
+        pub zoo_cfg: KeyValueConfigOverrides,
 
-        #[serde(
-            default,
-            rename = "security.properties",
-            skip_serializing_if = "Option::is_none"
-        )]
-        pub security_properties: Option<KeyValueConfigOverrides>,
+        #[serde(default, rename = "security.properties")]
+        pub security_properties: KeyValueConfigOverrides,
     }
 
     #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -342,47 +336,6 @@ pub mod versioned {
         ///
         /// This can be set explicitly by an administrator, such as when restoring from a backup.
         pub znode_path: Option<String>,
-    }
-}
-
-impl Merge for v1alpha1::ZookeeperConfigOverrides {
-    /// Merges `defaults` (role level) into `self` (role-group level). Keys present
-    /// in `self` win; keys only in `defaults` are added. Mirrors how the previous
-    /// product-config pipeline merged role and role-group `configOverrides`.
-    fn merge(&mut self, defaults: &Self) {
-        merge_key_value_overrides(&mut self.zoo_cfg, &defaults.zoo_cfg);
-        merge_key_value_overrides(&mut self.security_properties, &defaults.security_properties);
-    }
-}
-
-/// Merges two optional [`KeyValueConfigOverrides`], with `this` taking precedence.
-fn merge_key_value_overrides(
-    this: &mut Option<KeyValueConfigOverrides>,
-    defaults: &Option<KeyValueConfigOverrides>,
-) {
-    match (this.as_mut(), defaults) {
-        (Some(this), Some(defaults)) => {
-            for (key, value) in &defaults.overrides {
-                this.overrides
-                    .entry(key.clone())
-                    .or_insert_with(|| value.clone());
-            }
-        }
-        (None, Some(defaults)) => *this = Some(defaults.clone()),
-        (Some(_), None) | (None, None) => {}
-    }
-}
-
-impl KeyValueOverridesProvider for v1alpha1::ZookeeperConfigOverrides {
-    fn get_key_value_overrides(&self, file: &str) -> BTreeMap<String, Option<String>> {
-        let field = match file {
-            ZOOKEEPER_PROPERTIES_FILE => self.zoo_cfg.as_ref(),
-            JVM_SECURITY_PROPERTIES_FILE => self.security_properties.as_ref(),
-            _ => None,
-        };
-        field
-            .map(KeyValueConfigOverrides::as_product_config_overrides)
-            .unwrap_or_default()
     }
 }
 

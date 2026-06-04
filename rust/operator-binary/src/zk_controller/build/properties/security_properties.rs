@@ -2,11 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use stackable_operator::config_overrides::KeyValueOverridesProvider;
+use crate::zk_controller::validate::ZookeeperRoleGroupConfig;
 
-use crate::{crd::JVM_SECURITY_PROPERTIES_FILE, zk_controller::validate::ZookeeperRoleGroupConfig};
-
-use super::apply_overrides;
+use super::resolved_overrides;
 
 const NETWORKADDRESS_CACHE_TTL: &str = "networkaddress.cache.ttl";
 const NETWORKADDRESS_CACHE_NEGATIVE_TTL: &str = "networkaddress.cache.negative.ttl";
@@ -32,12 +30,9 @@ pub fn build(rolegroup_config: &ZookeeperRoleGroupConfig) -> BTreeMap<String, St
     );
 
     // configOverrides go last so they win.
-    apply_overrides(
-        &mut security_properties,
-        rolegroup_config
-            .config_overrides
-            .get_key_value_overrides(JVM_SECURITY_PROPERTIES_FILE),
-    );
+    security_properties.extend(resolved_overrides(
+        rolegroup_config.config_overrides.security_properties.clone(),
+    ));
 
     security_properties
 }

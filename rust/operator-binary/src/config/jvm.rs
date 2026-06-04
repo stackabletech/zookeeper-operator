@@ -5,12 +5,16 @@ use stackable_operator::{
 };
 
 use crate::crd::{
-    JMX_METRICS_PORT, JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
-    LoggingFramework, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR, ZookeeperServerRoleType,
+    JMX_METRICS_PORT, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, LoggingFramework,
+    STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR, ZookeeperServerRoleType,
     v1alpha1::{ZookeeperCluster, ZookeeperConfig},
 };
 
 const JAVA_HEAP_FACTOR: f32 = 0.8;
+
+/// The JVM security properties file the operator writes into the rolegroup
+/// ConfigMap (see `zk_controller::build::properties::ConfigFileName`).
+const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
 
 #[derive(Snafu, Debug)]
 pub enum Error {
