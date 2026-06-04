@@ -49,7 +49,6 @@ pub const APP_NAME: &str = "zookeeper";
 pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 pub const FIELD_MANAGER: &str = "zookeeper-operator";
 
-
 pub const ZOOKEEPER_SERVER_PORT_NAME: &str = "zk";
 pub const ZOOKEEPER_LEADER_PORT_NAME: &str = "zk-leader";
 pub const ZOOKEEPER_LEADER_PORT: u16 = 2888;

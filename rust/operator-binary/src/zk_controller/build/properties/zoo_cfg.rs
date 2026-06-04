@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 
+use super::resolved_overrides;
 use crate::{
     crd::{
         METRICS_PROVIDER_HTTP_PORT, METRICS_PROVIDER_HTTP_PORT_KEY, STACKABLE_DATA_DIR,
@@ -14,8 +15,6 @@ use crate::{
     },
     zk_controller::validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
 };
-
-use super::resolved_overrides;
 
 const ADMIN_SERVER_PORT_KEY: &str = "admin.serverPort";
 const DEFAULT_ADMIN_SERVER_PORT: &str = "8080";
@@ -96,7 +95,10 @@ pub fn build(
         );
     }
     if let Some(tick_time) = config.tick_time {
-        zoo_cfg.insert(ZookeeperConfig::TICK_TIME.to_string(), tick_time.to_string());
+        zoo_cfg.insert(
+            ZookeeperConfig::TICK_TIME.to_string(),
+            tick_time.to_string(),
+        );
     }
 
     // 5. configOverrides go last so they win.

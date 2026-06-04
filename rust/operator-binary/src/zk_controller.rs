@@ -244,7 +244,6 @@ pub enum Error {
 
     #[snafu(display("failed to build service"))]
     BuildService { source: service::Error },
-
 }
 
 impl ReconcilerError for Error {
@@ -892,10 +891,8 @@ pub fn error_policy(
 #[cfg(test)]
 mod tests {
     use stackable_operator::{
-        commons::networking::DomainName,
-        k8s_openapi::api::core::v1::ConfigMap,
-        role_utils::JavaCommonConfig,
-        utils::cluster_info::KubernetesClusterInfo,
+        commons::networking::DomainName, k8s_openapi::api::core::v1::ConfigMap,
+        role_utils::JavaCommonConfig, utils::cluster_info::KubernetesClusterInfo,
     };
 
     use super::*;
@@ -1013,7 +1010,10 @@ mod tests {
             "metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider",
             "metricsProvider.httpPort=7000",
         ] {
-            assert!(zoo_cfg.contains(expected), "missing {expected:?} in:\n{zoo_cfg}");
+            assert!(
+                zoo_cfg.contains(expected),
+                "missing {expected:?} in:\n{zoo_cfg}"
+            );
         }
     }
 
