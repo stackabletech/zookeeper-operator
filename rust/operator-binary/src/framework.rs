@@ -7,4 +7,7 @@
 //! Once the upstream `v2` API has stabilized, these modules should be replaced
 //! by direct usage of `stackable_operator::v2`.
 
+// Wired into the reconciler in a follow-up commit (validate -> ValidatedCluster).
+#[allow(dead_code)]
+pub mod role_utils;
 pub mod writer;
