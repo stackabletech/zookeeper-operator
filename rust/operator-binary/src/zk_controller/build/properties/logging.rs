@@ -1,16 +1,12 @@
 //! Builders for the logging-related files in the rolegroup ConfigMap: the
 //! product log config (`logback.xml` / `log4j.properties`) and the Vector agent
 //! config (`vector.yaml`).
-//!
-//! Moved from the former top-level `product_logging` module so that all ConfigMap
-//! contributions live under `zk_controller/build` (mirrors trino-operator and
-//! hdfs-operator).
 
 use std::collections::BTreeMap;
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
-    memory::BinaryMultiple,
+    memory::{BinaryMultiple, MemoryQuantity},
     product_logging::{
         self,
         spec::{ContainerLogConfig, ContainerLogConfigChoice},
@@ -18,9 +14,19 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 
-use crate::crd::{
-    LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE, LoggingFramework, MAX_ZK_LOG_FILES_SIZE,
-    STACKABLE_LOG_DIR, ZOOKEEPER_LOG_FILE, ZookeeperRole, v1alpha1,
+use crate::crd::{LoggingFramework, STACKABLE_LOG_DIR, ZookeeperRole, v1alpha1};
+
+/// The logback config file name (when the product uses the LOGBACK framework).
+pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
+/// The log4j config file name (when the product uses the LOG4J framework).
+pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
+/// The file the ZooKeeper server logs are written to.
+pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
+
+/// Maximum size of the ZooKeeper server log files (before rotation).
+pub const MAX_ZK_LOG_FILES_SIZE: MemoryQuantity = MemoryQuantity {
+    value: 10.0,
+    unit: BinaryMultiple::Mebi,
 };
 
 #[derive(Snafu, Debug)]

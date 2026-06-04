@@ -1,9 +1,7 @@
 //! Per-file builders for the ZooKeeper config files.
 //!
 //! Each submodule renders the key/value pairs (or file contents) for one file
-//! that ends up in the rolegroup ConfigMap. The shared
-//! [`writer`](crate::framework::writer) module serializes property maps to the
-//! Java-properties on-wire format.
+//! that ends up in the rolegroup ConfigMap.
 
 use std::collections::BTreeMap;
 

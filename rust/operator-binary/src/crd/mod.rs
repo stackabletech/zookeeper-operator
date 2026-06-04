@@ -23,7 +23,6 @@ use stackable_operator::{
         apimachinery::pkg::api::resource::Quantity,
     },
     kube::{CustomResource, ResourceExt, runtime::reflector::ObjectRef},
-    memory::{BinaryMultiple, MemoryQuantity},
     product_logging::{self, spec::Logging},
     role_utils::{GenericRoleConfig, JavaCommonConfig, Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
@@ -66,20 +65,6 @@ pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
 pub const STACKABLE_LOG_CONFIG_DIR: &str = "/stackable/log_config";
 pub const STACKABLE_LOG_DIR: &str = "/stackable/log";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
-
-pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
-pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
-
-pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
-
-pub const MAX_ZK_LOG_FILES_SIZE: MemoryQuantity = MemoryQuantity {
-    value: 10.0,
-    unit: BinaryMultiple::Mebi,
-};
-pub const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
-    value: 1.0,
-    unit: BinaryMultiple::Mebi,
-};
 
 pub const CONTAINER_IMAGE_BASE_NAME: &str = "zookeeper";
 

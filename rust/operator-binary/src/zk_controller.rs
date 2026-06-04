@@ -40,6 +40,7 @@ use stackable_operator::{
     },
     kvp::{LabelError, Labels},
     logging::controller::ReconcilerError,
+    memory::{BinaryMultiple, MemoryQuantity},
     product_logging::{
         self,
         framework::{
@@ -65,9 +66,8 @@ use crate::{
     command::create_init_container_command_args,
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
-        JMX_METRICS_PORT_NAME, MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE,
-        METRICS_PROVIDER_HTTP_PORT_NAME, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
-        STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+        JMX_METRICS_PORT_NAME, METRICS_PROVIDER_HTTP_PORT_NAME, STACKABLE_CONFIG_DIR,
+        STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
         ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_LEADER_PORT,
         ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole,
         security::{self, ZookeeperSecurity},
@@ -89,6 +89,12 @@ pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 pub const ZK_FULL_CONTROLLER_NAME: &str = concatcp!(ZK_CONTROLLER_NAME, '.', OPERATOR_NAME);
 pub const LISTENER_VOLUME_NAME: &str = "listener";
 pub const LISTENER_VOLUME_DIR: &str = "/stackable/listener";
+
+/// Maximum size of the `prepare` init container log file (before rotation).
+pub const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
+    value: 1.0,
+    unit: BinaryMultiple::Mebi,
+};
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -763,7 +769,10 @@ fn build_server_rolegroup_statefulset(
         .add_empty_dir_volume(
             "log",
             Some(product_logging::framework::calculate_log_volume_size_limit(
-                &[MAX_ZK_LOG_FILES_SIZE, MAX_PREPARE_LOG_FILE_SIZE],
+                &[
+                    build::properties::logging::MAX_ZK_LOG_FILES_SIZE,
+                    MAX_PREPARE_LOG_FILE_SIZE,
+                ],
             )),
         )
         .context(AddVolumeSnafu)?
