@@ -157,9 +157,7 @@ pub enum Error {
     },
 
     #[snafu(display("failed to build discovery ConfigMap"))]
-    BuildDiscoveryConfig {
-        source: build::discovery::Error,
-    },
+    BuildDiscoveryConfig { source: build::discovery::Error },
 
     #[snafu(display("failed to apply discovery ConfigMap"))]
     ApplyDiscoveryConfig {
