@@ -10,11 +10,7 @@ use std::{
 use const_format::concatcp;
 use fnv::FnvHasher;
 use indoc::formatdoc;
-use product_config::{
-    ProductConfigManager,
-    types::PropertyNameKind,
-    writer::{PropertiesWriterError, to_java_properties_string},
-};
+use product_config::{ProductConfigManager, types::PropertyNameKind};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
@@ -87,6 +83,7 @@ use crate::{
         v1alpha1::{self, ZookeeperServerRoleConfig},
     },
     discovery::{self, build_discovery_configmap},
+    framework::writer::{PropertiesWriterError, to_java_properties_string},
     listener::{build_role_listener, role_listener_name},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
     product_logging::extend_role_group_config_map,
