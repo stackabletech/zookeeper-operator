@@ -42,7 +42,6 @@ use crate::{
 mod command;
 mod config;
 pub mod crd;
-mod discovery;
 mod framework;
 mod listener;
 mod operations;

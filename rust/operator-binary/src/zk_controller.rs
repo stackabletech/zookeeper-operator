@@ -73,7 +73,6 @@ use crate::{
         security::{self, ZookeeperSecurity},
         v1alpha1::{self, ZookeeperServerRoleConfig},
     },
-    discovery::{self, build_discovery_configmap},
     listener::{build_role_listener, role_listener_name},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
     service::{
@@ -82,7 +81,7 @@ use crate::{
     utils::build_recommended_labels,
 };
 
-mod build;
+pub(crate) mod build;
 mod dereference;
 mod validate;
 
@@ -152,7 +151,9 @@ pub enum Error {
     },
 
     #[snafu(display("failed to build discovery ConfigMap"))]
-    BuildDiscoveryConfig { source: discovery::Error },
+    BuildDiscoveryConfig {
+        source: build::discovery::Error,
+    },
 
     #[snafu(display("failed to apply discovery ConfigMap"))]
     ApplyDiscoveryConfig {
@@ -447,7 +448,7 @@ pub async fn reconcile_zk(
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
-    let discovery_cm = build_discovery_configmap(
+    let discovery_cm = build::discovery::build_discovery_configmap(
         zk,
         zk,
         ZK_CONTROLLER_NAME,
