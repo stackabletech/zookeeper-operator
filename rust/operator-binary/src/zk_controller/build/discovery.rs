@@ -10,7 +10,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
+    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity},
     utils::build_recommended_labels,
 };
 
@@ -18,10 +18,9 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Snafu, Debug)]
 pub enum Error {
-    #[snafu(display("object {} is missing metadata to build owner reference", zk))]
+    #[snafu(display("object is missing metadata to build owner reference"))]
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::builder::meta::Error,
-        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
     #[snafu(display("chroot path {} was relative (must be absolute)", chroot))]
@@ -61,15 +60,18 @@ pub enum Error {
     },
 }
 
-/// Build a discovery [`ConfigMap`] containing connection details for a [`v1alpha1::ZookeeperCluster`] from a [`listener::v1alpha1::Listener`].
-#[allow(clippy::too_many_arguments)]
+/// Build a discovery [`ConfigMap`] containing ZooKeeper connection details from a
+/// [`listener::v1alpha1::Listener`].
+///
+/// `owner` owns the ConfigMap (the [`ZookeeperCluster`](crate::crd::v1alpha1::ZookeeperCluster)
+/// for the cluster controller, or the [`ZookeeperZnode`](crate::crd::v1alpha1::ZookeeperZnode)
+/// for the znode controller).
 pub fn build_discovery_configmap(
-    zk: &v1alpha1::ZookeeperCluster,
     owner: &impl Resource<DynamicType = ()>,
     controller_name: &str,
     listener: listener::v1alpha1::Listener,
     chroot: Option<&str>,
-    resolved_product_image: &ResolvedProductImage,
+    image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<ConfigMap> {
     let name = owner.name_unchecked();
@@ -98,13 +100,11 @@ pub fn build_discovery_configmap(
                 .name(name)
                 .namespace(namespace)
                 .ownerreference_from_resource(owner, None, Some(true))
-                .with_context(|_| ObjectMissingMetadataForOwnerRefSnafu {
-                    zk: ObjectRef::from_obj(zk),
-                })?
+                .context(ObjectMissingMetadataForOwnerRefSnafu)?
                 .with_recommended_labels(&build_recommended_labels(
                     owner,
                     controller_name,
-                    &resolved_product_image.app_version_label_value,
+                    &image.app_version_label_value,
                     &ZookeeperRole::Server.to_string(),
                     "discovery",
                 ))

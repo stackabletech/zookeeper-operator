@@ -238,8 +238,8 @@ pub async fn reconcile_znode(
             match ev {
                 finalizer::Event::Apply(znode) => {
                     let dereferenced = dereferenced_objects.context(DereferenceSnafu)?;
-                    let validate::ValidatedInputs {
-                        resolved_product_image,
+                    let validate::ValidatedZnode {
+                        image,
                         zookeeper_security,
                     } = validate::validate(&znode, &dereferenced, &ctx.operator_environment)
                         .context(ValidateClusterSnafu)?;
@@ -249,7 +249,7 @@ pub async fn reconcile_znode(
                         dereferenced.zk,
                         &zookeeper_security,
                         &znode_path,
-                        &resolved_product_image,
+                        &image,
                     )
                     .await
                 }
@@ -285,7 +285,7 @@ async fn reconcile_apply(
     zk: v1alpha1::ZookeeperCluster,
     zookeeper_security: &ZookeeperSecurity,
     znode_path: &str,
-    resolved_product_image: &ResolvedProductImage,
+    image: &ResolvedProductImage,
 ) -> Result<controller::Action> {
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
@@ -321,12 +321,11 @@ async fn reconcile_apply(
         })?;
 
     let discovery_cm = build_discovery_configmap(
-        &zk,
         znode,
         ZNODE_CONTROLLER_NAME,
         listener,
         Some(znode_path),
-        resolved_product_image,
+        image,
         zookeeper_security,
     )
     .context(BuildDiscoveryConfigMapSnafu)?;

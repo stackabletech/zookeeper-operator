@@ -1,7 +1,7 @@
 //! The validate step in the ZookeeperZnode controller.
 //!
 //! Synchronously validates inputs that don't require a Kubernetes client. Produces
-//! [`ValidatedInputs`], consumed by the rest of `reconcile_znode`.
+//! [`ValidatedZnode`], consumed by the rest of `reconcile_znode`.
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
@@ -28,8 +28,8 @@ pub enum Error {
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Synchronous inputs the rest of `reconcile_znode` needs after dereferencing.
-pub struct ValidatedInputs {
-    pub resolved_product_image: ResolvedProductImage,
+pub struct ValidatedZnode {
+    pub image: ResolvedProductImage,
     pub zookeeper_security: ZookeeperSecurity,
 }
 
@@ -38,8 +38,8 @@ pub fn validate(
     _znode: &v1alpha1::ZookeeperZnode,
     dereferenced_objects: &DereferencedObjects,
     operator_environment: &OperatorEnvironmentOptions,
-) -> Result<ValidatedInputs> {
-    let resolved_product_image = dereferenced_objects
+) -> Result<ValidatedZnode> {
+    let image = dereferenced_objects
         .zk
         .spec
         .image
@@ -58,8 +58,8 @@ pub fn validate(
     let zookeeper_security =
         ZookeeperSecurity::new(&dereferenced_objects.zk, resolved_authentication_classes);
 
-    Ok(ValidatedInputs {
-        resolved_product_image,
+    Ok(ValidatedZnode {
+        image,
         zookeeper_security,
     })
 }

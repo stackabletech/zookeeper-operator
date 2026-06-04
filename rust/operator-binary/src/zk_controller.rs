@@ -450,7 +450,6 @@ pub async fn reconcile_zk(
     let mut discovery_hash = FnvHasher::with_key(0);
     let discovery_cm = build::discovery::build_discovery_configmap(
         zk,
-        zk,
         ZK_CONTROLLER_NAME,
         applied_listener,
         None,
