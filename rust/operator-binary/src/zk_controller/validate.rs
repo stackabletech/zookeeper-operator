@@ -1,24 +1,33 @@
 //! The validate step in the ZookeeperCluster controller.
 //!
-//! Synchronously validates inputs that don't require a Kubernetes client. Produces
-//! [`ValidatedInputs`], consumed by the rest of `reconcile_zk`.
+//! Synchronously validates and merges the cluster spec together with the
+//! dereferenced inputs into a [`ValidatedCluster`], which is the single input
+//! consumed by the build steps (e.g. the ConfigMap builder). After this step
+//! the rest of `reconcile_zk` no longer needs to reach into the
+//! [`v1alpha1::ZookeeperCluster`] for configuration (only for the owner
+//! reference).
 
-use product_config::{ProductConfigManager, types::PropertyNameKind};
-use snafu::{OptionExt, ResultExt, Snafu};
+use std::collections::BTreeMap;
+
+use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     commons::product_image_selection::{self, ResolvedProductImage},
-    product_config_utils::{
-        ValidatedRoleConfigByPropertyKind, transform_all_roles_to_config,
-        validate_all_roles_and_groups_config,
-    },
+    config::fragment,
+    kube::ResourceExt,
+    role_utils::JavaCommonConfig,
+    utils::cluster_info::KubernetesClusterInfo,
 };
+use strum::IntoEnumIterator;
 
 use crate::{
     crd::{
-        CONTAINER_IMAGE_BASE_NAME, JVM_SECURITY_PROPERTIES_FILE, ZOOKEEPER_PROPERTIES_FILE,
-        ZookeeperRole, authentication, security::ZookeeperSecurity, v1alpha1,
+        CONTAINER_IMAGE_BASE_NAME, ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_LEADER_PORT, ZookeeperRole,
+        authentication,
+        security::ZookeeperSecurity,
+        v1alpha1::{self, ZookeeperConfig, ZookeeperConfigOverrides},
     },
+    framework::role_utils::{self, with_validated_config},
     zk_controller::dereference::DereferencedObjects,
 };
 
@@ -35,24 +44,49 @@ pub enum Error {
     #[snafu(display("object defines no server role"))]
     NoServerRole,
 
-    #[snafu(display("failed to generate product config"))]
-    GenerateProductConfig {
-        source: stackable_operator::product_config_utils::Error,
+    #[snafu(display("failed to retrieve role {role:?}"))]
+    MissingRole {
+        source: crate::crd::Error,
+        role: String,
     },
 
-    #[snafu(display("invalid product config"))]
-    InvalidProductConfig {
-        source: stackable_operator::product_config_utils::Error,
+    #[snafu(display("failed to list expected pods"))]
+    ListPods { source: crate::crd::Error },
+
+    #[snafu(display("invalid config fragment for role group {role_group:?}"))]
+    InvalidConfigFragment {
+        source: fragment::ValidationError,
+        role_group: String,
     },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// Synchronous inputs the rest of `reconcile_zk` needs after dereferencing.
-pub struct ValidatedInputs {
-    pub resolved_product_image: ResolvedProductImage,
+/// A validated, merged view of a single ZooKeeper server role group.
+pub type ZookeeperRoleGroupConfig =
+    role_utils::RoleGroupConfig<ZookeeperConfig, JavaCommonConfig, ZookeeperConfigOverrides>;
+
+/// The validated [`v1alpha1::ZookeeperCluster`]. Output of the validate step and
+/// the single input to the build steps.
+pub struct ValidatedCluster {
+    /// The cluster name. Part of the `ValidatedCluster` contract (mirrors
+    /// trino-operator); consumed by the statefulset/service build steps that move
+    /// off the raw CRD in the follow-up PR.
+    #[allow(dead_code)]
+    pub name: String,
+    pub image: ResolvedProductImage,
+    pub cluster_config: ValidatedClusterConfig,
+    pub role_group_configs: BTreeMap<ZookeeperRole, BTreeMap<String, ZookeeperRoleGroupConfig>>,
+}
+
+/// Cluster-wide validated configuration that the build steps need without
+/// reaching back into the [`v1alpha1::ZookeeperCluster`].
+pub struct ValidatedClusterConfig {
     pub zookeeper_security: ZookeeperSecurity,
-    pub validated_role_config: ValidatedRoleConfigByPropertyKind,
+
+    /// The `server.<myid>` entries for `zoo.cfg`, precomputed from the expected
+    /// pods so the ConfigMap builder does not need the cluster object.
+    pub server_addresses: BTreeMap<String, String>,
 }
 
 /// Validates the cluster spec and the dereferenced inputs.
@@ -60,9 +94,9 @@ pub fn validate(
     zk: &v1alpha1::ZookeeperCluster,
     dereferenced_objects: &DereferencedObjects,
     operator_environment: &OperatorEnvironmentOptions,
-    product_config: &ProductConfigManager,
-) -> Result<ValidatedInputs> {
-    let resolved_product_image = zk
+    cluster_info: &KubernetesClusterInfo,
+) -> Result<ValidatedCluster> {
+    let image = zk
         .spec
         .image
         .resolve(
@@ -79,46 +113,61 @@ pub fn validate(
 
     let zookeeper_security = ZookeeperSecurity::new(zk, resolved_authentication_classes);
 
-    let validated_role_config =
-        validated_product_config(zk, &resolved_product_image.product_version, product_config)?;
+    let server_addresses = server_addresses(zk, &zookeeper_security, cluster_info)?;
 
-    Ok(ValidatedInputs {
-        resolved_product_image,
-        zookeeper_security,
-        validated_role_config,
+    let mut role_group_configs = BTreeMap::new();
+    for zk_role in ZookeeperRole::iter() {
+        let role = zk.role(&zk_role).with_context(|_| MissingRoleSnafu {
+            role: zk_role.to_string(),
+        })?;
+        let default_config = ZookeeperConfig::default_server_config(&zk.name_any(), &zk_role);
+
+        let mut groups = BTreeMap::new();
+        for (rg_name, rg) in &role.role_groups {
+            let validated_rg = with_validated_config::<
+                ZookeeperConfig,
+                JavaCommonConfig,
+                v1alpha1::ZookeeperConfigFragment,
+                _,
+                ZookeeperConfigOverrides,
+            >(rg, role, &default_config)
+            .with_context(|_| InvalidConfigFragmentSnafu {
+                role_group: rg_name.clone(),
+            })?;
+            groups.insert(rg_name.clone(), validated_rg);
+        }
+        role_group_configs.insert(zk_role, groups);
+    }
+
+    Ok(ValidatedCluster {
+        name: zk.name_any(),
+        image,
+        cluster_config: ValidatedClusterConfig {
+            zookeeper_security,
+            server_addresses,
+        },
+        role_group_configs,
     })
 }
 
-fn validated_product_config(
+/// Builds the `server.<myid>` quorum entries for `zoo.cfg` from the expected pods.
+fn server_addresses(
     zk: &v1alpha1::ZookeeperCluster,
-    product_version: &str,
-    product_config: &ProductConfigManager,
-) -> Result<ValidatedRoleConfigByPropertyKind> {
-    let server_role = zk.spec.servers.clone().context(NoServerRoleSnafu)?;
-
-    let role_config = transform_all_roles_to_config(
-        zk,
-        &[(
-            ZookeeperRole::Server.to_string(),
+    zookeeper_security: &ZookeeperSecurity,
+    cluster_info: &KubernetesClusterInfo,
+) -> Result<BTreeMap<String, String>> {
+    Ok(zk
+        .pods()
+        .context(ListPodsSnafu)?
+        .map(|pod| {
             (
-                vec![
-                    PropertyNameKind::Env,
-                    PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
-                    PropertyNameKind::File(JVM_SECURITY_PROPERTIES_FILE.to_string()),
-                ],
-                server_role,
-            ),
-        )]
-        .into(),
-    )
-    .context(GenerateProductConfigSnafu)?;
-
-    validate_all_roles_and_groups_config(
-        product_version,
-        &role_config,
-        product_config,
-        false,
-        false,
-    )
-    .context(InvalidProductConfigSnafu)
+                format!("server.{id}", id = pod.zookeeper_myid),
+                format!(
+                    "{internal_fqdn}:{ZOOKEEPER_LEADER_PORT}:{ZOOKEEPER_ELECTION_PORT};{client_port}",
+                    internal_fqdn = pod.internal_fqdn(cluster_info),
+                    client_port = zookeeper_security.client_port()
+                ),
+            )
+        })
+        .collect())
 }

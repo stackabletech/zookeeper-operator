@@ -25,7 +25,6 @@ use stackable_operator::{
     },
     kube::{CustomResource, ResourceExt, runtime::reflector::ObjectRef},
     memory::{BinaryMultiple, MemoryQuantity},
-    product_config_utils::{self, Configuration},
     product_logging::{self, spec::Logging},
     role_utils::{GenericRoleConfig, JavaCommonConfig, Role, RoleGroup, RoleGroupRef},
     schemars::{self, JsonSchema},
@@ -346,6 +345,34 @@ pub mod versioned {
     }
 }
 
+impl Merge for v1alpha1::ZookeeperConfigOverrides {
+    /// Merges `defaults` (role level) into `self` (role-group level). Keys present
+    /// in `self` win; keys only in `defaults` are added. Mirrors how the previous
+    /// product-config pipeline merged role and role-group `configOverrides`.
+    fn merge(&mut self, defaults: &Self) {
+        merge_key_value_overrides(&mut self.zoo_cfg, &defaults.zoo_cfg);
+        merge_key_value_overrides(&mut self.security_properties, &defaults.security_properties);
+    }
+}
+
+/// Merges two optional [`KeyValueConfigOverrides`], with `this` taking precedence.
+fn merge_key_value_overrides(
+    this: &mut Option<KeyValueConfigOverrides>,
+    defaults: &Option<KeyValueConfigOverrides>,
+) {
+    match (this.as_mut(), defaults) {
+        (Some(this), Some(defaults)) => {
+            for (key, value) in &defaults.overrides {
+                this.overrides
+                    .entry(key.clone())
+                    .or_insert_with(|| value.clone());
+            }
+        }
+        (None, Some(defaults)) => *this = Some(defaults.clone()),
+        (Some(_), None) | (None, None) => {}
+    }
+}
+
 impl KeyValueOverridesProvider for v1alpha1::ZookeeperConfigOverrides {
     fn get_key_value_overrides(&self, file: &str) -> BTreeMap<String, Option<String>> {
         let field = match file {
@@ -368,7 +395,9 @@ impl KeyValueOverridesProvider for v1alpha1::ZookeeperConfigOverrides {
     Eq,
     Hash,
     JsonSchema,
+    Ord,
     PartialEq,
+    PartialOrd,
     Serialize,
     EnumString,
 )]
@@ -417,7 +446,7 @@ impl v1alpha1::ZookeeperConfig {
     pub const SYNC_LIMIT: &'static str = "syncLimit";
     pub const TICK_TIME: &'static str = "tickTime";
 
-    fn default_server_config(
+    pub(crate) fn default_server_config(
         cluster_name: &str,
         role: &ZookeeperRole,
     ) -> v1alpha1::ZookeeperConfigFragment {
@@ -448,89 +477,6 @@ impl v1alpha1::ZookeeperConfig {
             graceful_shutdown_timeout: Some(DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT),
             requested_secret_lifetime: Some(Self::DEFAULT_SECRET_LIFETIME),
         }
-    }
-}
-
-impl Configuration for v1alpha1::ZookeeperConfigFragment {
-    type Configurable = v1alpha1::ZookeeperCluster;
-
-    fn compute_env(
-        &self,
-        resource: &Self::Configurable,
-        _role_name: &str,
-    ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
-        Ok([
-            (
-                v1alpha1::ZookeeperConfig::MYID_OFFSET.to_string(),
-                self.myid_offset
-                    .or(v1alpha1::ZookeeperConfig::default_server_config(
-                        &resource.name_any(),
-                        &ZookeeperRole::Server,
-                    )
-                    .myid_offset)
-                    .map(|myid_offset| myid_offset.to_string()),
-            ),
-            // This is used by zkEnv.sh and for the shell scripts in bin/
-            // If unset it tries to find the conf directory automatically and that fails
-            (
-                "ZOOCFGDIR".to_string(),
-                Some(STACKABLE_RW_CONFIG_DIR.to_string()),
-            ),
-        ]
-        .into())
-    }
-
-    fn compute_cli(
-        &self,
-        _resource: &Self::Configurable,
-        _role_name: &str,
-    ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
-        Ok(BTreeMap::new())
-    }
-
-    fn compute_files(
-        &self,
-        _resource: &Self::Configurable,
-        _role_name: &str,
-        file: &str,
-    ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
-        let mut result = BTreeMap::new();
-        if file == ZOOKEEPER_PROPERTIES_FILE {
-            if let Some(init_limit) = self.init_limit {
-                result.insert(
-                    v1alpha1::ZookeeperConfig::INIT_LIMIT.to_string(),
-                    Some(init_limit.to_string()),
-                );
-            }
-            if let Some(sync_limit) = self.sync_limit {
-                result.insert(
-                    v1alpha1::ZookeeperConfig::SYNC_LIMIT.to_string(),
-                    Some(sync_limit.to_string()),
-                );
-            }
-            if let Some(tick_time) = self.tick_time {
-                result.insert(
-                    v1alpha1::ZookeeperConfig::TICK_TIME.to_string(),
-                    Some(tick_time.to_string()),
-                );
-            }
-            result.insert(
-                v1alpha1::ZookeeperConfig::DATA_DIR.to_string(),
-                Some(STACKABLE_DATA_DIR.to_string()),
-            );
-            result.insert(
-                "metricsProvider.className".to_string(),
-                Some(
-                    "org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider".to_string(),
-                ),
-            );
-            result.insert(
-                METRICS_PROVIDER_HTTP_PORT_KEY.to_string(),
-                Some(METRICS_PROVIDER_HTTP_PORT.to_string()),
-            );
-        }
-
-        Ok(result)
     }
 }
 

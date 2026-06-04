@@ -1,21 +1,13 @@
 //! Ensures that `Pod`s are configured and running for each [`v1alpha1::ZookeeperCluster`]
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-    hash::Hasher,
-    str::FromStr,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, hash::Hasher, sync::Arc};
 
 use const_format::concatcp;
 use fnv::FnvHasher;
 use indoc::formatdoc;
-use product_config::{ProductConfigManager, types::PropertyNameKind};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
         self,
-        configmap::ConfigMapBuilder,
         meta::ObjectMetaBuilder,
         pod::{
             PodBuilder,
@@ -33,8 +25,8 @@ use stackable_operator::{
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
-                ConfigMap, ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource,
-                ExecAction, ObjectFieldSelector, PersistentVolumeClaim, PodSecurityContext, Probe,
+                ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource, ExecAction,
+                ObjectFieldSelector, PersistentVolumeClaim, PodSecurityContext, Probe,
                 ServiceAccount, Volume,
             },
         },
@@ -64,7 +56,7 @@ use stackable_operator::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
     },
-    utils::{COMMON_BASH_TRAP_FUNCTIONS, cluster_info::KubernetesClusterInfo},
+    utils::COMMON_BASH_TRAP_FUNCTIONS,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
@@ -73,27 +65,24 @@ use crate::{
     command::create_init_container_command_args,
     config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
-        JMX_METRICS_PORT_NAME, JVM_SECURITY_PROPERTIES_FILE, MAX_PREPARE_LOG_FILE_SIZE,
-        MAX_ZK_LOG_FILES_SIZE, METRICS_PROVIDER_HTTP_PORT_NAME, STACKABLE_CONFIG_DIR,
-        STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
+        JMX_METRICS_PORT_NAME, MAX_PREPARE_LOG_FILE_SIZE, MAX_ZK_LOG_FILES_SIZE,
+        METRICS_PROVIDER_HTTP_PORT_NAME, STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR,
+        STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
         ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_LEADER_PORT,
-        ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_PROPERTIES_FILE, ZOOKEEPER_SERVER_PORT_NAME,
-        ZookeeperRole,
+        ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole,
         security::{self, ZookeeperSecurity},
         v1alpha1::{self, ZookeeperServerRoleConfig},
     },
     discovery::{self, build_discovery_configmap},
-    framework::writer::{PropertiesWriterError, to_java_properties_string},
     listener::{build_role_listener, role_listener_name},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
-    product_logging::extend_role_group_config_map,
     service::{
         self, build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
-        metrics_port_from_rolegroup_config,
     },
     utils::build_recommended_labels,
 };
 
+mod build;
 mod dereference;
 mod validate;
 
@@ -104,7 +93,6 @@ pub const LISTENER_VOLUME_DIR: &str = "/stackable/listener";
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
-    pub product_config: ProductConfigManager,
     pub operator_environment: OperatorEnvironmentOptions,
 }
 
@@ -131,12 +119,6 @@ pub enum Error {
     #[snafu(display("crd validation failure"))]
     CrdValidationFailure { source: crate::crd::Error },
 
-    #[snafu(display("could not parse role [{role}]"))]
-    RoleParseFailure {
-        source: strum::ParseError,
-        role: String,
-    },
-
     #[snafu(display("internal operator failure"))]
     InternalOperatorFailure { source: crate::crd::Error },
 
@@ -147,8 +129,8 @@ pub enum Error {
     },
 
     #[snafu(display("failed to build ConfigMap for {}", rolegroup))]
-    BuildRoleGroupConfig {
-        source: stackable_operator::builder::configmap::Error,
+    BuildRoleGroupConfigMap {
+        source: build::config_map::Error,
         rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
     },
 
@@ -161,12 +143,6 @@ pub enum Error {
     #[snafu(display("failed to apply StatefulSet for {}", rolegroup))]
     ApplyRoleGroupStatefulSet {
         source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    },
-
-    #[snafu(display("failed to serialize [{ZOOKEEPER_PROPERTIES_FILE}] for {}", rolegroup))]
-    SerializeZooCfg {
-        source: PropertiesWriterError,
         rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
     },
 
@@ -210,15 +186,6 @@ pub enum Error {
 
     #[snafu(display("vector agent is enabled but vector aggregator ConfigMap is missing"))]
     VectorAggregatorConfigMapMissing,
-
-    #[snafu(display("failed to add the logging configuration to the ConfigMap {cm_name}"))]
-    InvalidLoggingConfig {
-        source: crate::product_logging::Error,
-        cm_name: String,
-    },
-
-    #[snafu(display("failed to resolve and merge config for role and role group"))]
-    FailedToResolveConfig { source: crate::crd::Error },
 
     #[snafu(display("failed to create PodDisruptionBudget"))]
     FailedToCreatePdb {
@@ -278,8 +245,6 @@ pub enum Error {
     #[snafu(display("failed to build service"))]
     BuildService { source: service::Error },
 
-    #[snafu(display("failed to retrieve metrics port from config"))]
-    RetrieveMetricsPortFromConfig { source: service::Error },
 }
 
 impl ReconcilerError for Error {
@@ -294,13 +259,11 @@ impl ReconcilerError for Error {
             Error::Dereference { .. } => None,
             Error::ValidateCluster { .. } => None,
             Error::CrdValidationFailure { .. } => None,
-            Error::RoleParseFailure { .. } => None,
             Error::InternalOperatorFailure { .. } => None,
             Error::ApplyRoleGroupService { .. } => None,
-            Error::BuildRoleGroupConfig { .. } => None,
+            Error::BuildRoleGroupConfigMap { .. } => None,
             Error::ApplyRoleGroupConfig { .. } => None,
             Error::ApplyRoleGroupStatefulSet { .. } => None,
-            Error::SerializeZooCfg { .. } => None,
             Error::ObjectMissingMetadataForOwnerRef { .. } => None,
             Error::BuildDiscoveryConfig { .. } => None,
             Error::ApplyDiscoveryConfig { .. } => None,
@@ -310,8 +273,6 @@ impl ReconcilerError for Error {
             Error::BuildRbacResources { .. } => None,
             Error::DeleteOrphans { .. } => None,
             Error::VectorAggregatorConfigMapMissing => None,
-            Error::InvalidLoggingConfig { .. } => None,
-            Error::FailedToResolveConfig { .. } => None,
             Error::FailedToCreatePdb { .. } => None,
             Error::GracefulShutdown { .. } => None,
             Error::BuildLabel { .. } => None,
@@ -326,7 +287,6 @@ impl ReconcilerError for Error {
             Error::BuildListenerPersistentVolume { .. } => None,
             Error::ListenerConfiguration { .. } => None,
             Error::BuildService { .. } => None,
-            Error::RetrieveMetricsPortFromConfig { .. } => None,
         }
     }
 }
@@ -348,17 +308,15 @@ pub async fn reconcile_zk(
         .context(DereferenceSnafu)?;
 
     // validate (no client required)
-    let validate::ValidatedInputs {
-        resolved_product_image,
-        zookeeper_security,
-        validated_role_config,
-    } = validate::validate(
+    let validated_cluster = validate::validate(
         zk,
         &dereferenced_objects,
         &ctx.operator_environment,
-        &ctx.product_config,
+        &client.kubernetes_cluster_info,
     )
     .context(ValidateClusterSnafu)?;
+    let resolved_product_image = &validated_cluster.image;
+    let zookeeper_security = &validated_cluster.cluster_config.zookeeper_security;
 
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
@@ -369,11 +327,6 @@ pub async fn reconcile_zk(
         &zk.spec.object_overrides,
     )
     .context(CreateClusterResourcesSnafu)?;
-
-    let role_server_config = validated_role_config
-        .get(&ZookeeperRole::Server.to_string())
-        .map(Cow::Borrowed)
-        .unwrap_or_default();
 
     let (rbac_sa, rbac_rolebinding) = build_rbac_resources(
         zk,
@@ -397,38 +350,45 @@ pub async fn reconcile_zk(
     let mut ss_cond_builder = StatefulSetConditionBuilder::default();
 
     let zk_role = ZookeeperRole::Server;
-    for (rolegroup_name, rolegroup_config) in role_server_config.iter() {
+    let server_role_group_configs = validated_cluster
+        .role_group_configs
+        .get(&zk_role)
+        .into_iter()
+        .flatten();
+    for (rolegroup_name, rolegroup_config) in server_role_group_configs {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
-        let merged_config = zk
-            .merged_config(&ZookeeperRole::Server, &rolegroup)
-            .context(FailedToResolveConfigSnafu)?;
+        let merged_config = &rolegroup_config.config;
+        let metrics_port = build::config_map::metrics_http_port(&validated_cluster, rolegroup_config);
 
         let rg_headless_service =
-            build_server_rolegroup_headless_service(zk, &rolegroup, &resolved_product_image)
+            build_server_rolegroup_headless_service(zk, &rolegroup, resolved_product_image)
                 .context(BuildServiceSnafu)?;
         let rg_metrics_service = build_server_rolegroup_metrics_service(
             zk,
             &rolegroup,
-            &resolved_product_image,
-            rolegroup_config,
+            resolved_product_image,
+            metrics_port,
         )
         .context(BuildServiceSnafu)?;
-        let rg_configmap = build_server_rolegroup_config_map(
-            zk,
+        let rg_configmap = build::config_map::build_server_rolegroup_config_map(
+            &validated_cluster,
+            &zk_role,
             &rolegroup,
             rolegroup_config,
-            &resolved_product_image,
-            &zookeeper_security,
-            &client.kubernetes_cluster_info,
-        )?;
+            zk,
+        )
+        .context(BuildRoleGroupConfigMapSnafu {
+            rolegroup: rolegroup.clone(),
+        })?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             zk,
             &zk_role,
             &rolegroup,
-            rolegroup_config,
-            &zookeeper_security,
-            &resolved_product_image,
-            &merged_config,
+            &rolegroup_config.env_overrides,
+            zookeeper_security,
+            resolved_product_image,
+            merged_config,
+            metrics_port,
             &rbac_sa,
         )?;
 
@@ -477,7 +437,7 @@ pub async fn reconcile_zk(
         .context(FailedToCreatePdbSnafu)?;
     }
 
-    let listener = build_role_listener(zk, &zk_role, &resolved_product_image, &zookeeper_security)
+    let listener = build_role_listener(zk, &zk_role, resolved_product_image, zookeeper_security)
         .context(ListenerConfigurationSnafu)?;
     let applied_listener = cluster_resources
         .add(client, listener)
@@ -493,8 +453,8 @@ pub async fn reconcile_zk(
         ZK_CONTROLLER_NAME,
         applied_listener,
         None,
-        &resolved_product_image,
-        &zookeeper_security,
+        resolved_product_image,
+        zookeeper_security,
     )
     .context(BuildDiscoveryConfigSnafu)?;
 
@@ -528,112 +488,6 @@ pub async fn reconcile_zk(
     Ok(controller::Action::await_change())
 }
 
-/// The rolegroup [`ConfigMap`] configures the rolegroup based on the configuration given by the administrator
-fn build_server_rolegroup_config_map(
-    zk: &v1alpha1::ZookeeperCluster,
-    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
-    resolved_product_image: &ResolvedProductImage,
-    zookeeper_security: &ZookeeperSecurity,
-    cluster_info: &KubernetesClusterInfo,
-) -> Result<ConfigMap> {
-    let mut zoo_cfg: BTreeMap<_, _> = zk
-        .pods()
-        .into_iter()
-        .flatten()
-        .map(|pod| {
-            (
-                format!("server.{id}", id = pod.zookeeper_myid),
-                format!(
-                    "{internal_fqdn}:{ZOOKEEPER_LEADER_PORT}:{ZOOKEEPER_ELECTION_PORT};{client_port}",
-                    internal_fqdn = pod.internal_fqdn(cluster_info),
-                    client_port = zookeeper_security.client_port()
-                ),
-            )
-        })
-        .collect();
-
-    zoo_cfg.extend(zookeeper_security.config_settings());
-
-    let jvm_sec_props: BTreeMap<String, Option<String>> = server_config
-        .get(&PropertyNameKind::File(
-            JVM_SECURITY_PROPERTIES_FILE.to_string(),
-        ))
-        .cloned()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|(k, v)| (k, Some(v)))
-        .collect();
-
-    let role =
-        ZookeeperRole::from_str(&rolegroup.role).with_context(|_| RoleParseFailureSnafu {
-            role: rolegroup.role.to_string(),
-        })?;
-
-    // configOverrides need to go last
-    zoo_cfg.extend(
-        server_config
-            .get(&PropertyNameKind::File(
-                ZOOKEEPER_PROPERTIES_FILE.to_string(),
-            ))
-            .cloned()
-            .unwrap_or_default(),
-    );
-
-    let zk_data: BTreeMap<String, Option<String>> =
-        zoo_cfg.into_iter().map(|(k, v)| (k, Some(v))).collect();
-
-    let mut cm_builder = ConfigMapBuilder::new();
-    cm_builder
-        .metadata(
-            ObjectMetaBuilder::new()
-                .name_and_namespace(zk)
-                .name(rolegroup.object_name())
-                .ownerreference_from_resource(zk, None, Some(true))
-                .context(ObjectMissingMetadataForOwnerRefSnafu)?
-                .with_recommended_labels(&build_recommended_labels(
-                    zk,
-                    ZK_CONTROLLER_NAME,
-                    &resolved_product_image.app_version_label_value,
-                    &rolegroup.role,
-                    &rolegroup.role_group,
-                ))
-                .context(ObjectMetaSnafu)?
-                .build(),
-        )
-        .add_data(
-            JVM_SECURITY_PROPERTIES_FILE,
-            to_java_properties_string(jvm_sec_props.iter()).with_context(|_| {
-                SerializeZooCfgSnafu {
-                    rolegroup: rolegroup.clone(),
-                }
-            })?,
-        )
-        .add_data(
-            ZOOKEEPER_PROPERTIES_FILE,
-            to_java_properties_string(zk_data.iter()).with_context(|_| SerializeZooCfgSnafu {
-                rolegroup: rolegroup.clone(),
-            })?,
-        );
-
-    extend_role_group_config_map(
-        zk,
-        role,
-        rolegroup,
-        &mut cm_builder,
-        &resolved_product_image.product_version,
-    )
-    .context(InvalidLoggingConfigSnafu {
-        cm_name: rolegroup.object_name(),
-    })?;
-
-    cm_builder
-        .build()
-        .with_context(|_| BuildRoleGroupConfigSnafu {
-            rolegroup: rolegroup.clone(),
-        })
-}
-
 pub fn build_role_listener_pvc(
     group_listener_name: &str,
     unversioned_recommended_labels: &Labels,
@@ -654,10 +508,11 @@ fn build_server_rolegroup_statefulset(
     zk: &v1alpha1::ZookeeperCluster,
     zk_role: &ZookeeperRole,
     rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    server_config: &HashMap<PropertyNameKind, BTreeMap<String, String>>,
+    env_overrides: &BTreeMap<String, String>,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
     merged_config: &v1alpha1::ZookeeperConfig,
+    metrics_port: u16,
     service_account: &ServiceAccount,
 ) -> Result<StatefulSet> {
     let role = zk.role(zk_role).context(InternalOperatorFailureSnafu)?;
@@ -669,13 +524,23 @@ fn build_server_rolegroup_statefulset(
         .logging(zk_role, rolegroup_ref)
         .context(CrdValidationFailureSnafu)?;
 
-    let env_vars = server_config
-        .get(&PropertyNameKind::Env)
+    // The operator-injected environment variables (formerly produced by the
+    // product-config `Configuration::compute_env` implementation) plus the
+    // user-provided `envOverrides` (which win on conflict).
+    let mut env_map: BTreeMap<String, String> = BTreeMap::new();
+    env_map.insert(
+        v1alpha1::ZookeeperConfig::MYID_OFFSET.to_string(),
+        merged_config.myid_offset.to_string(),
+    );
+    // Used by zkEnv.sh and the shell scripts in bin/. If unset it tries to find the
+    // conf directory automatically and that fails.
+    env_map.insert("ZOOCFGDIR".to_string(), STACKABLE_RW_CONFIG_DIR.to_string());
+    env_map.extend(env_overrides.clone());
+    let env_vars = env_map
         .into_iter()
-        .flatten()
-        .map(|(k, v)| EnvVar {
-            name: k.clone(),
-            value: Some(v.clone()),
+        .map(|(name, value)| EnvVar {
+            name,
+            value: Some(value),
             ..EnvVar::default()
         })
         .collect::<Vec<_>>();
@@ -846,12 +711,7 @@ fn build_server_rolegroup_statefulset(
         .add_container_port(ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_LEADER_PORT as i32)
         .add_container_port(ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_ELECTION_PORT as i32)
         .add_container_port(JMX_METRICS_PORT_NAME, 9505)
-        .add_container_port(
-            METRICS_PROVIDER_HTTP_PORT_NAME,
-            metrics_port_from_rolegroup_config(server_config)
-                .context(RetrieveMetricsPortFromConfigSnafu)?
-                .into(),
-        )
+        .add_container_port(METRICS_PROVIDER_HTTP_PORT_NAME, metrics_port.into())
         .add_volume_mount("data", STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
         .add_volume_mount("config", STACKABLE_CONFIG_DIR)
@@ -1032,13 +892,17 @@ pub fn error_policy(
 mod tests {
     use stackable_operator::{
         commons::networking::DomainName,
-        product_config_utils::{
-            transform_all_roles_to_config, validate_all_roles_and_groups_config,
-        },
+        k8s_openapi::api::core::v1::ConfigMap,
+        role_utils::JavaCommonConfig,
+        utils::cluster_info::KubernetesClusterInfo,
     };
 
     use super::*;
-    use crate::crd::CONTAINER_IMAGE_BASE_NAME;
+    use crate::{
+        crd::CONTAINER_IMAGE_BASE_NAME,
+        framework::role_utils::with_validated_config,
+        zk_controller::validate::{ValidatedCluster, ValidatedClusterConfig},
+    };
 
     #[test]
     fn test_default_config() {
@@ -1109,66 +973,144 @@ mod tests {
         assert!(cm.contains_key("security.properties"));
     }
 
+    #[test]
+    fn test_seeded_operator_defaults() {
+        // These values used to be injected by product-config from
+        // `deploy/config-spec/properties.yaml`. They are now seeded directly by the
+        // ConfigMap builder and must stay byte-identical (pinned by the kuttl
+        // snapshot `tests/templates/kuttl/smoke/14-assert.yaml.j2`).
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+
+        // `security.properties` is fully operator-injected; assert it byte-for-byte.
+        assert_eq!(
+            cm.get("security.properties").unwrap(),
+            "networkaddress.cache.negative.ttl=0\nnetworkaddress.cache.ttl=5\n"
+        );
+
+        let zoo_cfg = cm.get("zoo.cfg").unwrap();
+        for expected in [
+            "admin.serverPort=8080",
+            // new_for_tests() enables server TLS, so the secure client port is used.
+            "clientPort=2282",
+            "dataDir=/stackable/data",
+            "initLimit=5",
+            "syncLimit=2",
+            "tickTime=3000",
+            "metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider",
+            "metricsProvider.httpPort=7000",
+        ] {
+            assert!(zoo_cfg.contains(expected), "missing {expected:?} in:\n{zoo_cfg}");
+        }
+    }
+
+    #[test]
+    fn test_user_config_overrides_seeded_default() {
+        // A value set on the typed config must win over the seeded default.
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+                config:
+                  tickTime: 4000
+                  initLimit: 7
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let zoo_cfg = cm.get("zoo.cfg").unwrap();
+        assert!(zoo_cfg.contains("tickTime=4000"), "{zoo_cfg}");
+        assert!(zoo_cfg.contains("initLimit=7"), "{zoo_cfg}");
+        // Untouched default stays.
+        assert!(zoo_cfg.contains("syncLimit=2"), "{zoo_cfg}");
+    }
+
     fn build_config_map(zookeeper_yaml: &str) -> ConfigMap {
         let mut zookeeper: v1alpha1::ZookeeperCluster =
             serde_yaml::from_str(zookeeper_yaml).expect("illegal test input");
         zookeeper.metadata.uid = Some("42".to_owned());
+        zookeeper.metadata.namespace = Some("default".to_owned());
         let cluster_info = KubernetesClusterInfo {
             cluster_domain: DomainName::try_from("cluster.local").unwrap(),
         };
-        let resolved_product_image = zookeeper
+        let image = zookeeper
             .spec
             .image
             .resolve(CONTAINER_IMAGE_BASE_NAME, "oci.example.org", "0.0.0-dev")
             .expect("test resolved product image is always valid");
-
-        let validated_config = validate_all_roles_and_groups_config(
-            &resolved_product_image.product_version,
-            &transform_all_roles_to_config(
-                &zookeeper,
-                &[(
-                    ZookeeperRole::Server.to_string(),
-                    (
-                        vec![
-                            PropertyNameKind::Env,
-                            PropertyNameKind::File(ZOOKEEPER_PROPERTIES_FILE.to_string()),
-                            PropertyNameKind::File(JVM_SECURITY_PROPERTIES_FILE.to_string()),
-                        ],
-                        zookeeper.spec.servers.clone().unwrap(),
-                    ),
-                )]
-                .into(),
-            )
-            .unwrap(),
-            // Using this instead of ProductConfigManager::from_yaml_file, as that did not find the file
-            &ProductConfigManager::from_str(include_str!(
-                "../../../deploy/config-spec/properties.yaml"
-            ))
-            .unwrap(),
-            false,
-            false,
-        )
-        .unwrap();
-
-        let rolegroup_ref = RoleGroupRef {
-            cluster: ObjectRef::from_obj(&zookeeper),
-            role: ZookeeperRole::Server.to_string(),
-            role_group: "default".to_string(),
-        };
-
         let zookeeper_security = ZookeeperSecurity::new_for_tests();
 
-        build_server_rolegroup_config_map(
-            &zookeeper,
+        let zk_role = ZookeeperRole::Server;
+        let role = zookeeper.role(&zk_role).unwrap();
+        let default_config =
+            v1alpha1::ZookeeperConfig::default_server_config(&zookeeper.name_any(), &zk_role);
+        let mut groups = BTreeMap::new();
+        for (rg_name, rg) in &role.role_groups {
+            let validated_rg = with_validated_config::<
+                v1alpha1::ZookeeperConfig,
+                JavaCommonConfig,
+                v1alpha1::ZookeeperConfigFragment,
+                _,
+                v1alpha1::ZookeeperConfigOverrides,
+            >(rg, role, &default_config)
+            .unwrap();
+            groups.insert(rg_name.clone(), validated_rg);
+        }
+        let mut role_group_configs = BTreeMap::new();
+        role_group_configs.insert(zk_role.clone(), groups);
+
+        let server_addresses = zookeeper
+            .pods()
+            .unwrap()
+            .map(|pod| {
+                (
+                    format!("server.{id}", id = pod.zookeeper_myid),
+                    format!(
+                        "{fqdn}:{ZOOKEEPER_LEADER_PORT}:{ZOOKEEPER_ELECTION_PORT};{client_port}",
+                        fqdn = pod.internal_fqdn(&cluster_info),
+                        client_port = zookeeper_security.client_port()
+                    ),
+                )
+            })
+            .collect();
+
+        let validated_cluster = ValidatedCluster {
+            name: zookeeper.name_any(),
+            image,
+            cluster_config: ValidatedClusterConfig {
+                zookeeper_security,
+                server_addresses,
+            },
+            role_group_configs,
+        };
+
+        let rolegroup_ref = zookeeper.server_rolegroup_ref("default");
+        let rolegroup_config = &validated_cluster.role_group_configs[&zk_role]["default"];
+
+        build::config_map::build_server_rolegroup_config_map(
+            &validated_cluster,
+            &zk_role,
             &rolegroup_ref,
-            validated_config
-                .get("server")
-                .unwrap()
-                .get("default")
-                .unwrap(),
-            &resolved_product_image,
-            &zookeeper_security,
-            &cluster_info,
+            rolegroup_config,
+            &zookeeper,
         )
         .unwrap()
     }

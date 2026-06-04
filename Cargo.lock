@@ -3036,7 +3036,6 @@ dependencies = [
  "indoc",
  "java-properties",
  "pin-project",
- "product-config",
  "semver",
  "serde",
  "serde_json",
