@@ -358,7 +358,8 @@ pub async fn reconcile_zk(
     for (rolegroup_name, rolegroup_config) in server_role_group_configs {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
         let merged_config = &rolegroup_config.config;
-        let metrics_port = build::config_map::metrics_http_port(&validated_cluster, rolegroup_config);
+        let metrics_port =
+            build::properties::zoo_cfg::metrics_http_port(&validated_cluster, rolegroup_config);
 
         let rg_headless_service =
             build_server_rolegroup_headless_service(zk, &rolegroup, resolved_product_image)

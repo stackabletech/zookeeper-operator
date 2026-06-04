@@ -1,6 +1,15 @@
+//! Builders for the logging-related files in the rolegroup ConfigMap: the
+//! product log config (`logback.xml` / `log4j.properties`) and the Vector agent
+//! config (`vector.yaml`).
+//!
+//! Moved from the former top-level `product_logging` module so that all ConfigMap
+//! contributions live under `zk_controller/build` (mirrors trino-operator and
+//! hdfs-operator).
+
+use std::collections::BTreeMap;
+
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
-    builder::configmap::ConfigMapBuilder,
     memory::BinaryMultiple,
     product_logging::{
         self,
@@ -24,14 +33,16 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 const CONSOLE_CONVERSION_PATTERN: &str = "%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n";
 
-/// Extend the role group ConfigMap with logging and Vector configurations
-pub fn extend_role_group_config_map(
+/// Builds the logging-related ConfigMap entries (product log config and the
+/// Vector agent config) for a role group.
+pub fn build(
     zk: &v1alpha1::ZookeeperCluster,
     role: ZookeeperRole,
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    cm_builder: &mut ConfigMapBuilder,
     product_version: &str,
-) -> Result<()> {
+) -> Result<BTreeMap<String, String>> {
+    let mut data = BTreeMap::new();
+
     let logging = zk
         .logging(&role, rolegroup)
         .context(CrdValidationFailureSnafu)?;
@@ -40,32 +51,32 @@ pub fn extend_role_group_config_map(
         choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
     }) = logging.containers.get(&v1alpha1::Container::Zookeeper)
     {
+        let log_dir = format!("{STACKABLE_LOG_DIR}/zookeeper");
+        let max_log_file_size_mib = MAX_ZK_LOG_FILES_SIZE
+            .scale_to(BinaryMultiple::Mebi)
+            .floor()
+            .value as u32;
+
         match zk.logging_framework(product_version) {
             LoggingFramework::LOG4J => {
-                cm_builder.add_data(
-                    LOG4J_CONFIG_FILE,
+                data.insert(
+                    LOG4J_CONFIG_FILE.to_string(),
                     product_logging::framework::create_log4j_config(
-                        &format!("{STACKABLE_LOG_DIR}/zookeeper"),
+                        &log_dir,
                         ZOOKEEPER_LOG_FILE,
-                        MAX_ZK_LOG_FILES_SIZE
-                            .scale_to(BinaryMultiple::Mebi)
-                            .floor()
-                            .value as u32,
+                        max_log_file_size_mib,
                         CONSOLE_CONVERSION_PATTERN,
                         log_config,
                     ),
                 );
             }
             LoggingFramework::LOGBACK => {
-                cm_builder.add_data(
-                    LOGBACK_CONFIG_FILE,
+                data.insert(
+                    LOGBACK_CONFIG_FILE.to_string(),
                     product_logging::framework::create_logback_config(
-                        &format!("{STACKABLE_LOG_DIR}/zookeeper"),
+                        &log_dir,
                         ZOOKEEPER_LOG_FILE,
-                        MAX_ZK_LOG_FILES_SIZE
-                            .scale_to(BinaryMultiple::Mebi)
-                            .floor()
-                            .value as u32,
+                        max_log_file_size_mib,
                         CONSOLE_CONVERSION_PATTERN,
                         log_config,
                         None,
@@ -85,11 +96,11 @@ pub fn extend_role_group_config_map(
     };
 
     if logging.enable_vector_agent {
-        cm_builder.add_data(
-            product_logging::framework::VECTOR_CONFIG_FILE,
+        data.insert(
+            product_logging::framework::VECTOR_CONFIG_FILE.to_string(),
             product_logging::framework::create_vector_config(rolegroup, vector_log_config),
         );
     }
 
-    Ok(())
+    Ok(data)
 }
