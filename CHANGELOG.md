@@ -17,12 +17,15 @@ All notable changes to this project will be documented in this file.
 - Bump `stackable-operator` to 0.111.1 ([#1027], [#1028]).
 - Internal operator refactoring: introduce dereference() and validate() steps in the reconciler ([#1034]).
 - test: Bump vector-aggregator to 0.55.0, replace /graphql call with gRPC call ([#1038]).
+- BREAKING: Removed product-config machinery. This is a breaking change in terms of configuration.
+  Users relying on the product-config `properties.yaml` file have to set these properties via the CRD ([#1041]).
 
 [#1020]: https://github.com/stackabletech/zookeeper-operator/pull/1020
 [#1027]: https://github.com/stackabletech/zookeeper-operator/pull/1027
 [#1028]: https://github.com/stackabletech/zookeeper-operator/pull/1028
 [#1034]: https://github.com/stackabletech/zookeeper-operator/pull/1034
 [#1038]: https://github.com/stackabletech/zookeeper-operator/pull/1038
+[#1041]: https://github.com/stackabletech/zookeeper-operator/pull/1041
 
 ## [26.3.0] - 2026-03-16
 
