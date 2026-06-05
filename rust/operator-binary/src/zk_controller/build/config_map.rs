@@ -12,11 +12,11 @@ use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
     k8s_openapi::api::core::v1::ConfigMap,
     role_utils::RoleGroupRef,
+    v2::config_file_writer::{PropertiesWriterError, to_java_properties_string},
 };
 
 use crate::{
     crd::{ZookeeperRole, v1alpha1},
-    framework::writer::{PropertiesWriterError, to_java_properties_string},
     utils::build_recommended_labels,
     zk_controller::{
         ZK_CONTROLLER_NAME,

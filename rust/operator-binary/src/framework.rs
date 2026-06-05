@@ -10,4 +10,3 @@
 // Wired into the reconciler in a follow-up commit (validate -> ValidatedCluster).
 #[allow(dead_code)]
 pub mod role_utils;
-pub mod writer;

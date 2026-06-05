@@ -33,7 +33,7 @@ pub(crate) fn resolved_overrides(
 }
 
 /// Converts a `key -> value` map into the `key -> Some(value)` shape expected by
-/// [`to_java_properties_string`](crate::framework::writer::to_java_properties_string).
+/// [`to_java_properties_string`](stackable_operator::v2::config_file_writer::to_java_properties_string).
 pub(crate) fn into_optional_values(
     map: BTreeMap<String, String>,
 ) -> BTreeMap<String, Option<String>> {
