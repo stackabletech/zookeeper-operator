@@ -448,22 +448,23 @@ impl ZookeeperPodRef {
     }
 }
 
-impl v1alpha1::ZookeeperCluster {
-    pub fn logging_framework(&self, product_version: &str) -> LoggingFramework {
-        let zookeeper_versions_with_log4j = [
-            "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
-        ];
+/// Returns the [`LoggingFramework`] used by the given ZooKeeper `product_version`.
+pub fn logging_framework(product_version: &str) -> LoggingFramework {
+    let zookeeper_versions_with_log4j = [
+        "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
+    ];
 
-        if zookeeper_versions_with_log4j
-            .into_iter()
-            .any(|prefix| product_version.starts_with(prefix))
-        {
-            LoggingFramework::LOG4J
-        } else {
-            LoggingFramework::LOGBACK
-        }
+    if zookeeper_versions_with_log4j
+        .into_iter()
+        .any(|prefix| product_version.starts_with(prefix))
+    {
+        LoggingFramework::LOG4J
+    } else {
+        LoggingFramework::LOGBACK
     }
+}
 
+impl v1alpha1::ZookeeperCluster {
     /// The fully-qualified domain name of the role-level [Listener]
     ///
     /// [Listener]: stackable_operator::crd::listener::v1alpha1::Listener

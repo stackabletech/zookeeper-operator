@@ -377,10 +377,8 @@ pub async fn reconcile_zk(
         .context(BuildServiceSnafu)?;
         let rg_configmap = build::config_map::build_server_rolegroup_config_map(
             &validated_cluster,
-            &zk_role,
             &rolegroup,
             rolegroup_config,
-            zk,
         )
         .context(BuildRoleGroupConfigMapSnafu {
             rolegroup: rolegroup.clone(),
@@ -453,7 +451,7 @@ pub async fn reconcile_zk(
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
     let discovery_cm = build::discovery::build_discovery_configmap(
-        zk,
+        &validated_cluster,
         ZK_CONTROLLER_NAME,
         applied_listener,
         None,
@@ -679,7 +677,6 @@ fn build_server_rolegroup_statefulset(
         .add_env_var(
             "SERVER_JVMFLAGS",
             construct_non_heap_jvm_args(
-                zk,
                 role,
                 &rolegroup_ref.role_group,
                 &resolved_product_image.product_version,
@@ -898,8 +895,11 @@ pub fn error_policy(
 #[cfg(test)]
 mod tests {
     use stackable_operator::{
-        commons::networking::DomainName, k8s_openapi::api::core::v1::ConfigMap,
-        role_utils::JavaCommonConfig, utils::cluster_info::KubernetesClusterInfo,
+        commons::networking::DomainName,
+        k8s_openapi::api::core::v1::ConfigMap,
+        role_utils::JavaCommonConfig,
+        utils::cluster_info::KubernetesClusterInfo,
+        v2::controller_utils::{get_cluster_name, get_namespace, get_uid},
     };
 
     use super::*;
@@ -1054,7 +1054,7 @@ mod tests {
     fn build_config_map(zookeeper_yaml: &str) -> ConfigMap {
         let mut zookeeper: v1alpha1::ZookeeperCluster =
             serde_yaml::from_str(zookeeper_yaml).expect("illegal test input");
-        zookeeper.metadata.uid = Some("42".to_owned());
+        zookeeper.metadata.uid = Some("c27b3971-ca72-42c1-80a4-abdfc1db0ddd".to_owned());
         zookeeper.metadata.namespace = Some("default".to_owned());
         let cluster_info = KubernetesClusterInfo {
             cluster_domain: DomainName::try_from("cluster.local").unwrap(),
@@ -1100,25 +1100,25 @@ mod tests {
             })
             .collect();
 
-        let validated_cluster = ValidatedCluster {
-            name: zookeeper.name_any(),
+        let validated_cluster = ValidatedCluster::new(
+            get_cluster_name(&zookeeper).unwrap(),
+            get_namespace(&zookeeper).unwrap(),
+            get_uid(&zookeeper).unwrap(),
             image,
-            cluster_config: ValidatedClusterConfig {
+            ValidatedClusterConfig {
                 zookeeper_security,
                 server_addresses,
             },
             role_group_configs,
-        };
+        );
 
         let rolegroup_ref = zookeeper.server_rolegroup_ref("default");
         let rolegroup_config = &validated_cluster.role_group_configs[&zk_role]["default"];
 
         build::config_map::build_server_rolegroup_config_map(
             &validated_cluster,
-            &zk_role,
             &rolegroup_ref,
             rolegroup_config,
-            &zookeeper,
         )
         .unwrap()
     }

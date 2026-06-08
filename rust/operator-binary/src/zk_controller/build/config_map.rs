@@ -12,11 +12,14 @@ use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
     k8s_openapi::api::core::v1::ConfigMap,
     role_utils::RoleGroupRef,
-    v2::config_file_writer::{PropertiesWriterError, to_java_properties_string},
+    v2::{
+        builder::meta::ownerreference_from_resource,
+        config_file_writer::{PropertiesWriterError, to_java_properties_string},
+    },
 };
 
 use crate::{
-    crd::{ZookeeperRole, v1alpha1},
+    crd::{logging_framework, v1alpha1},
     utils::build_recommended_labels,
     zk_controller::{
         ZK_CONTROLLER_NAME,
@@ -36,20 +39,9 @@ pub enum Error {
         rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
     },
 
-    #[snafu(display("object is missing metadata to build owner reference"))]
-    ObjectMissingMetadataForOwnerRef {
-        source: stackable_operator::builder::meta::Error,
-    },
-
     #[snafu(display("failed to build object meta data"))]
     ObjectMeta {
         source: stackable_operator::builder::meta::Error,
-    },
-
-    #[snafu(display("failed to add the logging configuration to the ConfigMap [{cm_name}]"))]
-    InvalidLoggingConfig {
-        source: logging::Error,
-        cm_name: String,
     },
 
     #[snafu(display("failed to build ConfigMap for {rolegroup}"))]
@@ -61,16 +53,14 @@ pub enum Error {
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// Builds the rolegroup [`ConfigMap`].
+/// Builds the rolegroup [`ConfigMap`] entirely from the [`ValidatedCluster`].
 ///
-/// `owner` is the [`v1alpha1::ZookeeperCluster`] and is used solely for the owner
-/// reference and object metadata (name, namespace, labels).
+/// The owner reference and object metadata (name, namespace, labels) are derived
+/// from `cluster`, which mirrors the raw [`v1alpha1::ZookeeperCluster`] metadata.
 pub fn build_server_rolegroup_config_map(
     cluster: &ValidatedCluster,
-    role: &ZookeeperRole,
     rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     rolegroup_config: &ZookeeperRoleGroupConfig,
-    owner: &v1alpha1::ZookeeperCluster,
 ) -> Result<ConfigMap> {
     let mut data: BTreeMap<String, String> = BTreeMap::new();
 
@@ -95,27 +85,20 @@ pub fn build_server_rolegroup_config_map(
     );
 
     // logback.xml / log4j.properties and vector.yaml
-    data.extend(
-        logging::build(
-            owner,
-            role.clone(),
-            rolegroup_ref,
-            &cluster.image.product_version,
-        )
-        .context(InvalidLoggingConfigSnafu {
-            cm_name: rolegroup_ref.object_name(),
-        })?,
-    );
+    data.extend(logging::build(
+        &rolegroup_config.config.logging,
+        logging_framework(&cluster.image.product_version),
+        rolegroup_ref,
+    ));
 
     ConfigMapBuilder::new()
         .metadata(
             ObjectMetaBuilder::new()
-                .name_and_namespace(owner)
+                .name_and_namespace(cluster)
                 .name(rolegroup_ref.object_name())
-                .ownerreference_from_resource(owner, None, Some(true))
-                .context(ObjectMissingMetadataForOwnerRefSnafu)?
+                .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
                 .with_recommended_labels(&build_recommended_labels(
-                    owner,
+                    cluster,
                     ZK_CONTROLLER_NAME,
                     &cluster.image.app_version_label_value,
                     &rolegroup_ref.role,

@@ -4,17 +4,16 @@
 
 use std::collections::BTreeMap;
 
-use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     memory::{BinaryMultiple, MemoryQuantity},
     product_logging::{
         self,
-        spec::{ContainerLogConfig, ContainerLogConfigChoice},
+        spec::{ContainerLogConfig, ContainerLogConfigChoice, Logging},
     },
     role_utils::RoleGroupRef,
 };
 
-use crate::crd::{LoggingFramework, STACKABLE_LOG_DIR, ZookeeperRole, v1alpha1};
+use crate::crd::{LoggingFramework, STACKABLE_LOG_DIR, v1alpha1};
 
 /// The logback config file name (when the product uses the LOGBACK framework).
 pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
@@ -29,29 +28,21 @@ pub const MAX_ZK_LOG_FILES_SIZE: MemoryQuantity = MemoryQuantity {
     unit: BinaryMultiple::Mebi,
 };
 
-#[derive(Snafu, Debug)]
-pub enum Error {
-    #[snafu(display("crd validation failure"))]
-    CrdValidationFailure { source: crate::crd::Error },
-}
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
 const CONSOLE_CONVERSION_PATTERN: &str = "%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n";
 
 /// Builds the logging-related ConfigMap entries (product log config and the
 /// Vector agent config) for a role group.
+///
+/// `logging` is the merged [`Logging`] from the role group's validated config and
+/// `framework` selects the product log config format (see [`logging_framework`]).
+///
+/// [`logging_framework`]: crate::crd::logging_framework
 pub fn build(
-    zk: &v1alpha1::ZookeeperCluster,
-    role: ZookeeperRole,
+    logging: &Logging<v1alpha1::Container>,
+    framework: LoggingFramework,
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    product_version: &str,
-) -> Result<BTreeMap<String, String>> {
+) -> BTreeMap<String, String> {
     let mut data = BTreeMap::new();
-
-    let logging = zk
-        .logging(&role, rolegroup)
-        .context(CrdValidationFailureSnafu)?;
 
     if let Some(ContainerLogConfig {
         choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
@@ -63,7 +54,7 @@ pub fn build(
             .floor()
             .value as u32;
 
-        match zk.logging_framework(product_version) {
+        match framework {
             LoggingFramework::LOG4J => {
                 data.insert(
                     LOG4J_CONFIG_FILE.to_string(),
@@ -108,5 +99,5 @@ pub fn build(
         );
     }
 
-    Ok(data)
+    data
 }

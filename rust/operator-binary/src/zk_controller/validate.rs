@@ -14,9 +14,18 @@ use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     commons::product_image_selection::{self, ResolvedProductImage},
     config::fragment,
-    kube::ResourceExt,
+    k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+    kube::{Resource, ResourceExt},
     role_utils::JavaCommonConfig,
     utils::cluster_info::KubernetesClusterInfo,
+    v2::{
+        HasName, HasUid,
+        controller_utils::{get_cluster_name, get_namespace, get_uid},
+        types::{
+            kubernetes::{NamespaceName, Uid},
+            operator::ClusterName,
+        },
+    },
 };
 use strum::IntoEnumIterator;
 
@@ -58,6 +67,21 @@ pub enum Error {
         source: fragment::ValidationError,
         role_group: String,
     },
+
+    #[snafu(display("failed to get the cluster name"))]
+    GetClusterName {
+        source: stackable_operator::v2::controller_utils::Error,
+    },
+
+    #[snafu(display("failed to get the namespace"))]
+    GetNamespace {
+        source: stackable_operator::v2::controller_utils::Error,
+    },
+
+    #[snafu(display("failed to get the UID"))]
+    GetUid {
+        source: stackable_operator::v2::controller_utils::Error,
+    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -69,14 +93,87 @@ pub type ZookeeperRoleGroupConfig =
 /// The validated [`v1alpha1::ZookeeperCluster`]. Output of the validate step and
 /// the single input to the build steps.
 pub struct ValidatedCluster {
-    /// The cluster name. Part of the `ValidatedCluster` contract (mirrors
-    /// trino-operator); consumed by the statefulset/service build steps that move
-    /// off the raw CRD in the follow-up PR.
+    /// Mirrors the cluster's [`ObjectMeta`] (name, namespace, UID) so the build
+    /// steps can derive owner references and object metadata without reaching back
+    /// into the raw [`v1alpha1::ZookeeperCluster`].
+    metadata: ObjectMeta,
+    pub name: ClusterName,
+    /// The cluster namespace. Part of the `ValidatedCluster` contract; consumed by
+    /// the statefulset/service build steps that move off the raw CRD in a
+    /// follow-up PR.
     #[allow(dead_code)]
-    pub name: String,
+    pub namespace: NamespaceName,
+    pub uid: Uid,
     pub image: ResolvedProductImage,
     pub cluster_config: ValidatedClusterConfig,
     pub role_group_configs: BTreeMap<ZookeeperRole, BTreeMap<String, ZookeeperRoleGroupConfig>>,
+}
+
+impl ValidatedCluster {
+    pub fn new(
+        name: ClusterName,
+        namespace: NamespaceName,
+        uid: Uid,
+        image: ResolvedProductImage,
+        cluster_config: ValidatedClusterConfig,
+        role_group_configs: BTreeMap<ZookeeperRole, BTreeMap<String, ZookeeperRoleGroupConfig>>,
+    ) -> Self {
+        Self {
+            metadata: ObjectMeta {
+                name: Some(name.to_string()),
+                namespace: Some(namespace.to_string()),
+                uid: Some(uid.to_string()),
+                ..ObjectMeta::default()
+            },
+            name,
+            namespace,
+            uid,
+            image,
+            cluster_config,
+            role_group_configs,
+        }
+    }
+}
+
+impl HasName for ValidatedCluster {
+    fn to_name(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+impl HasUid for ValidatedCluster {
+    fn to_uid(&self) -> Uid {
+        self.uid.clone()
+    }
+}
+
+impl Resource for ValidatedCluster {
+    type DynamicType = <v1alpha1::ZookeeperCluster as Resource>::DynamicType;
+    type Scope = <v1alpha1::ZookeeperCluster as Resource>::Scope;
+
+    fn kind(dt: &Self::DynamicType) -> std::borrow::Cow<'_, str> {
+        v1alpha1::ZookeeperCluster::kind(dt)
+    }
+
+    fn group(dt: &Self::DynamicType) -> std::borrow::Cow<'_, str> {
+        v1alpha1::ZookeeperCluster::group(dt)
+    }
+
+    fn version(dt: &Self::DynamicType) -> std::borrow::Cow<'_, str> {
+        v1alpha1::ZookeeperCluster::version(dt)
+    }
+
+    fn plural(dt: &Self::DynamicType) -> std::borrow::Cow<'_, str> {
+        v1alpha1::ZookeeperCluster::plural(dt)
+    }
+
+    fn meta(&self) -> &ObjectMeta {
+        &self.metadata
+    }
+
+    fn meta_mut(&mut self) -> &mut ObjectMeta {
+        &mut self.metadata
+    }
 }
 
 /// Cluster-wide validated configuration that the build steps need without
@@ -139,15 +236,21 @@ pub fn validate(
         role_group_configs.insert(zk_role, groups);
     }
 
-    Ok(ValidatedCluster {
-        name: zk.name_any(),
+    let name = get_cluster_name(zk).context(GetClusterNameSnafu)?;
+    let namespace = get_namespace(zk).context(GetNamespaceSnafu)?;
+    let uid = get_uid(zk).context(GetUidSnafu)?;
+
+    Ok(ValidatedCluster::new(
+        name,
+        namespace,
+        uid,
         image,
-        cluster_config: ValidatedClusterConfig {
+        ValidatedClusterConfig {
             zookeeper_security,
             server_addresses,
         },
         role_group_configs,
-    })
+    ))
 }
 
 /// Builds the `server.<myid>` quorum entries for `zoo.cfg` from the expected pods.
