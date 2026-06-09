@@ -454,9 +454,6 @@ pub async fn reconcile_zk(
         &validated_cluster,
         ZK_CONTROLLER_NAME,
         applied_listener,
-        None,
-        resolved_product_image,
-        zookeeper_security,
     )
     .context(BuildDiscoveryConfigSnafu)?;
 

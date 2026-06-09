@@ -10,8 +10,9 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity},
+    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
     utils::build_recommended_labels,
+    zk_controller::validate::ValidatedCluster,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -60,14 +61,61 @@ pub enum Error {
     },
 }
 
+/// Build the discovery [`ConfigMap`] for the cluster controller from the
+/// [`ValidatedCluster`].
+///
+/// The ConfigMap is owned by, and placed in the namespace of, the cluster. The image and security
+/// settings are taken from the [`ValidatedCluster`] rather than being passed in separately.
+pub fn build_discovery_configmap(
+    validated_cluster: &ValidatedCluster,
+    controller_name: &str,
+    listener: listener::v1alpha1::Listener,
+) -> Result<ConfigMap> {
+    build_discovery_configmap_for_owner(
+        validated_cluster,
+        &validated_cluster.namespace,
+        controller_name,
+        listener,
+        None,
+        &validated_cluster.image,
+        &validated_cluster.cluster_config.zookeeper_security,
+    )
+}
+
+/// Build the discovery [`ConfigMap`] for the znode controller.
+///
+/// The ConfigMap is owned by, and placed in the namespace of, the
+/// [`ZookeeperZnode`](v1alpha1::ZookeeperZnode). The `image` and `zookeeper_security` originate from
+/// the referenced cluster, while `chroot` isolates the znode within the shared ZooKeeper ensemble.
+pub fn build_znode_discovery_configmap(
+    znode: &v1alpha1::ZookeeperZnode,
+    controller_name: &str,
+    listener: listener::v1alpha1::Listener,
+    chroot: &str,
+    image: &ResolvedProductImage,
+    zookeeper_security: &ZookeeperSecurity,
+) -> Result<ConfigMap> {
+    let namespace = znode.namespace().context(NoNamespaceSnafu)?;
+    build_discovery_configmap_for_owner(
+        znode,
+        namespace,
+        controller_name,
+        listener,
+        Some(chroot),
+        image,
+        zookeeper_security,
+    )
+}
+
 /// Build a discovery [`ConfigMap`] containing ZooKeeper connection details from a
 /// [`listener::v1alpha1::Listener`].
 ///
-/// `owner` owns the ConfigMap (the [`ZookeeperCluster`](crate::crd::v1alpha1::ZookeeperCluster)
-/// for the cluster controller, or the [`ZookeeperZnode`](crate::crd::v1alpha1::ZookeeperZnode)
-/// for the znode controller).
-pub fn build_discovery_configmap(
+/// `owner` owns the ConfigMap (the [`ZookeeperCluster`](v1alpha1::ZookeeperCluster) for the cluster
+/// controller, or the [`ZookeeperZnode`](v1alpha1::ZookeeperZnode) for the znode controller) and
+/// `namespace` is where the ConfigMap is placed.
+fn build_discovery_configmap_for_owner(
     owner: &impl Resource<DynamicType = ()>,
+    namespace: impl Into<String>,
     controller_name: &str,
     listener: listener::v1alpha1::Listener,
     chroot: Option<&str>,
@@ -75,7 +123,6 @@ pub fn build_discovery_configmap(
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<ConfigMap> {
     let name = owner.name_unchecked();
-    let namespace = owner.namespace().context(NoNamespaceSnafu)?;
 
     let listener_addresses = listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)?;
 

@@ -28,7 +28,7 @@ use crate::{
     APP_NAME, OPERATOR_NAME,
     crd::{ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
     listener::role_listener_name,
-    zk_controller::build::discovery::{self, build_discovery_configmap},
+    zk_controller::build::discovery::{self, build_znode_discovery_configmap},
 };
 
 mod dereference;
@@ -320,11 +320,11 @@ async fn reconcile_apply(
             zk: ObjectRef::from_obj(&zk),
         })?;
 
-    let discovery_cm = build_discovery_configmap(
+    let discovery_cm = build_znode_discovery_configmap(
         znode,
         ZNODE_CONTROLLER_NAME,
         listener,
-        Some(znode_path),
+        znode_path,
         image,
         zookeeper_security,
     )

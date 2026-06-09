@@ -98,10 +98,6 @@ pub struct ValidatedCluster {
     /// into the raw [`v1alpha1::ZookeeperCluster`].
     metadata: ObjectMeta,
     pub name: ClusterName,
-    /// The cluster namespace. Part of the `ValidatedCluster` contract; consumed by
-    /// the statefulset/service build steps that move off the raw CRD in a
-    /// follow-up PR.
-    #[allow(dead_code)]
     pub namespace: NamespaceName,
     pub uid: Uid,
     pub image: ResolvedProductImage,
