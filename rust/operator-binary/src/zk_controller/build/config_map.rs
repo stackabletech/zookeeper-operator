@@ -23,9 +23,7 @@ use crate::{
     utils::build_recommended_labels,
     zk_controller::{
         ZK_CONTROLLER_NAME,
-        build::properties::{
-            ConfigFileName, into_optional_values, logging, security_properties, zoo_cfg,
-        },
+        build::properties::{ConfigFileName, logging, security_properties, zoo_cfg},
         validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
     },
 };
@@ -67,21 +65,22 @@ pub fn build_server_rolegroup_config_map(
     // zoo.cfg
     data.insert(
         ConfigFileName::ZooCfg.to_string(),
-        render(
-            ConfigFileName::ZooCfg,
-            zoo_cfg::build(cluster, rolegroup_config),
-            rolegroup_ref,
+        to_java_properties_string(zoo_cfg::build(cluster, rolegroup_config).iter()).with_context(
+            |_| SerializePropertiesSnafu {
+                file: ConfigFileName::ZooCfg.to_string(),
+                rolegroup: rolegroup_ref.clone(),
+            },
         )?,
     );
 
     // security.properties
     data.insert(
         ConfigFileName::SecurityProperties.to_string(),
-        render(
-            ConfigFileName::SecurityProperties,
-            security_properties::build(rolegroup_config),
-            rolegroup_ref,
-        )?,
+        to_java_properties_string(security_properties::build(rolegroup_config).iter())
+            .with_context(|_| SerializePropertiesSnafu {
+                file: ConfigFileName::SecurityProperties.to_string(),
+                rolegroup: rolegroup_ref.clone(),
+            })?,
     );
 
     // logback.xml / log4j.properties and vector.yaml
@@ -112,18 +111,4 @@ pub fn build_server_rolegroup_config_map(
         .context(BuildConfigMapSnafu {
             rolegroup: rolegroup_ref.clone(),
         })
-}
-
-/// Serializes a property map to its Java-properties on-wire representation.
-fn render(
-    file: ConfigFileName,
-    properties: BTreeMap<String, String>,
-    rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-) -> Result<String> {
-    to_java_properties_string(into_optional_values(properties).iter()).with_context(|_| {
-        SerializePropertiesSnafu {
-            file: file.to_string(),
-            rolegroup: rolegroup_ref.clone(),
-        }
-    })
 }

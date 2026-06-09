@@ -3,8 +3,6 @@
 //! Each submodule renders the key/value pairs (or file contents) for one file
 //! that ends up in the rolegroup ConfigMap.
 
-use std::collections::BTreeMap;
-
 use stackable_operator::v2::config_overrides::KeyValueConfigOverrides;
 
 pub mod logging;
@@ -30,12 +28,4 @@ pub(crate) fn resolved_overrides(
         .overrides
         .into_iter()
         .filter_map(|(key, value)| value.map(|value| (key, value)))
-}
-
-/// Converts a `key -> value` map into the `key -> Some(value)` shape expected by
-/// [`to_java_properties_string`](stackable_operator::v2::config_file_writer::to_java_properties_string).
-pub(crate) fn into_optional_values(
-    map: BTreeMap<String, String>,
-) -> BTreeMap<String, Option<String>> {
-    map.into_iter().map(|(k, v)| (k, Some(v))).collect()
 }
