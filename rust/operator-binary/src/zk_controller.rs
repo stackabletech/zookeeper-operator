@@ -774,35 +774,29 @@ fn build_server_rolegroup_statefulset(
         })
         .service_account_name(service_account.name_any());
 
-    if let Some(ContainerLogConfig {
+    // Use the user-provided custom log ConfigMap if one is configured, otherwise fall back to the
+    // rolegroup's own ConfigMap.
+    let log_config_map = if let Some(ContainerLogConfig {
         choice:
             Some(ContainerLogConfigChoice::Custom(CustomContainerLogConfig {
                 custom: ConfigMapLogConfig { config_map },
             })),
     }) = logging.containers.get(&v1alpha1::Container::Zookeeper)
     {
-        pod_builder
-            .add_volume(Volume {
-                name: "log-config".to_string(),
-                config_map: Some(ConfigMapVolumeSource {
-                    name: config_map.into(),
-                    ..ConfigMapVolumeSource::default()
-                }),
-                ..Volume::default()
-            })
-            .context(AddVolumeSnafu)?;
+        config_map.into()
     } else {
-        pod_builder
-            .add_volume(Volume {
-                name: "log-config".to_string(),
-                config_map: Some(ConfigMapVolumeSource {
-                    name: rolegroup_ref.object_name(),
-                    ..ConfigMapVolumeSource::default()
-                }),
-                ..Volume::default()
-            })
-            .context(AddVolumeSnafu)?;
-    }
+        rolegroup_ref.object_name()
+    };
+    pod_builder
+        .add_volume(Volume {
+            name: "log-config".to_string(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: log_config_map,
+                ..ConfigMapVolumeSource::default()
+            }),
+            ..Volume::default()
+        })
+        .context(AddVolumeSnafu)?;
 
     if logging.enable_vector_agent {
         match &zk.spec.cluster_config.vector_aggregator_config_map_name {

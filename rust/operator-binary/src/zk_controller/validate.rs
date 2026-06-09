@@ -50,9 +50,6 @@ pub enum Error {
     #[snafu(display("failed to validate authentication classes"))]
     InvalidAuthenticationClassConfiguration { source: authentication::Error },
 
-    #[snafu(display("object defines no server role"))]
-    NoServerRole,
-
     #[snafu(display("failed to retrieve role {role:?}"))]
     MissingRole {
         source: crate::crd::Error,

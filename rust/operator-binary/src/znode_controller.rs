@@ -62,11 +62,6 @@ pub enum Error {
     ))]
     ObjectMissingMetadata,
 
-    #[snafu(display("could not find server role service name for {zk:?}"))]
-    NoZkSvcName {
-        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
-    },
-
     #[snafu(display("could not find server role service for {zk:?}"))]
     FindZkSvc {
         source: stackable_operator::client::Error,
@@ -159,7 +154,6 @@ impl ReconcilerError for Error {
             Error::Dereference { .. } => None,
             Error::ValidateCluster { .. } => None,
             Error::ObjectMissingMetadata => None,
-            Error::NoZkSvcName { zk } => Some(zk.clone().erase()),
             Error::FindZkSvc { zk, .. } => Some(zk.clone().erase()),
             Error::NoZkFqdn { zk } => Some(zk.clone().erase()),
             Error::EnsureZnode { zk, .. } => Some(zk.clone().erase()),

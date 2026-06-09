@@ -30,9 +30,6 @@ pub enum Error {
     #[snafu(display("object has no namespace associated"))]
     NoNamespace,
 
-    #[snafu(display("failed to list expected pods"))]
-    ExpectedPods { source: crate::crd::Error },
-
     #[snafu(display("{listener} does not have a port with the name {port_name:?}"))]
     PortNotFound {
         port_name: String,
