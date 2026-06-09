@@ -1,5 +1,5 @@
 //! Ensures that `Pod`s are configured and running for each [`v1alpha1::ZookeeperCluster`]
-use std::{collections::BTreeMap, hash::Hasher, sync::Arc};
+use std::{hash::Hasher, sync::Arc};
 
 use const_format::concatcp;
 use fnv::FnvHasher;
@@ -58,6 +58,7 @@ use stackable_operator::{
         statefulset::StatefulSetConditionBuilder,
     },
     utils::COMMON_BASH_TRAP_FUNCTIONS,
+    v2::builder::pod::container::{EnvVarName, EnvVarSet},
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
@@ -507,7 +508,7 @@ fn build_server_rolegroup_statefulset(
     zk: &v1alpha1::ZookeeperCluster,
     zk_role: &ZookeeperRole,
     rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    env_overrides: &BTreeMap<String, String>,
+    env_overrides: &EnvVarSet,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
     merged_config: &v1alpha1::ZookeeperConfig,
@@ -526,23 +527,18 @@ fn build_server_rolegroup_statefulset(
     // The operator-injected environment variables (formerly produced by the
     // product-config `Configuration::compute_env` implementation) plus the
     // user-provided `envOverrides` (which win on conflict).
-    let mut env_map: BTreeMap<String, String> = BTreeMap::new();
-    env_map.insert(
-        v1alpha1::ZookeeperConfig::MYID_OFFSET.to_string(),
-        merged_config.myid_offset.to_string(),
-    );
-    // Used by zkEnv.sh and the shell scripts in bin/. If unset it tries to find the
-    // conf directory automatically and that fails.
-    env_map.insert("ZOOCFGDIR".to_string(), STACKABLE_RW_CONFIG_DIR.to_string());
-    env_map.extend(env_overrides.clone());
-    let env_vars = env_map
-        .into_iter()
-        .map(|(name, value)| EnvVar {
-            name,
-            value: Some(value),
-            ..EnvVar::default()
-        })
-        .collect::<Vec<_>>();
+    let env_vars = EnvVarSet::new()
+        .with_value(
+            &EnvVarName::from_str_unsafe(v1alpha1::ZookeeperConfig::MYID_OFFSET),
+            merged_config.myid_offset.to_string(),
+        )
+        // Used by zkEnv.sh and the shell scripts in bin/. If unset it tries to find the
+        // conf directory automatically and that fails.
+        .with_value(
+            &EnvVarName::from_str_unsafe("ZOOCFGDIR"),
+            STACKABLE_RW_CONFIG_DIR,
+        )
+        .merge(env_overrides.clone());
 
     let (original_pvcs, resources) = zk
         .resources(zk_role, rolegroup_ref)
@@ -885,6 +881,8 @@ pub fn error_policy(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use stackable_operator::{
         commons::networking::DomainName,
         k8s_openapi::api::core::v1::ConfigMap,

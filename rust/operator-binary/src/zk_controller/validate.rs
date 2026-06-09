@@ -13,7 +13,6 @@ use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     commons::product_image_selection::{self, ResolvedProductImage},
-    config::fragment,
     k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
     kube::{Resource, ResourceExt},
     role_utils::JavaCommonConfig,
@@ -59,9 +58,9 @@ pub enum Error {
     #[snafu(display("failed to list expected pods"))]
     ListPods { source: crate::crd::Error },
 
-    #[snafu(display("invalid config fragment for role group {role_group:?}"))]
-    InvalidConfigFragment {
-        source: fragment::ValidationError,
+    #[snafu(display("invalid config for role group {role_group:?}"))]
+    InvalidRoleGroupConfig {
+        source: crate::framework::role_utils::Error,
         role_group: String,
     },
 
@@ -221,7 +220,7 @@ pub fn validate(
                 _,
                 ZookeeperConfigOverrides,
             >(rg, role, &default_config)
-            .with_context(|_| InvalidConfigFragmentSnafu {
+            .with_context(|_| InvalidRoleGroupConfigSnafu {
                 role_group: rg_name.clone(),
             })?;
             groups.insert(rg_name.clone(), validated_rg);
