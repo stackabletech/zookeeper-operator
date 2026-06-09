@@ -7,7 +7,6 @@
 
 use std::collections::BTreeMap;
 
-use super::resolved_overrides;
 use crate::{
     crd::{
         METRICS_PROVIDER_HTTP_PORT, METRICS_PROVIDER_HTTP_PORT_KEY, STACKABLE_DATA_DIR,
@@ -102,9 +101,7 @@ pub fn build(
     }
 
     // 5. configOverrides go last so they win.
-    zoo_cfg.extend(resolved_overrides(
-        rolegroup_config.config_overrides.zoo_cfg.clone(),
-    ));
+    zoo_cfg.extend(rolegroup_config.config_overrides.zoo_cfg.clone());
 
     zoo_cfg
 }

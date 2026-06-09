@@ -2,7 +2,6 @@
 
 use std::collections::BTreeMap;
 
-use super::resolved_overrides;
 use crate::zk_controller::validate::ZookeeperRoleGroupConfig;
 
 const NETWORKADDRESS_CACHE_TTL: &str = "networkaddress.cache.ttl";
@@ -29,12 +28,12 @@ pub fn build(rolegroup_config: &ZookeeperRoleGroupConfig) -> BTreeMap<String, St
     );
 
     // configOverrides go last so they win.
-    security_properties.extend(resolved_overrides(
+    security_properties.extend(
         rolegroup_config
             .config_overrides
             .security_properties
             .clone(),
-    ));
+    );
 
     security_properties
 }
