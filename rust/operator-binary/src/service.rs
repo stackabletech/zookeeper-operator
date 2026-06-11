@@ -14,7 +14,7 @@ use crate::{
         ZOOKEEPER_LEADER_PORT_NAME, v1alpha1,
     },
     utils::build_recommended_labels,
-    zk_controller::ZK_CONTROLLER_NAME,
+    zk_controller::{ZK_CONTROLLER_NAME, validate::ValidatedCluster},
 };
 
 #[derive(Snafu, Debug)]
@@ -39,17 +39,17 @@ pub enum Error {
 ///
 /// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
 pub(crate) fn build_server_rolegroup_headless_service(
-    zk: &v1alpha1::ZookeeperCluster,
+    cluster: &ValidatedCluster,
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     resolved_product_image: &ResolvedProductImage,
 ) -> Result<Service, Error> {
     let metadata = ObjectMetaBuilder::new()
-        .name_and_namespace(zk)
+        .name_and_namespace(cluster)
         .name(rolegroup.rolegroup_headless_service_name())
-        .ownerreference_from_resource(zk, None, Some(true))
+        .ownerreference_from_resource(cluster, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
         .with_recommended_labels(&build_recommended_labels(
-            zk,
+            cluster,
             ZK_CONTROLLER_NAME,
             &resolved_product_image.app_version_label_value,
             &rolegroup.role,
@@ -59,7 +59,7 @@ pub(crate) fn build_server_rolegroup_headless_service(
         .build();
 
     let service_selector_labels =
-        Labels::role_group_selector(zk, APP_NAME, &rolegroup.role, &rolegroup.role_group)
+        Labels::role_group_selector(cluster, APP_NAME, &rolegroup.role, &rolegroup.role_group)
             .context(BuildLabelSnafu)?;
 
     let service_spec = ServiceSpec {
@@ -94,18 +94,18 @@ pub(crate) fn build_server_rolegroup_headless_service(
 
 /// The rolegroup [`Service`] for exposing metrics
 pub(crate) fn build_server_rolegroup_metrics_service(
-    zk: &v1alpha1::ZookeeperCluster,
+    cluster: &ValidatedCluster,
     rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
     resolved_product_image: &ResolvedProductImage,
     metrics_port: u16,
 ) -> Result<Service, Error> {
     let metadata = ObjectMetaBuilder::new()
-        .name_and_namespace(zk)
+        .name_and_namespace(cluster)
         .name(rolegroup.rolegroup_metrics_service_name())
-        .ownerreference_from_resource(zk, None, Some(true))
+        .ownerreference_from_resource(cluster, None, Some(true))
         .context(ObjectMissingMetadataForOwnerRefSnafu)?
         .with_recommended_labels(&build_recommended_labels(
-            zk,
+            cluster,
             ZK_CONTROLLER_NAME,
             &resolved_product_image.app_version_label_value,
             &rolegroup.role,
@@ -117,7 +117,7 @@ pub(crate) fn build_server_rolegroup_metrics_service(
         .build();
 
     let service_selector_labels =
-        Labels::role_group_selector(zk, APP_NAME, &rolegroup.role, &rolegroup.role_group)
+        Labels::role_group_selector(cluster, APP_NAME, &rolegroup.role, &rolegroup.role_group)
             .context(BuildLabelSnafu)?;
 
     let service_spec = ServiceSpec {

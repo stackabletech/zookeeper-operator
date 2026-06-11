@@ -84,7 +84,7 @@ use crate::{
 
 pub(crate) mod build;
 mod dereference;
-mod validate;
+pub(crate) mod validate;
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
 pub const ZK_FULL_CONTROLLER_NAME: &str = concatcp!(ZK_CONTROLLER_NAME, '.', OPERATOR_NAME);
@@ -366,11 +366,14 @@ pub async fn reconcile_zk(
         let metrics_port =
             build::properties::zoo_cfg::metrics_http_port(&validated_cluster, rolegroup_config);
 
-        let rg_headless_service =
-            build_server_rolegroup_headless_service(zk, &rolegroup, resolved_product_image)
-                .context(BuildServiceSnafu)?;
+        let rg_headless_service = build_server_rolegroup_headless_service(
+            &validated_cluster,
+            &rolegroup,
+            resolved_product_image,
+        )
+        .context(BuildServiceSnafu)?;
         let rg_metrics_service = build_server_rolegroup_metrics_service(
-            zk,
+            &validated_cluster,
             &rolegroup,
             resolved_product_image,
             metrics_port,
