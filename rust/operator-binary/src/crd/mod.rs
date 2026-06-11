@@ -1,7 +1,5 @@
-use std::{collections::BTreeMap, str::FromStr};
-
 use serde::{Deserialize, Serialize};
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{OptionExt, Snafu};
 use stackable_operator::{
     commons::{
         affinity::StackableAffinity,
@@ -12,24 +10,18 @@ use stackable_operator::{
             PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
         },
     },
-    config::{
-        fragment::{self, Fragment, ValidationError},
-        merge::Merge,
-    },
+    config::{fragment::Fragment, merge::Merge},
     crd::ClusterRef,
     deep_merger::ObjectOverrides,
-    k8s_openapi::{
-        api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
-        apimachinery::pkg::api::resource::Quantity,
-    },
-    kube::{CustomResource, ResourceExt, runtime::reflector::ObjectRef},
+    k8s_openapi::apimachinery::pkg::api::resource::Quantity,
+    kube::{CustomResource, runtime::reflector::ObjectRef},
     product_logging::{self, spec::Logging},
-    role_utils::{GenericRoleConfig, JavaCommonConfig, Role, RoleGroup, RoleGroupRef},
+    role_utils::{GenericRoleConfig, Role, RoleGroupRef},
     schemars::{self, JsonSchema},
     shared::time::Duration,
     status::condition::{ClusterCondition, HasStatusCondition},
     utils::cluster_info::KubernetesClusterInfo,
-    v2::config_overrides::KeyValueConfigOverrides,
+    v2::{config_overrides::KeyValueConfigOverrides, role_utils::JavaCommonConfig},
     versioned::versioned,
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
@@ -73,24 +65,8 @@ pub const DEFAULT_LISTENER_CLASS: &str = "cluster-internal";
 
 #[derive(Snafu, Debug)]
 pub enum Error {
-    #[snafu(display("object has no namespace associated"))]
-    NoNamespace,
-
-    #[snafu(display("unknown role {role}. Should be one of {roles:?}"))]
-    UnknownZookeeperRole {
-        source: strum::ParseError,
-        role: String,
-        roles: Vec<String>,
-    },
-
     #[snafu(display("the role {role} is not defined"))]
     CannotRetrieveZookeeperRole { role: String },
-
-    #[snafu(display("the role group {role_group} is not defined"))]
-    CannotRetrieveZookeeperRoleGroup { role_group: String },
-
-    #[snafu(display("fragment validation failure"))]
-    FragmentValidationFailure { source: ValidationError },
 }
 
 pub enum LoggingFramework {
@@ -490,33 +466,6 @@ impl v1alpha1::ZookeeperCluster {
         })
     }
 
-    /// Returns a reference to the role group. Raises an error if the role or role group are not defined.
-    pub fn rolegroup(
-        &self,
-        rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    ) -> Result<
-        RoleGroup<
-            v1alpha1::ZookeeperConfigFragment,
-            JavaCommonConfig,
-            v1alpha1::ZookeeperConfigOverrides,
-        >,
-        Error,
-    > {
-        let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
-            UnknownZookeeperRoleSnafu {
-                role: rolegroup_ref.role.to_owned(),
-                roles: ZookeeperRole::roles(),
-            }
-        })?;
-        let role = self.role(&role_variant)?;
-        role.role_groups
-            .get(&rolegroup_ref.role_group)
-            .with_context(|| CannotRetrieveZookeeperRoleGroupSnafu {
-                role_group: rolegroup_ref.role_group.to_owned(),
-            })
-            .cloned()
-    }
-
     /// Metadata about a server rolegroup
     pub fn server_rolegroup_ref(
         &self,
@@ -533,102 +482,6 @@ impl v1alpha1::ZookeeperCluster {
         match role {
             ZookeeperRole::Server => self.spec.servers.as_ref().map(|s| &s.role_config),
         }
-    }
-
-    /// List all pods expected to form the cluster
-    ///
-    /// We try to predict the pods here rather than looking at the current cluster state in order to
-    /// avoid instance churn. For example, regenerating zoo.cfg based on the cluster state would lead to
-    /// a lot of spurious restarts, as well as opening us up to dangerous split-brain conditions because
-    /// the pods have inconsistent snapshots of which servers they should expect to be in quorum.
-    pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, Error> {
-        let ns = self.metadata.namespace.clone().context(NoNamespaceSnafu)?;
-        let role_groups = self
-            .spec
-            .servers
-            .iter()
-            .flat_map(|role| &role.role_groups)
-            // Order rolegroups consistently, to avoid spurious downstream rewrites
-            .collect::<BTreeMap<_, _>>();
-        let mut pod_refs = Vec::new();
-        for (rolegroup_name, rolegroup) in role_groups {
-            let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
-            let myid_offset = self
-                .merged_config(&ZookeeperRole::Server, &rolegroup_ref)?
-                .myid_offset;
-            let ns = ns.clone();
-            // In case no replicas are specified we default to 1
-            for i in 0..rolegroup.replicas.unwrap_or(1) {
-                pod_refs.push(ZookeeperPodRef {
-                    namespace: ns.clone(),
-                    role_group_headless_service_name: rolegroup_ref
-                        .rolegroup_headless_service_name(),
-                    pod_name: format!("{role_group}-{i}", role_group = rolegroup_ref.object_name()),
-                    zookeeper_myid: i + myid_offset,
-                });
-            }
-        }
-        Ok(pod_refs.into_iter())
-    }
-
-    pub fn merged_config(
-        &self,
-        role: &ZookeeperRole,
-        rolegroup_ref: &RoleGroupRef<Self>,
-    ) -> Result<v1alpha1::ZookeeperConfig, Error> {
-        // Initialize the result with all default values as baseline
-        let conf_defaults =
-            v1alpha1::ZookeeperConfig::default_server_config(&self.name_any(), role);
-
-        // Retrieve role resource config
-        let role = self.role(role)?;
-        let mut conf_role = role.config.config.to_owned();
-
-        // Retrieve rolegroup specific resource config
-        let role_group = self.rolegroup(rolegroup_ref)?;
-        let mut conf_role_group = role_group.config.config;
-
-        // Merge more specific configs into default config
-        // Hierarchy is:
-        // 1. RoleGroup
-        // 2. Role
-        // 3. Default
-        conf_role.merge(&conf_defaults);
-        conf_role_group.merge(&conf_role);
-
-        fragment::validate(conf_role_group).context(FragmentValidationFailureSnafu)
-    }
-
-    pub fn logging(
-        &self,
-        role: &ZookeeperRole,
-        rolegroup_ref: &RoleGroupRef<Self>,
-    ) -> Result<Logging<v1alpha1::Container>, Error> {
-        let config = self.merged_config(role, rolegroup_ref)?;
-        Ok(config.logging)
-    }
-
-    /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
-    /// These can be defined at the role or rolegroup level and as usual, the
-    /// following precedence rules are implemented:
-    /// 1. group pvc
-    /// 2. role pvc
-    /// 3. a default PVC with 1Gi capacity
-    pub fn resources(
-        &self,
-        role: &ZookeeperRole,
-        rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    ) -> Result<(Vec<PersistentVolumeClaim>, ResourceRequirements), Error> {
-        let config = self.merged_config(role, rolegroup_ref)?;
-        let resources: Resources<v1alpha1::ZookeeperStorageConfig, NoRuntimeLimits> =
-            config.resources;
-
-        let data_pvc = resources
-            .storage
-            .data
-            .build_pvc("data", Some(vec!["ReadWriteOnce"]));
-
-        Ok((vec![data_pvc], resources.into()))
     }
 }
 

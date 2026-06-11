@@ -27,7 +27,7 @@ use stackable_operator::{
             core::v1::{
                 ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource, ExecAction,
                 ObjectFieldSelector, PersistentVolumeClaim, PodSecurityContext, Probe,
-                ServiceAccount, Volume,
+                ResourceRequirements, ServiceAccount, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
@@ -79,9 +79,12 @@ use crate::{
         self, build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
     },
     utils::build_recommended_labels,
-    zk_controller::build::{
-        jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
-        properties::ConfigFileName,
+    zk_controller::{
+        build::{
+            jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
+            properties::ConfigFileName,
+        },
+        validate::ZookeeperRoleGroupConfig,
     },
 };
 
@@ -365,7 +368,6 @@ pub async fn reconcile_zk(
         .flatten();
     for (rolegroup_name, rolegroup_config) in server_role_group_configs {
         let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
-        let merged_config = &rolegroup_config.config;
         let metrics_port =
             build::properties::zoo_cfg::metrics_http_port(&validated_cluster, rolegroup_config);
 
@@ -392,12 +394,10 @@ pub async fn reconcile_zk(
         })?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             zk,
-            &zk_role,
             &rolegroup,
-            &rolegroup_config.env_overrides,
+            rolegroup_config,
             zookeeper_security,
             resolved_product_image,
-            merged_config,
             metrics_port,
             &rbac_sa,
         )?;
@@ -512,23 +512,15 @@ pub fn build_role_listener_pvc(
 #[allow(clippy::too_many_arguments)]
 fn build_server_rolegroup_statefulset(
     zk: &v1alpha1::ZookeeperCluster,
-    zk_role: &ZookeeperRole,
     rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    env_overrides: &EnvVarSet,
+    rolegroup_config: &ZookeeperRoleGroupConfig,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
-    merged_config: &v1alpha1::ZookeeperConfig,
     metrics_port: u16,
     service_account: &ServiceAccount,
 ) -> Result<StatefulSet> {
-    let role = zk.role(zk_role).context(InternalOperatorFailureSnafu)?;
-    let rolegroup = zk
-        .rolegroup(rolegroup_ref)
-        .context(InternalOperatorFailureSnafu)?;
-
-    let logging = zk
-        .logging(zk_role, rolegroup_ref)
-        .context(CrdValidationFailureSnafu)?;
+    let merged_config = &rolegroup_config.config;
+    let logging = &merged_config.logging;
 
     // The operator-injected environment variables (formerly produced by the
     // product-config `Configuration::compute_env` implementation) plus the
@@ -544,11 +536,17 @@ fn build_server_rolegroup_statefulset(
             &EnvVarName::from_str_unsafe("ZOOCFGDIR"),
             STACKABLE_RW_CONFIG_DIR,
         )
-        .merge(env_overrides.clone());
+        .merge(rolegroup_config.env_overrides.clone());
 
-    let (original_pvcs, resources) = zk
-        .resources(zk_role, rolegroup_ref)
-        .context(CrdValidationFailureSnafu)?;
+    // Build the `data` PVC and the container resource requirements from the merged config.
+    // The precedence (role group > role > default) is already resolved in the validate step.
+    let resources_config = merged_config.resources.clone();
+    let data_pvc = resources_config
+        .storage
+        .data
+        .build_pvc("data", Some(vec!["ReadWriteOnce"]));
+    let original_pvcs = vec![data_pvc];
+    let resources: ResourceRequirements = resources_config.into();
 
     let mut cb_prepare =
         ContainerBuilder::new("prepare").expect("invalid hard-coded container name");
@@ -676,12 +674,7 @@ fn build_server_rolegroup_statefulset(
         )
         .add_env_var(
             "SERVER_JVMFLAGS",
-            construct_non_heap_jvm_args(
-                role,
-                &rolegroup_ref.role_group,
-                &resolved_product_image.product_version,
-            )
-            .context(ConstructJvmArgumentsSnafu)?,
+            construct_non_heap_jvm_args(rolegroup_config, &resolved_product_image.product_version),
         )
         .add_env_var(
             "CONTAINERDEBUG_LOG_DIRECTORY",
@@ -830,8 +823,7 @@ fn build_server_rolegroup_statefulset(
     add_graceful_shutdown_config(merged_config, &mut pod_builder).context(GracefulShutdownSnafu)?;
 
     let mut pod_template = pod_builder.build_template();
-    pod_template.merge_from(role.config.pod_overrides.clone());
-    pod_template.merge_from(rolegroup.config.pod_overrides.clone());
+    pod_template.merge_from(rolegroup_config.pod_overrides.clone());
 
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(zk)
@@ -855,7 +847,7 @@ fn build_server_rolegroup_statefulset(
 
     let statefulset_spec = StatefulSetSpec {
         pod_management_policy: Some("Parallel".to_string()),
-        replicas: rolegroup.replicas.map(i32::from),
+        replicas: Some(i32::from(rolegroup_config.replicas)),
         selector: LabelSelector {
             match_labels: Some(statefulset_match_labels.into()),
             ..LabelSelector::default()
@@ -886,24 +878,70 @@ pub fn error_policy(
     }
 }
 
+/// Shared helpers for building validated test clusters from minimal YAML fixtures.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use stackable_operator::{
+        cli::OperatorEnvironmentOptions, commons::networking::DomainName,
+        utils::cluster_info::KubernetesClusterInfo,
+    };
+
+    use crate::{
+        crd::{authentication::DereferencedAuthenticationClasses, v1alpha1},
+        zk_controller::{
+            dereference::DereferencedObjects,
+            validate::{ValidatedCluster, validate},
+        },
+    };
+
+    /// Parses a minimal `ZookeeperCluster` test fixture, defaulting `namespace`/`uid` so the
+    /// validate step can build a [`ValidatedCluster`].
+    pub fn minimal_zk(yaml: &str) -> v1alpha1::ZookeeperCluster {
+        let mut zk: v1alpha1::ZookeeperCluster =
+            serde_yaml::from_str(yaml).expect("invalid test ZookeeperCluster YAML");
+        zk.metadata
+            .namespace
+            .get_or_insert_with(|| "default".to_owned());
+        zk.metadata
+            .uid
+            .get_or_insert_with(|| "c27b3971-ca72-42c1-80a4-abdfc1db0ddd".to_owned());
+        zk
+    }
+
+    fn cluster_info() -> KubernetesClusterInfo {
+        KubernetesClusterInfo {
+            cluster_domain: DomainName::try_from("cluster.local").expect("valid domain"),
+        }
+    }
+
+    fn operator_environment() -> OperatorEnvironmentOptions {
+        OperatorEnvironmentOptions {
+            operator_namespace: "stackable-operators".to_owned(),
+            operator_service_name: "zookeeper-operator".to_owned(),
+            image_repository: "oci.example.org".to_owned(),
+        }
+    }
+
+    /// Runs the real validate step against a minimal (auth-free) fixture.
+    pub fn validated_cluster(zk: &v1alpha1::ZookeeperCluster) -> ValidatedCluster {
+        validate(
+            zk,
+            &DereferencedObjects {
+                authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
+            },
+            &operator_environment(),
+            &cluster_info(),
+        )
+        .expect("validate should succeed for the test fixture")
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
-    use stackable_operator::{
-        commons::networking::DomainName,
-        k8s_openapi::api::core::v1::ConfigMap,
-        role_utils::JavaCommonConfig,
-        utils::cluster_info::KubernetesClusterInfo,
-        v2::controller_utils::{get_cluster_name, get_namespace, get_uid},
-    };
+    use stackable_operator::k8s_openapi::api::core::v1::ConfigMap;
 
     use super::*;
-    use crate::{
-        crd::CONTAINER_IMAGE_BASE_NAME,
-        framework::role_utils::with_validated_config,
-        zk_controller::validate::{ValidatedCluster, ValidatedClusterConfig},
-    };
+    use crate::zk_controller::test_support::{minimal_zk, validated_cluster};
 
     #[test]
     fn test_default_config() {
@@ -1048,68 +1086,11 @@ mod tests {
     }
 
     fn build_config_map(zookeeper_yaml: &str) -> ConfigMap {
-        let mut zookeeper: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(zookeeper_yaml).expect("illegal test input");
-        zookeeper.metadata.uid = Some("c27b3971-ca72-42c1-80a4-abdfc1db0ddd".to_owned());
-        zookeeper.metadata.namespace = Some("default".to_owned());
-        let cluster_info = KubernetesClusterInfo {
-            cluster_domain: DomainName::try_from("cluster.local").unwrap(),
-        };
-        let image = zookeeper
-            .spec
-            .image
-            .resolve(CONTAINER_IMAGE_BASE_NAME, "oci.example.org", "0.0.0-dev")
-            .expect("test resolved product image is always valid");
-        let zookeeper_security = ZookeeperSecurity::new_for_tests();
-
-        let zk_role = ZookeeperRole::Server;
-        let role = zookeeper.role(&zk_role).unwrap();
-        let default_config =
-            v1alpha1::ZookeeperConfig::default_server_config(&zookeeper.name_any(), &zk_role);
-        let mut groups = BTreeMap::new();
-        for (rg_name, rg) in &role.role_groups {
-            let validated_rg = with_validated_config::<
-                v1alpha1::ZookeeperConfig,
-                JavaCommonConfig,
-                v1alpha1::ZookeeperConfigFragment,
-                _,
-                v1alpha1::ZookeeperConfigOverrides,
-            >(rg, role, &default_config)
-            .unwrap();
-            groups.insert(rg_name.clone(), validated_rg);
-        }
-        let mut role_group_configs = BTreeMap::new();
-        role_group_configs.insert(zk_role.clone(), groups);
-
-        let server_addresses = zookeeper
-            .pods()
-            .unwrap()
-            .map(|pod| {
-                (
-                    format!("server.{id}", id = pod.zookeeper_myid),
-                    format!(
-                        "{fqdn}:{ZOOKEEPER_LEADER_PORT}:{ZOOKEEPER_ELECTION_PORT};{client_port}",
-                        fqdn = pod.internal_fqdn(&cluster_info),
-                        client_port = zookeeper_security.client_port()
-                    ),
-                )
-            })
-            .collect();
-
-        let validated_cluster = ValidatedCluster::new(
-            get_cluster_name(&zookeeper).unwrap(),
-            get_namespace(&zookeeper).unwrap(),
-            get_uid(&zookeeper).unwrap(),
-            image,
-            ValidatedClusterConfig {
-                zookeeper_security,
-                server_addresses,
-            },
-            role_group_configs,
-        );
-
+        let zookeeper = minimal_zk(zookeeper_yaml);
+        let validated_cluster = validated_cluster(&zookeeper);
         let rolegroup_ref = zookeeper.server_rolegroup_ref("default");
-        let rolegroup_config = &validated_cluster.role_group_configs[&zk_role]["default"];
+        let rolegroup_config =
+            &validated_cluster.role_group_configs[&ZookeeperRole::Server]["default"];
 
         build::config_map::build_server_rolegroup_config_map(
             &validated_cluster,

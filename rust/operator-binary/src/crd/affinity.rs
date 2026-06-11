@@ -33,11 +33,12 @@ mod tests {
             api::core::v1::{PodAffinityTerm, PodAntiAffinity, WeightedPodAffinityTerm},
             apimachinery::pkg::apis::meta::v1::LabelSelector,
         },
-        kube::runtime::reflector::ObjectRef,
-        role_utils::RoleGroupRef,
     };
 
-    use crate::crd::{affinity::ZookeeperRole, v1alpha1};
+    use crate::{
+        crd::affinity::ZookeeperRole,
+        zk_controller::test_support::{minimal_zk, validated_cluster},
+    };
 
     #[test]
     fn test_affinity_defaults() {
@@ -49,25 +50,12 @@ mod tests {
         spec:
           image:
             productVersion: 3.9.5
-          clusterConfig:
-            authentication:
-              - authenticationClass: zk-client-tls
-            tls:
-              serverSecretClass: tls
-              quorumSecretClass: tls
           servers:
             roleGroups:
               default:
                 replicas: 3
         "#;
-        let zk: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(input).expect("illegal test input");
-
-        let rolegroup_ref = RoleGroupRef {
-            cluster: ObjectRef::from_obj(&zk),
-            role: ZookeeperRole::Server.to_string(),
-            role_group: "default".to_string(),
-        };
+        let zk = minimal_zk(input);
 
         let expected: StackableAffinity = StackableAffinity {
             pod_affinity: None,
@@ -110,10 +98,10 @@ mod tests {
             node_selector: None,
         };
 
-        let affinity = zk
-            .merged_config(&ZookeeperRole::Server, &rolegroup_ref)
-            .unwrap()
-            .affinity;
+        let affinity = validated_cluster(&zk).role_group_configs[&ZookeeperRole::Server]["default"]
+            .config
+            .affinity
+            .clone();
 
         assert_eq!(affinity, expected);
     }
