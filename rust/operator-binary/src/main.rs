@@ -40,7 +40,6 @@ use crate::{
 };
 
 mod command;
-mod config;
 pub mod crd;
 mod framework;
 mod listener;

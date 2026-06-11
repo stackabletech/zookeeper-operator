@@ -4,21 +4,13 @@ use stackable_operator::{
     role_utils::{self, JvmArgumentOverrides},
 };
 
+use super::properties::ConfigFileName;
 use crate::crd::{
     JMX_METRICS_PORT, LoggingFramework, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
     ZookeeperServerRoleType, logging_framework, v1alpha1::ZookeeperConfig,
 };
 
 const JAVA_HEAP_FACTOR: f32 = 0.8;
-
-/// The JVM security properties file the operator writes into the rolegroup
-/// ConfigMap (see `zk_controller::build::properties::ConfigFileName`).
-const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
-
-/// The log config files the JVM is pointed at via system properties. These are
-/// written by `zk_controller::build::properties::logging`.
-const LOG4J_CONFIG_FILE: &str = "log4j.properties";
-const LOGBACK_CONFIG_FILE: &str = "logback.xml";
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -43,16 +35,21 @@ fn construct_jvm_args(
     let logging_framework = logging_framework(product_version);
 
     let jvm_args = vec![
-        format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
+        format!(
+            "-Djava.security.properties={STACKABLE_CONFIG_DIR}/{}",
+            ConfigFileName::SecurityProperties
+        ),
         format!(
             "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={JMX_METRICS_PORT}:/stackable/jmx/server.yaml"
         ),
         match logging_framework {
-            LoggingFramework::LOG4J => {
-                format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}")
-            }
+            LoggingFramework::LOG4J => format!(
+                "-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{config_file}",
+                config_file = ConfigFileName::Log4jProperties
+            ),
             LoggingFramework::LOGBACK => format!(
-                "-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"
+                "-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{config_file}",
+                config_file = ConfigFileName::LogbackXml
             ),
         },
     ];

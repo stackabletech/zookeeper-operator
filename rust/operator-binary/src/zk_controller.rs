@@ -65,7 +65,6 @@ use strum::{EnumDiscriminants, IntoStaticStr};
 use crate::{
     APP_NAME, OPERATOR_NAME, ObjectRef,
     command::create_init_container_command_args,
-    config::jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
     crd::{
         JMX_METRICS_PORT_NAME, METRICS_PROVIDER_HTTP_PORT_NAME, STACKABLE_CONFIG_DIR,
         STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
@@ -80,6 +79,10 @@ use crate::{
         self, build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
     },
     utils::build_recommended_labels,
+    zk_controller::build::{
+        jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
+        properties::ConfigFileName,
+    },
 };
 
 pub(crate) mod build;
@@ -231,7 +234,7 @@ pub enum Error {
     },
 
     #[snafu(display("failed to construct JVM arguments"))]
-    ConstructJvmArguments { source: crate::config::jvm::Error },
+    ConstructJvmArguments { source: build::jvm::Error },
 
     #[snafu(display("failed to apply group listener"))]
     ApplyGroupListener {
@@ -656,10 +659,11 @@ fn build_server_rolegroup_statefulset(
             {remove_vector_shutdown_file_command}
             prepare_signal_handlers
             containerdebug --output={STACKABLE_LOG_DIR}/containerdebug-state.json --loop &
-            bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/zoo.cfg &
+            bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/{zoo_cfg} &
             wait_for_termination $!
             {create_vector_shutdown_file_command}
             ",
+            zoo_cfg = ConfigFileName::ZooCfg,
             remove_vector_shutdown_file_command =
                 remove_vector_shutdown_file_command(STACKABLE_LOG_DIR),
             create_vector_shutdown_file_command =

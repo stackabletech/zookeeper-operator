@@ -14,4 +14,8 @@ pub enum ConfigFileName {
     ZooCfg,
     #[strum(serialize = "security.properties")]
     SecurityProperties,
+    #[strum(serialize = "log4j.properties")]
+    Log4jProperties,
+    #[strum(serialize = "logback.xml")]
+    LogbackXml,
 }

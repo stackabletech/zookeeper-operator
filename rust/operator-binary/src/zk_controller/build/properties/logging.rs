@@ -13,12 +13,9 @@ use stackable_operator::{
     role_utils::RoleGroupRef,
 };
 
+use super::ConfigFileName;
 use crate::crd::{LoggingFramework, STACKABLE_LOG_DIR, v1alpha1};
 
-/// The logback config file name (when the product uses the LOGBACK framework).
-pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
-/// The log4j config file name (when the product uses the LOG4J framework).
-pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
 /// The file the ZooKeeper server logs are written to.
 pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
 
@@ -57,7 +54,7 @@ pub fn build(
         match framework {
             LoggingFramework::LOG4J => {
                 data.insert(
-                    LOG4J_CONFIG_FILE.to_string(),
+                    ConfigFileName::Log4jProperties.to_string(),
                     product_logging::framework::create_log4j_config(
                         &log_dir,
                         ZOOKEEPER_LOG_FILE,
@@ -69,7 +66,7 @@ pub fn build(
             }
             LoggingFramework::LOGBACK => {
                 data.insert(
-                    LOGBACK_CONFIG_FILE.to_string(),
+                    ConfigFileName::LogbackXml.to_string(),
                     product_logging::framework::create_logback_config(
                         &log_dir,
                         ZOOKEEPER_LOG_FILE,
