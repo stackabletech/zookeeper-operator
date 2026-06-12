@@ -12,7 +12,7 @@ use stackable_operator::{
     crd::listener,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::{
-        Resource,
+        Resource, ResourceExt,
         api::ObjectMeta,
         core::{DeserializeGuard, DynamicObject, error_boundary},
         runtime::{controller, finalizer, reflector::ObjectRef},
@@ -303,7 +303,7 @@ async fn reconcile_apply(
 
     let listener = client
         .get::<listener::v1alpha1::Listener>(
-            &role_listener_name(&zk, &ZookeeperRole::Server),
+            &role_listener_name(&zk.name_any(), &ZookeeperRole::Server),
             zk.metadata
                 .namespace
                 .as_deref()

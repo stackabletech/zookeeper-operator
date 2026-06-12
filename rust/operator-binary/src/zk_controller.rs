@@ -1,5 +1,5 @@
 //! Ensures that `Pod`s are configured and running for each [`v1alpha1::ZookeeperCluster`]
-use std::{hash::Hasher, sync::Arc};
+use std::{hash::Hasher, str::FromStr, sync::Arc};
 
 use const_format::concatcp;
 use fnv::FnvHasher;
@@ -58,7 +58,13 @@ use stackable_operator::{
         statefulset::StatefulSetConditionBuilder,
     },
     utils::COMMON_BASH_TRAP_FUNCTIONS,
-    v2::builder::pod::container::{EnvVarName, EnvVarSet},
+    v2::{
+        builder::{
+            meta::ownerreference_from_resource,
+            pod::container::{EnvVarName, EnvVarSet},
+        },
+        types::operator::{ProductVersion, RoleGroupName},
+    },
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
@@ -75,16 +81,13 @@ use crate::{
     },
     listener::{build_role_listener, role_listener_name},
     operations::{graceful_shutdown::add_graceful_shutdown_config, pdb::add_pdbs},
-    service::{
-        self, build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
-    },
-    utils::build_recommended_labels,
+    service::{build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service},
     zk_controller::{
         build::{
             jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
             properties::ConfigFileName,
         },
-        validate::ZookeeperRoleGroupConfig,
+        validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
     },
 };
 
@@ -244,18 +247,10 @@ pub enum Error {
         source: stackable_operator::cluster_resources::Error,
     },
 
-    #[snafu(display("failed to configure listener"))]
-    ListenerConfiguration { source: crate::listener::Error },
-
-    // #[snafu(display("failed to configure listener"))]
-    // ListenerConfiguration { source: crate::listener::Error },
     #[snafu(display("failed to build listener volume"))]
     BuildListenerPersistentVolume {
         source: stackable_operator::builder::pod::volume::ListenerOperatorVolumeSourceBuilderError,
     },
-
-    #[snafu(display("failed to build service"))]
-    BuildService { source: service::Error },
 }
 
 impl ReconcilerError for Error {
@@ -296,8 +291,6 @@ impl ReconcilerError for Error {
             Error::ConstructJvmArguments { .. } => None,
             Error::ApplyGroupListener { .. } => None,
             Error::BuildListenerPersistentVolume { .. } => None,
-            Error::ListenerConfiguration { .. } => None,
-            Error::BuildService { .. } => None,
         }
     }
 }
@@ -367,34 +360,37 @@ pub async fn reconcile_zk(
         .into_iter()
         .flatten();
     for (rolegroup_name, rolegroup_config) in server_role_group_configs {
-        let rolegroup = zk.server_rolegroup_ref(rolegroup_name);
+        // `RoleGroupRef` is only kept for the Vector agent config (the upstream v1
+        // `create_vector_config` requires it) and for error context display. Resource naming,
+        // labels and owner references are derived from the `ValidatedCluster` and the type-safe
+        // `RoleGroupName`.
+        let rolegroup = zk.server_rolegroup_ref(rolegroup_name.to_string());
         let metrics_port =
             build::properties::zoo_cfg::metrics_http_port(&validated_cluster, rolegroup_config);
 
-        let rg_headless_service = build_server_rolegroup_headless_service(
-            &validated_cluster,
-            &rolegroup,
-            resolved_product_image,
-        )
-        .context(BuildServiceSnafu)?;
+        let rg_headless_service =
+            build_server_rolegroup_headless_service(&validated_cluster, rolegroup_name);
         let rg_metrics_service = build_server_rolegroup_metrics_service(
             &validated_cluster,
-            &rolegroup,
-            resolved_product_image,
+            rolegroup_name,
             metrics_port,
-        )
-        .context(BuildServiceSnafu)?;
+        );
+        let vector_config = build::properties::logging::build_vector_config(
+            &rolegroup,
+            &rolegroup_config.config.logging,
+        );
         let rg_configmap = build::config_map::build_server_rolegroup_config_map(
             &validated_cluster,
-            &rolegroup,
+            rolegroup_name,
             rolegroup_config,
+            vector_config,
         )
         .context(BuildRoleGroupConfigMapSnafu {
             rolegroup: rolegroup.clone(),
         })?;
         let rg_statefulset = build_server_rolegroup_statefulset(
-            zk,
-            &rolegroup,
+            &validated_cluster,
+            rolegroup_name,
             rolegroup_config,
             zookeeper_security,
             resolved_product_image,
@@ -438,7 +434,7 @@ pub async fn reconcile_zk(
     if let Some(ZookeeperServerRoleConfig { common, .. }) = role_config {
         add_pdbs(
             &common.pod_disruption_budget,
-            zk,
+            &validated_cluster,
             &zk_role,
             client,
             &mut cluster_resources,
@@ -447,8 +443,7 @@ pub async fn reconcile_zk(
         .context(FailedToCreatePdbSnafu)?;
     }
 
-    let listener = build_role_listener(zk, &zk_role, resolved_product_image, zookeeper_security)
-        .context(ListenerConfigurationSnafu)?;
+    let listener = build_role_listener(&validated_cluster, &zk_role);
     let applied_listener = cluster_resources
         .add(client, listener)
         .await
@@ -511,8 +506,8 @@ pub fn build_role_listener_pvc(
 /// The [`Pod`](`stackable_operator::k8s_openapi::api::core::v1::Pod`)s are accessible through the corresponding headless [`stackable_operator::k8s_openapi::api::core::v1::Service`] (from [`build_server_rolegroup_headless_service`]).
 #[allow(clippy::too_many_arguments)]
 fn build_server_rolegroup_statefulset(
-    zk: &v1alpha1::ZookeeperCluster,
-    rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
+    cluster: &ValidatedCluster,
+    role_group_name: &RoleGroupName,
     rolegroup_config: &ZookeeperRoleGroupConfig,
     zookeeper_security: &ZookeeperSecurity,
     resolved_product_image: &ResolvedProductImage,
@@ -521,6 +516,7 @@ fn build_server_rolegroup_statefulset(
 ) -> Result<StatefulSet> {
     let merged_config = &rolegroup_config.config;
     let logging = &merged_config.logging;
+    let resource_names = cluster.resource_names(role_group_name);
 
     // The operator-injected environment variables (formerly produced by the
     // product-config `Configuration::compute_env` implementation) plus the
@@ -554,19 +550,15 @@ fn build_server_rolegroup_statefulset(
         ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
     let mut pod_builder = PodBuilder::new();
 
-    // Used for PVC templates that cannot be modified once they are deployed
-    let unversioned_recommended_labels = Labels::recommended(&build_recommended_labels(
-        zk,
-        ZK_CONTROLLER_NAME,
-        // A version value is required, but we need to use something constant so that we don't run into immutabile field issues.
-        "none",
-        &rolegroup_ref.role,
-        &rolegroup_ref.role_group,
-    ))
-    .context(BuildLabelSnafu)?;
+    // Used for PVC templates that cannot be modified once they are deployed. A version value is
+    // required, so a constant "none" is used to keep the labels stable across version upgrades.
+    let unversioned_recommended_labels = cluster.recommended_labels_for(
+        &ProductVersion::from_str("none").expect("'none' is a valid product version"),
+        role_group_name,
+    );
 
     let listener_pvc = build_role_listener_pvc(
-        &role_listener_name(zk, &ZookeeperRole::Server),
+        &role_listener_name(cluster.name.as_ref(), &ZookeeperRole::Server),
         &unversioned_recommended_labels,
     )?;
 
@@ -720,14 +712,7 @@ fn build_server_rolegroup_statefulset(
         .build();
 
     let pb_metadata = ObjectMetaBuilder::new()
-        .with_recommended_labels(&build_recommended_labels(
-            zk,
-            ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label_value,
-            &rolegroup_ref.role,
-            &rolegroup_ref.role_group,
-        ))
-        .context(ObjectMetaSnafu)?
+        .with_labels(cluster.recommended_labels(role_group_name))
         .build();
 
     pod_builder
@@ -739,7 +724,7 @@ fn build_server_rolegroup_statefulset(
         .add_volume(Volume {
             name: "config".to_string(),
             config_map: Some(ConfigMapVolumeSource {
-                name: rolegroup_ref.object_name(),
+                name: resource_names.role_group_config_map().to_string(),
                 ..ConfigMapVolumeSource::default()
             }),
             ..Volume::default()
@@ -781,7 +766,7 @@ fn build_server_rolegroup_statefulset(
     {
         config_map.into()
     } else {
-        rolegroup_ref.object_name()
+        resource_names.role_group_config_map().to_string()
     };
     pod_builder
         .add_volume(Volume {
@@ -795,7 +780,7 @@ fn build_server_rolegroup_statefulset(
         .context(AddVolumeSnafu)?;
 
     if logging.enable_vector_agent {
-        match &zk.spec.cluster_config.vector_aggregator_config_map_name {
+        match &cluster.cluster_config.vector_aggregator_config_map_name {
             Some(vector_aggregator_config_map_name) => {
                 pod_builder.add_container(
                     product_logging::framework::vector_container(
@@ -826,33 +811,21 @@ fn build_server_rolegroup_statefulset(
     pod_template.merge_from(rolegroup_config.pod_overrides.clone());
 
     let metadata = ObjectMetaBuilder::new()
-        .name_and_namespace(zk)
-        .name(rolegroup_ref.object_name())
-        .ownerreference_from_resource(zk, None, Some(true))
-        .context(ObjectMissingMetadataForOwnerRefSnafu)?
-        .with_recommended_labels(&build_recommended_labels(
-            zk,
-            ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label_value,
-            &rolegroup_ref.role,
-            &rolegroup_ref.role_group,
-        ))
-        .context(ObjectMetaSnafu)?
+        .name_and_namespace(cluster)
+        .name(resource_names.stateful_set_name().to_string())
+        .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
+        .with_labels(cluster.recommended_labels(role_group_name))
         .with_label(RESTART_CONTROLLER_ENABLED_LABEL.to_owned())
         .build();
-
-    let statefulset_match_labels =
-        Labels::role_group_selector(zk, APP_NAME, &rolegroup_ref.role, &rolegroup_ref.role_group)
-            .context(BuildLabelSnafu)?;
 
     let statefulset_spec = StatefulSetSpec {
         pod_management_policy: Some("Parallel".to_string()),
         replicas: Some(i32::from(rolegroup_config.replicas)),
         selector: LabelSelector {
-            match_labels: Some(statefulset_match_labels.into()),
+            match_labels: Some(cluster.role_group_selector(role_group_name).into()),
             ..LabelSelector::default()
         },
-        service_name: Some(rolegroup_ref.rolegroup_headless_service_name()),
+        service_name: Some(resource_names.headless_service_name().to_string()),
         template: pod_template,
         volume_claim_templates: Some(pvcs),
         ..StatefulSetSpec::default()
@@ -938,7 +911,11 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use stackable_operator::k8s_openapi::api::core::v1::ConfigMap;
+    use std::str::FromStr;
+
+    use stackable_operator::{
+        k8s_openapi::api::core::v1::ConfigMap, v2::types::operator::RoleGroupName,
+    };
 
     use super::*;
     use crate::zk_controller::test_support::{minimal_zk, validated_cluster};
@@ -1088,14 +1065,15 @@ mod tests {
     fn build_config_map(zookeeper_yaml: &str) -> ConfigMap {
         let zookeeper = minimal_zk(zookeeper_yaml);
         let validated_cluster = validated_cluster(&zookeeper);
-        let rolegroup_ref = zookeeper.server_rolegroup_ref("default");
+        let role_group_name = RoleGroupName::from_str("default").expect("valid role group name");
         let rolegroup_config =
-            &validated_cluster.role_group_configs[&ZookeeperRole::Server]["default"];
+            &validated_cluster.role_group_configs[&ZookeeperRole::Server][&role_group_name];
 
         build::config_map::build_server_rolegroup_config_map(
             &validated_cluster,
-            &rolegroup_ref,
+            &role_group_name,
             rolegroup_config,
+            None,
         )
         .unwrap()
     }

@@ -25,7 +25,7 @@ pub fn get_affinity(cluster_name: &str, role: &ZookeeperRole) -> StackableAffini
 #[cfg(test)]
 mod tests {
 
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, str::FromStr};
 
     use stackable_operator::{
         commons::affinity::StackableAffinity,
@@ -33,6 +33,7 @@ mod tests {
             api::core::v1::{PodAffinityTerm, PodAntiAffinity, WeightedPodAffinityTerm},
             apimachinery::pkg::apis::meta::v1::LabelSelector,
         },
+        v2::types::operator::RoleGroupName,
     };
 
     use crate::{
@@ -98,7 +99,9 @@ mod tests {
             node_selector: None,
         };
 
-        let affinity = validated_cluster(&zk).role_group_configs[&ZookeeperRole::Server]["default"]
+        let default_group = RoleGroupName::from_str("default").expect("valid role group name");
+        let affinity = validated_cluster(&zk).role_group_configs[&ZookeeperRole::Server]
+            [&default_group]
             .config
             .affinity
             .clone();

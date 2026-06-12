@@ -1,66 +1,37 @@
-use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::meta::ObjectMetaBuilder,
-    commons::product_image_selection::ResolvedProductImage,
     k8s_openapi::api::core::v1::{Service, ServicePort, ServiceSpec},
     kvp::{Annotations, Labels},
-    role_utils::RoleGroupRef,
+    v2::{builder::meta::ownerreference_from_resource, types::operator::RoleGroupName},
 };
 
 use crate::{
     crd::{
-        APP_NAME, JMX_METRICS_PORT, JMX_METRICS_PORT_NAME, METRICS_PROVIDER_HTTP_PORT_NAME,
+        JMX_METRICS_PORT, JMX_METRICS_PORT_NAME, METRICS_PROVIDER_HTTP_PORT_NAME,
         ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_LEADER_PORT,
-        ZOOKEEPER_LEADER_PORT_NAME, v1alpha1,
+        ZOOKEEPER_LEADER_PORT_NAME,
     },
-    utils::build_recommended_labels,
-    zk_controller::{ZK_CONTROLLER_NAME, validate::ValidatedCluster},
+    zk_controller::validate::ValidatedCluster,
 };
-
-#[derive(Snafu, Debug)]
-pub enum Error {
-    #[snafu(display("object is missing metadata to build owner reference"))]
-    ObjectMissingMetadataForOwnerRef {
-        source: stackable_operator::builder::meta::Error,
-    },
-
-    #[snafu(display("failed to build Metadata"))]
-    BuildMetadata {
-        source: stackable_operator::builder::meta::Error,
-    },
-
-    #[snafu(display("failed to build Labels"))]
-    BuildLabel {
-        source: stackable_operator::kvp::LabelError,
-    },
-}
 
 /// The rolegroup [`Service`] is a headless service that allows internal access to the instances of a certain rolegroup
 ///
 /// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
 pub(crate) fn build_server_rolegroup_headless_service(
     cluster: &ValidatedCluster,
-    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    resolved_product_image: &ResolvedProductImage,
-) -> Result<Service, Error> {
+    role_group_name: &RoleGroupName,
+) -> Service {
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(cluster)
-        .name(rolegroup.rolegroup_headless_service_name())
-        .ownerreference_from_resource(cluster, None, Some(true))
-        .context(ObjectMissingMetadataForOwnerRefSnafu)?
-        .with_recommended_labels(&build_recommended_labels(
-            cluster,
-            ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label_value,
-            &rolegroup.role,
-            &rolegroup.role_group,
-        ))
-        .context(BuildMetadataSnafu)?
+        .name(
+            cluster
+                .resource_names(role_group_name)
+                .headless_service_name()
+                .to_string(),
+        )
+        .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
+        .with_labels(cluster.recommended_labels(role_group_name))
         .build();
-
-    let service_selector_labels =
-        Labels::role_group_selector(cluster, APP_NAME, &rolegroup.role, &rolegroup.role_group)
-            .context(BuildLabelSnafu)?;
 
     let service_spec = ServiceSpec {
         // Internal communication does not need to be exposed
@@ -80,45 +51,44 @@ pub(crate) fn build_server_rolegroup_headless_service(
                 ..ServicePort::default()
             },
         ]),
-        selector: Some(service_selector_labels.into()),
+        selector: Some(cluster.role_group_selector(role_group_name).into()),
         publish_not_ready_addresses: Some(true),
         ..ServiceSpec::default()
     };
 
-    Ok(Service {
+    Service {
         metadata,
         spec: Some(service_spec),
         status: None,
-    })
+    }
+}
+
+/// The metrics [`Service`] name, `<cluster>-<role>-<rolegroup>-metrics`.
+///
+/// [`ResourceNames`](stackable_operator::v2::role_group_utils::ResourceNames) has no metrics
+/// service helper, so the `-metrics` suffix is appended to the qualified role-group name (which is
+/// also the StatefulSet name).
+fn metrics_service_name(cluster: &ValidatedCluster, role_group_name: &RoleGroupName) -> String {
+    format!(
+        "{qualified}-metrics",
+        qualified = cluster.resource_names(role_group_name).stateful_set_name()
+    )
 }
 
 /// The rolegroup [`Service`] for exposing metrics
 pub(crate) fn build_server_rolegroup_metrics_service(
     cluster: &ValidatedCluster,
-    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    resolved_product_image: &ResolvedProductImage,
+    role_group_name: &RoleGroupName,
     metrics_port: u16,
-) -> Result<Service, Error> {
+) -> Service {
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(cluster)
-        .name(rolegroup.rolegroup_metrics_service_name())
-        .ownerreference_from_resource(cluster, None, Some(true))
-        .context(ObjectMissingMetadataForOwnerRefSnafu)?
-        .with_recommended_labels(&build_recommended_labels(
-            cluster,
-            ZK_CONTROLLER_NAME,
-            &resolved_product_image.app_version_label_value,
-            &rolegroup.role,
-            &rolegroup.role_group,
-        ))
-        .context(BuildMetadataSnafu)?
+        .name(metrics_service_name(cluster, role_group_name))
+        .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
+        .with_labels(cluster.recommended_labels(role_group_name))
         .with_labels(prometheus_labels())
         .with_annotations(prometheus_annotations(metrics_port))
         .build();
-
-    let service_selector_labels =
-        Labels::role_group_selector(cluster, APP_NAME, &rolegroup.role, &rolegroup.role_group)
-            .context(BuildLabelSnafu)?;
 
     let service_spec = ServiceSpec {
         // Internal communication does not need to be exposed
@@ -139,16 +109,16 @@ pub(crate) fn build_server_rolegroup_metrics_service(
                 ..ServicePort::default()
             },
         ]),
-        selector: Some(service_selector_labels.into()),
+        selector: Some(cluster.role_group_selector(role_group_name).into()),
         publish_not_ready_addresses: Some(true),
         ..ServiceSpec::default()
     };
 
-    Ok(Service {
+    Service {
         metadata,
         spec: Some(service_spec),
         status: None,
-    })
+    }
 }
 
 /// Common labels for Prometheus

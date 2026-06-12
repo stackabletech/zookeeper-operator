@@ -27,17 +27,18 @@ pub const MAX_ZK_LOG_FILES_SIZE: MemoryQuantity = MemoryQuantity {
 
 const CONSOLE_CONVERSION_PATTERN: &str = "%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n";
 
-/// Builds the logging-related ConfigMap entries (product log config and the
-/// Vector agent config) for a role group.
+/// Builds the product log config entries (`logback.xml` / `log4j.properties`) for a role group.
 ///
 /// `logging` is the merged [`Logging`] from the role group's validated config and
 /// `framework` selects the product log config format (see [`logging_framework`]).
 ///
+/// The Vector agent config (`vector.yaml`) is rendered separately by [`build_vector_config`]
+/// because it still requires a [`RoleGroupRef`] from the upstream v1 logging framework.
+///
 /// [`logging_framework`]: crate::crd::logging_framework
-pub fn build(
+pub fn build_product_log_config(
     logging: &Logging<v1alpha1::Container>,
     framework: LoggingFramework,
-    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
 ) -> BTreeMap<String, String> {
     let mut data = BTreeMap::new();
 
@@ -80,6 +81,25 @@ pub fn build(
         }
     }
 
+    data
+}
+
+/// Renders the Vector agent config (`vector.yaml`) for a role group.
+///
+/// Returns `None` when the Vector agent is disabled for this role group.
+///
+/// This is the only remaining use of [`RoleGroupRef`]: the upstream v1
+/// `product_logging::framework::create_vector_config` still requires it. It is built in the
+/// controller (where the raw cluster is available) and the resulting string is threaded into the
+/// ConfigMap builder.
+pub fn build_vector_config(
+    rolegroup: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
+    logging: &Logging<v1alpha1::Container>,
+) -> Option<String> {
+    if !logging.enable_vector_agent {
+        return None;
+    }
+
     let vector_log_config = if let Some(ContainerLogConfig {
         choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
     }) = logging.containers.get(&v1alpha1::Container::Vector)
@@ -89,12 +109,8 @@ pub fn build(
         None
     };
 
-    if logging.enable_vector_agent {
-        data.insert(
-            product_logging::framework::VECTOR_CONFIG_FILE.to_string(),
-            product_logging::framework::create_vector_config(rolegroup, vector_log_config),
-        );
-    }
-
-    data
+    Some(product_logging::framework::create_vector_config(
+        rolegroup,
+        vector_log_config,
+    ))
 }

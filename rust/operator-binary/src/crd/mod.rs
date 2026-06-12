@@ -14,7 +14,7 @@ use stackable_operator::{
     crd::ClusterRef,
     deep_merger::ObjectOverrides,
     k8s_openapi::apimachinery::pkg::api::resource::Quantity,
-    kube::{CustomResource, runtime::reflector::ObjectRef},
+    kube::{CustomResource, ResourceExt, runtime::reflector::ObjectRef},
     product_logging::{self, spec::Logging},
     role_utils::{GenericRoleConfig, Role, RoleGroupRef},
     schemars::{self, JsonSchema},
@@ -450,7 +450,7 @@ impl v1alpha1::ZookeeperCluster {
     ) -> Option<String> {
         Some(format!(
             "{role_listener_name}.{namespace}.svc.{cluster_domain}",
-            role_listener_name = role_listener_name(self, &ZookeeperRole::Server),
+            role_listener_name = role_listener_name(&self.name_any(), &ZookeeperRole::Server),
             namespace = self.metadata.namespace.as_ref()?,
             cluster_domain = cluster_info.cluster_domain
         ))
