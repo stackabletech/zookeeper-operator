@@ -220,12 +220,12 @@ impl ValidatedCluster {
 }
 
 /// The product name (`zookeeper`) as a type-safe label value.
-fn product_name() -> ProductName {
+pub(crate) fn product_name() -> ProductName {
     ProductName::from_str(APP_NAME).expect("'zookeeper' is a valid product name")
 }
 
 /// The operator name as a type-safe label value.
-fn operator_name() -> OperatorName {
+pub(crate) fn operator_name() -> OperatorName {
     OperatorName::from_str(OPERATOR_NAME).expect("the operator name is a valid label value")
 }
 

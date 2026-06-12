@@ -1,34 +1,31 @@
-use std::{collections::BTreeSet, num::TryFromIntError};
+use std::{collections::BTreeSet, num::TryFromIntError, str::FromStr};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
-    commons::product_image_selection::ResolvedProductImage,
     crd::listener,
     k8s_openapi::api::core::v1::ConfigMap,
-    kube::{Resource, ResourceExt, runtime::reflector::ObjectRef},
+    kube::{Resource, runtime::reflector::ObjectRef},
+    v2::{
+        HasName, HasUid, NameIsValidLabelValue,
+        builder::meta::ownerreference_from_resource,
+        kvp::label::recommended_labels,
+        types::operator::{ControllerName, ProductVersion, RoleGroupName},
+    },
 };
 
 use crate::{
-    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
-    utils::build_recommended_labels,
-    zk_controller::validate::ValidatedCluster,
+    crd::{ZOOKEEPER_SERVER_PORT_NAME, security::ZookeeperSecurity},
+    zk_controller::validate::{ValidatedCluster, operator_name, product_name},
+    znode_controller::validate::ValidatedZnode,
 };
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Snafu, Debug)]
 pub enum Error {
-    #[snafu(display("object is missing metadata to build owner reference"))]
-    ObjectMissingMetadataForOwnerRef {
-        source: stackable_operator::builder::meta::Error,
-    },
-
     #[snafu(display("chroot path {} was relative (must be absolute)", chroot))]
     RelativeChroot { chroot: String },
-
-    #[snafu(display("object has no namespace associated"))]
-    NoNamespace,
 
     #[snafu(display("{listener} does not have a port with the name {port_name:?}"))]
     PortNotFound {
@@ -51,11 +48,6 @@ pub enum Error {
     BuildConfigMap {
         source: stackable_operator::builder::configmap::Error,
     },
-
-    #[snafu(display("failed to build object meta data"))]
-    ObjectMeta {
-        source: stackable_operator::builder::meta::Error,
-    },
 }
 
 /// Build the discovery [`ConfigMap`] for the cluster controller from the
@@ -72,9 +64,9 @@ pub fn build_discovery_configmap(
         validated_cluster,
         &validated_cluster.namespace,
         controller_name,
+        &validated_cluster.product_version,
         listener,
         None,
-        &validated_cluster.image,
         &validated_cluster.cluster_config.zookeeper_security,
     )
 }
@@ -82,25 +74,23 @@ pub fn build_discovery_configmap(
 /// Build the discovery [`ConfigMap`] for the znode controller.
 ///
 /// The ConfigMap is owned by, and placed in the namespace of, the
-/// [`ZookeeperZnode`](v1alpha1::ZookeeperZnode). The `image` and `zookeeper_security` originate from
-/// the referenced cluster, while `chroot` isolates the znode within the shared ZooKeeper ensemble.
+/// [`ValidatedZnode`]. The product version and `zookeeper_security` originate from the referenced
+/// cluster (via the validated znode), while `chroot` isolates the znode within the shared ZooKeeper
+/// ensemble.
 pub fn build_znode_discovery_configmap(
-    znode: &v1alpha1::ZookeeperZnode,
+    validated_znode: &ValidatedZnode,
     controller_name: &str,
     listener: listener::v1alpha1::Listener,
     chroot: &str,
-    image: &ResolvedProductImage,
-    zookeeper_security: &ZookeeperSecurity,
 ) -> Result<ConfigMap> {
-    let namespace = znode.namespace().context(NoNamespaceSnafu)?;
     build_discovery_configmap_for_owner(
-        znode,
-        namespace,
+        validated_znode,
+        &validated_znode.namespace,
         controller_name,
+        &validated_znode.product_version,
         listener,
         Some(chroot),
-        image,
-        zookeeper_security,
+        &validated_znode.zookeeper_security,
     )
 }
 
@@ -111,15 +101,23 @@ pub fn build_znode_discovery_configmap(
 /// controller, or the [`ZookeeperZnode`](v1alpha1::ZookeeperZnode) for the znode controller) and
 /// `namespace` is where the ConfigMap is placed.
 fn build_discovery_configmap_for_owner(
-    owner: &impl Resource<DynamicType = ()>,
+    owner: &(impl Resource<DynamicType = ()> + HasName + HasUid + NameIsValidLabelValue),
     namespace: impl Into<String>,
     controller_name: &str,
+    product_version: &ProductVersion,
     listener: listener::v1alpha1::Listener,
     chroot: Option<&str>,
-    image: &ResolvedProductImage,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<ConfigMap> {
-    let name = owner.name_unchecked();
+    let name = owner.to_name();
+
+    // The discovery ConfigMap is a role-level resource of the `server` role, conventionally
+    // labelled with the `discovery` role group. The controller name differs between the cluster and
+    // znode controllers, so it is passed in and validated into the type-safe newtype here.
+    let controller_name = ControllerName::from_str(controller_name)
+        .expect("the controller name is a valid label value");
+    let role_group_name =
+        RoleGroupName::from_str("discovery").expect("'discovery' is a valid role group name");
 
     let listener_addresses = listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)?;
 
@@ -143,16 +141,16 @@ fn build_discovery_configmap_for_owner(
             ObjectMetaBuilder::new()
                 .name(name)
                 .namespace(namespace)
-                .ownerreference_from_resource(owner, None, Some(true))
-                .context(ObjectMissingMetadataForOwnerRefSnafu)?
-                .with_recommended_labels(&build_recommended_labels(
+                .ownerreference(ownerreference_from_resource(owner, None, Some(true)))
+                .with_labels(recommended_labels(
                     owner,
-                    controller_name,
-                    &image.app_version_label_value,
-                    &ZookeeperRole::Server.to_string(),
-                    "discovery",
+                    &product_name(),
+                    product_version,
+                    &operator_name(),
+                    &controller_name,
+                    &ValidatedCluster::role_name(),
+                    &role_group_name,
                 ))
-                .context(ObjectMetaSnafu)?
                 .build(),
         )
         .add_data("ZOOKEEPER", conn_str)

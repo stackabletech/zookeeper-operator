@@ -8,7 +8,6 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::product_image_selection::ResolvedProductImage,
     crd::listener,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::{
@@ -32,7 +31,7 @@ use crate::{
 };
 
 mod dereference;
-mod validate;
+pub(crate) mod validate;
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
 pub const ZNODE_FULL_CONTROLLER_NAME: &str = concatcp!(ZNODE_CONTROLLER_NAME, '.', OPERATOR_NAME);
@@ -232,18 +231,15 @@ pub async fn reconcile_znode(
             match ev {
                 finalizer::Event::Apply(znode) => {
                     let dereferenced = dereferenced_objects.context(DereferenceSnafu)?;
-                    let validate::ValidatedZnode {
-                        image,
-                        zookeeper_security,
-                    } = validate::validate(&znode, &dereferenced, &ctx.operator_environment)
-                        .context(ValidateClusterSnafu)?;
+                    let validated_znode =
+                        validate::validate(&znode, &dereferenced, &ctx.operator_environment)
+                            .context(ValidateClusterSnafu)?;
                     reconcile_apply(
                         client,
                         &znode,
+                        &validated_znode,
                         dereferenced.zk,
-                        &zookeeper_security,
                         &znode_path,
-                        &image,
                     )
                     .await
                 }
@@ -276,10 +272,9 @@ pub async fn reconcile_znode(
 async fn reconcile_apply(
     client: &stackable_operator::client::Client,
     znode: &v1alpha1::ZookeeperZnode,
+    validated_znode: &validate::ValidatedZnode,
     zk: v1alpha1::ZookeeperCluster,
-    zookeeper_security: &ZookeeperSecurity,
     znode_path: &str,
-    image: &ResolvedProductImage,
 ) -> Result<controller::Action> {
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
@@ -292,7 +287,11 @@ async fn reconcile_apply(
     .context(ZnodeMissingExpectedKeysSnafu { znode })?;
 
     znode_mgmt::ensure_znode_exists(
-        &zk_mgmt_addr(&zk, zookeeper_security, &client.kubernetes_cluster_info)?,
+        &zk_mgmt_addr(
+            &zk,
+            &validated_znode.zookeeper_security,
+            &client.kubernetes_cluster_info,
+        )?,
         znode_path,
     )
     .await
@@ -315,12 +314,10 @@ async fn reconcile_apply(
         })?;
 
     let discovery_cm = build_znode_discovery_configmap(
-        znode,
+        validated_znode,
         ZNODE_CONTROLLER_NAME,
         listener,
         znode_path,
-        image,
-        zookeeper_security,
     )
     .context(BuildDiscoveryConfigMapSnafu)?;
 

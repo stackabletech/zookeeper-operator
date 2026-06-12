@@ -44,7 +44,6 @@ pub mod crd;
 mod listener;
 mod operations;
 mod service;
-mod utils;
 mod webhooks;
 mod zk_controller;
 mod znode_controller;
