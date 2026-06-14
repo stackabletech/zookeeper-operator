@@ -2,7 +2,7 @@
 //! without reaching into the [`v1alpha1::ZookeeperCluster`] except for the owner
 //! reference and object metadata.
 //!
-//! The individual files are rendered by the [`properties`](super::properties)
+//! The individual files are rendered by the [`properties`](crate::zk_controller::build::properties)
 //! submodules; this module only orchestrates them into the ConfigMap. The Vector agent config is
 //! rendered by the controller (it still needs a `RoleGroupRef`) and threaded in as `vector_config`.
 

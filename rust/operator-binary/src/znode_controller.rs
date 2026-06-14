@@ -25,9 +25,8 @@ use tracing::{debug, info};
 
 use crate::{
     APP_NAME, OPERATOR_NAME,
-    crd::{ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
-    listener::role_listener_name,
-    zk_controller::build::discovery::{self, build_znode_discovery_configmap},
+    crd::{ZookeeperRole, role_listener_name, security::ZookeeperSecurity, v1alpha1},
+    zk_controller::build::resource::discovery::{self, build_znode_discovery_configmap},
 };
 
 mod dereference;

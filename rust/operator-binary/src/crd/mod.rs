@@ -26,15 +26,21 @@ use stackable_operator::{
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
 
-use crate::{
-    crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig},
-    listener::role_listener_name,
-};
+use crate::crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig};
 
 pub mod affinity;
 pub mod authentication;
 pub mod security;
 pub mod tls;
+
+/// The name of the role-level [`Listener`](stackable_operator::crd::listener::v1alpha1::Listener)
+/// exposing the given `zk_role`, `<cluster>-<role>`.
+///
+/// Lives in the `crd` module (rather than the controller build tree) because it is shared by both
+/// controllers and by [`ZookeeperCluster::server_role_listener_fqdn`].
+pub fn role_listener_name(cluster_name: &str, zk_role: &ZookeeperRole) -> String {
+    format!("{cluster_name}-{zk_role}")
+}
 
 pub const APP_NAME: &str = "zookeeper";
 pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";

@@ -9,7 +9,9 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity},
+    crd::{
+        ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, role_listener_name, security::ZookeeperSecurity,
+    },
     zk_controller::validate::ValidatedCluster,
 };
 
@@ -40,10 +42,6 @@ pub fn build_role_listener(
         },
         status: None,
     }
-}
-
-pub fn role_listener_name(cluster_name: &str, zk_role: &ZookeeperRole) -> String {
-    format!("{cluster_name}-{zk_role}")
 }
 
 // We only use the server port here and intentionally omit the metrics one.

@@ -39,11 +39,7 @@ use crate::{
     znode_controller::ZNODE_FULL_CONTROLLER_NAME,
 };
 
-mod command;
 pub mod crd;
-mod listener;
-mod operations;
-mod service;
 mod webhooks;
 mod zk_controller;
 mod znode_controller;
