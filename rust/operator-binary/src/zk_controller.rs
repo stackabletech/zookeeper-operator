@@ -15,13 +15,15 @@ use stackable_operator::{
     },
     kvp::LabelError,
     logging::controller::ReconcilerError,
-    role_utils::RoleGroupRef,
     shared::time::Duration,
     status::condition::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
     },
-    v2::{cluster_resources::cluster_resources_new, types::operator::ControllerName},
+    v2::{
+        cluster_resources::cluster_resources_new,
+        types::operator::{ControllerName, RoleGroupName},
+    },
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
@@ -82,34 +84,34 @@ pub enum Error {
     #[snafu(display("internal operator failure"))]
     InternalOperatorFailure { source: crate::crd::Error },
 
-    #[snafu(display("failed to apply Service for {}", rolegroup))]
+    #[snafu(display("failed to apply Service for role group {rolegroup}"))]
     ApplyRoleGroupService {
         source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
+        rolegroup: RoleGroupName,
     },
 
-    #[snafu(display("failed to build ConfigMap for {}", rolegroup))]
+    #[snafu(display("failed to build ConfigMap for role group {rolegroup}"))]
     BuildRoleGroupConfigMap {
         source: config_map::Error,
-        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
+        rolegroup: RoleGroupName,
     },
 
-    #[snafu(display("failed to apply ConfigMap for {}", rolegroup))]
+    #[snafu(display("failed to apply ConfigMap for role group {rolegroup}"))]
     ApplyRoleGroupConfig {
         source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
+        rolegroup: RoleGroupName,
     },
 
-    #[snafu(display("failed to build StatefulSet for {}", rolegroup))]
+    #[snafu(display("failed to build StatefulSet for role group {rolegroup}"))]
     BuildRoleGroupStatefulSet {
         source: build::resource::statefulset::Error,
-        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
+        rolegroup: RoleGroupName,
     },
 
-    #[snafu(display("failed to apply StatefulSet for {}", rolegroup))]
+    #[snafu(display("failed to apply StatefulSet for role group {rolegroup}"))]
     ApplyRoleGroupStatefulSet {
         source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupRef<v1alpha1::ZookeeperCluster>,
+        rolegroup: RoleGroupName,
     },
 
     #[snafu(display("object is missing metadata to build owner reference"))]
@@ -226,8 +228,6 @@ pub async fn reconcile_zk(
         &client.kubernetes_cluster_info,
     )
     .context(ValidateClusterSnafu)?;
-    let resolved_product_image = &validated_cluster.image;
-    let zookeeper_security = &validated_cluster.cluster_config.zookeeper_security;
 
     // Names are derived from compile-time constants.
     let mut cluster_resources = cluster_resources_new(
@@ -270,64 +270,50 @@ pub async fn reconcile_zk(
         .into_iter()
         .flatten();
     for (rolegroup_name, rolegroup_config) in server_role_group_configs {
-        // `RoleGroupRef` is only kept for the Vector agent config (the upstream v1
-        // `create_vector_config` requires it) and for error context display. Resource naming,
-        // labels and owner references are derived from the `ValidatedCluster` and the type-safe
-        // `RoleGroupName`.
-        let rolegroup = zk.server_rolegroup_ref(rolegroup_name.to_string());
-        let metrics_port =
-            build::properties::zoo_cfg::metrics_http_port(&validated_cluster, rolegroup_config);
-
+        // Resource naming, labels and owner references are derived from the `ValidatedCluster` and
+        // the type-safe `RoleGroupName`.
         let rg_headless_service =
             build_server_rolegroup_headless_service(&validated_cluster, rolegroup_name);
         let rg_metrics_service = build_server_rolegroup_metrics_service(
             &validated_cluster,
             rolegroup_name,
-            metrics_port,
-        );
-        let vector_config = build::properties::logging::build_vector_config(
-            &rolegroup,
-            &rolegroup_config.config.logging,
+            rolegroup_config,
         );
         let rg_configmap = config_map::build_server_rolegroup_config_map(
             &validated_cluster,
             rolegroup_name,
             rolegroup_config,
-            vector_config,
         )
         .context(BuildRoleGroupConfigMapSnafu {
-            rolegroup: rolegroup.clone(),
+            rolegroup: rolegroup_name.clone(),
         })?;
         let rg_statefulset = build_server_rolegroup_statefulset(
             &validated_cluster,
             rolegroup_name,
             rolegroup_config,
-            zookeeper_security,
-            resolved_product_image,
-            metrics_port,
             &rbac_sa,
         )
         .with_context(|_| BuildRoleGroupStatefulSetSnafu {
-            rolegroup: rolegroup.clone(),
+            rolegroup: rolegroup_name.clone(),
         })?;
 
         cluster_resources
             .add(client, rg_headless_service)
             .await
             .with_context(|_| ApplyRoleGroupServiceSnafu {
-                rolegroup: rolegroup.clone(),
+                rolegroup: rolegroup_name.clone(),
             })?;
         cluster_resources
             .add(client, rg_metrics_service)
             .await
             .with_context(|_| ApplyRoleGroupServiceSnafu {
-                rolegroup: rolegroup.clone(),
+                rolegroup: rolegroup_name.clone(),
             })?;
         cluster_resources
             .add(client, rg_configmap)
             .await
             .with_context(|_| ApplyRoleGroupConfigSnafu {
-                rolegroup: rolegroup.clone(),
+                rolegroup: rolegroup_name.clone(),
             })?;
 
         // Note: The StatefulSet needs to be applied after all ConfigMaps and Secrets it mounts
@@ -338,7 +324,7 @@ pub async fn reconcile_zk(
                 .add(client, rg_statefulset)
                 .await
                 .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
-                    rolegroup: rolegroup.clone(),
+                    rolegroup: rolegroup_name.clone(),
                 })?,
         );
     }
@@ -634,7 +620,6 @@ mod tests {
             &validated_cluster,
             &role_group_name,
             rolegroup_config,
-            None,
         )
         .unwrap()
     }

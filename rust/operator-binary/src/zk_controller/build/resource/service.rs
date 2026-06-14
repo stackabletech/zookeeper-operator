@@ -11,7 +11,7 @@ use crate::{
         ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_LEADER_PORT,
         ZOOKEEPER_LEADER_PORT_NAME,
     },
-    zk_controller::validate::ValidatedCluster,
+    zk_controller::validate::{ValidatedCluster, ValidatedRoleGroupConfig},
 };
 
 /// The rolegroup [`Service`] is a headless service that allows internal access to the instances of a certain rolegroup
@@ -79,8 +79,9 @@ fn metrics_service_name(cluster: &ValidatedCluster, role_group_name: &RoleGroupN
 pub(crate) fn build_server_rolegroup_metrics_service(
     cluster: &ValidatedCluster,
     role_group_name: &RoleGroupName,
-    metrics_port: u16,
+    rolegroup_config: &ValidatedRoleGroupConfig,
 ) -> Service {
+    let metrics_port = cluster.metrics_http_port(rolegroup_config);
     let metadata = ObjectMetaBuilder::new()
         .name_and_namespace(cluster)
         .name(metrics_service_name(cluster, role_group_name))

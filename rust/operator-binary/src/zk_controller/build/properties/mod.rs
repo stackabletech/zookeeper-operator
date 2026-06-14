@@ -3,7 +3,7 @@
 //! Each submodule renders the key/value pairs (or file contents) for one file
 //! that ends up in the rolegroup ConfigMap.
 
-pub mod logging;
+pub mod product_logging;
 pub mod security_properties;
 pub mod zoo_cfg;
 
@@ -14,8 +14,6 @@ pub enum ConfigFileName {
     ZooCfg,
     #[strum(serialize = "security.properties")]
     SecurityProperties,
-    #[strum(serialize = "log4j.properties")]
-    Log4jProperties,
     #[strum(serialize = "logback.xml")]
     LogbackXml,
 }

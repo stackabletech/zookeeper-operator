@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::zk_controller::validate::ZookeeperRoleGroupConfig;
+use crate::zk_controller::validate::ValidatedRoleGroupConfig;
 
 const NETWORKADDRESS_CACHE_TTL: &str = "networkaddress.cache.ttl";
 const NETWORKADDRESS_CACHE_NEGATIVE_TTL: &str = "networkaddress.cache.negative.ttl";
@@ -14,7 +14,7 @@ const DEFAULT_NETWORKADDRESS_CACHE_NEGATIVE_TTL: &str = "0";
 ///
 /// The entire file is operator-injected (the values formerly came from
 /// `product-config`'s `properties.yaml`), plus any user `configOverrides`.
-pub fn build(rolegroup_config: &ZookeeperRoleGroupConfig) -> BTreeMap<String, String> {
+pub fn build(rolegroup_config: &ValidatedRoleGroupConfig) -> BTreeMap<String, String> {
     let mut security_properties = BTreeMap::new();
 
     // Operator-injected defaults (former properties.yaml recommended values).

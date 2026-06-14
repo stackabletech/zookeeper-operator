@@ -14,9 +14,9 @@ use stackable_operator::{
     crd::ClusterRef,
     deep_merger::ObjectOverrides,
     k8s_openapi::apimachinery::pkg::api::resource::Quantity,
-    kube::{CustomResource, ResourceExt, runtime::reflector::ObjectRef},
+    kube::{CustomResource, ResourceExt},
     product_logging::{self, spec::Logging},
-    role_utils::{GenericRoleConfig, Role, RoleGroupRef},
+    role_utils::{GenericRoleConfig, Role},
     schemars::{self, JsonSchema},
     shared::time::Duration,
     status::condition::{ClusterCondition, HasStatusCondition},
@@ -73,11 +73,6 @@ pub const DEFAULT_LISTENER_CLASS: &str = "cluster-internal";
 pub enum Error {
     #[snafu(display("the role {role} is not defined"))]
     CannotRetrieveZookeeperRole { role: String },
-}
-
-pub enum LoggingFramework {
-    LOG4J,
-    LOGBACK,
 }
 
 pub type ZookeeperServerRoleType = Role<
@@ -430,22 +425,6 @@ impl ZookeeperPodRef {
     }
 }
 
-/// Returns the [`LoggingFramework`] used by the given ZooKeeper `product_version`.
-pub fn logging_framework(product_version: &str) -> LoggingFramework {
-    let zookeeper_versions_with_log4j = [
-        "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
-    ];
-
-    if zookeeper_versions_with_log4j
-        .into_iter()
-        .any(|prefix| product_version.starts_with(prefix))
-    {
-        LoggingFramework::LOG4J
-    } else {
-        LoggingFramework::LOGBACK
-    }
-}
-
 impl v1alpha1::ZookeeperCluster {
     /// The fully-qualified domain name of the role-level [Listener]
     ///
@@ -470,18 +449,6 @@ impl v1alpha1::ZookeeperCluster {
         .with_context(|| CannotRetrieveZookeeperRoleSnafu {
             role: role_variant.to_string(),
         })
-    }
-
-    /// Metadata about a server rolegroup
-    pub fn server_rolegroup_ref(
-        &self,
-        group_name: impl Into<String>,
-    ) -> RoleGroupRef<v1alpha1::ZookeeperCluster> {
-        RoleGroupRef {
-            cluster: ObjectRef::from_obj(self),
-            role: ZookeeperRole::Server.to_string(),
-            role_group: group_name.into(),
-        }
     }
 
     pub fn role_config(&self, role: &ZookeeperRole) -> Option<&ZookeeperServerRoleConfig> {

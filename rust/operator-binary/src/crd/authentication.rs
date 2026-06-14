@@ -3,11 +3,10 @@ use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     client::Client,
     crd::authentication::core,
+    kube::runtime::reflector::ObjectRef,
     schemars::{self, JsonSchema},
     versioned::versioned,
 };
-
-use crate::crd::ObjectRef;
 
 const SUPPORTED_AUTHENTICATION_CLASS: [&str; 1] = ["TLS"];
 

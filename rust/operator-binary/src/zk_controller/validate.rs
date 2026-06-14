@@ -9,7 +9,7 @@
 
 use std::{collections::BTreeMap, str::FromStr};
 
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     commons::product_image_selection::{self, ResolvedProductImage},
@@ -17,6 +17,7 @@ use stackable_operator::{
     k8s_openapi::{api::core::v1::PodTemplateSpec, apimachinery::pkg::apis::meta::v1::ObjectMeta},
     kube::{Resource, ResourceExt},
     kvp::Labels,
+    product_logging::spec::Logging,
     role_utils::RoleGroup,
     utils::cluster_info::KubernetesClusterInfo,
     v2::{
@@ -25,10 +26,14 @@ use stackable_operator::{
         controller_utils::{get_cluster_name, get_namespace, get_uid},
         jvm_argument_overrides::JvmArgumentOverrides,
         kvp::label::{recommended_labels, role_group_selector},
+        product_logging::framework::{
+            ValidatedContainerLogConfigChoice, VectorContainerLogConfig,
+            validate_logging_configuration_for_container,
+        },
         role_group_utils::ResourceNames,
         role_utils::{JavaCommonConfig, with_validated_config},
         types::{
-            kubernetes::{NamespaceName, Uid},
+            kubernetes::{ConfigMapName, NamespaceName, Uid},
             operator::{
                 ClusterName, ControllerName, OperatorName, ProductName, ProductVersion,
                 RoleGroupName, RoleName,
@@ -103,6 +108,22 @@ pub enum Error {
     GetUid {
         source: stackable_operator::v2::controller_utils::Error,
     },
+
+    #[snafu(display("failed to validate the logging configuration"))]
+    ValidateLoggingConfig {
+        source: stackable_operator::v2::product_logging::framework::Error,
+    },
+
+    #[snafu(display(
+        "the Vector agent is enabled but no Vector aggregator discovery ConfigMap name is set"
+    ))]
+    MissingVectorAggregatorConfigMapName,
+
+    #[snafu(display("the Vector aggregator discovery ConfigMap name {name:?} is invalid"))]
+    ParseVectorAggregatorConfigMapName {
+        source: stackable_operator::v2::macros::attributed_string_type::Error,
+        name: String,
+    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -114,13 +135,65 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 /// fields the build steps consume. The merged `envOverrides` are converted into an
 /// [`EnvVarSet`] during validation so invalid names fail early.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ZookeeperRoleGroupConfig {
+pub struct ValidatedRoleGroupConfig {
     pub replicas: u16,
     pub config: ZookeeperConfig,
     pub config_overrides: ZookeeperConfigOverrides,
     pub env_overrides: EnvVarSet,
     pub pod_overrides: PodTemplateSpec,
     pub jvm_argument_overrides: JvmArgumentOverrides,
+    pub logging: ValidatedLogging,
+}
+
+/// Validated logging configuration for a ZooKeeper server role group.
+///
+/// Produced up-front by [`validate_logging`] (mirroring the hive- and opensearch-operators) so that
+/// an invalid custom log ConfigMap name or a missing Vector aggregator discovery ConfigMap name
+/// fails reconciliation during validation rather than at resource-build time.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ValidatedLogging {
+    /// Validated log config choice for the ZooKeeper server container. Used by the build step to
+    /// decide whether the log-config volume mounts a custom ConfigMap or the role group's own one.
+    /// The product log config file itself (`logback.xml`) is rendered separately.
+    pub zookeeper_container: ValidatedContainerLogConfigChoice,
+    /// Validated Vector container log config, present only when the Vector agent is enabled.
+    pub vector_container: Option<VectorContainerLogConfig>,
+    pub enable_vector_agent: bool,
+}
+
+/// Validates the logging configuration for the ZooKeeper server (and optional Vector) container.
+///
+/// `vector_aggregator_config_map_name` is the discovery ConfigMap name of the Vector aggregator; it
+/// is required (and must be present) only when the Vector agent is enabled.
+fn validate_logging(
+    logging: &Logging<v1alpha1::Container>,
+    vector_aggregator_config_map_name: &Option<ConfigMapName>,
+) -> Result<ValidatedLogging> {
+    let zookeeper_container =
+        validate_logging_configuration_for_container(logging, &v1alpha1::Container::Zookeeper)
+            .context(ValidateLoggingConfigSnafu)?;
+
+    let vector_container = if logging.enable_vector_agent {
+        let vector_aggregator_config_map_name = vector_aggregator_config_map_name
+            .clone()
+            .context(MissingVectorAggregatorConfigMapNameSnafu)?;
+        Some(VectorContainerLogConfig {
+            log_config: validate_logging_configuration_for_container(
+                logging,
+                &v1alpha1::Container::Vector,
+            )
+            .context(ValidateLoggingConfigSnafu)?,
+            vector_aggregator_config_map_name,
+        })
+    } else {
+        None
+    };
+
+    Ok(ValidatedLogging {
+        zookeeper_container,
+        vector_container,
+        enable_vector_agent: logging.enable_vector_agent,
+    })
 }
 
 /// The validated [`v1alpha1::ZookeeperCluster`]. Output of the validate step and
@@ -139,7 +212,7 @@ pub struct ValidatedCluster {
     pub product_version: ProductVersion,
     pub cluster_config: ValidatedClusterConfig,
     pub role_group_configs:
-        BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>>,
+        BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>>,
 }
 
 impl ValidatedCluster {
@@ -153,7 +226,7 @@ impl ValidatedCluster {
         cluster_config: ValidatedClusterConfig,
         role_group_configs: BTreeMap<
             ZookeeperRole,
-            BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>,
+            BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>,
         >,
     ) -> Self {
         Self {
@@ -294,10 +367,6 @@ pub struct ValidatedClusterConfig {
     /// The ListenerClass used to expose the ZooKeeper servers, so the listener builder does not
     /// need the raw cluster object.
     pub listener_class: String,
-
-    /// Name of the Vector aggregator discovery ConfigMap, threaded through so the StatefulSet
-    /// builder does not need the raw cluster object.
-    pub vector_aggregator_config_map_name: Option<String>,
 }
 
 /// Validates the cluster spec and the dereferenced inputs.
@@ -324,6 +393,22 @@ pub fn validate(
 
     let zookeeper_security = ZookeeperSecurity::new(zk, resolved_authentication_classes);
 
+    // Parsed once up-front so an invalid name fails validation rather than at build time. The
+    // per-role-group logging validation needs it to build the Vector container config.
+    let vector_aggregator_config_map_name = zk
+        .spec
+        .cluster_config
+        .vector_aggregator_config_map_name
+        .as_deref()
+        .map(|name| {
+            ConfigMapName::from_str(name).with_context(|_| {
+                ParseVectorAggregatorConfigMapNameSnafu {
+                    name: name.to_owned(),
+                }
+            })
+        })
+        .transpose()?;
+
     let mut role_group_configs = BTreeMap::new();
     for zk_role in ZookeeperRole::iter() {
         let role = zk.role(&zk_role).with_context(|_| MissingRoleSnafu {
@@ -337,7 +422,13 @@ pub fn validate(
                 RoleGroupName::from_str(rg_name).with_context(|_| ParseRoleGroupNameSnafu {
                     role_group: rg_name.clone(),
                 })?;
-            let validated_rg = validate_role_group_config(rg_name, rg, role, &default_config)?;
+            let validated_rg = validate_role_group_config(
+                rg_name,
+                rg,
+                role,
+                &default_config,
+                &vector_aggregator_config_map_name,
+            )?;
             groups.insert(role_group_name, validated_rg);
         }
         role_group_configs.insert(zk_role, groups);
@@ -377,17 +468,12 @@ pub fn validate(
             zookeeper_security,
             server_addresses,
             listener_class,
-            vector_aggregator_config_map_name: zk
-                .spec
-                .cluster_config
-                .vector_aggregator_config_map_name
-                .clone(),
         },
         role_group_configs,
     ))
 }
 
-/// Merges and validates one role group into a [`ZookeeperRoleGroupConfig`].
+/// Merges and validates one role group into a [`ValidatedRoleGroupConfig`].
 ///
 /// Uses the upstream [`with_validated_config`], which merges the config fragment, the
 /// `configOverrides`, the `envOverrides`, the `podOverrides` and the product-specific
@@ -402,7 +488,8 @@ fn validate_role_group_config(
     >,
     role: &ZookeeperServerRoleType,
     default_config: &v1alpha1::ZookeeperConfigFragment,
-) -> Result<ZookeeperRoleGroupConfig> {
+    vector_aggregator_config_map_name: &Option<ConfigMapName>,
+) -> Result<ValidatedRoleGroupConfig> {
     let merged = with_validated_config::<
         ZookeeperConfig,
         JavaCommonConfig,
@@ -424,9 +511,12 @@ fn validate_role_group_config(
         );
     }
 
-    Ok(ZookeeperRoleGroupConfig {
+    let config = merged.config.config;
+    let logging = validate_logging(&config.logging, vector_aggregator_config_map_name)?;
+
+    Ok(ValidatedRoleGroupConfig {
         replicas: merged.replicas.unwrap_or(1),
-        config: merged.config.config,
+        config,
         config_overrides: merged.config.config_overrides,
         env_overrides,
         pod_overrides: merged.config.pod_overrides,
@@ -434,6 +524,7 @@ fn validate_role_group_config(
             .config
             .product_specific_common_config
             .jvm_argument_overrides,
+        logging,
     })
 }
 
@@ -444,7 +535,7 @@ fn validate_role_group_config(
 fn server_addresses(
     cluster_name: &ClusterName,
     namespace: &NamespaceName,
-    role_group_configs: &BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>>,
+    role_group_configs: &BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>>,
     zookeeper_security: &ZookeeperSecurity,
     cluster_info: &KubernetesClusterInfo,
 ) -> BTreeMap<String, String> {
@@ -492,7 +583,7 @@ mod tests {
     fn server_role_group(
         validated: &ValidatedCluster,
         role_group: &str,
-    ) -> ZookeeperRoleGroupConfig {
+    ) -> ValidatedRoleGroupConfig {
         let role_group_name = RoleGroupName::from_str(role_group).expect("valid role group name");
         validated
             .role_group_configs

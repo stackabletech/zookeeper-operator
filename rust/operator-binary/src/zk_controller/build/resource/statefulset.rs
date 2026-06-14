@@ -15,7 +15,6 @@ use stackable_operator::{
             volume::{ListenerOperatorVolumeSourceBuilder, ListenerReference},
         },
     },
-    commons::product_image_selection::ResolvedProductImage,
     constants::RESTART_CONTROLLER_ENABLED_LABEL,
     k8s_openapi::{
         DeepMerge,
@@ -34,13 +33,8 @@ use stackable_operator::{
     memory::{BinaryMultiple, MemoryQuantity},
     product_logging::{
         self,
-        framework::{
-            LoggingError, create_vector_shutdown_file_command, remove_vector_shutdown_file_command,
-        },
-        spec::{
-            ConfigMapLogConfig, ContainerLogConfig, ContainerLogConfigChoice,
-            CustomContainerLogConfig,
-        },
+        framework::{create_vector_shutdown_file_command, remove_vector_shutdown_file_command},
+        spec::{ContainerLogConfig, ContainerLogConfigChoice},
     },
     utils::COMMON_BASH_TRAP_FUNCTIONS,
     v2::{
@@ -48,7 +42,11 @@ use stackable_operator::{
             meta::ownerreference_from_resource,
             pod::container::{EnvVarName, EnvVarSet},
         },
-        types::operator::{ProductVersion, RoleGroupName},
+        product_logging::framework::{ValidatedContainerLogConfigChoice, vector_container},
+        types::{
+            kubernetes::{ContainerName, VolumeName},
+            operator::{ProductVersion, RoleGroupName},
+        },
     },
 };
 
@@ -59,9 +57,7 @@ use crate::{
         STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
         STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME,
         ZOOKEEPER_LEADER_PORT, ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_SERVER_PORT_NAME,
-        ZookeeperRole, role_listener_name,
-        security::{self, ZookeeperSecurity},
-        v1alpha1,
+        ZookeeperRole, role_listener_name, security, v1alpha1,
     },
     zk_controller::{
         LISTENER_VOLUME_DIR, LISTENER_VOLUME_NAME,
@@ -71,7 +67,7 @@ use crate::{
             jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
             properties::{self, ConfigFileName},
         },
-        validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
+        validate::{ValidatedCluster, ValidatedRoleGroupConfig},
     },
 };
 
@@ -94,6 +90,8 @@ const LOG_CONFIG_VOLUME_NAME: &str = "log-config";
 /// Name of the `prepare` init container (also used as its log subdirectory).
 const PREPARE_CONTAINER_NAME: &str = "prepare";
 
+stackable_operator::constant!(VECTOR_CONTAINER_NAME: ContainerName = "vector");
+
 /// The shell invocation shared by the `prepare` init container and the main ZooKeeper container.
 fn container_command() -> Vec<String> {
     vec![
@@ -113,9 +111,6 @@ pub enum Error {
 
     #[snafu(display("failed to add TLS volume mounts"))]
     AddTlsVolumeMounts { source: security::Error },
-
-    #[snafu(display("failed to configure logging"))]
-    ConfigureLogging { source: LoggingError },
 
     #[snafu(display("failed to add needed volume"))]
     AddVolume { source: builder::pod::Error },
@@ -139,9 +134,6 @@ pub enum Error {
     BuildListenerPersistentVolume {
         source: stackable_operator::builder::pod::volume::ListenerOperatorVolumeSourceBuilderError,
     },
-
-    #[snafu(display("vector agent is enabled but vector aggregator ConfigMap is missing"))]
-    VectorAggregatorConfigMapMissing,
 }
 
 fn build_role_listener_pvc(
@@ -162,19 +154,18 @@ fn build_role_listener_pvc(
 /// corresponding headless
 /// [`Service`](`stackable_operator::k8s_openapi::api::core::v1::Service`) (from
 /// [`build_server_rolegroup_headless_service`](super::service::build_server_rolegroup_headless_service)).
-#[allow(clippy::too_many_arguments)]
 pub fn build_server_rolegroup_statefulset(
     cluster: &ValidatedCluster,
     role_group_name: &RoleGroupName,
-    rolegroup_config: &ZookeeperRoleGroupConfig,
-    zookeeper_security: &ZookeeperSecurity,
-    resolved_product_image: &ResolvedProductImage,
-    metrics_port: u16,
+    rolegroup_config: &ValidatedRoleGroupConfig,
     service_account: &ServiceAccount,
 ) -> Result<StatefulSet> {
     let merged_config = &rolegroup_config.config;
     let logging = &merged_config.logging;
     let resource_names = cluster.resource_names(role_group_name);
+    let resolved_product_image = &cluster.image;
+    let zookeeper_security = &cluster.cluster_config.zookeeper_security;
+    let metrics_port = cluster.metrics_http_port(rolegroup_config);
 
     // The operator-injected environment variables (formerly produced by the
     // product-config `Configuration::compute_env` implementation) plus the
@@ -312,7 +303,7 @@ pub fn build_server_rolegroup_statefulset(
         )
         .add_env_var(
             "SERVER_JVMFLAGS",
-            construct_non_heap_jvm_args(rolegroup_config, &resolved_product_image.product_version),
+            construct_non_heap_jvm_args(rolegroup_config),
         )
         .add_env_var(
             "CONTAINERDEBUG_LOG_DIRECTORY",
@@ -389,7 +380,7 @@ pub fn build_server_rolegroup_statefulset(
             LOG_VOLUME_NAME,
             Some(product_logging::framework::calculate_log_volume_size_limit(
                 &[
-                    properties::logging::MAX_ZK_LOG_FILES_SIZE,
+                    properties::product_logging::MAX_ZK_LOG_FILES_SIZE,
                     MAX_PREPARE_LOG_FILE_SIZE,
                 ],
             )),
@@ -402,17 +393,12 @@ pub fn build_server_rolegroup_statefulset(
         .service_account_name(service_account.name_any());
 
     // Use the user-provided custom log ConfigMap if one is configured, otherwise fall back to the
-    // rolegroup's own ConfigMap.
-    let log_config_map = if let Some(ContainerLogConfig {
-        choice:
-            Some(ContainerLogConfigChoice::Custom(CustomContainerLogConfig {
-                custom: ConfigMapLogConfig { config_map },
-            })),
-    }) = logging.containers.get(&v1alpha1::Container::Zookeeper)
-    {
-        config_map.into()
-    } else {
-        resource_names.role_group_config_map().to_string()
+    // rolegroup's own ConfigMap. This branches on the *validated* logging choice.
+    let log_config_map = match &rolegroup_config.logging.zookeeper_container {
+        ValidatedContainerLogConfigChoice::Custom(config_map) => config_map.to_string(),
+        ValidatedContainerLogConfigChoice::Automatic(_) => {
+            resource_names.role_group_config_map().to_string()
+        }
     };
     pod_builder
         .add_volume(Volume {
@@ -425,30 +411,23 @@ pub fn build_server_rolegroup_statefulset(
         })
         .context(AddVolumeSnafu)?;
 
-    if logging.enable_vector_agent {
-        match &cluster.cluster_config.vector_aggregator_config_map_name {
-            Some(vector_aggregator_config_map_name) => {
-                pod_builder.add_container(
-                    product_logging::framework::vector_container(
-                        resolved_product_image,
-                        "config",
-                        "log",
-                        logging.containers.get(&v1alpha1::Container::Vector),
-                        ResourceRequirementsBuilder::new()
-                            .with_cpu_request("250m")
-                            .with_cpu_limit("500m")
-                            .with_memory_request("128Mi")
-                            .with_memory_limit("128Mi")
-                            .build(),
-                        vector_aggregator_config_map_name,
-                    )
-                    .context(ConfigureLoggingSnafu)?,
-                );
-            }
-            None => {
-                VectorAggregatorConfigMapMissingSnafu.fail()?;
-            }
-        }
+    // The static `vector.yaml` (in the rolegroup ConfigMap, mounted as the `config` volume) is
+    // parameterised at runtime via env vars that the v2 `vector_container` injects. The validated
+    // Vector log config is built up-front in the validate step.
+    if let Some(vector_log_config) = &rolegroup_config.logging.vector_container {
+        let config_volume_name = VolumeName::from_str(CONFIG_VOLUME_NAME)
+            .expect("CONFIG_VOLUME_NAME is a valid volume name");
+        let log_volume_name =
+            VolumeName::from_str(LOG_VOLUME_NAME).expect("LOG_VOLUME_NAME is a valid volume name");
+        pod_builder.add_container(vector_container(
+            &VECTOR_CONTAINER_NAME,
+            resolved_product_image,
+            vector_log_config,
+            &resource_names,
+            &config_volume_name,
+            &log_volume_name,
+            EnvVarSet::new(),
+        ));
     }
 
     add_graceful_shutdown_config(merged_config, &mut pod_builder).context(GracefulShutdownSnafu)?;

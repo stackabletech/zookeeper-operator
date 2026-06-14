@@ -3,8 +3,7 @@
 //! reference and object metadata.
 //!
 //! The individual files are rendered by the [`properties`](crate::zk_controller::build::properties)
-//! submodules; this module only orchestrates them into the ConfigMap. The Vector agent config is
-//! rendered by the controller (it still needs a `RoleGroupRef`) and threaded in as `vector_config`.
+//! submodules; this module only orchestrates them into the ConfigMap.
 
 use std::collections::BTreeMap;
 
@@ -20,12 +19,9 @@ use stackable_operator::{
     },
 };
 
-use crate::{
-    crd::logging_framework,
-    zk_controller::{
-        build::properties::{ConfigFileName, logging, security_properties, zoo_cfg},
-        validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
-    },
+use crate::zk_controller::{
+    build::properties::{ConfigFileName, product_logging, security_properties, zoo_cfg},
+    validate::{ValidatedCluster, ValidatedRoleGroupConfig},
 };
 
 #[derive(Snafu, Debug)]
@@ -49,15 +45,14 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 /// Builds the rolegroup [`ConfigMap`] entirely from the [`ValidatedCluster`].
 ///
 /// The owner reference, object metadata (name, namespace, labels) and resource name are derived
-/// from `cluster` and the role-group's type-safe [`ResourceNames`]. `vector_config` is the
-/// pre-rendered `vector.yaml` (present only when the Vector agent is enabled).
+/// from `cluster` and the role-group's type-safe [`ResourceNames`]. The vendored Vector agent
+/// config (`vector.yaml`) is added when the Vector agent is enabled for the role group.
 ///
 /// [`ResourceNames`]: stackable_operator::v2::role_group_utils::ResourceNames
 pub fn build_server_rolegroup_config_map(
     cluster: &ValidatedCluster,
     role_group_name: &RoleGroupName,
-    rolegroup_config: &ZookeeperRoleGroupConfig,
-    vector_config: Option<String>,
+    rolegroup_config: &ValidatedRoleGroupConfig,
 ) -> Result<ConfigMap> {
     let mut data: BTreeMap<String, String> = BTreeMap::new();
 
@@ -82,15 +77,17 @@ pub fn build_server_rolegroup_config_map(
             })?,
     );
 
-    // logback.xml / log4j.properties
-    data.extend(logging::build_product_log_config(
+    // logback.xml
+    data.extend(product_logging::build_product_log_config(
         &rolegroup_config.config.logging,
-        logging_framework(&cluster.image.product_version),
     ));
 
     // vector.yaml (only present when the Vector agent is enabled)
-    if let Some(vector_config) = vector_config {
-        data.insert(VECTOR_CONFIG_FILE.to_string(), vector_config);
+    if rolegroup_config.config.logging.enable_vector_agent {
+        data.insert(
+            VECTOR_CONFIG_FILE.to_string(),
+            product_logging::vector_config_file_content(),
+        );
     }
 
     ConfigMapBuilder::new()

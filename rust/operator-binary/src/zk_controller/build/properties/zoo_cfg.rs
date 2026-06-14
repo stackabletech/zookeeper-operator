@@ -12,7 +12,7 @@ use crate::{
         METRICS_PROVIDER_HTTP_PORT, METRICS_PROVIDER_HTTP_PORT_KEY, STACKABLE_DATA_DIR,
         security::ZookeeperSecurity, v1alpha1::ZookeeperConfig,
     },
-    zk_controller::validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
+    zk_controller::validate::{ValidatedCluster, ValidatedRoleGroupConfig},
 };
 
 const ADMIN_SERVER_PORT_KEY: &str = "admin.serverPort";
@@ -34,7 +34,7 @@ const DEFAULT_TICK_TIME: &str = "3000";
 /// 5. `configOverrides` for `zoo.cfg`
 pub fn build(
     cluster: &ValidatedCluster,
-    rolegroup_config: &ZookeeperRoleGroupConfig,
+    rolegroup_config: &ValidatedRoleGroupConfig,
 ) -> BTreeMap<String, String> {
     let security = &cluster.cluster_config.zookeeper_security;
     let config = &rolegroup_config.config;
@@ -106,14 +106,17 @@ pub fn build(
     zoo_cfg
 }
 
-/// Resolves the metrics HTTP port for a role group, honoring a
-/// `metricsProvider.httpPort` `configOverride` if present.
-pub fn metrics_http_port(
-    cluster: &ValidatedCluster,
-    rolegroup_config: &ZookeeperRoleGroupConfig,
-) -> u16 {
-    build(cluster, rolegroup_config)
-        .get(METRICS_PROVIDER_HTTP_PORT_KEY)
-        .and_then(|port| port.parse().ok())
-        .unwrap_or(METRICS_PROVIDER_HTTP_PORT)
+impl ValidatedCluster {
+    /// Resolves the metrics HTTP port for the given role group, honoring a
+    /// `metricsProvider.httpPort` `configOverride` if present.
+    ///
+    /// Defined here (in the build layer) rather than in `validate` so that resolving the port —
+    /// which renders the full `zoo.cfg` via [`build`] — does not invert the validate → build
+    /// dependency direction.
+    pub fn metrics_http_port(&self, rolegroup_config: &ValidatedRoleGroupConfig) -> u16 {
+        build(self, rolegroup_config)
+            .get(METRICS_PROVIDER_HTTP_PORT_KEY)
+            .and_then(|port| port.parse().ok())
+            .unwrap_or(METRICS_PROVIDER_HTTP_PORT)
+    }
 }

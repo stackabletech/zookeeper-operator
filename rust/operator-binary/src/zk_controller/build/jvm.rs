@@ -4,10 +4,9 @@ use stackable_operator::memory::{BinaryMultiple, MemoryQuantity};
 use super::properties::ConfigFileName;
 use crate::{
     crd::{
-        JMX_METRICS_PORT, LoggingFramework, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR,
-        logging_framework, v1alpha1::ZookeeperConfig,
+        JMX_METRICS_PORT, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR, v1alpha1::ZookeeperConfig,
     },
-    zk_controller::validate::ZookeeperRoleGroupConfig,
+    zk_controller::validate::ValidatedRoleGroupConfig,
 };
 
 const JAVA_HEAP_FACTOR: f32 = 0.8;
@@ -24,12 +23,7 @@ pub enum Error {
 }
 
 /// All JVM arguments.
-fn construct_jvm_args(
-    rolegroup_config: &ZookeeperRoleGroupConfig,
-    product_version: &str,
-) -> Vec<String> {
-    let logging_framework = logging_framework(product_version);
-
+fn construct_jvm_args(rolegroup_config: &ValidatedRoleGroupConfig) -> Vec<String> {
     let jvm_args = vec![
         format!(
             "-Djava.security.properties={STACKABLE_CONFIG_DIR}/{}",
@@ -38,16 +32,10 @@ fn construct_jvm_args(
         format!(
             "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={JMX_METRICS_PORT}:/stackable/jmx/server.yaml"
         ),
-        match logging_framework {
-            LoggingFramework::LOG4J => format!(
-                "-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{config_file}",
-                config_file = ConfigFileName::Log4jProperties
-            ),
-            LoggingFramework::LOGBACK => format!(
-                "-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{config_file}",
-                config_file = ConfigFileName::LogbackXml
-            ),
-        },
+        format!(
+            "-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{config_file}",
+            config_file = ConfigFileName::LogbackXml
+        ),
     ];
 
     // Apply the already-merged (role + role group) JVM argument overrides on top of the
@@ -57,11 +45,8 @@ fn construct_jvm_args(
 
 /// Arguments that go into `SERVER_JVMFLAGS`, so *not* the heap settings (which you can get using
 /// [`construct_zk_server_heap_env`]).
-pub fn construct_non_heap_jvm_args(
-    rolegroup_config: &ZookeeperRoleGroupConfig,
-    product_version: &str,
-) -> String {
-    let mut jvm_args = construct_jvm_args(rolegroup_config, product_version);
+pub fn construct_non_heap_jvm_args(rolegroup_config: &ValidatedRoleGroupConfig) -> String {
+    let mut jvm_args = construct_jvm_args(rolegroup_config);
     jvm_args.retain(|arg| !is_heap_jvm_argument(arg));
 
     jvm_args.join(" ")
@@ -104,7 +89,7 @@ mod tests {
     };
 
     /// The validated, merged config for the `default` server role group.
-    fn server_default(zk: &ZookeeperCluster) -> ZookeeperRoleGroupConfig {
+    fn server_default(zk: &ZookeeperCluster) -> ValidatedRoleGroupConfig {
         let default_group = RoleGroupName::from_str("default").expect("valid role group name");
         validated_cluster(zk)
             .role_group_configs
@@ -131,7 +116,7 @@ mod tests {
         "#;
         let zk = minimal_zk(input);
         let rg = server_default(&zk);
-        let non_heap_jvm_args = construct_non_heap_jvm_args(&rg, zk.spec.image.product_version());
+        let non_heap_jvm_args = construct_non_heap_jvm_args(&rg);
         let zk_server_heap_env =
             construct_zk_server_heap_env(&rg.config).expect("test: function must pass");
 
@@ -178,7 +163,7 @@ mod tests {
         "#;
         let zk = minimal_zk(input);
         let rg = server_default(&zk);
-        let non_heap_jvm_args = construct_non_heap_jvm_args(&rg, zk.spec.image.product_version());
+        let non_heap_jvm_args = construct_non_heap_jvm_args(&rg);
         let zk_server_heap_env =
             construct_zk_server_heap_env(&rg.config).expect("test: function must pass");
 
