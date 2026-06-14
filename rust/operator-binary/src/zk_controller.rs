@@ -1,15 +1,14 @@
 //! Ensures that `Pod`s are configured and running for each [`v1alpha1::ZookeeperCluster`]
-use std::{hash::Hasher, sync::Arc};
+use std::{hash::Hasher, str::FromStr, sync::Arc};
 
 use const_format::concatcp;
 use fnv::FnvHasher;
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
-    cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
+    cluster_resources::ClusterResourceApplyStrategy,
     commons::rbac::build_rbac_resources,
     kube::{
-        Resource,
         api::DynamicObject,
         core::{DeserializeGuard, error_boundary},
         runtime::controller,
@@ -22,6 +21,7 @@ use stackable_operator::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
     },
+    v2::{cluster_resources::cluster_resources_new, types::operator::ControllerName},
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
@@ -31,14 +31,17 @@ use crate::{
         ZookeeperRole,
         v1alpha1::{self, ZookeeperServerRoleConfig},
     },
-    zk_controller::build::resource::{
-        config_map, discovery,
-        listener::build_role_listener,
-        pdb::build_pdb,
-        service::{
-            build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
+    zk_controller::{
+        build::resource::{
+            config_map, discovery,
+            listener::build_role_listener,
+            pdb::build_pdb,
+            service::{
+                build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
+            },
+            statefulset::build_server_rolegroup_statefulset,
         },
-        statefulset::build_server_rolegroup_statefulset,
+        validate::{operator_name, product_name},
     },
 };
 
@@ -160,11 +163,6 @@ pub enum Error {
         source: stackable_operator::builder::meta::Error,
     },
 
-    #[snafu(display("failed to create cluster resources"))]
-    CreateClusterResources {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
     #[snafu(display("failed to apply group listener"))]
     ApplyGroupListener {
         source: stackable_operator::cluster_resources::Error,
@@ -199,7 +197,6 @@ impl ReconcilerError for Error {
             Error::ApplyPdb { .. } => None,
             Error::BuildLabel { .. } => None,
             Error::ObjectMeta { .. } => None,
-            Error::CreateClusterResources { .. } => None,
             Error::ApplyGroupListener { .. } => None,
         }
     }
@@ -232,15 +229,18 @@ pub async fn reconcile_zk(
     let resolved_product_image = &validated_cluster.image;
     let zookeeper_security = &validated_cluster.cluster_config.zookeeper_security;
 
-    let mut cluster_resources = ClusterResources::new(
-        APP_NAME,
-        OPERATOR_NAME,
-        ZK_CONTROLLER_NAME,
-        &zk.object_ref(&()),
+    // Names are derived from compile-time constants.
+    let mut cluster_resources = cluster_resources_new(
+        &product_name(),
+        &operator_name(),
+        &ControllerName::from_str(ZK_CONTROLLER_NAME)
+            .expect("ZK_CONTROLLER_NAME should be a valid controller name"),
+        &validated_cluster.name,
+        &validated_cluster.namespace,
+        &validated_cluster.uid,
         ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
         &zk.spec.object_overrides,
-    )
-    .context(CreateClusterResourcesSnafu)?;
+    );
 
     let (rbac_sa, rbac_rolebinding) = build_rbac_resources(
         zk,

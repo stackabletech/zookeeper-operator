@@ -55,10 +55,11 @@ use stackable_operator::{
 use crate::{
     APP_NAME,
     crd::{
-        JMX_METRICS_PORT_NAME, METRICS_PROVIDER_HTTP_PORT_NAME, STACKABLE_CONFIG_DIR,
-        STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR, STACKABLE_RW_CONFIG_DIR,
-        ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_LEADER_PORT,
-        ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, role_listener_name,
+        JMX_METRICS_PORT, JMX_METRICS_PORT_NAME, METRICS_PROVIDER_HTTP_PORT_NAME,
+        STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
+        STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME,
+        ZOOKEEPER_LEADER_PORT, ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_SERVER_PORT_NAME,
+        ZookeeperRole, role_listener_name,
         security::{self, ZookeeperSecurity},
         v1alpha1,
     },
@@ -81,6 +82,28 @@ const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
     value: 1.0,
     unit: BinaryMultiple::Mebi,
 };
+
+// Volume names. Each is shared between a `Volume`/PVC definition and one or more volume mounts; the
+// strings must match, so they are defined once here rather than repeated at every call site.
+const DATA_VOLUME_NAME: &str = "data";
+const CONFIG_VOLUME_NAME: &str = "config";
+const RW_CONFIG_VOLUME_NAME: &str = "rwconfig";
+const LOG_VOLUME_NAME: &str = "log";
+const LOG_CONFIG_VOLUME_NAME: &str = "log-config";
+
+/// Name of the `prepare` init container (also used as its log subdirectory).
+const PREPARE_CONTAINER_NAME: &str = "prepare";
+
+/// The shell invocation shared by the `prepare` init container and the main ZooKeeper container.
+fn container_command() -> Vec<String> {
+    vec![
+        "/bin/bash".to_string(),
+        "-x".to_string(),
+        "-euo".to_string(),
+        "pipefail".to_string(),
+        "-c".to_string(),
+    ]
+}
 
 #[derive(Snafu, Debug)]
 #[allow(clippy::enum_variant_names)]
@@ -175,12 +198,12 @@ pub fn build_server_rolegroup_statefulset(
     let data_pvc = resources_config
         .storage
         .data
-        .build_pvc("data", Some(vec!["ReadWriteOnce"]));
+        .build_pvc(DATA_VOLUME_NAME, Some(vec!["ReadWriteOnce"]));
     let original_pvcs = vec![data_pvc];
     let resources: ResourceRequirements = resources_config.into();
 
     let mut cb_prepare =
-        ContainerBuilder::new("prepare").expect("invalid hard-coded container name");
+        ContainerBuilder::new(PREPARE_CONTAINER_NAME).expect("invalid hard-coded container name");
     let mut cb_zookeeper =
         ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
     let mut pod_builder = PodBuilder::new();
@@ -224,7 +247,7 @@ pub fn build_server_rolegroup_statefulset(
     {
         args.push(product_logging::framework::capture_shell_output(
             STACKABLE_LOG_DIR,
-            "prepare",
+            PREPARE_CONTAINER_NAME,
             log_config,
         ));
     }
@@ -232,13 +255,7 @@ pub fn build_server_rolegroup_statefulset(
 
     let container_prepare = cb_prepare
         .image_from_product_image(resolved_product_image)
-        .command(vec![
-            "/bin/bash".to_string(),
-            "-x".to_string(),
-            "-euo".to_string(),
-            "pipefail".to_string(),
-            "-c".to_string(),
-        ])
+        .command(container_command())
         .args(vec![args.join("\n")])
         .add_env_vars(env_vars.clone())
         .add_env_vars(vec![EnvVar {
@@ -252,13 +269,13 @@ pub fn build_server_rolegroup_statefulset(
             }),
             ..EnvVar::default()
         }])
-        .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .add_volume_mount(DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount(CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .add_volume_mount(RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .add_volume_mount(LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
         .context(AddVolumeMountSnafu)?
         .resources(
             ResourceRequirementsBuilder::new()
@@ -272,13 +289,7 @@ pub fn build_server_rolegroup_statefulset(
 
     let container_zk = cb_zookeeper
         .image_from_product_image(resolved_product_image)
-        .command(vec![
-            "/bin/bash".to_string(),
-            "-x".to_string(),
-            "-euo".to_string(),
-            "pipefail".to_string(),
-            "-c".to_string(),
-        ])
+        .command(container_command())
         .args(vec![formatdoc! {"
             {COMMON_BASH_TRAP_FUNCTIONS}
             {remove_vector_shutdown_file_command}
@@ -331,17 +342,17 @@ pub fn build_server_rolegroup_statefulset(
         )
         .add_container_port(ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_LEADER_PORT as i32)
         .add_container_port(ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_ELECTION_PORT as i32)
-        .add_container_port(JMX_METRICS_PORT_NAME, 9505)
+        .add_container_port(JMX_METRICS_PORT_NAME, JMX_METRICS_PORT as i32)
         .add_container_port(METRICS_PROVIDER_HTTP_PORT_NAME, metrics_port.into())
-        .add_volume_mount("data", STACKABLE_DATA_DIR)
+        .add_volume_mount(DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount("config", STACKABLE_CONFIG_DIR)
+        .add_volume_mount(CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount("log-config", STACKABLE_LOG_CONFIG_DIR)
+        .add_volume_mount(LOG_CONFIG_VOLUME_NAME, STACKABLE_LOG_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount("rwconfig", STACKABLE_RW_CONFIG_DIR)
+        .add_volume_mount(RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount("log", STACKABLE_LOG_DIR)
+        .add_volume_mount(LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
         .context(AddVolumeMountSnafu)?
         .resources(resources)
         .build();
@@ -357,7 +368,7 @@ pub fn build_server_rolegroup_statefulset(
         .add_container(container_zk)
         .affinity(&merged_config.affinity)
         .add_volume(Volume {
-            name: "config".to_string(),
+            name: CONFIG_VOLUME_NAME.to_string(),
             config_map: Some(ConfigMapVolumeSource {
                 name: resource_names.role_group_config_map().to_string(),
                 ..ConfigMapVolumeSource::default()
@@ -370,12 +381,12 @@ pub fn build_server_rolegroup_statefulset(
                 medium: None,
                 size_limit: None,
             }),
-            name: "rwconfig".to_string(),
+            name: RW_CONFIG_VOLUME_NAME.to_string(),
             ..Volume::default()
         })
         .context(AddVolumeSnafu)?
         .add_empty_dir_volume(
-            "log",
+            LOG_VOLUME_NAME,
             Some(product_logging::framework::calculate_log_volume_size_limit(
                 &[
                     properties::logging::MAX_ZK_LOG_FILES_SIZE,
@@ -405,7 +416,7 @@ pub fn build_server_rolegroup_statefulset(
     };
     pod_builder
         .add_volume(Volume {
-            name: "log-config".to_string(),
+            name: LOG_CONFIG_VOLUME_NAME.to_string(),
             config_map: Some(ConfigMapVolumeSource {
                 name: log_config_map,
                 ..ConfigMapVolumeSource::default()
