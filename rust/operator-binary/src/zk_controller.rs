@@ -238,8 +238,8 @@ pub async fn reconcile_zk(
         &validated_cluster.name,
         &validated_cluster.namespace,
         &validated_cluster.uid,
-        ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
-        &zk.spec.object_overrides,
+        ClusterResourceApplyStrategy::from(&validated_cluster.cluster_operation),
+        &validated_cluster.object_overrides,
     );
 
     let (rbac_sa, rbac_rolebinding) = build_rbac_resources(

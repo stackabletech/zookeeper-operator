@@ -12,8 +12,12 @@ use std::{collections::BTreeMap, str::FromStr};
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
-    commons::product_image_selection::{self, ResolvedProductImage},
+    commons::{
+        cluster_operation::ClusterOperation,
+        product_image_selection::{self, ResolvedProductImage},
+    },
     config::fragment,
+    deep_merger::ObjectOverrides,
     k8s_openapi::{api::core::v1::PodTemplateSpec, apimachinery::pkg::apis::meta::v1::ObjectMeta},
     kube::{Resource, ResourceExt},
     kvp::Labels,
@@ -213,6 +217,13 @@ pub struct ValidatedCluster {
     pub cluster_config: ValidatedClusterConfig,
     pub role_group_configs:
         BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>>,
+    /// The cluster's operation settings (pause/stop), from which the
+    /// [`ClusterResourceApplyStrategy`](stackable_operator::cluster_resources::ClusterResourceApplyStrategy)
+    /// is derived. Carried here so the apply step does not reach into the cluster spec.
+    pub cluster_operation: ClusterOperation,
+    /// Object overrides applied to the cluster's resources, carried so the apply step does not reach
+    /// into the raw [`v1alpha1::ZookeeperCluster`].
+    pub object_overrides: ObjectOverrides,
 }
 
 impl ValidatedCluster {
@@ -228,6 +239,8 @@ impl ValidatedCluster {
             ZookeeperRole,
             BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>,
         >,
+        cluster_operation: ClusterOperation,
+        object_overrides: ObjectOverrides,
     ) -> Self {
         Self {
             metadata: ObjectMeta {
@@ -243,6 +256,8 @@ impl ValidatedCluster {
             product_version,
             cluster_config,
             role_group_configs,
+            cluster_operation,
+            object_overrides,
         }
     }
 
@@ -470,6 +485,8 @@ pub fn validate(
             listener_class,
         },
         role_group_configs,
+        zk.spec.cluster_operation.clone(),
+        zk.spec.object_overrides.clone(),
     ))
 }
 

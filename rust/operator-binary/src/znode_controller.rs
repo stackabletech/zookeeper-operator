@@ -233,14 +233,7 @@ pub async fn reconcile_znode(
                     let validated_znode =
                         validate::validate(&znode, &dereferenced, &ctx.operator_environment)
                             .context(ValidateClusterSnafu)?;
-                    reconcile_apply(
-                        client,
-                        &znode,
-                        &validated_znode,
-                        dereferenced.zk,
-                        &znode_path,
-                    )
-                    .await
+                    reconcile_apply(client, &validated_znode, dereferenced.zk, &znode_path).await
                 }
                 finalizer::Event::Cleanup(_znode) => {
                     let dereferenced = match dereferenced_objects {
@@ -270,7 +263,6 @@ pub async fn reconcile_znode(
 
 async fn reconcile_apply(
     client: &stackable_operator::client::Client,
-    znode: &v1alpha1::ZookeeperZnode,
     validated_znode: &validate::ValidatedZnode,
     zk: v1alpha1::ZookeeperCluster,
     znode_path: &str,
@@ -279,11 +271,14 @@ async fn reconcile_apply(
         APP_NAME,
         OPERATOR_NAME,
         ZNODE_CONTROLLER_NAME,
-        &znode.object_ref(&()),
-        ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
-        &znode.spec.object_overrides,
+        &validated_znode.object_ref(&()),
+        ClusterResourceApplyStrategy::from(&validated_znode.cluster_operation),
+        &validated_znode.object_overrides,
     )
-    .context(ZnodeMissingExpectedKeysSnafu { znode })?;
+    .with_context(|_| ZnodeMissingExpectedKeysSnafu {
+        znode: ObjectRef::<v1alpha1::ZookeeperZnode>::new(&validated_znode.name)
+            .within(validated_znode.namespace.as_ref()),
+    })?;
 
     znode_mgmt::ensure_znode_exists(
         &zk_mgmt_addr(

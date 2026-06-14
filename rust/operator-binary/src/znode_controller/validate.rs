@@ -8,7 +8,8 @@ use std::str::FromStr;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
-    commons::product_image_selection,
+    commons::{cluster_operation::ClusterOperation, product_image_selection},
+    deep_merger::ObjectOverrides,
     k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
     kube::Resource,
     kvp::LabelValue,
@@ -83,6 +84,14 @@ pub struct ValidatedZnode {
     /// `app.kubernetes.io/version` label.
     pub product_version: ProductVersion,
     pub zookeeper_security: ZookeeperSecurity,
+    /// The parent cluster's operation settings (pause/stop), from which the
+    /// [`ClusterResourceApplyStrategy`](stackable_operator::cluster_resources::ClusterResourceApplyStrategy)
+    /// for the znode's resources is derived. Carried here so the apply step does not reach into the
+    /// cluster spec.
+    pub cluster_operation: ClusterOperation,
+    /// Object overrides applied to the znode's resources, carried so the apply step does not reach
+    /// into the raw [`v1alpha1::ZookeeperZnode`].
+    pub object_overrides: ObjectOverrides,
 }
 
 impl HasName for ValidatedZnode {
@@ -187,5 +196,7 @@ pub fn validate(
         uid,
         product_version,
         zookeeper_security,
+        cluster_operation: dereferenced_objects.zk.spec.cluster_operation.clone(),
+        object_overrides: znode.spec.object_overrides.clone(),
     })
 }
