@@ -296,7 +296,7 @@ async fn reconcile_apply(
 
     let listener = client
         .get::<listener::v1alpha1::Listener>(
-            &role_listener_name(&zk.name_any(), &ZookeeperRole::Server),
+            role_listener_name(&zk.name_any(), &ZookeeperRole::Server).as_ref(),
             zk.metadata
                 .namespace
                 .as_deref()

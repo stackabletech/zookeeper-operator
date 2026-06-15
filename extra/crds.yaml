@@ -78,6 +78,9 @@ spec:
                           - Which ca.crt to use when validating the other server
 
                           Defaults to `tls`
+                        maxLength: 253
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                       serverSecretClass:
                         default: tls
@@ -88,7 +91,10 @@ spec:
                           - Which cert the servers should use to authenticate themselves against the client
 
                           Defaults to `tls`.
+                        maxLength: 253
+                        minLength: 1
                         nullable: true
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                     type: object
                   vectorAggregatorConfigMapName:
@@ -97,7 +103,10 @@ spec:
                       It must contain the key `ADDRESS` with the address of the Vector aggregator.
                       Follow the [logging tutorial](https://docs.stackable.tech/home/nightly/tutorials/logging-vector-aggregator)
                       to learn how to configure log aggregation with Vector.
+                    maxLength: 253
+                    minLength: 1
                     nullable: true
+                    pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                     type: string
                 type: object
               clusterOperation:
@@ -727,6 +736,9 @@ spec:
                       listenerClass:
                         default: cluster-internal
                         description: This field controls which [ListenerClass](https://docs.stackable.tech/home/nightly/listener-operator/listenerclass.html) is used to expose the ZooKeeper servers.
+                        maxLength: 253
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
                         type: string
                       podDisruptionBudget:
                         default:

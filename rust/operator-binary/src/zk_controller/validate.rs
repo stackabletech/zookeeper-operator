@@ -37,7 +37,7 @@ use stackable_operator::{
         role_group_utils::ResourceNames,
         role_utils::{JavaCommonConfig, with_validated_config},
         types::{
-            kubernetes::{ConfigMapName, NamespaceName, Uid},
+            kubernetes::{ConfigMapName, ListenerClassName, NamespaceName, Uid},
             operator::{
                 ClusterName, ControllerName, OperatorName, ProductName, ProductVersion,
                 RoleGroupName, RoleName,
@@ -51,7 +51,7 @@ use crate::{
     crd::{
         APP_NAME, CONTAINER_IMAGE_BASE_NAME, OPERATOR_NAME, ZOOKEEPER_ELECTION_PORT,
         ZOOKEEPER_LEADER_PORT, ZookeeperPodRef, ZookeeperRole, ZookeeperServerRoleType,
-        authentication,
+        authentication, default_listener_class,
         security::ZookeeperSecurity,
         v1alpha1::{self, ZookeeperConfig, ZookeeperConfigOverrides, ZookeeperServerRoleConfig},
     },
@@ -122,12 +122,6 @@ pub enum Error {
         "the Vector agent is enabled but no Vector aggregator discovery ConfigMap name is set"
     ))]
     MissingVectorAggregatorConfigMapName,
-
-    #[snafu(display("the Vector aggregator discovery ConfigMap name {name:?} is invalid"))]
-    ParseVectorAggregatorConfigMapName {
-        source: stackable_operator::v2::macros::attributed_string_type::Error,
-        name: String,
-    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -381,7 +375,7 @@ pub struct ValidatedClusterConfig {
 
     /// The ListenerClass used to expose the ZooKeeper servers, so the listener builder does not
     /// need the raw cluster object.
-    pub listener_class: String,
+    pub listener_class: ListenerClassName,
 }
 
 /// Validates the cluster spec and the dereferenced inputs.
@@ -408,21 +402,12 @@ pub fn validate(
 
     let zookeeper_security = ZookeeperSecurity::new(zk, resolved_authentication_classes);
 
-    // Parsed once up-front so an invalid name fails validation rather than at build time. The
-    // per-role-group logging validation needs it to build the Vector container config.
+    // The per-role-group logging validation needs it to build the Vector container config.
     let vector_aggregator_config_map_name = zk
         .spec
         .cluster_config
         .vector_aggregator_config_map_name
-        .as_deref()
-        .map(|name| {
-            ConfigMapName::from_str(name).with_context(|_| {
-                ParseVectorAggregatorConfigMapNameSnafu {
-                    name: name.to_owned(),
-                }
-            })
-        })
-        .transpose()?;
+        .clone();
 
     let mut role_group_configs = BTreeMap::new();
     for zk_role in ZookeeperRole::iter() {
@@ -463,7 +448,7 @@ pub fn validate(
     let listener_class = zk
         .role(&ZookeeperRole::Server)
         .map(|role| role.role_config.listener_class.clone())
-        .unwrap_or_default();
+        .unwrap_or_else(|_| default_listener_class());
 
     let server_addresses = server_addresses(
         &name,
@@ -567,11 +552,11 @@ fn server_addresses(
             role_name: ValidatedCluster::role_name(),
             role_group_name: rg_name.clone(),
         };
-        let headless_service_name = resource_names.headless_service_name().to_string();
+        let headless_service_name = resource_names.headless_service_name();
         let stateful_set_name = resource_names.stateful_set_name().to_string();
         for i in 0..rg_config.replicas {
             let pod_ref = ZookeeperPodRef {
-                namespace: namespace.to_string(),
+                namespace: namespace.clone(),
                 role_group_headless_service_name: headless_service_name.clone(),
                 pod_name: format!("{stateful_set_name}-{i}"),
                 zookeeper_myid: i + rg_config.config.myid_offset,

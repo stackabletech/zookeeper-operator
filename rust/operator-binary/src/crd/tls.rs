@@ -1,6 +1,9 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 use stackable_operator::{
     schemars::{self, JsonSchema},
+    v2::types::kubernetes::SecretClassName,
     versioned::versioned,
 };
 
@@ -19,7 +22,7 @@ pub mod versioned {
         ///
         /// Defaults to `tls`
         #[serde(default = "quorum_tls_default")]
-        pub quorum_secret_class: String,
+        pub quorum_secret_class: SecretClassName,
 
         /// The [SecretClass](DOCS_BASE_URL_PLACEHOLDER/secret-operator/secretclass) to use for
         /// client connections. This setting controls:
@@ -31,7 +34,7 @@ pub mod versioned {
             default = "server_tls_default",
             skip_serializing_if = "Option::is_none"
         )]
-        pub server_secret_class: Option<String>,
+        pub server_secret_class: Option<SecretClassName>,
     }
 }
 
@@ -44,11 +47,12 @@ pub fn default_zookeeper_tls() -> Option<v1alpha1::ZookeeperTls> {
 }
 
 /// Helper methods to provide defaults in the CRDs and tests
-pub fn server_tls_default() -> Option<String> {
-    Some(TLS_DEFAULT_SECRET_CLASS.into())
+pub fn server_tls_default() -> Option<SecretClassName> {
+    Some(quorum_tls_default())
 }
 
 /// Helper methods to provide defaults in the CRDs and tests
-pub fn quorum_tls_default() -> String {
-    TLS_DEFAULT_SECRET_CLASS.into()
+pub fn quorum_tls_default() -> SecretClassName {
+    SecretClassName::from_str(TLS_DEFAULT_SECRET_CLASS)
+        .expect("the default TLS secret class should be a valid SecretClass name")
 }

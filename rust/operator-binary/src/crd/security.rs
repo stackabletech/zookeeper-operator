@@ -4,7 +4,7 @@
 //! and helper functions
 //!
 //! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, str::FromStr};
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
@@ -23,6 +23,7 @@ use stackable_operator::{
     crd::authentication::core,
     k8s_openapi::api::core::v1::Volume,
     shared::time::Duration,
+    v2::types::{common::Port, kubernetes::SecretClassName},
 };
 
 use crate::{
@@ -52,8 +53,8 @@ pub enum Error {
 /// Helper struct combining TLS settings for server and quorum with the resolved AuthenticationClasses
 pub struct ZookeeperSecurity {
     resolved_authentication_classes: DereferencedAuthenticationClasses,
-    server_secret_class: Option<String>,
-    quorum_secret_class: String,
+    server_secret_class: Option<SecretClassName>,
+    quorum_secret_class: SecretClassName,
 }
 
 impl ZookeeperSecurity {
@@ -130,11 +131,11 @@ impl ZookeeperSecurity {
     }
 
     /// Return the ZooKeeper (secure) client port depending on tls or authentication settings.
-    pub fn client_port(&self) -> u16 {
+    pub fn client_port(&self) -> Port {
         if self.tls_enabled() {
-            Self::SECURE_CLIENT_PORT
+            Port::from(Self::SECURE_CLIENT_PORT)
         } else {
-            Self::CLIENT_PORT
+            Port::from(Self::CLIENT_PORT)
         }
     }
 
@@ -170,7 +171,7 @@ impl ZookeeperSecurity {
         pod_builder
             .add_volume(Self::create_quorum_tls_volume(
                 tls_volume_name,
-                &self.quorum_secret_class,
+                self.quorum_secret_class.as_ref(),
                 requested_secret_lifetime,
             )?)
             .context(AddVolumeSnafu)?;
@@ -279,19 +280,19 @@ impl ZookeeperSecurity {
     }
 
     /// Returns the `SecretClass` provided in a `AuthenticationClass` for TLS.
-    fn get_tls_secret_class(&self) -> Option<&String> {
+    fn get_tls_secret_class(&self) -> Option<&str> {
         self.resolved_authentication_classes
             .get_tls_authentication_class()
             .and_then(|auth_class| match &auth_class.spec.provider {
                 core::v1alpha1::AuthenticationClassProvider::Tls(tls) => {
-                    tls.client_cert_secret_class.as_ref()
+                    tls.client_cert_secret_class.as_deref()
                 }
                 core::v1alpha1::AuthenticationClassProvider::Ldap(_)
                 | core::v1alpha1::AuthenticationClassProvider::Oidc(_)
                 | core::v1alpha1::AuthenticationClassProvider::Static(_)
                 | core::v1alpha1::AuthenticationClassProvider::Kerberos(_) => None,
             })
-            .or(self.server_secret_class.as_ref())
+            .or(self.server_secret_class.as_ref().map(AsRef::as_ref))
     }
 
     /// Creates ephemeral volumes to mount the `SecretClass` with the listener-volume scope into the Pods.
@@ -352,8 +353,11 @@ impl ZookeeperSecurity {
     pub fn new_for_tests() -> Self {
         ZookeeperSecurity {
             resolved_authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
-            server_secret_class: Some("tls".to_owned()),
-            quorum_secret_class: "tls".to_string(),
+            server_secret_class: Some(
+                SecretClassName::from_str("tls").expect("'tls' is a valid SecretClass name"),
+            ),
+            quorum_secret_class: SecretClassName::from_str("tls")
+                .expect("'tls' is a valid SecretClass name"),
         }
     }
 }

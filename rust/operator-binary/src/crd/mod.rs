@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, Snafu};
 use stackable_operator::{
@@ -21,7 +23,13 @@ use stackable_operator::{
     shared::time::Duration,
     status::condition::{ClusterCondition, HasStatusCondition},
     utils::cluster_info::KubernetesClusterInfo,
-    v2::{config_overrides::KeyValueConfigOverrides, role_utils::JavaCommonConfig},
+    v2::{
+        config_overrides::KeyValueConfigOverrides,
+        role_utils::JavaCommonConfig,
+        types::kubernetes::{
+            ConfigMapName, ListenerClassName, ListenerName, NamespaceName, ServiceName,
+        },
+    },
     versioned::versioned,
 };
 use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
@@ -38,8 +46,9 @@ pub mod tls;
 ///
 /// Lives in the `crd` module (rather than the controller build tree) because it is shared by both
 /// controllers and by [`ZookeeperCluster::server_role_listener_fqdn`].
-pub fn role_listener_name(cluster_name: &str, zk_role: &ZookeeperRole) -> String {
-    format!("{cluster_name}-{zk_role}")
+pub fn role_listener_name(cluster_name: &str, zk_role: &ZookeeperRole) -> ListenerName {
+    ListenerName::from_str(&format!("{cluster_name}-{zk_role}"))
+        .expect("the role listener name should be a valid Listener name")
 }
 
 pub const APP_NAME: &str = "zookeeper";
@@ -135,7 +144,7 @@ pub mod versioned {
 
         /// This field controls which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html) is used to expose the ZooKeeper servers.
         #[serde(default = "default_listener_class")]
-        pub listener_class: String,
+        pub listener_class: ListenerClassName,
     }
 
     #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -151,7 +160,7 @@ pub mod versioned {
         /// Follow the [logging tutorial](DOCS_BASE_URL_PLACEHOLDER/tutorials/logging-vector-aggregator)
         /// to learn how to configure log aggregation with Vector.
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub vector_aggregator_config_map_name: Option<String>,
+        pub vector_aggregator_config_map_name: Option<ConfigMapName>,
 
         /// TLS encryption settings for ZooKeeper (server, quorum).
         /// Read more in the [encryption usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/encryption).
@@ -325,8 +334,8 @@ pub enum ZookeeperRole {
 ///
 /// Used for service discovery.
 pub struct ZookeeperPodRef {
-    pub namespace: String,
-    pub role_group_headless_service_name: String,
+    pub namespace: NamespaceName,
+    pub role_group_headless_service_name: ServiceName,
     pub pod_name: String,
     pub zookeeper_myid: u16,
 }
@@ -339,8 +348,9 @@ fn cluster_config_default() -> v1alpha1::ZookeeperClusterConfig {
     }
 }
 
-fn default_listener_class() -> String {
-    DEFAULT_LISTENER_CLASS.to_owned()
+pub(crate) fn default_listener_class() -> ListenerClassName {
+    ListenerClassName::from_str(DEFAULT_LISTENER_CLASS)
+        .expect("the default listener class should be a valid ListenerClass name")
 }
 
 impl Default for ZookeeperServerRoleConfig {
@@ -469,7 +479,8 @@ mod tests {
             .cluster_config
             .tls
             .as_ref()
-            .and_then(|tls| tls.server_secret_class.as_deref())
+            .and_then(|tls| tls.server_secret_class.as_ref())
+            .map(AsRef::as_ref)
     }
 
     fn get_quorum_secret_class(zk: &v1alpha1::ZookeeperCluster) -> &str {
@@ -479,7 +490,7 @@ mod tests {
             .as_ref()
             .unwrap()
             .quorum_secret_class
-            .as_str()
+            .as_ref()
     }
 
     #[test]
@@ -497,11 +508,11 @@ mod tests {
             serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
-            tls::server_tls_default().as_deref()
+            tls::server_tls_default().as_ref().map(AsRef::as_ref)
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default().as_str()
+            tls::quorum_tls_default().as_ref()
         );
 
         let input = r#"
@@ -525,7 +536,7 @@ mod tests {
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default().as_str()
+            tls::quorum_tls_default().as_ref()
         );
 
         let input = r#"
@@ -545,7 +556,7 @@ mod tests {
         assert_eq!(get_server_secret_class(&zookeeper), None);
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default().as_str()
+            tls::quorum_tls_default().as_ref()
         );
 
         let input = r#"
@@ -564,7 +575,7 @@ mod tests {
             serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
-            tls::server_tls_default().as_deref()
+            tls::server_tls_default().as_ref().map(AsRef::as_ref)
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
@@ -588,11 +599,11 @@ mod tests {
 
         assert_eq!(
             get_server_secret_class(&zookeeper),
-            tls::server_tls_default().as_deref()
+            tls::server_tls_default().as_ref().map(AsRef::as_ref)
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default()
+            tls::quorum_tls_default().as_ref()
         );
 
         let input = r#"
@@ -611,7 +622,7 @@ mod tests {
             serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
-            tls::server_tls_default().as_deref()
+            tls::server_tls_default().as_ref().map(AsRef::as_ref)
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
@@ -638,7 +649,7 @@ mod tests {
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default().as_str()
+            tls::quorum_tls_default().as_ref()
         );
     }
 

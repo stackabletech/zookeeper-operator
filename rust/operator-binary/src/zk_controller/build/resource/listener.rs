@@ -36,7 +36,7 @@ pub fn build_role_listener(
             .with_labels(cluster.recommended_labels(&role_group_name))
             .build(),
         spec: listener::v1alpha1::ListenerSpec {
-            class_name: Some(cluster.cluster_config.listener_class.clone()),
+            class_name: Some(cluster.cluster_config.listener_class.to_string()),
             ports: Some(listener_ports(&cluster.cluster_config.zookeeper_security)),
             ..listener::v1alpha1::ListenerSpec::default()
         },

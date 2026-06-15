@@ -207,7 +207,7 @@ pub fn build_server_rolegroup_statefulset(
     );
 
     let listener_pvc = build_role_listener_pvc(
-        &role_listener_name(cluster.name.as_ref(), &ZookeeperRole::Server),
+        role_listener_name(cluster.name.as_ref(), &ZookeeperRole::Server).as_ref(),
         &unversioned_recommended_labels,
     )?;
 
@@ -329,7 +329,7 @@ pub fn build_server_rolegroup_statefulset(
         })
         .add_container_port(
             ZOOKEEPER_SERVER_PORT_NAME,
-            zookeeper_security.client_port() as i32,
+            i32::from(zookeeper_security.client_port()),
         )
         .add_container_port(ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_LEADER_PORT as i32)
         .add_container_port(ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_ELECTION_PORT as i32)
