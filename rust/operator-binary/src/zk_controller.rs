@@ -291,7 +291,6 @@ pub async fn reconcile_zk(
             &validated_cluster,
             rolegroup_name,
             rolegroup_config,
-            &rbac_sa,
         )
         .with_context(|_| BuildRoleGroupStatefulSetSnafu {
             rolegroup: rolegroup_name.clone(),

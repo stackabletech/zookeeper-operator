@@ -7,6 +7,8 @@
 
 use std::collections::BTreeMap;
 
+use stackable_operator::v2::types::common::Port;
+
 use crate::{
     crd::{
         METRICS_PROVIDER_HTTP_PORT, METRICS_PROVIDER_HTTP_PORT_KEY, STACKABLE_DATA_DIR,
@@ -113,10 +115,11 @@ impl ValidatedCluster {
     /// Defined here (in the build layer) rather than in `validate` so that resolving the port —
     /// which renders the full `zoo.cfg` via [`build`] — does not invert the validate → build
     /// dependency direction.
-    pub fn metrics_http_port(&self, rolegroup_config: &ValidatedRoleGroupConfig) -> u16 {
+    pub fn metrics_http_port(&self, rolegroup_config: &ValidatedRoleGroupConfig) -> Port {
         build(self, rolegroup_config)
             .get(METRICS_PROVIDER_HTTP_PORT_KEY)
-            .and_then(|port| port.parse().ok())
+            .and_then(|port| port.parse::<u16>().ok())
+            .map(Port::from)
             .unwrap_or(METRICS_PROVIDER_HTTP_PORT)
     }
 }

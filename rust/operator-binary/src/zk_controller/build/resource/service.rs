@@ -2,7 +2,10 @@ use stackable_operator::{
     builder::meta::ObjectMetaBuilder,
     k8s_openapi::api::core::v1::{Service, ServicePort, ServiceSpec},
     kvp::{Annotations, Labels},
-    v2::{builder::meta::ownerreference_from_resource, types::operator::RoleGroupName},
+    v2::{
+        builder::meta::ownerreference_from_resource,
+        types::{common::Port, operator::RoleGroupName},
+    },
 };
 
 use crate::{
@@ -80,7 +83,7 @@ pub(crate) fn build_server_rolegroup_metrics_service(
         .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
         .with_labels(cluster.recommended_labels(role_group_name))
         .with_labels(prometheus_labels())
-        .with_annotations(prometheus_annotations(metrics_port))
+        .with_annotations(prometheus_annotations(metrics_port.clone()))
         .build();
 
     let service_spec = ServiceSpec {
@@ -124,7 +127,7 @@ fn prometheus_labels() -> Labels {
 /// These annotations can be used in a ServiceMonitor.
 ///
 /// see also <https://github.com/prometheus-community/helm-charts/blob/prometheus-27.32.0/charts/prometheus/values.yaml#L983-L1036>
-fn prometheus_annotations(metrics_port: u16) -> Annotations {
+fn prometheus_annotations(metrics_port: Port) -> Annotations {
     Annotations::try_from([
         ("prometheus.io/path".to_owned(), "/metrics".to_owned()),
         ("prometheus.io/port".to_owned(), metrics_port.to_string()),

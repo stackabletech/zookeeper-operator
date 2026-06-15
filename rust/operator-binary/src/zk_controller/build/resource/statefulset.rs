@@ -23,12 +23,11 @@ use stackable_operator::{
             core::v1::{
                 ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource, ExecAction,
                 ObjectFieldSelector, PersistentVolumeClaim, PodSecurityContext, Probe,
-                ResourceRequirements, ServiceAccount, Volume,
+                ResourceRequirements, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
     },
-    kube::ResourceExt,
     kvp::Labels,
     memory::{BinaryMultiple, MemoryQuantity},
     product_logging::{
@@ -158,7 +157,6 @@ pub fn build_server_rolegroup_statefulset(
     cluster: &ValidatedCluster,
     role_group_name: &RoleGroupName,
     rolegroup_config: &ValidatedRoleGroupConfig,
-    service_account: &ServiceAccount,
 ) -> Result<StatefulSet> {
     let merged_config = &rolegroup_config.config;
     let logging = &merged_config.logging;
@@ -331,9 +329,12 @@ pub fn build_server_rolegroup_statefulset(
             ZOOKEEPER_SERVER_PORT_NAME,
             i32::from(zookeeper_security.client_port()),
         )
-        .add_container_port(ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_LEADER_PORT as i32)
-        .add_container_port(ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_ELECTION_PORT as i32)
-        .add_container_port(JMX_METRICS_PORT_NAME, JMX_METRICS_PORT as i32)
+        .add_container_port(ZOOKEEPER_LEADER_PORT_NAME, i32::from(ZOOKEEPER_LEADER_PORT))
+        .add_container_port(
+            ZOOKEEPER_ELECTION_PORT_NAME,
+            i32::from(ZOOKEEPER_ELECTION_PORT),
+        )
+        .add_container_port(JMX_METRICS_PORT_NAME, i32::from(JMX_METRICS_PORT))
         .add_container_port(METRICS_PROVIDER_HTTP_PORT_NAME, metrics_port.into())
         .add_volume_mount(DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
@@ -390,7 +391,7 @@ pub fn build_server_rolegroup_statefulset(
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(service_account.name_any());
+        .service_account_name(cluster.rbac_service_account_name());
 
     // Use the user-provided custom log ConfigMap if one is configured, otherwise fall back to the
     // rolegroup's own ConfigMap. This branches on the *validated* logging choice.

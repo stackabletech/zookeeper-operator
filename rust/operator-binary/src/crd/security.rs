@@ -59,12 +59,12 @@ pub struct ZookeeperSecurity {
 
 impl ZookeeperSecurity {
     // ports
-    pub const CLIENT_PORT: u16 = 2181;
+    pub const CLIENT_PORT: Port = Port(2181);
     pub const CLIENT_PORT_NAME: &'static str = "clientPort";
     // directories
     pub const QUORUM_TLS_DIR: &'static str = "/stackable/quorum_tls";
     pub const QUORUM_TLS_MOUNT_DIR: &'static str = "/stackable/quorum_tls_mount";
-    pub const SECURE_CLIENT_PORT: u16 = 2282;
+    pub const SECURE_CLIENT_PORT: Port = Port(2282);
     pub const SECURE_CLIENT_PORT_NAME: &'static str = "secureClientPort";
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
     pub const SERVER_TLS_DIR: &'static str = "/stackable/server_tls";
@@ -133,9 +133,9 @@ impl ZookeeperSecurity {
     /// Return the ZooKeeper (secure) client port depending on tls or authentication settings.
     pub fn client_port(&self) -> Port {
         if self.tls_enabled() {
-            Port::from(Self::SECURE_CLIENT_PORT)
+            Self::SECURE_CLIENT_PORT
         } else {
-            Port::from(Self::CLIENT_PORT)
+            Self::CLIENT_PORT
         }
     }
 

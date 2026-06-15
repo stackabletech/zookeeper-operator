@@ -35,9 +35,11 @@ use stackable_operator::{
             validate_logging_configuration_for_container,
         },
         role_group_utils::ResourceNames,
-        role_utils::{JavaCommonConfig, with_validated_config},
+        role_utils::{JavaCommonConfig, ResourceNames as RbacResourceNames, with_validated_config},
         types::{
-            kubernetes::{ConfigMapName, ListenerClassName, NamespaceName, Uid},
+            kubernetes::{
+                ConfigMapName, ListenerClassName, NamespaceName, ServiceAccountName, Uid,
+            },
             operator::{
                 ClusterName, ControllerName, OperatorName, ProductName, ProductVersion,
                 RoleGroupName, RoleName,
@@ -268,6 +270,19 @@ impl ValidatedCluster {
             role_name: Self::role_name(),
             role_group_name: role_group_name.clone(),
         }
+    }
+
+    /// The RBAC ServiceAccount name for this cluster, `<cluster>-serviceaccount`.
+    ///
+    /// Matches the name produced by
+    /// [`build_rbac_resources`](stackable_operator::commons::rbac::build_rbac_resources) so the
+    /// StatefulSet can reference the ServiceAccount without depending on the built object.
+    pub(crate) fn rbac_service_account_name(&self) -> ServiceAccountName {
+        RbacResourceNames {
+            cluster_name: self.name.clone(),
+            product_name: product_name(),
+        }
+        .service_account_name()
     }
 
     /// Recommended labels for a role-group resource, using the given product version.

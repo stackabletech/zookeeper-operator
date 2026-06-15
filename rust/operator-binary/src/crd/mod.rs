@@ -26,8 +26,11 @@ use stackable_operator::{
     v2::{
         config_overrides::KeyValueConfigOverrides,
         role_utils::JavaCommonConfig,
-        types::kubernetes::{
-            ConfigMapName, ListenerClassName, ListenerName, NamespaceName, ServiceName,
+        types::{
+            common::Port,
+            kubernetes::{
+                ConfigMapName, ListenerClassName, ListenerName, NamespaceName, ServiceName,
+            },
         },
     },
     versioned::versioned,
@@ -57,15 +60,15 @@ pub const FIELD_MANAGER: &str = "zookeeper-operator";
 
 pub const ZOOKEEPER_SERVER_PORT_NAME: &str = "zk";
 pub const ZOOKEEPER_LEADER_PORT_NAME: &str = "zk-leader";
-pub const ZOOKEEPER_LEADER_PORT: u16 = 2888;
+pub const ZOOKEEPER_LEADER_PORT: Port = Port(2888);
 pub const ZOOKEEPER_ELECTION_PORT_NAME: &str = "zk-election";
-pub const ZOOKEEPER_ELECTION_PORT: u16 = 3888;
+pub const ZOOKEEPER_ELECTION_PORT: Port = Port(3888);
 
 pub const JMX_METRICS_PORT_NAME: &str = "jmx-metrics";
-pub const JMX_METRICS_PORT: u16 = 9505;
+pub const JMX_METRICS_PORT: Port = Port(9505);
 pub const METRICS_PROVIDER_HTTP_PORT_KEY: &str = "metricsProvider.httpPort";
 pub const METRICS_PROVIDER_HTTP_PORT_NAME: &str = "metrics";
-pub const METRICS_PROVIDER_HTTP_PORT: u16 = 7000;
+pub const METRICS_PROVIDER_HTTP_PORT: Port = Port(7000);
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
