@@ -111,12 +111,6 @@ pub enum Error {
 
     #[snafu(display("object has no namespace"))]
     ObjectHasNoNamespace,
-
-    #[snafu(display("Znode {znode:?} missing expected keys (name and/or namespace)"))]
-    ZnodeMissingExpectedKeys {
-        source: stackable_operator::cluster_resources::Error,
-        znode: ObjectRef<v1alpha1::ZookeeperZnode>,
-    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -162,7 +156,6 @@ impl ReconcilerError for Error {
             Error::Finalizer { .. } => None,
             Error::DeleteOrphans { .. } => None,
             Error::ObjectHasNoNamespace => None,
-            Error::ZnodeMissingExpectedKeys { .. } => None,
         }
     }
 }
@@ -267,6 +260,9 @@ async fn reconcile_apply(
     zk: v1alpha1::ZookeeperCluster,
     znode_path: &str,
 ) -> Result<controller::Action> {
+    // Infallible: `ValidatedZnode`'s object reference always contains name, namespace and uid
+    // (set unconditionally during the validate step), which is all `ClusterResources::new`
+    // requires.
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
         OPERATOR_NAME,
@@ -275,10 +271,10 @@ async fn reconcile_apply(
         ClusterResourceApplyStrategy::from(&validated_znode.cluster_operation),
         &validated_znode.object_overrides,
     )
-    .with_context(|_| ZnodeMissingExpectedKeysSnafu {
-        znode: ObjectRef::<v1alpha1::ZookeeperZnode>::new(&validated_znode.name)
-            .within(validated_znode.namespace.as_ref()),
-    })?;
+    .expect(
+        "ClusterResources should be created because the ValidatedZnode's object reference \
+         always contains name, namespace and uid",
+    );
 
     znode_mgmt::ensure_znode_exists(
         &zk_mgmt_addr(
