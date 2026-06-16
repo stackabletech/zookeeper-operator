@@ -77,9 +77,11 @@ pub fn build_server_rolegroup_config_map(
     );
 
     // logback.xml
-    data.extend(product_logging::build_product_log_config(
-        &rolegroup_config.config.logging,
-    ));
+    if let Some(logback) =
+        product_logging::build_logback_config(&rolegroup_config.logging.zookeeper_container)
+    {
+        data.insert(ConfigFileName::LogbackXml.to_string(), logback);
+    }
 
     // vector.yaml (only present when the Vector agent is enabled)
     if rolegroup_config.config.logging.enable_vector_agent {

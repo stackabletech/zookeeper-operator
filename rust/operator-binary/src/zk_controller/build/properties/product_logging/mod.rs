@@ -2,18 +2,13 @@
 //! product log config (`logback.xml` / `log4j.properties`) and the Vector agent
 //! config (`vector.yaml`).
 
-use std::collections::BTreeMap;
-
 use stackable_operator::{
     memory::{BinaryMultiple, MemoryQuantity},
-    product_logging::{
-        self,
-        spec::{ContainerLogConfig, ContainerLogConfigChoice, Logging},
-    },
+    product_logging::{self, spec::AutomaticContainerLogConfig},
+    v2::product_logging::framework::ValidatedContainerLogConfigChoice,
 };
 
-use super::ConfigFileName;
-use crate::crd::{STACKABLE_LOG_DIR, v1alpha1};
+use crate::crd::STACKABLE_LOG_DIR;
 
 /// The file the ZooKeeper server logs are written to.
 pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
@@ -39,41 +34,39 @@ pub fn vector_config_file_content() -> String {
     VECTOR_CONFIG.to_owned()
 }
 
-/// Builds the product log config entry (`logback.xml`) for a role group.
+/// Renders the product log config (`logback.xml`) for the ZooKeeper server container.
 ///
-/// `logging` is the merged [`Logging`] from the role group's validated config.
+/// Returns `None` when the container uses a custom log ConfigMap instead of the operator's
+/// automatic logging configuration, in which case no `logback.xml` is added to the rolegroup
+/// `ConfigMap`. Consumes the *validated* log-config choice (off `ValidatedLogging`) rather than
+/// re-reading the raw `Logging`.
 ///
-/// The Vector agent config (`vector.yaml`) is added separately via
-/// [`vector_config_file_content`].
-pub fn build_product_log_config(
-    logging: &Logging<v1alpha1::Container>,
-) -> BTreeMap<String, String> {
-    let mut data = BTreeMap::new();
-
-    if let Some(ContainerLogConfig {
-        choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
-    }) = logging.containers.get(&v1alpha1::Container::Zookeeper)
-    {
-        let log_dir = format!("{STACKABLE_LOG_DIR}/zookeeper");
-        let max_log_file_size_mib = MAX_ZK_LOG_FILES_SIZE
-            .scale_to(BinaryMultiple::Mebi)
-            .floor()
-            .value as u32;
-
-        data.insert(
-            ConfigFileName::LogbackXml.to_string(),
-            product_logging::framework::create_logback_config(
-                &log_dir,
-                ZOOKEEPER_LOG_FILE,
-                max_log_file_size_mib,
-                CONSOLE_CONVERSION_PATTERN,
-                log_config,
-                None,
-            ),
-        );
+/// The Vector agent config (`vector.yaml`) is added separately via [`vector_config_file_content`].
+pub fn build_logback_config(
+    zookeeper_container: &ValidatedContainerLogConfigChoice,
+) -> Option<String> {
+    match zookeeper_container {
+        ValidatedContainerLogConfigChoice::Automatic(log_config) => {
+            Some(logback_config(log_config))
+        }
+        ValidatedContainerLogConfigChoice::Custom(_) => None,
     }
+}
 
-    data
+fn logback_config(log_config: &AutomaticContainerLogConfig) -> String {
+    let log_dir = format!("{STACKABLE_LOG_DIR}/zookeeper");
+    let max_log_file_size_mib = MAX_ZK_LOG_FILES_SIZE
+        .scale_to(BinaryMultiple::Mebi)
+        .floor()
+        .value as u32;
+    product_logging::framework::create_logback_config(
+        &log_dir,
+        ZOOKEEPER_LOG_FILE,
+        max_log_file_size_mib,
+        CONSOLE_CONVERSION_PATTERN,
+        log_config,
+        None,
+    )
 }
 
 #[cfg(test)]
