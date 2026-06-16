@@ -15,6 +15,7 @@ use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     commons::{
         cluster_operation::ClusterOperation,
+        pdb::PdbConfig,
         product_image_selection::{self, ResolvedProductImage},
     },
     config::fragment,
@@ -215,6 +216,9 @@ pub struct ValidatedCluster {
     /// `app.kubernetes.io/version` label. Derived from the resolved image's app version label value.
     pub product_version: ProductVersion,
     pub cluster_config: ValidatedClusterConfig,
+    /// Per-role config (currently just the PodDisruptionBudget), extracted during validation so the
+    /// apply step does not reach into the raw [`crate::crd::v1alpha1::ZookeeperCluster`].
+    pub role_config: Option<ValidatedRoleConfig>,
     pub role_group_configs:
         BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>>,
     /// The cluster's operation settings (pause/stop), from which the
@@ -235,6 +239,7 @@ impl ValidatedCluster {
         image: ResolvedProductImage,
         product_version: ProductVersion,
         cluster_config: ValidatedClusterConfig,
+        role_config: Option<ValidatedRoleConfig>,
         role_group_configs: BTreeMap<
             ZookeeperRole,
             BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>,
@@ -255,6 +260,7 @@ impl ValidatedCluster {
             image,
             product_version,
             cluster_config,
+            role_config,
             role_group_configs,
             cluster_operation,
             object_overrides,
@@ -416,6 +422,12 @@ pub struct ValidatedClusterConfig {
     pub listener_class: ListenerClassName,
 }
 
+/// Per-role configuration extracted during validation.
+#[derive(Clone, Debug)]
+pub struct ValidatedRoleConfig {
+    pub pdb: PdbConfig,
+}
+
 /// Validates the cluster spec and the dereferenced inputs.
 pub fn validate(
     zk: &v1alpha1::ZookeeperCluster,
@@ -496,6 +508,12 @@ pub fn validate(
         cluster_info,
     );
 
+    let role_config = zk.role_config(&ZookeeperRole::Server).map(
+        |ZookeeperServerRoleConfig { common, .. }| ValidatedRoleConfig {
+            pdb: common.pod_disruption_budget.clone(),
+        },
+    );
+
     Ok(ValidatedCluster::new(
         name,
         namespace,
@@ -507,6 +525,7 @@ pub fn validate(
             server_addresses,
             listener_class,
         },
+        role_config,
         role_group_configs,
         zk.spec.cluster_operation.clone(),
         zk.spec.object_overrides.clone(),

@@ -29,10 +29,7 @@ use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
     APP_NAME, OPERATOR_NAME, ObjectRef,
-    crd::{
-        ZookeeperRole,
-        v1alpha1::{self, ZookeeperServerRoleConfig},
-    },
+    crd::{ZookeeperRole, v1alpha1},
     zk_controller::{
         build::resource::{
             config_map, discovery,
@@ -328,9 +325,8 @@ pub async fn reconcile_zk(
         );
     }
 
-    let role_config = zk.role_config(&zk_role);
-    if let Some(ZookeeperServerRoleConfig { common, .. }) = role_config
-        && let Some(pdb) = build_pdb(&common.pod_disruption_budget, &validated_cluster, &zk_role)
+    if let Some(role_config) = &validated_cluster.role_config
+        && let Some(pdb) = build_pdb(&role_config.pdb, &validated_cluster, &zk_role)
     {
         cluster_resources
             .add(client, pdb)
