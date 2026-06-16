@@ -10,13 +10,16 @@ use stackable_operator::{
         HasName, HasUid, NameIsValidLabelValue,
         builder::meta::ownerreference_from_resource,
         kvp::label::recommended_labels,
-        types::operator::{ControllerName, ProductVersion, RoleGroupName},
+        types::operator::{ControllerName, ProductVersion},
     },
 };
 
 use crate::{
     crd::{ZOOKEEPER_SERVER_PORT_NAME, security::ZookeeperSecurity},
-    zk_controller::validate::{ValidatedCluster, operator_name, product_name},
+    zk_controller::{
+        build::PLACEHOLDER_DISCOVERY_ROLE_GROUP,
+        validate::{ValidatedCluster, operator_name, product_name},
+    },
     znode_controller::validate::ValidatedZnode,
 };
 
@@ -97,8 +100,8 @@ pub fn build_znode_discovery_configmap(
 /// Build a discovery [`ConfigMap`] containing ZooKeeper connection details from a
 /// [`listener::v1alpha1::Listener`].
 ///
-/// `owner` owns the ConfigMap (the [`ZookeeperCluster`](v1alpha1::ZookeeperCluster) for the cluster
-/// controller, or the [`ZookeeperZnode`](v1alpha1::ZookeeperZnode) for the znode controller) and
+/// `owner` owns the ConfigMap (the [`ZookeeperCluster`](crate::crd::v1alpha1::ZookeeperCluster) for the cluster
+/// controller, or the [`ZookeeperZnode`](crate::crd::v1alpha1::ZookeeperZnode) for the znode controller) and
 /// `namespace` is where the ConfigMap is placed.
 fn build_discovery_configmap_for_owner(
     owner: &(impl Resource<DynamicType = ()> + HasName + HasUid + NameIsValidLabelValue),
@@ -116,8 +119,7 @@ fn build_discovery_configmap_for_owner(
     // znode controllers, so it is passed in and validated into the type-safe newtype here.
     let controller_name = ControllerName::from_str(controller_name)
         .expect("the controller name is a valid label value");
-    let role_group_name =
-        RoleGroupName::from_str("discovery").expect("'discovery' is a valid role group name");
+    let role_group_name = PLACEHOLDER_DISCOVERY_ROLE_GROUP.clone();
 
     let listener_addresses = listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)?;
 

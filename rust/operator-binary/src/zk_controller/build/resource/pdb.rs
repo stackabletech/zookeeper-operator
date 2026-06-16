@@ -1,23 +1,17 @@
-use std::str::FromStr;
-
 use stackable_operator::{
-    commons::pdb::PdbConfig,
-    k8s_openapi::api::policy::v1::PodDisruptionBudget,
-    v2::{
-        builder::pdb::pod_disruption_budget_builder_with_role,
-        types::operator::{ControllerName, OperatorName, ProductName, RoleName},
-    },
+    commons::pdb::PdbConfig, k8s_openapi::api::policy::v1::PodDisruptionBudget,
+    v2::builder::pdb::pod_disruption_budget_builder_with_role,
 };
 
 use crate::{
-    crd::{APP_NAME, OPERATOR_NAME, ZookeeperRole},
-    zk_controller::{ZK_CONTROLLER_NAME, validate::ValidatedCluster},
+    crd::ZookeeperRole,
+    zk_controller::validate::{ValidatedCluster, controller_name, operator_name, product_name},
 };
 
 /// Builds the [`PodDisruptionBudget`] for the given `role`, or `None` if PDBs are disabled.
 pub fn build_pdb(
     pdb: &PdbConfig,
-    validated_cluster: &ValidatedCluster,
+    cluster: &ValidatedCluster,
     role: &ZookeeperRole,
 ) -> Option<PodDisruptionBudget> {
     if !pdb.enabled {
@@ -27,23 +21,12 @@ pub fn build_pdb(
         ZookeeperRole::Server => max_unavailable_servers(),
     });
 
-    // These names are derived from compile-time constants and a validated role enum, so they are
-    // guaranteed to be valid and we use the infallible v2 builder.
-    let product_name =
-        ProductName::from_str(APP_NAME).expect("APP_NAME should be a valid product name");
-    let operator_name = OperatorName::from_str(OPERATOR_NAME)
-        .expect("OPERATOR_NAME should be a valid operator name");
-    let controller_name = ControllerName::from_str(ZK_CONTROLLER_NAME)
-        .expect("ZK_CONTROLLER_NAME should be a valid controller name");
-    let role_name =
-        RoleName::from_str(&role.to_string()).expect("role name should be a valid role name");
-
     let pdb = pod_disruption_budget_builder_with_role(
-        validated_cluster,
-        &product_name,
-        &role_name,
-        &operator_name,
-        &controller_name,
+        cluster,
+        &product_name(),
+        &ValidatedCluster::role_name(),
+        &operator_name(),
+        &controller_name(),
     )
     .with_max_unavailable(max_unavailable)
     .build();

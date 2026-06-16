@@ -11,6 +11,7 @@ use std::{collections::BTreeMap, str::FromStr};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
+    builder::meta::ObjectMetaBuilder,
     cli::OperatorEnvironmentOptions,
     commons::{
         cluster_operation::ClusterOperation,
@@ -26,7 +27,10 @@ use stackable_operator::{
     utils::cluster_info::KubernetesClusterInfo,
     v2::{
         HasName, HasUid, NameIsValidLabelValue,
-        builder::pod::container::{self, EnvVarName, EnvVarSet},
+        builder::{
+            meta::ownerreference_from_resource,
+            pod::container::{self, EnvVarName, EnvVarSet},
+        },
         controller_utils::{get_cluster_name, get_namespace, get_uid},
         jvm_argument_overrides::JvmArgumentOverrides,
         kvp::label::{recommended_labels, role_group_selector},
@@ -314,6 +318,25 @@ impl ValidatedCluster {
     pub fn role_group_selector(&self, role_group_name: &RoleGroupName) -> Labels {
         role_group_selector(self, &product_name(), &Self::role_name(), role_group_name)
     }
+
+    /// Returns an [`ObjectMetaBuilder`] pre-filled with the namespace, an owner reference back to
+    /// this cluster, and the recommended labels for a resource named `name` in `role_group_name`.
+    ///
+    /// Consolidates the metadata chain repeated by the child-resource builders. Call sites that
+    /// need extra labels/annotations chain them onto the returned builder.
+    pub(crate) fn object_meta(
+        &self,
+        name: impl Into<String>,
+        role_group_name: &RoleGroupName,
+    ) -> ObjectMetaBuilder {
+        let mut builder = ObjectMetaBuilder::new();
+        builder
+            .name_and_namespace(self)
+            .name(name)
+            .ownerreference(ownerreference_from_resource(self, None, Some(true)))
+            .with_labels(self.recommended_labels(role_group_name));
+        builder
+    }
 }
 
 /// The product name (`zookeeper`) as a type-safe label value.
@@ -327,7 +350,7 @@ pub(crate) fn operator_name() -> OperatorName {
 }
 
 /// The controller name as a type-safe label value.
-fn controller_name() -> ControllerName {
+pub(crate) fn controller_name() -> ControllerName {
     ControllerName::from_str(ZK_CONTROLLER_NAME)
         .expect("the controller name is a valid label value")
 }

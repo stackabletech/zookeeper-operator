@@ -48,7 +48,7 @@ pub mod tls;
 /// exposing the given `zk_role`, `<cluster>-<role>`.
 ///
 /// Lives in the `crd` module (rather than the controller build tree) because it is shared by both
-/// controllers and by [`ZookeeperCluster::server_role_listener_fqdn`].
+/// controllers and by [`v1alpha1::ZookeeperCluster::server_role_listener_fqdn`].
 pub fn role_listener_name(cluster_name: &str, zk_role: &ZookeeperRole) -> ListenerName {
     ListenerName::from_str(&format!("{cluster_name}-{zk_role}"))
         .expect("the role listener name should be a valid Listener name")

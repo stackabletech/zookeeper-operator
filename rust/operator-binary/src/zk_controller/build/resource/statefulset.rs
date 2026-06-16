@@ -37,14 +37,11 @@ use stackable_operator::{
     },
     utils::COMMON_BASH_TRAP_FUNCTIONS,
     v2::{
-        builder::{
-            meta::ownerreference_from_resource,
-            pod::container::{EnvVarName, EnvVarSet},
-        },
+        builder::pod::container::{EnvVarName, EnvVarSet},
         product_logging::framework::{ValidatedContainerLogConfigChoice, vector_container},
         types::{
             kubernetes::{ContainerName, VolumeName},
-            operator::{ProductVersion, RoleGroupName},
+            operator::RoleGroupName,
         },
     },
 };
@@ -61,6 +58,7 @@ use crate::{
     zk_controller::{
         LISTENER_VOLUME_DIR, LISTENER_VOLUME_NAME,
         build::{
+            UNVERSIONED_PRODUCT_VERSION,
             command::create_init_container_command_args,
             graceful_shutdown::add_graceful_shutdown_config,
             jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
@@ -197,12 +195,10 @@ pub fn build_server_rolegroup_statefulset(
         ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
     let mut pod_builder = PodBuilder::new();
 
-    // Used for PVC templates that cannot be modified once they are deployed. A version value is
-    // required, so a constant "none" is used to keep the labels stable across version upgrades.
-    let unversioned_recommended_labels = cluster.recommended_labels_for(
-        &ProductVersion::from_str("none").expect("'none' is a valid product version"),
-        role_group_name,
-    );
+    // Used for PVC templates that cannot be modified once they are deployed. A constant version
+    // keeps the labels stable across version upgrades.
+    let unversioned_recommended_labels =
+        cluster.recommended_labels_for(&UNVERSIONED_PRODUCT_VERSION, role_group_name);
 
     let listener_pvc = build_role_listener_pvc(
         role_listener_name(cluster.name.as_ref(), &ZookeeperRole::Server).as_ref(),
@@ -436,11 +432,11 @@ pub fn build_server_rolegroup_statefulset(
     let mut pod_template = pod_builder.build_template();
     pod_template.merge_from(rolegroup_config.pod_overrides.clone());
 
-    let metadata = ObjectMetaBuilder::new()
-        .name_and_namespace(cluster)
-        .name(resource_names.stateful_set_name().to_string())
-        .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
-        .with_labels(cluster.recommended_labels(role_group_name))
+    let metadata = cluster
+        .object_meta(
+            resource_names.stateful_set_name().to_string(),
+            role_group_name,
+        )
         .with_label(RESTART_CONTROLLER_ENABLED_LABEL.to_owned())
         .build();
 

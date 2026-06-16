@@ -1,5 +1,5 @@
 //! Assembles the per-rolegroup `ConfigMap` from the [`ValidatedCluster`],
-//! without reaching into the [`v1alpha1::ZookeeperCluster`] except for the owner
+//! without reaching into the [`crate::crd::v1alpha1::ZookeeperCluster`] except for the owner
 //! reference and object metadata.
 //!
 //! The individual files are rendered by the [`properties`](crate::zk_controller::build::properties)
@@ -9,11 +9,10 @@ use std::collections::BTreeMap;
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
-    builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
+    builder::configmap::ConfigMapBuilder,
     k8s_openapi::api::core::v1::ConfigMap,
     product_logging::framework::VECTOR_CONFIG_FILE,
     v2::{
-        builder::meta::ownerreference_from_resource,
         config_file_writer::{PropertiesWriterError, to_java_properties_string},
         types::operator::RoleGroupName,
     },
@@ -92,16 +91,14 @@ pub fn build_server_rolegroup_config_map(
 
     ConfigMapBuilder::new()
         .metadata(
-            ObjectMetaBuilder::new()
-                .name_and_namespace(cluster)
-                .name(
+            cluster
+                .object_meta(
                     cluster
                         .resource_names(role_group_name)
                         .role_group_config_map()
                         .to_string(),
+                    role_group_name,
                 )
-                .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
-                .with_labels(cluster.recommended_labels(role_group_name))
                 .build(),
         )
         .data(data)

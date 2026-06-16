@@ -1,11 +1,7 @@
 use stackable_operator::{
-    builder::meta::ObjectMetaBuilder,
     k8s_openapi::api::core::v1::{Service, ServicePort, ServiceSpec},
     kvp::{Annotations, Labels},
-    v2::{
-        builder::meta::ownerreference_from_resource,
-        types::{common::Port, operator::RoleGroupName},
-    },
+    v2::types::{common::Port, operator::RoleGroupName},
 };
 
 use crate::{
@@ -24,16 +20,14 @@ pub(crate) fn build_server_rolegroup_headless_service(
     cluster: &ValidatedCluster,
     role_group_name: &RoleGroupName,
 ) -> Service {
-    let metadata = ObjectMetaBuilder::new()
-        .name_and_namespace(cluster)
-        .name(
+    let metadata = cluster
+        .object_meta(
             cluster
                 .resource_names(role_group_name)
                 .headless_service_name()
                 .to_string(),
+            role_group_name,
         )
-        .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
-        .with_labels(cluster.recommended_labels(role_group_name))
         .build();
 
     let service_spec = ServiceSpec {
@@ -73,15 +67,13 @@ pub(crate) fn build_server_rolegroup_metrics_service(
     rolegroup_config: &ValidatedRoleGroupConfig,
 ) -> Service {
     let metrics_port = cluster.metrics_http_port(rolegroup_config);
-    let metadata = ObjectMetaBuilder::new()
-        .name_and_namespace(cluster)
-        .name(
+    let metadata = cluster
+        .object_meta(
             cluster
                 .resource_names(role_group_name)
                 .metrics_service_name(),
+            role_group_name,
         )
-        .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
-        .with_labels(cluster.recommended_labels(role_group_name))
         .with_labels(prometheus_labels())
         .with_annotations(prometheus_annotations(metrics_port.clone()))
         .build();
