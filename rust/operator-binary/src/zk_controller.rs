@@ -218,13 +218,9 @@ pub async fn reconcile_zk(
         .context(DereferenceSnafu)?;
 
     // validate (no client required)
-    let validated_cluster = validate::validate(
-        zk,
-        &dereferenced_objects,
-        &ctx.operator_environment,
-        &client.kubernetes_cluster_info,
-    )
-    .context(ValidateClusterSnafu)?;
+    let validated_cluster =
+        validate::validate(zk, &dereferenced_objects, &ctx.operator_environment)
+            .context(ValidateClusterSnafu)?;
 
     // Names are derived from compile-time constants.
     let mut cluster_resources = cluster_resources_new(
@@ -278,6 +274,7 @@ pub async fn reconcile_zk(
         );
         let rg_configmap = config_map::build_server_rolegroup_config_map(
             &validated_cluster,
+            &client.kubernetes_cluster_info,
             rolegroup_name,
             rolegroup_config,
         )
@@ -423,7 +420,7 @@ pub(crate) mod test_support {
         zk
     }
 
-    fn cluster_info() -> KubernetesClusterInfo {
+    pub fn cluster_info() -> KubernetesClusterInfo {
         KubernetesClusterInfo {
             cluster_domain: DomainName::try_from("cluster.local").expect("valid domain"),
         }
@@ -445,7 +442,6 @@ pub(crate) mod test_support {
                 authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
             },
             &operator_environment(),
-            &cluster_info(),
         )
         .expect("validate should succeed for the test fixture")
     }
@@ -460,7 +456,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::zk_controller::test_support::{minimal_zk, validated_cluster};
+    use crate::zk_controller::test_support::{cluster_info, minimal_zk, validated_cluster};
 
     #[test]
     fn test_default_config() {
@@ -613,6 +609,7 @@ mod tests {
 
         config_map::build_server_rolegroup_config_map(
             &validated_cluster,
+            &cluster_info(),
             &role_group_name,
             rolegroup_config,
         )

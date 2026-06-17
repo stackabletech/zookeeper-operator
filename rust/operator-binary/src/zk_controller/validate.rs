@@ -28,7 +28,6 @@ use stackable_operator::{
     product_logging::spec::Logging,
     role_utils::RoleGroup,
     shared::time::Duration,
-    utils::cluster_info::KubernetesClusterInfo,
     v2::{
         HasName, HasUid, NameIsValidLabelValue,
         builder::{
@@ -61,8 +60,7 @@ use strum::IntoEnumIterator;
 
 use crate::{
     crd::{
-        APP_NAME, CONTAINER_IMAGE_BASE_NAME, OPERATOR_NAME, ZOOKEEPER_ELECTION_PORT,
-        ZOOKEEPER_LEADER_PORT, ZookeeperPodRef, ZookeeperRole, ZookeeperServerRoleType,
+        APP_NAME, CONTAINER_IMAGE_BASE_NAME, OPERATOR_NAME, ZookeeperRole, ZookeeperServerRoleType,
         authentication, default_listener_class,
         security::ZookeeperSecurity,
         v1alpha1::{self, ZookeeperConfig, ZookeeperConfigOverrides, ZookeeperServerRoleConfig},
@@ -444,10 +442,6 @@ impl Resource for ValidatedCluster {
 pub struct ValidatedClusterConfig {
     pub zookeeper_security: ZookeeperSecurity,
 
-    /// The `server.<myid>` entries for `zoo.cfg`, precomputed from the expected
-    /// pods so the ConfigMap builder does not need the cluster object.
-    pub server_addresses: BTreeMap<String, String>,
-
     /// The ListenerClass used to expose the ZooKeeper servers, so the listener builder does not
     /// need the raw cluster object.
     pub listener_class: ListenerClassName,
@@ -464,7 +458,6 @@ pub fn validate(
     zk: &v1alpha1::ZookeeperCluster,
     dereferenced_objects: &DereferencedObjects,
     operator_environment: &OperatorEnvironmentOptions,
-    cluster_info: &KubernetesClusterInfo,
 ) -> Result<ValidatedCluster> {
     let image = zk
         .spec
@@ -531,14 +524,6 @@ pub fn validate(
         .map(|role| role.role_config.listener_class.clone())
         .unwrap_or_else(|_| default_listener_class());
 
-    let server_addresses = server_addresses(
-        &name,
-        &namespace,
-        &role_group_configs,
-        &zookeeper_security,
-        cluster_info,
-    );
-
     let role_config = zk.role_config(&ZookeeperRole::Server).map(
         |ZookeeperServerRoleConfig { common, .. }| ValidatedRoleConfig {
             pdb: common.pod_disruption_budget.clone(),
@@ -553,7 +538,6 @@ pub fn validate(
         product_version,
         ValidatedClusterConfig {
             zookeeper_security,
-            server_addresses,
             listener_class,
         },
         role_config,
@@ -608,52 +592,6 @@ fn validate_role_group_config(
         pod_overrides: merged.config.pod_overrides,
         product_specific_common_config: merged.config.product_specific_common_config,
     })
-}
-
-/// Builds the `server.<myid>` quorum entries for `zoo.cfg` from the expected pods.
-///
-/// The pods are predicted from the validated role-group configs (`replicas` + `myidOffset`)
-/// rather than from the live cluster state, to avoid instance churn.
-fn server_addresses(
-    cluster_name: &ClusterName,
-    namespace: &NamespaceName,
-    role_group_configs: &BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>>,
-    zookeeper_security: &ZookeeperSecurity,
-    cluster_info: &KubernetesClusterInfo,
-) -> BTreeMap<String, String> {
-    let mut server_addresses = BTreeMap::new();
-    for (rg_name, rg_config) in role_group_configs
-        .get(&ZookeeperRole::Server)
-        .into_iter()
-        .flatten()
-    {
-        let resource_names = ResourceNames {
-            cluster_name: cluster_name.clone(),
-            role_name: ValidatedCluster::role_name(),
-            role_group_name: rg_name.clone(),
-        };
-        let headless_service_name = resource_names.headless_service_name();
-        let stateful_set_name = resource_names.stateful_set_name().to_string();
-        // An unset replica count (HPA-managed) predicts a single-server quorum entry, matching
-        // the historical default.
-        for i in 0..rg_config.replicas.unwrap_or(1) {
-            let pod_ref = ZookeeperPodRef {
-                namespace: namespace.clone(),
-                role_group_headless_service_name: headless_service_name.clone(),
-                pod_name: format!("{stateful_set_name}-{i}"),
-                zookeeper_myid: i + rg_config.config.myid_offset,
-            };
-            server_addresses.insert(
-                format!("server.{id}", id = pod_ref.zookeeper_myid),
-                format!(
-                    "{internal_fqdn}:{ZOOKEEPER_LEADER_PORT}:{ZOOKEEPER_ELECTION_PORT};{client_port}",
-                    internal_fqdn = pod_ref.internal_fqdn(cluster_info),
-                    client_port = zookeeper_security.client_port()
-                ),
-            );
-        }
-    }
-    server_addresses
 }
 
 #[cfg(test)]

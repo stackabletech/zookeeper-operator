@@ -12,6 +12,7 @@ use stackable_operator::{
     builder::configmap::ConfigMapBuilder,
     k8s_openapi::api::core::v1::ConfigMap,
     product_logging::framework::VECTOR_CONFIG_FILE,
+    utils::cluster_info::KubernetesClusterInfo,
     v2::{
         config_file_writer::{PropertiesWriterError, to_java_properties_string},
         types::operator::RoleGroupName,
@@ -50,20 +51,23 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 /// [`ResourceNames`]: stackable_operator::v2::role_group_utils::ResourceNames
 pub fn build_server_rolegroup_config_map(
     cluster: &ValidatedCluster,
+    cluster_info: &KubernetesClusterInfo,
     role_group_name: &RoleGroupName,
     rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> Result<ConfigMap> {
     let mut data: BTreeMap<String, String> = BTreeMap::new();
 
     // zoo.cfg
+    let server_addresses = zoo_cfg::server_addresses(cluster, cluster_info);
     data.insert(
         ConfigFileName::ZooCfg.to_string(),
-        to_java_properties_string(zoo_cfg::build(cluster, rolegroup_config).iter()).with_context(
-            |_| SerializePropertiesSnafu {
-                file: ConfigFileName::ZooCfg.to_string(),
-                role_group: role_group_name.clone(),
-            },
-        )?,
+        to_java_properties_string(
+            zoo_cfg::build(cluster, rolegroup_config, &server_addresses).iter(),
+        )
+        .with_context(|_| SerializePropertiesSnafu {
+            file: ConfigFileName::ZooCfg.to_string(),
+            role_group: role_group_name.clone(),
+        })?,
     );
 
     // security.properties
