@@ -33,7 +33,6 @@ use stackable_operator::{
     product_logging::{
         self,
         framework::{create_vector_shutdown_file_command, remove_vector_shutdown_file_command},
-        spec::{ContainerLogConfig, ContainerLogConfigChoice},
     },
     utils::COMMON_BASH_TRAP_FUNCTIONS,
     v2::{
@@ -64,7 +63,7 @@ use crate::{
             jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
             properties::{self, ConfigFileName},
         },
-        validate::{ValidatedCluster, ValidatedRoleGroupConfig},
+        validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
     },
 };
 
@@ -154,10 +153,9 @@ fn build_role_listener_pvc(
 pub fn build_server_rolegroup_statefulset(
     cluster: &ValidatedCluster,
     role_group_name: &RoleGroupName,
-    rolegroup_config: &ValidatedRoleGroupConfig,
+    rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> Result<StatefulSet> {
     let merged_config = &rolegroup_config.config;
-    let logging = &merged_config.logging;
     let resource_names = cluster.resource_names(role_group_name);
     let resolved_product_image = &cluster.image;
     let zookeeper_security = &cluster.cluster_config.zookeeper_security;
@@ -226,9 +224,8 @@ pub fn build_server_rolegroup_statefulset(
 
     let mut args = Vec::new();
 
-    if let Some(ContainerLogConfig {
-        choice: Some(ContainerLogConfigChoice::Automatic(log_config)),
-    }) = logging.containers.get(&v1alpha1::Container::Prepare)
+    if let ValidatedContainerLogConfigChoice::Automatic(log_config) =
+        &rolegroup_config.config.logging.prepare_container
     {
         args.push(product_logging::framework::capture_shell_output(
             STACKABLE_LOG_DIR,
@@ -391,7 +388,7 @@ pub fn build_server_rolegroup_statefulset(
 
     // Use the user-provided custom log ConfigMap if one is configured, otherwise fall back to the
     // rolegroup's own ConfigMap. This branches on the *validated* logging choice.
-    let log_config_map = match &rolegroup_config.logging.zookeeper_container {
+    let log_config_map = match &rolegroup_config.config.logging.zookeeper_container {
         ValidatedContainerLogConfigChoice::Custom(config_map) => config_map.to_string(),
         ValidatedContainerLogConfigChoice::Automatic(_) => {
             resource_names.role_group_config_map().to_string()
@@ -411,7 +408,7 @@ pub fn build_server_rolegroup_statefulset(
     // The static `vector.yaml` (in the rolegroup ConfigMap, mounted as the `config` volume) is
     // parameterised at runtime via env vars that the v2 `vector_container` injects. The validated
     // Vector log config is built up-front in the validate step.
-    if let Some(vector_log_config) = &rolegroup_config.logging.vector_container {
+    if let Some(vector_log_config) = &rolegroup_config.config.logging.vector_container {
         let config_volume_name = VolumeName::from_str(CONFIG_VOLUME_NAME)
             .expect("CONFIG_VOLUME_NAME is a valid volume name");
         let log_volume_name =
@@ -442,7 +439,9 @@ pub fn build_server_rolegroup_statefulset(
 
     let statefulset_spec = StatefulSetSpec {
         pod_management_policy: Some("Parallel".to_string()),
-        replicas: Some(i32::from(rolegroup_config.replicas)),
+        // `None` (no replica count specified) leaves `.spec.replicas` unset so a
+        // HorizontalPodAutoscaler can manage the replica count.
+        replicas: rolegroup_config.replicas.map(i32::from),
         selector: LabelSelector {
             match_labels: Some(cluster.role_group_selector(role_group_name).into()),
             ..LabelSelector::default()

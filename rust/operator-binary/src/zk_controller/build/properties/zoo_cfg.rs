@@ -1,9 +1,4 @@
 //! Builder for `zoo.cfg` (the main ZooKeeper properties file).
-//!
-//! The operator-injected defaults seeded here used to live in
-//! `deploy/config-spec/properties.yaml` and were injected by the `product-config`
-//! crate during validation. They are reproduced here so the rendered config is
-//! byte-identical to the previous implementation.
 
 use std::collections::BTreeMap;
 
@@ -14,7 +9,7 @@ use crate::{
         METRICS_PROVIDER_HTTP_PORT, METRICS_PROVIDER_HTTP_PORT_KEY, STACKABLE_DATA_DIR,
         security::ZookeeperSecurity, v1alpha1::ZookeeperConfig,
     },
-    zk_controller::validate::{ValidatedCluster, ValidatedRoleGroupConfig},
+    zk_controller::validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
 };
 
 const ADMIN_SERVER_PORT_KEY: &str = "admin.serverPort";
@@ -36,7 +31,7 @@ const DEFAULT_TICK_TIME: &str = "3000";
 /// 5. `configOverrides` for `zoo.cfg`
 pub fn build(
     cluster: &ValidatedCluster,
-    rolegroup_config: &ValidatedRoleGroupConfig,
+    rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> BTreeMap<String, String> {
     let security = &cluster.cluster_config.zookeeper_security;
     let config = &rolegroup_config.config;
@@ -115,7 +110,7 @@ impl ValidatedCluster {
     /// Defined here (in the build layer) rather than in `validate` so that resolving the port —
     /// which renders the full `zoo.cfg` via [`build`] — does not invert the validate → build
     /// dependency direction.
-    pub fn metrics_http_port(&self, rolegroup_config: &ValidatedRoleGroupConfig) -> Port {
+    pub fn metrics_http_port(&self, rolegroup_config: &ZookeeperRoleGroupConfig) -> Port {
         build(self, rolegroup_config)
             .get(METRICS_PROVIDER_HTTP_PORT_KEY)
             .and_then(|port| port.parse::<u16>().ok())

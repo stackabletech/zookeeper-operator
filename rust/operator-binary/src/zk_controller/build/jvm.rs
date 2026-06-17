@@ -3,10 +3,8 @@ use stackable_operator::memory::{BinaryMultiple, MemoryQuantity};
 
 use super::properties::ConfigFileName;
 use crate::{
-    crd::{
-        JMX_METRICS_PORT, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR, v1alpha1::ZookeeperConfig,
-    },
-    zk_controller::validate::ValidatedRoleGroupConfig,
+    crd::{JMX_METRICS_PORT, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR},
+    zk_controller::validate::{ValidatedZookeeperConfig, ZookeeperRoleGroupConfig},
 };
 
 const JAVA_HEAP_FACTOR: f32 = 0.8;
@@ -23,7 +21,7 @@ pub enum Error {
 }
 
 /// All JVM arguments.
-fn construct_jvm_args(rolegroup_config: &ValidatedRoleGroupConfig) -> Vec<String> {
+fn construct_jvm_args(rolegroup_config: &ZookeeperRoleGroupConfig) -> Vec<String> {
     let jvm_args = vec![
         format!(
             "-Djava.security.properties={STACKABLE_CONFIG_DIR}/{}",
@@ -40,12 +38,15 @@ fn construct_jvm_args(rolegroup_config: &ValidatedRoleGroupConfig) -> Vec<String
 
     // Apply the already-merged (role + role group) JVM argument overrides on top of the
     // operator-generated base arguments.
-    rolegroup_config.jvm_argument_overrides.apply_to(jvm_args)
+    rolegroup_config
+        .product_specific_common_config
+        .jvm_argument_overrides
+        .apply_to(jvm_args)
 }
 
 /// Arguments that go into `SERVER_JVMFLAGS`, so *not* the heap settings (which you can get using
 /// [`construct_zk_server_heap_env`]).
-pub fn construct_non_heap_jvm_args(rolegroup_config: &ValidatedRoleGroupConfig) -> String {
+pub fn construct_non_heap_jvm_args(rolegroup_config: &ZookeeperRoleGroupConfig) -> String {
     let mut jvm_args = construct_jvm_args(rolegroup_config);
     jvm_args.retain(|arg| !is_heap_jvm_argument(arg));
 
@@ -54,7 +55,9 @@ pub fn construct_non_heap_jvm_args(rolegroup_config: &ValidatedRoleGroupConfig) 
 
 /// This will be put into `ZK_SERVER_HEAP`, which is just the heap size in megabytes (*without* the `m`
 /// unit prepended).
-pub fn construct_zk_server_heap_env(merged_config: &ZookeeperConfig) -> Result<String, Error> {
+pub fn construct_zk_server_heap_env(
+    merged_config: &ValidatedZookeeperConfig,
+) -> Result<String, Error> {
     let heap_size_in_mb = (MemoryQuantity::try_from(
         merged_config
             .resources
@@ -89,7 +92,7 @@ mod tests {
     };
 
     /// The validated, merged config for the `default` server role group.
-    fn server_default(zk: &ZookeeperCluster) -> ValidatedRoleGroupConfig {
+    fn server_default(zk: &ZookeeperCluster) -> ZookeeperRoleGroupConfig {
         let default_group = RoleGroupName::from_str("default").expect("valid role group name");
         validated_cluster(zk)
             .role_group_configs

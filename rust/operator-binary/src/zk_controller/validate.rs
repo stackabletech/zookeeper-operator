@@ -14,17 +14,20 @@ use stackable_operator::{
     builder::meta::ObjectMetaBuilder,
     cli::OperatorEnvironmentOptions,
     commons::{
+        affinity::StackableAffinity,
         cluster_operation::ClusterOperation,
         pdb::PdbConfig,
         product_image_selection::{self, ResolvedProductImage},
+        resources::{NoRuntimeLimits, Resources},
     },
     config::fragment,
     deep_merger::ObjectOverrides,
-    k8s_openapi::{api::core::v1::PodTemplateSpec, apimachinery::pkg::apis::meta::v1::ObjectMeta},
+    k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
     kube::{Resource, ResourceExt},
     kvp::Labels,
     product_logging::spec::Logging,
     role_utils::RoleGroup,
+    shared::time::Duration,
     utils::cluster_info::KubernetesClusterInfo,
     v2::{
         HasName, HasUid, NameIsValidLabelValue,
@@ -33,14 +36,16 @@ use stackable_operator::{
             pod::container::{self, EnvVarName, EnvVarSet},
         },
         controller_utils::{get_cluster_name, get_namespace, get_uid},
-        jvm_argument_overrides::JvmArgumentOverrides,
         kvp::label::{recommended_labels, role_group_selector},
         product_logging::framework::{
             ValidatedContainerLogConfigChoice, VectorContainerLogConfig,
             validate_logging_configuration_for_container,
         },
         role_group_utils::ResourceNames,
-        role_utils::{JavaCommonConfig, ResourceNames as RbacResourceNames, with_validated_config},
+        role_utils::{
+            JavaCommonConfig, ResourceNames as RbacResourceNames, RoleGroupConfig,
+            with_validated_config,
+        },
         types::{
             kubernetes::{
                 ConfigMapName, ListenerClassName, NamespaceName, ServiceAccountName, Uid,
@@ -133,21 +138,38 @@ pub enum Error {
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// A validated, merged view of a single ZooKeeper server role group.
-///
-/// Built by [`validate`] from the upstream
-/// [`stackable_operator::v2::role_utils::with_validated_config`] result. Carries only the
-/// fields the build steps consume. The merged `envOverrides` are converted into an
-/// [`EnvVarSet`] during validation so invalid names fail early.
+pub type ZookeeperRoleGroupConfig =
+    RoleGroupConfig<ValidatedZookeeperConfig, JavaCommonConfig, ZookeeperConfigOverrides>;
+
 #[derive(Clone, Debug, PartialEq)]
-pub struct ValidatedRoleGroupConfig {
-    pub replicas: u16,
-    pub config: ZookeeperConfig,
-    pub config_overrides: ZookeeperConfigOverrides,
-    pub env_overrides: EnvVarSet,
-    pub pod_overrides: PodTemplateSpec,
-    pub jvm_argument_overrides: JvmArgumentOverrides,
+pub struct ValidatedZookeeperConfig {
+    pub init_limit: Option<u32>,
+    pub sync_limit: Option<u32>,
+    pub tick_time: Option<u32>,
+    pub myid_offset: u16,
+    pub resources: Resources<v1alpha1::ZookeeperStorageConfig, NoRuntimeLimits>,
     pub logging: ValidatedLogging,
+    pub affinity: StackableAffinity,
+    pub graceful_shutdown_timeout: Option<Duration>,
+    pub requested_secret_lifetime: Option<Duration>,
+}
+
+impl ValidatedZookeeperConfig {
+    /// Builds the validated config from the merged [`ZookeeperConfig`], swapping in the
+    /// already-validated logging.
+    fn from_merged(merged: ZookeeperConfig, logging: ValidatedLogging) -> Self {
+        Self {
+            init_limit: merged.init_limit,
+            sync_limit: merged.sync_limit,
+            tick_time: merged.tick_time,
+            myid_offset: merged.myid_offset,
+            resources: merged.resources,
+            logging,
+            affinity: merged.affinity,
+            graceful_shutdown_timeout: merged.graceful_shutdown_timeout,
+            requested_secret_lifetime: merged.requested_secret_lifetime,
+        }
+    }
 }
 
 /// Validated logging configuration for a ZooKeeper server role group.
@@ -161,6 +183,10 @@ pub struct ValidatedLogging {
     /// decide whether the log-config volume mounts a custom ConfigMap or the role group's own one.
     /// The product log config file itself (`logback.xml`) is rendered separately.
     pub zookeeper_container: ValidatedContainerLogConfigChoice,
+    /// Validated log config choice for the ZooKeeper Prepare init container. Consumed by the
+    /// StatefulSet builder to capture the prepare-container shell output when the choice is
+    /// `Automatic`.
+    pub prepare_container: ValidatedContainerLogConfigChoice,
     /// Validated Vector container log config, present only when the Vector agent is enabled.
     pub vector_container: Option<VectorContainerLogConfig>,
     pub enable_vector_agent: bool,
@@ -176,6 +202,10 @@ fn validate_logging(
 ) -> Result<ValidatedLogging> {
     let zookeeper_container =
         validate_logging_configuration_for_container(logging, &v1alpha1::Container::Zookeeper)
+            .context(ValidateLoggingConfigSnafu)?;
+
+    let prepare_container =
+        validate_logging_configuration_for_container(logging, &v1alpha1::Container::Prepare)
             .context(ValidateLoggingConfigSnafu)?;
 
     let vector_container = if logging.enable_vector_agent {
@@ -196,6 +226,7 @@ fn validate_logging(
 
     Ok(ValidatedLogging {
         zookeeper_container,
+        prepare_container,
         vector_container,
         enable_vector_agent: logging.enable_vector_agent,
     })
@@ -220,7 +251,7 @@ pub struct ValidatedCluster {
     /// apply step does not reach into the raw [`crate::crd::v1alpha1::ZookeeperCluster`].
     pub role_config: Option<ValidatedRoleConfig>,
     pub role_group_configs:
-        BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>>,
+        BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>>,
     /// The cluster's operation settings (pause/stop), from which the
     /// [`ClusterResourceApplyStrategy`](stackable_operator::cluster_resources::ClusterResourceApplyStrategy)
     /// is derived. Carried here so the apply step does not reach into the cluster spec.
@@ -242,7 +273,7 @@ impl ValidatedCluster {
         role_config: Option<ValidatedRoleConfig>,
         role_group_configs: BTreeMap<
             ZookeeperRole,
-            BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>,
+            BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>,
         >,
         cluster_operation: ClusterOperation,
         object_overrides: ObjectOverrides,
@@ -532,12 +563,7 @@ pub fn validate(
     ))
 }
 
-/// Merges and validates one role group into a [`ValidatedRoleGroupConfig`].
-///
-/// Uses the upstream [`with_validated_config`], which merges the config fragment, the
-/// `configOverrides`, the `envOverrides`, the `podOverrides` and the product-specific
-/// [`JavaCommonConfig`] (including its `jvmArgumentOverrides`). The merged `envOverrides`
-/// (`HashMap`) are converted into an [`EnvVarSet`] here so invalid names fail validation early.
+/// Merges and validates one role group into a [`ZookeeperRoleGroupConfig`].
 fn validate_role_group_config(
     role_group_name: &str,
     role_group: &RoleGroup<
@@ -548,7 +574,7 @@ fn validate_role_group_config(
     role: &ZookeeperServerRoleType,
     default_config: &v1alpha1::ZookeeperConfigFragment,
     vector_aggregator_config_map_name: &Option<ConfigMapName>,
-) -> Result<ValidatedRoleGroupConfig> {
+) -> Result<ZookeeperRoleGroupConfig> {
     let merged = with_validated_config::<
         ZookeeperConfig,
         JavaCommonConfig,
@@ -573,17 +599,14 @@ fn validate_role_group_config(
     let config = merged.config.config;
     let logging = validate_logging(&config.logging, vector_aggregator_config_map_name)?;
 
-    Ok(ValidatedRoleGroupConfig {
-        replicas: merged.replicas.unwrap_or(1),
-        config,
+    Ok(ZookeeperRoleGroupConfig {
+        replicas: merged.replicas,
+        config: ValidatedZookeeperConfig::from_merged(config, logging),
         config_overrides: merged.config.config_overrides,
         env_overrides,
+        cli_overrides: merged.config.cli_overrides,
         pod_overrides: merged.config.pod_overrides,
-        jvm_argument_overrides: merged
-            .config
-            .product_specific_common_config
-            .jvm_argument_overrides,
-        logging,
+        product_specific_common_config: merged.config.product_specific_common_config,
     })
 }
 
@@ -594,7 +617,7 @@ fn validate_role_group_config(
 fn server_addresses(
     cluster_name: &ClusterName,
     namespace: &NamespaceName,
-    role_group_configs: &BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ValidatedRoleGroupConfig>>,
+    role_group_configs: &BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>>,
     zookeeper_security: &ZookeeperSecurity,
     cluster_info: &KubernetesClusterInfo,
 ) -> BTreeMap<String, String> {
@@ -611,7 +634,9 @@ fn server_addresses(
         };
         let headless_service_name = resource_names.headless_service_name();
         let stateful_set_name = resource_names.stateful_set_name().to_string();
-        for i in 0..rg_config.replicas {
+        // An unset replica count (HPA-managed) predicts a single-server quorum entry, matching
+        // the historical default.
+        for i in 0..rg_config.replicas.unwrap_or(1) {
             let pod_ref = ZookeeperPodRef {
                 namespace: namespace.clone(),
                 role_group_headless_service_name: headless_service_name.clone(),
@@ -642,7 +667,7 @@ mod tests {
     fn server_role_group(
         validated: &ValidatedCluster,
         role_group: &str,
-    ) -> ValidatedRoleGroupConfig {
+    ) -> ZookeeperRoleGroupConfig {
         let role_group_name = RoleGroupName::from_str(role_group).expect("valid role group name");
         validated
             .role_group_configs

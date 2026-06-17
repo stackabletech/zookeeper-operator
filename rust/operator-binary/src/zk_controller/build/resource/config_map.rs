@@ -20,7 +20,7 @@ use stackable_operator::{
 
 use crate::zk_controller::{
     build::properties::{ConfigFileName, product_logging, security_properties, zoo_cfg},
-    validate::{ValidatedCluster, ValidatedRoleGroupConfig},
+    validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
 };
 
 #[derive(Snafu, Debug)]
@@ -51,7 +51,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub fn build_server_rolegroup_config_map(
     cluster: &ValidatedCluster,
     role_group_name: &RoleGroupName,
-    rolegroup_config: &ValidatedRoleGroupConfig,
+    rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> Result<ConfigMap> {
     let mut data: BTreeMap<String, String> = BTreeMap::new();
 
@@ -78,7 +78,7 @@ pub fn build_server_rolegroup_config_map(
 
     // logback.xml
     if let Some(logback) =
-        product_logging::build_logback_config(&rolegroup_config.logging.zookeeper_container)
+        product_logging::build_logback_config(&rolegroup_config.config.logging.zookeeper_container)
     {
         data.insert(ConfigFileName::LogbackXml.to_string(), logback);
     }
