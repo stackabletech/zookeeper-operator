@@ -77,11 +77,11 @@ const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
 
 // Volume names. Each is shared between a `Volume`/PVC definition and one or more volume mounts; the
 // strings must match, so they are defined once here rather than repeated at every call site.
-const DATA_VOLUME_NAME: &str = "data";
-const CONFIG_VOLUME_NAME: &str = "config";
-const RW_CONFIG_VOLUME_NAME: &str = "rwconfig";
-const LOG_VOLUME_NAME: &str = "log";
-const LOG_CONFIG_VOLUME_NAME: &str = "log-config";
+stackable_operator::constant!(DATA_VOLUME_NAME: VolumeName = "data");
+stackable_operator::constant!(CONFIG_VOLUME_NAME: VolumeName = "config");
+stackable_operator::constant!(RW_CONFIG_VOLUME_NAME: VolumeName = "rwconfig");
+stackable_operator::constant!(LOG_VOLUME_NAME: VolumeName = "log");
+stackable_operator::constant!(LOG_CONFIG_VOLUME_NAME: VolumeName = "log-config");
 
 /// Name of the `prepare` init container (also used as its log subdirectory).
 const PREPARE_CONTAINER_NAME: &str = "prepare";
@@ -182,7 +182,7 @@ pub fn build_server_rolegroup_statefulset(
     let data_pvc = resources_config
         .storage
         .data
-        .build_pvc(DATA_VOLUME_NAME, Some(vec!["ReadWriteOnce"]));
+        .build_pvc(DATA_VOLUME_NAME.as_ref(), Some(vec!["ReadWriteOnce"]));
     let original_pvcs = vec![data_pvc];
     let resources: ResourceRequirements = resources_config.into();
 
@@ -250,13 +250,13 @@ pub fn build_server_rolegroup_statefulset(
             }),
             ..EnvVar::default()
         }])
-        .add_volume_mount(DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
+        .add_volume_mount(&*DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount(CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
+        .add_volume_mount(&*CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount(RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
+        .add_volume_mount(&*RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount(LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
+        .add_volume_mount(&*LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
         .context(AddVolumeMountSnafu)?
         .resources(
             ResourceRequirementsBuilder::new()
@@ -328,15 +328,15 @@ pub fn build_server_rolegroup_statefulset(
         )
         .add_container_port(JMX_METRICS_PORT_NAME, i32::from(JMX_METRICS_PORT))
         .add_container_port(METRICS_PROVIDER_HTTP_PORT_NAME, metrics_port.into())
-        .add_volume_mount(DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
+        .add_volume_mount(&*DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount(CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
+        .add_volume_mount(&*CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount(LOG_CONFIG_VOLUME_NAME, STACKABLE_LOG_CONFIG_DIR)
+        .add_volume_mount(&*LOG_CONFIG_VOLUME_NAME, STACKABLE_LOG_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount(RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
+        .add_volume_mount(&*RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
         .context(AddVolumeMountSnafu)?
-        .add_volume_mount(LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
+        .add_volume_mount(&*LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
         .context(AddVolumeMountSnafu)?
         .resources(resources)
         .build();
@@ -370,7 +370,7 @@ pub fn build_server_rolegroup_statefulset(
         })
         .context(AddVolumeSnafu)?
         .add_empty_dir_volume(
-            LOG_VOLUME_NAME,
+            &*LOG_VOLUME_NAME,
             Some(product_logging::framework::calculate_log_volume_size_limit(
                 &[
                     properties::product_logging::MAX_ZK_LOG_FILES_SIZE,
@@ -408,17 +408,13 @@ pub fn build_server_rolegroup_statefulset(
     // parameterised at runtime via env vars that the `vector_container` injects. The validated
     // Vector log config is built up-front in the validate step.
     if let Some(vector_log_config) = &rolegroup_config.config.logging.vector_container {
-        let config_volume_name = VolumeName::from_str(CONFIG_VOLUME_NAME)
-            .expect("CONFIG_VOLUME_NAME is a valid volume name");
-        let log_volume_name =
-            VolumeName::from_str(LOG_VOLUME_NAME).expect("LOG_VOLUME_NAME is a valid volume name");
         pod_builder.add_container(vector_container(
             &VECTOR_CONTAINER_NAME,
             resolved_product_image,
             vector_log_config,
             &resource_names,
-            &config_volume_name,
-            &log_volume_name,
+            &CONFIG_VOLUME_NAME,
+            &LOG_VOLUME_NAME,
             EnvVarSet::new(),
         ));
     }
