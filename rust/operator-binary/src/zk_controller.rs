@@ -529,10 +529,9 @@ mod tests {
 
     #[test]
     fn test_seeded_operator_defaults() {
-        // These values used to be injected by product-config from
-        // `deploy/config-spec/properties.yaml`. They are now seeded directly by the
-        // ConfigMap builder and must stay byte-identical (pinned by the kuttl
-        // snapshot `tests/templates/kuttl/smoke/14-assert.yaml.j2`).
+        // These values are seeded directly by the ConfigMap builder and must stay
+        // byte-identical (pinned by the kuttl snapshot
+        // `tests/templates/kuttl/smoke/14-assert.yaml.j2`).
         let zookeeper_yaml = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
         kind: ZookeeperCluster

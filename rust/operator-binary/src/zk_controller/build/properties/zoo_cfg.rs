@@ -67,7 +67,7 @@ pub(crate) fn server_addresses(
 /// `server.<myid>` quorum entries (which depend on `cluster_info`).
 ///
 /// Precedence (lowest to highest):
-/// 1. operator-injected defaults (formerly `product-config` `properties.yaml`)
+/// 1. operator-injected defaults
 /// 2. TLS / quorum settings from [`ZookeeperSecurity`]
 /// 3. user-set merged config (`initLimit` / `syncLimit` / `tickTime`)
 /// 4. `configOverrides` for `zoo.cfg`

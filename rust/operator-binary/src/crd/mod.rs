@@ -35,7 +35,7 @@ use stackable_operator::{
     },
     versioned::versioned,
 };
-use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
+use strum::{Display, EnumIter, EnumString};
 
 use crate::crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig};
 
@@ -404,16 +404,6 @@ impl v1alpha1::ZookeeperConfig {
             graceful_shutdown_timeout: Some(DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT),
             requested_secret_lifetime: Some(Self::DEFAULT_SECRET_LIFETIME),
         }
-    }
-}
-
-impl ZookeeperRole {
-    pub fn roles() -> Vec<String> {
-        let mut roles = vec![];
-        for role in Self::iter() {
-            roles.push(role.to_string())
-        }
-        roles
     }
 }
 

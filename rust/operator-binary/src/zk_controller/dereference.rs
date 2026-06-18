@@ -2,7 +2,7 @@
 //!
 //! Fetches all Kubernetes objects referenced by the [`v1alpha1::ZookeeperCluster`] spec and
 //! returns them in [`DereferencedObjects`]. Synchronous validation of the fetched objects
-//! (image resolution, product-config validation, security struct assembly) happens in the
+//! (image resolution, config validation, security struct assembly) happens in the
 //! validate step.
 
 use snafu::{ResultExt, Snafu};

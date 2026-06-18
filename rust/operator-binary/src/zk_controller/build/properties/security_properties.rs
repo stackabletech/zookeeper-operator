@@ -12,8 +12,7 @@ const DEFAULT_NETWORKADDRESS_CACHE_NEGATIVE_TTL: &str = "0";
 
 /// Builds the `security.properties` key/value pairs for a role group.
 ///
-/// The entire file is operator-injected (the values formerly came from
-/// `product-config`'s `properties.yaml`), plus any user `configOverrides`.
+/// The entire file is operator-injected, plus any user `configOverrides`.
 pub fn build(rolegroup_config: &ZookeeperRoleGroupConfig) -> BTreeMap<String, String> {
     let mut security_properties = BTreeMap::new();
 

@@ -161,9 +161,8 @@ pub fn build_server_rolegroup_statefulset(
     let zookeeper_security = &cluster.cluster_config.zookeeper_security;
     let metrics_port = cluster.metrics_http_port(rolegroup_config);
 
-    // The operator-injected environment variables (formerly produced by the
-    // product-config `Configuration::compute_env` implementation) plus the
-    // user-provided `envOverrides` (which win on conflict).
+    // The operator-injected environment variables plus the user-provided `envOverrides`
+    // (which win on conflict).
     let env_vars = EnvVarSet::new()
         .with_value(
             &EnvVarName::from_str_unsafe(v1alpha1::ZookeeperConfig::MYID_OFFSET),
@@ -406,7 +405,7 @@ pub fn build_server_rolegroup_statefulset(
         .context(AddVolumeSnafu)?;
 
     // The static `vector.yaml` (in the rolegroup ConfigMap, mounted as the `config` volume) is
-    // parameterised at runtime via env vars that the v2 `vector_container` injects. The validated
+    // parameterised at runtime via env vars that the `vector_container` injects. The validated
     // Vector log config is built up-front in the validate step.
     if let Some(vector_log_config) = &rolegroup_config.config.logging.vector_container {
         let config_volume_name = VolumeName::from_str(CONFIG_VOLUME_NAME)
