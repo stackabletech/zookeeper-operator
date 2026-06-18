@@ -28,32 +28,32 @@ customConfig:
       type: filter
       inputs: [validEvents]
       condition: |-
-        .pod == "test-zk-server-automatic-log-0" && .container == "prepare"
+        .pod == "test-zk-server-automatic-log-config-0" && .container == "prepare"
     filteredAutomaticLogConfigVector:
       type: filter
       inputs: [validEvents]
       condition: |-
-        .pod == "test-zk-server-automatic-log-0" && .container == "vector"
+        .pod == "test-zk-server-automatic-log-config-0" && .container == "vector"
     filteredAutomaticLogConfigZookeeper:
       type: filter
       inputs: [validEvents]
       condition: |-
-        .pod == "test-zk-server-automatic-log-0" && .container == "zookeeper"
+        .pod == "test-zk-server-automatic-log-config-0" && .container == "zookeeper"
     filteredCustomLogConfigPrepare:
       type: filter
       inputs: [validEvents]
       condition: |-
-        .pod == "test-zk-server-custom-log-0" && .container == "prepare"
+        .pod == "test-zk-server-custom-log-config-0" && .container == "prepare"
     filteredCustomLogConfigVector:
       type: filter
       inputs: [validEvents]
       condition: |-
-        .pod == "test-zk-server-custom-log-0" && .container == "vector"
+        .pod == "test-zk-server-custom-log-config-0" && .container == "vector"
     filteredCustomLogConfigZookeeper:
       type: filter
       inputs: [validEvents]
       condition: |-
-        .pod == "test-zk-server-custom-log-0" && .container == "zookeeper"
+        .pod == "test-zk-server-custom-log-config-0" && .container == "zookeeper"
     filteredInvalidEvents:
       type: filter
       inputs: [vector]
