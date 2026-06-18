@@ -434,8 +434,11 @@ pub(crate) mod test_support {
         }
     }
 
-    /// Runs the real validate step against a minimal (auth-free) fixture.
-    pub fn validated_cluster(zk: &v1alpha1::ZookeeperCluster) -> ValidatedCluster {
+    /// Runs the real validate step against a minimal (auth-free) fixture, returning the result so
+    /// tests can assert on validation errors.
+    pub fn try_validate(
+        zk: &v1alpha1::ZookeeperCluster,
+    ) -> Result<ValidatedCluster, super::validate::Error> {
         validate(
             zk,
             &DereferencedObjects {
@@ -443,7 +446,11 @@ pub(crate) mod test_support {
             },
             &operator_environment(),
         )
-        .expect("validate should succeed for the test fixture")
+    }
+
+    /// Runs the real validate step against a minimal (auth-free) fixture.
+    pub fn validated_cluster(zk: &v1alpha1::ZookeeperCluster) -> ValidatedCluster {
+        try_validate(zk).expect("validate should succeed for the test fixture")
     }
 }
 
@@ -597,6 +604,131 @@ mod tests {
         assert!(zoo_cfg.contains("initLimit=7"), "{zoo_cfg}");
         // Untouched default stays.
         assert!(zoo_cfg.contains("syncLimit=2"), "{zoo_cfg}");
+    }
+
+    #[test]
+    fn test_non_tls_uses_insecure_client_port() {
+        // With server TLS disabled (`serverSecretClass: null`) the insecure client port is used and
+        // none of the server-TLS settings (keystore, port unification) are emitted. This exercises
+        // the non-TLS branch of `ZookeeperSecurity::{client_port, config_settings}`.
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          clusterConfig:
+            tls:
+              serverSecretClass: null
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let zoo_cfg = cm.get("zoo.cfg").unwrap();
+        assert!(zoo_cfg.contains("clientPort=2181"), "{zoo_cfg}");
+        assert!(!zoo_cfg.contains("client.portUnification"), "{zoo_cfg}");
+        // The server-TLS keystore line (distinct from the always-present quorum keystore).
+        assert!(!zoo_cfg.contains("ssl.keyStore.location"), "{zoo_cfg}");
+    }
+
+    #[test]
+    fn test_config_override_wins_over_typed_config() {
+        // The typed `config` sets `syncLimit`, but a `configOverride` for the same key must win
+        // (configOverrides are layered last in `zoo.cfg` precedence).
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+                config:
+                  syncLimit: 9
+                configOverrides:
+                  zoo.cfg:
+                    syncLimit: "15"
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let zoo_cfg = cm.get("zoo.cfg").unwrap();
+        assert!(zoo_cfg.contains("syncLimit=15"), "{zoo_cfg}");
+    }
+
+    #[test]
+    fn test_custom_log_config_omits_logback() {
+        // Automatic logging renders `logback.xml` into the ConfigMap; a custom log ConfigMap
+        // suppresses it (the `Custom` arm of `build_logback_config`).
+        let automatic_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+        let automatic = build_config_map(automatic_yaml).data.unwrap();
+        assert!(automatic.contains_key("logback.xml"));
+
+        let custom_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+                config:
+                  logging:
+                    containers:
+                      zookeeper:
+                        custom:
+                          configMap: my-log-config
+        "#;
+        let custom = build_config_map(custom_yaml).data.unwrap();
+        assert!(!custom.contains_key("logback.xml"));
+    }
+
+    #[test]
+    fn test_vector_agent_adds_vector_config() {
+        // Enabling the Vector agent (with the required aggregator discovery ConfigMap) adds
+        // `vector.yaml` to the rolegroup ConfigMap.
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          clusterConfig:
+            vectorAggregatorConfigMapName: vector-aggregator-discovery
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+                config:
+                  logging:
+                    enableVectorAgent: true
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        assert!(cm.contains_key("vector.yaml"));
     }
 
     fn build_config_map(zookeeper_yaml: &str) -> ConfigMap {

@@ -212,3 +212,77 @@ fn listener_addresses(
         false => Ok(address_port_pairs),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use stackable_operator::{
+        crd::listener::v1alpha1::{
+            AddressType, Listener, ListenerIngress, ListenerSpec, ListenerStatus,
+        },
+        k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
+    };
+
+    use super::*;
+
+    fn listener(ingress_addresses: Option<Vec<ListenerIngress>>) -> Listener {
+        Listener {
+            metadata: ObjectMeta {
+                name: Some("test-listener".to_owned()),
+                ..ObjectMeta::default()
+            },
+            spec: ListenerSpec::default(),
+            status: Some(ListenerStatus {
+                service_name: None,
+                ingress_addresses,
+                node_ports: None,
+            }),
+        }
+    }
+
+    fn ingress(port: i32) -> ListenerIngress {
+        ListenerIngress {
+            address: "node-0".to_owned(),
+            address_type: AddressType::Hostname,
+            ports: BTreeMap::from([(ZOOKEEPER_SERVER_PORT_NAME.to_owned(), port)]),
+        }
+    }
+
+    #[test]
+    fn listener_addresses_returns_host_port_pairs() {
+        let listener = listener(Some(vec![ingress(2181)]));
+        let pairs: Vec<_> = listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)
+            .expect("addresses")
+            .into_iter()
+            .collect();
+        assert_eq!(pairs, vec![("node-0".to_owned(), 2181u16)]);
+    }
+
+    #[test]
+    fn listener_addresses_without_ingress_is_error() {
+        assert!(matches!(
+            listener_addresses(&listener(None), ZOOKEEPER_SERVER_PORT_NAME),
+            Err(Error::NoListenerIngressAddresses { .. })
+        ));
+    }
+
+    #[test]
+    fn listener_addresses_missing_port_name_is_error() {
+        let listener = listener(Some(vec![ingress(2181)]));
+        assert!(matches!(
+            listener_addresses(&listener, "does-not-exist"),
+            Err(Error::PortNotFound { .. })
+        ));
+    }
+
+    #[test]
+    fn listener_addresses_port_out_of_u16_range_is_error() {
+        // A port number that does not fit into a u16 must be rejected.
+        let listener = listener(Some(vec![ingress(70_000)]));
+        assert!(matches!(
+            listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME),
+            Err(Error::InvalidPort { .. })
+        ));
+    }
+}

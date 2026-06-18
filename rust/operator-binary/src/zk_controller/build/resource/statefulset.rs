@@ -453,3 +453,78 @@ pub fn build_server_rolegroup_statefulset(
         status: None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::zk_controller::test_support::{minimal_zk, validated_cluster};
+
+    /// Builds the `default` server StatefulSet for `yaml` and returns the ConfigMap name mounted by
+    /// its `log-config` volume.
+    fn log_config_map_name(yaml: &str) -> String {
+        let validated = validated_cluster(&minimal_zk(yaml));
+        let rg_name = RoleGroupName::from_str("default").expect("valid role group name");
+        let rg = validated.role_group_configs[&ZookeeperRole::Server][&rg_name].clone();
+        build_server_rolegroup_statefulset(&validated, &rg_name, &rg)
+            .expect("statefulset builds")
+            .spec
+            .and_then(|spec| spec.template.spec)
+            .and_then(|pod| pod.volumes)
+            .expect("pod volumes")
+            .into_iter()
+            .find(|volume| volume.name == "log-config")
+            .expect("log-config volume")
+            .config_map
+            .expect("log-config is a ConfigMap volume")
+            .name
+    }
+
+    #[test]
+    fn custom_log_config_mounts_user_config_map() {
+        // A custom log ConfigMap is mounted directly for the `log-config` volume.
+        let name = log_config_map_name(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+                    config:
+                      logging:
+                        containers:
+                          zookeeper:
+                            custom:
+                              configMap: my-log-config
+            "#,
+        );
+        assert_eq!(name, "my-log-config");
+    }
+
+    #[test]
+    fn automatic_log_config_mounts_rolegroup_config_map() {
+        // Automatic logging mounts the role group's own ConfigMap, not a user-provided one.
+        let name = log_config_map_name(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+        );
+        assert_ne!(name, "my-log-config");
+        assert!(name.contains("simple-zookeeper"), "{name}");
+    }
+}

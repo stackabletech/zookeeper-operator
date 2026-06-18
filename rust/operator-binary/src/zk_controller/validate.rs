@@ -599,7 +599,63 @@ mod tests {
     use stackable_operator::k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 
     use super::*;
-    use crate::zk_controller::test_support::{minimal_zk, validated_cluster};
+    use crate::zk_controller::test_support::{minimal_zk, try_validate, validated_cluster};
+
+    #[test]
+    fn enabling_vector_without_aggregator_name_fails_validation() {
+        // The Vector agent requires the aggregator discovery ConfigMap name; omitting it must fail
+        // during validation rather than at build time.
+        let zk = minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+                    config:
+                      logging:
+                        enableVectorAgent: true
+            "#,
+        );
+        assert!(matches!(
+            try_validate(&zk),
+            Err(Error::MissingVectorAggregatorConfigMapName)
+        ));
+    }
+
+    #[test]
+    fn enabling_vector_with_aggregator_name_validates_vector_container() {
+        let zk = minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.5"
+              clusterConfig:
+                vectorAggregatorConfigMapName: vector-aggregator-discovery
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+                    config:
+                      logging:
+                        enableVectorAgent: true
+            "#,
+        );
+        let validated = validated_cluster(&zk);
+        let rg = server_role_group(&validated, "default");
+        assert!(rg.config.logging.enable_vector_agent);
+        assert!(rg.config.logging.vector_container.is_some());
+    }
 
     /// Looks up the validated, merged config of a single server role group by name.
     fn server_role_group(

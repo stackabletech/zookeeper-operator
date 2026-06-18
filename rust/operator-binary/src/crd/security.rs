@@ -61,9 +61,12 @@ impl ZookeeperSecurity {
     // ports
     pub const CLIENT_PORT: Port = Port(2181);
     pub const CLIENT_PORT_NAME: &'static str = "clientPort";
+    // TLS store file names (relative to the respective TLS dir)
+    pub const KEYSTORE_FILE: &'static str = "keystore.p12";
     // directories
     pub const QUORUM_TLS_DIR: &'static str = "/stackable/quorum_tls";
     pub const QUORUM_TLS_MOUNT_DIR: &'static str = "/stackable/quorum_tls_mount";
+    pub const QUORUM_TLS_VOLUME_NAME: &'static str = "quorum-tls";
     pub const SECURE_CLIENT_PORT: Port = Port(2282);
     pub const SECURE_CLIENT_PORT_NAME: &'static str = "secureClientPort";
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
@@ -71,10 +74,6 @@ impl ZookeeperSecurity {
     pub const SERVER_TLS_MOUNT_DIR: &'static str = "/stackable/server_tls_mount";
     // TLS volume names (the mount name must match the volume name)
     pub const SERVER_TLS_VOLUME_NAME: &'static str = "server-tls";
-    pub const QUORUM_TLS_VOLUME_NAME: &'static str = "quorum-tls";
-    // TLS store file names (relative to the respective TLS dir)
-    pub const KEYSTORE_FILE: &'static str = "keystore.p12";
-    pub const TRUSTSTORE_FILE: &'static str = "truststore.p12";
     // Common TLS
     pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
     // Client TLS
@@ -95,6 +94,7 @@ impl ZookeeperSecurity {
     // Mis
     pub const STORE_PASSWORD_ENV: &'static str = "STORE_PASSWORD";
     pub const SYSTEM_TRUST_STORE_DIR: &'static str = "/etc/pki/java/cacerts";
+    pub const TRUSTSTORE_FILE: &'static str = "truststore.p12";
 
     /// Build a `ZookeeperSecurity` from a [`v1alpha1::ZookeeperCluster`] and already-resolved
     /// [`DereferencedAuthenticationClasses`]. Synchronous; intended to be called from the validate

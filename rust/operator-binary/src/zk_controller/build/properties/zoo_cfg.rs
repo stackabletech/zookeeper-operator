@@ -177,8 +177,189 @@ impl ValidatedCluster {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use stackable_operator::v2::types::operator::RoleGroupName;
+
     use super::*;
     use crate::zk_controller::test_support::{cluster_info, minimal_zk, validated_cluster};
+
+    /// Validates `yaml` into a [`ValidatedCluster`] and returns its `server` `default` role group.
+    fn validated_with_default_rg(yaml: &str) -> (ValidatedCluster, ZookeeperRoleGroupConfig) {
+        let validated = validated_cluster(&minimal_zk(yaml));
+        let rg_name = RoleGroupName::from_str("default").expect("valid role group name");
+        let rg = validated.role_group_configs[&ZookeeperRole::Server][&rg_name].clone();
+        (validated, rg)
+    }
+
+    #[test]
+    fn server_addresses_append_secure_client_port_when_tls_enabled() {
+        // TLS is enabled by default, so the quorum entries advertise the secure client port.
+        let (validated, _) = validated_with_default_rg(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+        );
+        let entry = server_addresses(&validated, &cluster_info())
+            .remove("server.1")
+            .expect("missing server.1");
+        assert!(entry.ends_with(";2282"), "unexpected entry: {entry}");
+    }
+
+    #[test]
+    fn server_addresses_append_insecure_client_port_when_tls_disabled() {
+        // With server TLS disabled the quorum entries advertise the insecure client port.
+        let (validated, _) = validated_with_default_rg(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.5"
+              clusterConfig:
+                tls:
+                  serverSecretClass: null
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+        );
+        let entry = server_addresses(&validated, &cluster_info())
+            .remove("server.1")
+            .expect("missing server.1");
+        assert!(entry.ends_with(";2181"), "unexpected entry: {entry}");
+    }
+
+    #[test]
+    fn server_addresses_unset_replicas_predicts_single_entry() {
+        // An unset replica count (HPA-managed) predicts a single-server quorum entry.
+        let validated = validated_cluster(&minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default: {}
+            "#,
+        ));
+        let addresses = server_addresses(&validated, &cluster_info());
+        assert_eq!(addresses.len(), 1);
+        assert!(addresses.contains_key("server.1"), "{addresses:?}");
+    }
+
+    #[test]
+    fn server_addresses_honor_myid_offset_across_role_groups() {
+        // The quorum keys are `server.<i + myidOffset>`, aggregated across all server role groups.
+        let validated = validated_cluster(&minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  primary:
+                    replicas: 2
+                  secondary:
+                    replicas: 2
+                    config:
+                      myidOffset: 10
+            "#,
+        ));
+        let addresses = server_addresses(&validated, &cluster_info());
+        // primary: offset 1 -> server.1, server.2; secondary: offset 10 -> server.10, server.11.
+        for expected in ["server.1", "server.2", "server.10", "server.11"] {
+            assert!(
+                addresses.contains_key(expected),
+                "missing {expected} in {addresses:?}"
+            );
+        }
+        assert_eq!(addresses.len(), 4);
+    }
+
+    #[test]
+    fn metrics_http_port_defaults_and_honors_override() {
+        // Default: the seeded `METRICS_PROVIDER_HTTP_PORT`.
+        let (validated, rg) = validated_with_default_rg(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+        );
+        assert_eq!(validated.metrics_http_port(&rg), METRICS_PROVIDER_HTTP_PORT);
+
+        // A numeric `configOverride` wins.
+        let (validated, rg) = validated_with_default_rg(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+                    configOverrides:
+                      zoo.cfg:
+                        metricsProvider.httpPort: "9999"
+            "#,
+        );
+        assert_eq!(validated.metrics_http_port(&rg), Port::from(9999));
+
+        // A non-numeric `configOverride` falls back to the default.
+        let (validated, rg) = validated_with_default_rg(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+                    configOverrides:
+                      zoo.cfg:
+                        metricsProvider.httpPort: "not-a-port"
+            "#,
+        );
+        assert_eq!(validated.metrics_http_port(&rg), METRICS_PROVIDER_HTTP_PORT);
+    }
 
     #[test]
     fn server_addresses_predicts_one_entry_per_replica() {
