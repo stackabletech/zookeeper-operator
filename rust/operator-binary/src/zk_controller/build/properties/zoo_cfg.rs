@@ -162,8 +162,12 @@ impl ValidatedCluster {
     /// Resolves the metrics HTTP port for the given role group, honoring a
     /// `metricsProvider.httpPort` `configOverride` if present.
     pub fn metrics_http_port(&self, rolegroup_config: &ZookeeperRoleGroupConfig) -> Port {
-        // The metrics port is independent of the server.<myid> quorum entries.
-        build_base(self, rolegroup_config)
+        // Only a `configOverride` can change the metrics port; the seeded default and the
+        // TLS/quorum settings never touch `metricsProvider.httpPort`.
+        rolegroup_config
+            .config_overrides
+            .zoo_cfg
+            .overrides
             .get(METRICS_PROVIDER_HTTP_PORT_KEY)
             .and_then(|port| port.parse::<u16>().ok())
             .map(Port::from)
