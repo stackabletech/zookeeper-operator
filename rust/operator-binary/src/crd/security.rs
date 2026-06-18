@@ -69,6 +69,12 @@ impl ZookeeperSecurity {
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
     pub const SERVER_TLS_DIR: &'static str = "/stackable/server_tls";
     pub const SERVER_TLS_MOUNT_DIR: &'static str = "/stackable/server_tls_mount";
+    // TLS volume names (the mount name must match the volume name)
+    pub const SERVER_TLS_VOLUME_NAME: &'static str = "server-tls";
+    pub const QUORUM_TLS_VOLUME_NAME: &'static str = "quorum-tls";
+    // TLS store file names (relative to the respective TLS dir)
+    pub const KEYSTORE_FILE: &'static str = "keystore.p12";
+    pub const TRUSTSTORE_FILE: &'static str = "truststore.p12";
     // Common TLS
     pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
     // Client TLS
@@ -150,7 +156,7 @@ impl ZookeeperSecurity {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
-            let tls_volume_name = "server-tls";
+            let tls_volume_name = Self::SERVER_TLS_VOLUME_NAME;
             cb_zookeeper
                 .add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR)
                 .context(AddVolumeMountSnafu)?;
@@ -164,7 +170,7 @@ impl ZookeeperSecurity {
         }
 
         // quorum
-        let tls_volume_name = "quorum-tls";
+        let tls_volume_name = Self::QUORUM_TLS_VOLUME_NAME;
         cb_zookeeper
             .add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR)
             .context(AddVolumeMountSnafu)?;
@@ -202,11 +208,19 @@ impl ZookeeperSecurity {
         // and written later via script in the init container
         config.insert(
             Self::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
-            format!("{dir}/keystore.p12", dir = Self::QUORUM_TLS_DIR),
+            format!(
+                "{dir}/{file}",
+                dir = Self::QUORUM_TLS_DIR,
+                file = Self::KEYSTORE_FILE
+            ),
         );
         config.insert(
             Self::SSL_QUORUM_TRUST_STORE_LOCATION.to_string(),
-            format!("{dir}/truststore.p12", dir = Self::QUORUM_TLS_DIR),
+            format!(
+                "{dir}/{file}",
+                dir = Self::QUORUM_TLS_DIR,
+                file = Self::TRUSTSTORE_FILE
+            ),
         );
 
         // Server TLS
@@ -255,11 +269,19 @@ impl ZookeeperSecurity {
             // and written later via script in the init container
             config.insert(
                 Self::SSL_KEY_STORE_LOCATION.to_string(),
-                format!("{dir}/keystore.p12", dir = Self::SERVER_TLS_DIR),
+                format!(
+                    "{dir}/{file}",
+                    dir = Self::SERVER_TLS_DIR,
+                    file = Self::KEYSTORE_FILE
+                ),
             );
             config.insert(
                 Self::SSL_TRUST_STORE_LOCATION.to_string(),
-                format!("{dir}/truststore.p12", dir = Self::SERVER_TLS_DIR),
+                format!(
+                    "{dir}/{file}",
+                    dir = Self::SERVER_TLS_DIR,
+                    file = Self::TRUSTSTORE_FILE
+                ),
             );
             // Check if we need to enable client TLS authentication
             if self
