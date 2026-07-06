@@ -42,7 +42,8 @@ Install the Stackable Operators:
 include::example$getting_started/code/getting_started.sh[tag=helm-install-operators]
 ----
 
-Helm deploys the operators in Kubernetes Deployments and applies the CRDs for the ZooKeeperCluster Stacklet.
+Helm deploys the operators in Kubernetes Deployments.
+Each operator installs and maintains its own CRDs at startup (see xref:concepts:maintenance/crds.adoc[]).
 --
 ====
 
