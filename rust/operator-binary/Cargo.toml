@@ -10,8 +10,7 @@ publish = false
 build = "build.rs"
 
 [dependencies]
-product-config.workspace = true
-stackable-operator.workspace = true
+stackable-operator = { workspace = true, features = ["test-support"] }
 
 anyhow.workspace = true
 clap.workspace = true

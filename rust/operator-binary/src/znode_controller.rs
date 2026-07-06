@@ -8,11 +8,10 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    commons::product_image_selection::ResolvedProductImage,
     crd::listener,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::{
-        Resource,
+        Resource, ResourceExt,
         api::ObjectMeta,
         core::{DeserializeGuard, DynamicObject, error_boundary},
         runtime::{controller, finalizer, reflector::ObjectRef},
@@ -26,13 +25,12 @@ use tracing::{debug, info};
 
 use crate::{
     APP_NAME, OPERATOR_NAME,
-    crd::{ZookeeperRole, security::ZookeeperSecurity, v1alpha1},
-    discovery::{self, build_discovery_configmap},
-    listener::role_listener_name,
+    crd::{ZookeeperRole, role_listener_name, security::ZookeeperSecurity, v1alpha1},
+    zk_controller::build::resource::discovery::{self, build_znode_discovery_configmap},
 };
 
 mod dereference;
-mod validate;
+pub(crate) mod validate;
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
 pub const ZNODE_FULL_CONTROLLER_NAME: &str = concatcp!(ZNODE_CONTROLLER_NAME, '.', OPERATOR_NAME);
@@ -61,11 +59,6 @@ pub enum Error {
         "object is missing metadata that should be created by the Kubernetes cluster",
     ))]
     ObjectMissingMetadata,
-
-    #[snafu(display("could not find server role service name for {zk:?}"))]
-    NoZkSvcName {
-        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
-    },
 
     #[snafu(display("could not find server role service for {zk:?}"))]
     FindZkSvc {
@@ -118,12 +111,6 @@ pub enum Error {
 
     #[snafu(display("object has no namespace"))]
     ObjectHasNoNamespace,
-
-    #[snafu(display("Znode {znode:?} missing expected keys (name and/or namespace)"))]
-    ZnodeMissingExpectedKeys {
-        source: stackable_operator::cluster_resources::Error,
-        znode: ObjectRef<v1alpha1::ZookeeperZnode>,
-    },
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -159,7 +146,6 @@ impl ReconcilerError for Error {
             Error::Dereference { .. } => None,
             Error::ValidateCluster { .. } => None,
             Error::ObjectMissingMetadata => None,
-            Error::NoZkSvcName { zk } => Some(zk.clone().erase()),
             Error::FindZkSvc { zk, .. } => Some(zk.clone().erase()),
             Error::NoZkFqdn { zk } => Some(zk.clone().erase()),
             Error::EnsureZnode { zk, .. } => Some(zk.clone().erase()),
@@ -170,7 +156,6 @@ impl ReconcilerError for Error {
             Error::Finalizer { .. } => None,
             Error::DeleteOrphans { .. } => None,
             Error::ObjectHasNoNamespace => None,
-            Error::ZnodeMissingExpectedKeys { .. } => None,
         }
     }
 }
@@ -238,20 +223,10 @@ pub async fn reconcile_znode(
             match ev {
                 finalizer::Event::Apply(znode) => {
                     let dereferenced = dereferenced_objects.context(DereferenceSnafu)?;
-                    let validate::ValidatedInputs {
-                        resolved_product_image,
-                        zookeeper_security,
-                    } = validate::validate(&znode, &dereferenced, &ctx.operator_environment)
-                        .context(ValidateClusterSnafu)?;
-                    reconcile_apply(
-                        client,
-                        &znode,
-                        dereferenced.zk,
-                        &zookeeper_security,
-                        &znode_path,
-                        &resolved_product_image,
-                    )
-                    .await
+                    let validated_znode =
+                        validate::validate(&znode, &dereferenced, &ctx.operator_environment)
+                            .context(ValidateClusterSnafu)?;
+                    reconcile_apply(client, &validated_znode, dereferenced.zk, &znode_path).await
                 }
                 finalizer::Event::Cleanup(_znode) => {
                     let dereferenced = match dereferenced_objects {
@@ -281,24 +256,32 @@ pub async fn reconcile_znode(
 
 async fn reconcile_apply(
     client: &stackable_operator::client::Client,
-    znode: &v1alpha1::ZookeeperZnode,
+    validated_znode: &validate::ValidatedZnode,
     zk: v1alpha1::ZookeeperCluster,
-    zookeeper_security: &ZookeeperSecurity,
     znode_path: &str,
-    resolved_product_image: &ResolvedProductImage,
 ) -> Result<controller::Action> {
+    // Infallible: `ValidatedZnode`'s object reference always contains name, namespace and uid
+    // (set unconditionally during the validate step), which is all `ClusterResources::new`
+    // requires.
     let mut cluster_resources = ClusterResources::new(
         APP_NAME,
         OPERATOR_NAME,
         ZNODE_CONTROLLER_NAME,
-        &znode.object_ref(&()),
-        ClusterResourceApplyStrategy::from(&zk.spec.cluster_operation),
-        &znode.spec.object_overrides,
+        &validated_znode.object_ref(&()),
+        ClusterResourceApplyStrategy::from(&validated_znode.cluster_operation),
+        &validated_znode.object_overrides,
     )
-    .context(ZnodeMissingExpectedKeysSnafu { znode })?;
+    .expect(
+        "ClusterResources should be created because the ValidatedZnode's object reference \
+         always contains name, namespace and uid",
+    );
 
     znode_mgmt::ensure_znode_exists(
-        &zk_mgmt_addr(&zk, zookeeper_security, &client.kubernetes_cluster_info)?,
+        &zk_mgmt_addr(
+            &zk,
+            &validated_znode.zookeeper_security,
+            &client.kubernetes_cluster_info,
+        )?,
         znode_path,
     )
     .await
@@ -309,7 +292,7 @@ async fn reconcile_apply(
 
     let listener = client
         .get::<listener::v1alpha1::Listener>(
-            &role_listener_name(&zk, &ZookeeperRole::Server),
+            role_listener_name(&zk.name_any(), &ZookeeperRole::Server).as_ref(),
             zk.metadata
                 .namespace
                 .as_deref()
@@ -320,14 +303,11 @@ async fn reconcile_apply(
             zk: ObjectRef::from_obj(&zk),
         })?;
 
-    let discovery_cm = build_discovery_configmap(
-        &zk,
-        znode,
+    let discovery_cm = build_znode_discovery_configmap(
+        validated_znode,
         ZNODE_CONTROLLER_NAME,
         listener,
-        Some(znode_path),
-        resolved_product_image,
-        zookeeper_security,
+        znode_path,
     )
     .context(BuildDiscoveryConfigMapSnafu)?;
 

@@ -1,7 +1,7 @@
-use std::{collections::BTreeMap, str::FromStr};
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{OptionExt, Snafu};
 use stackable_operator::{
     commons::{
         affinity::StackableAffinity,
@@ -12,78 +12,69 @@ use stackable_operator::{
             PvcConfig, PvcConfigFragment, Resources, ResourcesFragment,
         },
     },
-    config::{
-        fragment::{self, Fragment, ValidationError},
-        merge::Merge,
-    },
-    config_overrides::{KeyValueConfigOverrides, KeyValueOverridesProvider},
+    config::{fragment::Fragment, merge::Merge},
     crd::ClusterRef,
     deep_merger::ObjectOverrides,
-    k8s_openapi::{
-        api::core::v1::{PersistentVolumeClaim, ResourceRequirements},
-        apimachinery::pkg::api::resource::Quantity,
-    },
-    kube::{CustomResource, ResourceExt, runtime::reflector::ObjectRef},
-    memory::{BinaryMultiple, MemoryQuantity},
-    product_config_utils::{self, Configuration},
+    k8s_openapi::apimachinery::pkg::api::resource::Quantity,
+    kube::{CustomResource, ResourceExt},
     product_logging::{self, spec::Logging},
-    role_utils::{GenericRoleConfig, JavaCommonConfig, Role, RoleGroup, RoleGroupRef},
+    role_utils::{GenericRoleConfig, Role},
     schemars::{self, JsonSchema},
     shared::time::Duration,
     status::condition::{ClusterCondition, HasStatusCondition},
     utils::cluster_info::KubernetesClusterInfo,
+    v2::{
+        config_overrides::KeyValueConfigOverrides,
+        role_utils::JavaCommonConfig,
+        types::{
+            common::Port,
+            kubernetes::{
+                ConfigMapName, ListenerClassName, ListenerName, NamespaceName, ServiceName,
+            },
+        },
+    },
     versioned::versioned,
 };
-use strum::{Display, EnumIter, EnumString, IntoEnumIterator};
+use strum::{Display, EnumIter, EnumString};
 
-use crate::{
-    crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig},
-    listener::role_listener_name,
-};
+use crate::crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig};
 
 pub mod affinity;
 pub mod authentication;
 pub mod security;
 pub mod tls;
 
+/// The name of the role-level [`Listener`](stackable_operator::crd::listener::v1alpha1::Listener)
+/// exposing the given `zk_role`, `<cluster>-<role>`.
+///
+/// Lives in the `crd` module (rather than the controller build tree) because it is shared by both
+/// controllers and by [`v1alpha1::ZookeeperCluster::server_role_listener_fqdn`].
+pub fn role_listener_name(cluster_name: &str, zk_role: &ZookeeperRole) -> ListenerName {
+    ListenerName::from_str(&format!("{cluster_name}-{zk_role}"))
+        .expect("the role listener name should be a valid Listener name")
+}
+
 pub const APP_NAME: &str = "zookeeper";
 pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 pub const FIELD_MANAGER: &str = "zookeeper-operator";
 
-pub const ZOOKEEPER_PROPERTIES_FILE: &str = "zoo.cfg";
-pub const JVM_SECURITY_PROPERTIES_FILE: &str = "security.properties";
-
 pub const ZOOKEEPER_SERVER_PORT_NAME: &str = "zk";
 pub const ZOOKEEPER_LEADER_PORT_NAME: &str = "zk-leader";
-pub const ZOOKEEPER_LEADER_PORT: u16 = 2888;
+pub const ZOOKEEPER_LEADER_PORT: Port = Port(2888);
 pub const ZOOKEEPER_ELECTION_PORT_NAME: &str = "zk-election";
-pub const ZOOKEEPER_ELECTION_PORT: u16 = 3888;
+pub const ZOOKEEPER_ELECTION_PORT: Port = Port(3888);
 
 pub const JMX_METRICS_PORT_NAME: &str = "jmx-metrics";
-pub const JMX_METRICS_PORT: u16 = 9505;
+pub const JMX_METRICS_PORT: Port = Port(9505);
 pub const METRICS_PROVIDER_HTTP_PORT_KEY: &str = "metricsProvider.httpPort";
 pub const METRICS_PROVIDER_HTTP_PORT_NAME: &str = "metrics";
-pub const METRICS_PROVIDER_HTTP_PORT: u16 = 7000;
+pub const METRICS_PROVIDER_HTTP_PORT: Port = Port(7000);
 
 pub const STACKABLE_DATA_DIR: &str = "/stackable/data";
 pub const STACKABLE_CONFIG_DIR: &str = "/stackable/config";
 pub const STACKABLE_LOG_CONFIG_DIR: &str = "/stackable/log_config";
 pub const STACKABLE_LOG_DIR: &str = "/stackable/log";
 pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
-
-pub const LOGBACK_CONFIG_FILE: &str = "logback.xml";
-pub const LOG4J_CONFIG_FILE: &str = "log4j.properties";
-
-pub const ZOOKEEPER_LOG_FILE: &str = "zookeeper.log4j.xml";
-
-pub const MAX_ZK_LOG_FILES_SIZE: MemoryQuantity = MemoryQuantity {
-    value: 10.0,
-    unit: BinaryMultiple::Mebi,
-};
-pub const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
-    value: 1.0,
-    unit: BinaryMultiple::Mebi,
-};
 
 pub const CONTAINER_IMAGE_BASE_NAME: &str = "zookeeper";
 
@@ -92,29 +83,8 @@ pub const DEFAULT_LISTENER_CLASS: &str = "cluster-internal";
 
 #[derive(Snafu, Debug)]
 pub enum Error {
-    #[snafu(display("object has no namespace associated"))]
-    NoNamespace,
-
-    #[snafu(display("unknown role {role}. Should be one of {roles:?}"))]
-    UnknownZookeeperRole {
-        source: strum::ParseError,
-        role: String,
-        roles: Vec<String>,
-    },
-
     #[snafu(display("the role {role} is not defined"))]
     CannotRetrieveZookeeperRole { role: String },
-
-    #[snafu(display("the role group {role_group} is not defined"))]
-    CannotRetrieveZookeeperRoleGroup { role_group: String },
-
-    #[snafu(display("fragment validation failure"))]
-    FragmentValidationFailure { source: ValidationError },
-}
-
-pub enum LoggingFramework {
-    LOG4J,
-    LOGBACK,
 }
 
 pub type ZookeeperServerRoleType = Role<
@@ -177,7 +147,7 @@ pub mod versioned {
 
         /// This field controls which [ListenerClass](DOCS_BASE_URL_PLACEHOLDER/listener-operator/listenerclass.html) is used to expose the ZooKeeper servers.
         #[serde(default = "default_listener_class")]
-        pub listener_class: String,
+        pub listener_class: ListenerClassName,
     }
 
     #[derive(Clone, Deserialize, Debug, Eq, JsonSchema, PartialEq, Serialize)]
@@ -193,7 +163,7 @@ pub mod versioned {
         /// Follow the [logging tutorial](DOCS_BASE_URL_PLACEHOLDER/tutorials/logging-vector-aggregator)
         /// to learn how to configure log aggregation with Vector.
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub vector_aggregator_config_map_name: Option<String>,
+        pub vector_aggregator_config_map_name: Option<ConfigMapName>,
 
         /// TLS encryption settings for ZooKeeper (server, quorum).
         /// Read more in the [encryption usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/encryption).
@@ -282,17 +252,13 @@ pub mod versioned {
         Zookeeper,
     }
 
-    #[derive(Clone, Debug, Default, Deserialize, JsonSchema, PartialEq, Serialize)]
+    #[derive(Clone, Debug, Default, Deserialize, Merge, JsonSchema, PartialEq, Serialize)]
     pub struct ZookeeperConfigOverrides {
-        #[serde(default, rename = "zoo.cfg", skip_serializing_if = "Option::is_none")]
-        pub zoo_cfg: Option<KeyValueConfigOverrides>,
+        #[serde(default, rename = "zoo.cfg")]
+        pub zoo_cfg: KeyValueConfigOverrides,
 
-        #[serde(
-            default,
-            rename = "security.properties",
-            skip_serializing_if = "Option::is_none"
-        )]
-        pub security_properties: Option<KeyValueConfigOverrides>,
+        #[serde(default, rename = "security.properties")]
+        pub security_properties: KeyValueConfigOverrides,
     }
 
     #[derive(Clone, Default, Debug, Deserialize, Eq, JsonSchema, PartialEq, Serialize)]
@@ -346,19 +312,6 @@ pub mod versioned {
     }
 }
 
-impl KeyValueOverridesProvider for v1alpha1::ZookeeperConfigOverrides {
-    fn get_key_value_overrides(&self, file: &str) -> BTreeMap<String, Option<String>> {
-        let field = match file {
-            ZOOKEEPER_PROPERTIES_FILE => self.zoo_cfg.as_ref(),
-            JVM_SECURITY_PROPERTIES_FILE => self.security_properties.as_ref(),
-            _ => None,
-        };
-        field
-            .map(KeyValueConfigOverrides::as_product_config_overrides)
-            .unwrap_or_default()
-    }
-}
-
 #[derive(
     Clone,
     Debug,
@@ -368,7 +321,9 @@ impl KeyValueOverridesProvider for v1alpha1::ZookeeperConfigOverrides {
     Eq,
     Hash,
     JsonSchema,
+    Ord,
     PartialEq,
+    PartialOrd,
     Serialize,
     EnumString,
 )]
@@ -382,8 +337,8 @@ pub enum ZookeeperRole {
 ///
 /// Used for service discovery.
 pub struct ZookeeperPodRef {
-    pub namespace: String,
-    pub role_group_headless_service_name: String,
+    pub namespace: NamespaceName,
+    pub role_group_headless_service_name: ServiceName,
     pub pod_name: String,
     pub zookeeper_myid: u16,
 }
@@ -396,8 +351,9 @@ fn cluster_config_default() -> v1alpha1::ZookeeperClusterConfig {
     }
 }
 
-fn default_listener_class() -> String {
-    DEFAULT_LISTENER_CLASS.to_owned()
+pub(crate) fn default_listener_class() -> ListenerClassName {
+    ListenerClassName::from_str(DEFAULT_LISTENER_CLASS)
+        .expect("the default listener class should be a valid ListenerClass name")
 }
 
 impl Default for ZookeeperServerRoleConfig {
@@ -417,7 +373,7 @@ impl v1alpha1::ZookeeperConfig {
     pub const SYNC_LIMIT: &'static str = "syncLimit";
     pub const TICK_TIME: &'static str = "tickTime";
 
-    fn default_server_config(
+    pub(crate) fn default_server_config(
         cluster_name: &str,
         role: &ZookeeperRole,
     ) -> v1alpha1::ZookeeperConfigFragment {
@@ -451,99 +407,6 @@ impl v1alpha1::ZookeeperConfig {
     }
 }
 
-impl Configuration for v1alpha1::ZookeeperConfigFragment {
-    type Configurable = v1alpha1::ZookeeperCluster;
-
-    fn compute_env(
-        &self,
-        resource: &Self::Configurable,
-        _role_name: &str,
-    ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
-        Ok([
-            (
-                v1alpha1::ZookeeperConfig::MYID_OFFSET.to_string(),
-                self.myid_offset
-                    .or(v1alpha1::ZookeeperConfig::default_server_config(
-                        &resource.name_any(),
-                        &ZookeeperRole::Server,
-                    )
-                    .myid_offset)
-                    .map(|myid_offset| myid_offset.to_string()),
-            ),
-            // This is used by zkEnv.sh and for the shell scripts in bin/
-            // If unset it tries to find the conf directory automatically and that fails
-            (
-                "ZOOCFGDIR".to_string(),
-                Some(STACKABLE_RW_CONFIG_DIR.to_string()),
-            ),
-        ]
-        .into())
-    }
-
-    fn compute_cli(
-        &self,
-        _resource: &Self::Configurable,
-        _role_name: &str,
-    ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
-        Ok(BTreeMap::new())
-    }
-
-    fn compute_files(
-        &self,
-        _resource: &Self::Configurable,
-        _role_name: &str,
-        file: &str,
-    ) -> Result<BTreeMap<String, Option<String>>, product_config_utils::Error> {
-        let mut result = BTreeMap::new();
-        if file == ZOOKEEPER_PROPERTIES_FILE {
-            if let Some(init_limit) = self.init_limit {
-                result.insert(
-                    v1alpha1::ZookeeperConfig::INIT_LIMIT.to_string(),
-                    Some(init_limit.to_string()),
-                );
-            }
-            if let Some(sync_limit) = self.sync_limit {
-                result.insert(
-                    v1alpha1::ZookeeperConfig::SYNC_LIMIT.to_string(),
-                    Some(sync_limit.to_string()),
-                );
-            }
-            if let Some(tick_time) = self.tick_time {
-                result.insert(
-                    v1alpha1::ZookeeperConfig::TICK_TIME.to_string(),
-                    Some(tick_time.to_string()),
-                );
-            }
-            result.insert(
-                v1alpha1::ZookeeperConfig::DATA_DIR.to_string(),
-                Some(STACKABLE_DATA_DIR.to_string()),
-            );
-            result.insert(
-                "metricsProvider.className".to_string(),
-                Some(
-                    "org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider".to_string(),
-                ),
-            );
-            result.insert(
-                METRICS_PROVIDER_HTTP_PORT_KEY.to_string(),
-                Some(METRICS_PROVIDER_HTTP_PORT.to_string()),
-            );
-        }
-
-        Ok(result)
-    }
-}
-
-impl ZookeeperRole {
-    pub fn roles() -> Vec<String> {
-        let mut roles = vec![];
-        for role in Self::iter() {
-            roles.push(role.to_string())
-        }
-        roles
-    }
-}
-
 impl HasStatusCondition for v1alpha1::ZookeeperCluster {
     fn conditions(&self) -> Vec<ClusterCondition> {
         match &self.status {
@@ -566,21 +429,6 @@ impl ZookeeperPodRef {
 }
 
 impl v1alpha1::ZookeeperCluster {
-    pub fn logging_framework(&self, product_version: &str) -> LoggingFramework {
-        let zookeeper_versions_with_log4j = [
-            "1.", "2.", "3.0.", "3.1.", "3.2.", "3.3.", "3.4.", "3.5.", "3.6.", "3.7.",
-        ];
-
-        if zookeeper_versions_with_log4j
-            .into_iter()
-            .any(|prefix| product_version.starts_with(prefix))
-        {
-            LoggingFramework::LOG4J
-        } else {
-            LoggingFramework::LOGBACK
-        }
-    }
-
     /// The fully-qualified domain name of the role-level [Listener]
     ///
     /// [Listener]: stackable_operator::crd::listener::v1alpha1::Listener
@@ -590,7 +438,7 @@ impl v1alpha1::ZookeeperCluster {
     ) -> Option<String> {
         Some(format!(
             "{role_listener_name}.{namespace}.svc.{cluster_domain}",
-            role_listener_name = role_listener_name(self, &ZookeeperRole::Server),
+            role_listener_name = role_listener_name(&self.name_any(), &ZookeeperRole::Server),
             namespace = self.metadata.namespace.as_ref()?,
             cluster_domain = cluster_info.cluster_domain
         ))
@@ -606,145 +454,10 @@ impl v1alpha1::ZookeeperCluster {
         })
     }
 
-    /// Returns a reference to the role group. Raises an error if the role or role group are not defined.
-    pub fn rolegroup(
-        &self,
-        rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    ) -> Result<
-        RoleGroup<
-            v1alpha1::ZookeeperConfigFragment,
-            JavaCommonConfig,
-            v1alpha1::ZookeeperConfigOverrides,
-        >,
-        Error,
-    > {
-        let role_variant = ZookeeperRole::from_str(&rolegroup_ref.role).with_context(|_| {
-            UnknownZookeeperRoleSnafu {
-                role: rolegroup_ref.role.to_owned(),
-                roles: ZookeeperRole::roles(),
-            }
-        })?;
-        let role = self.role(&role_variant)?;
-        role.role_groups
-            .get(&rolegroup_ref.role_group)
-            .with_context(|| CannotRetrieveZookeeperRoleGroupSnafu {
-                role_group: rolegroup_ref.role_group.to_owned(),
-            })
-            .cloned()
-    }
-
-    /// Metadata about a server rolegroup
-    pub fn server_rolegroup_ref(
-        &self,
-        group_name: impl Into<String>,
-    ) -> RoleGroupRef<v1alpha1::ZookeeperCluster> {
-        RoleGroupRef {
-            cluster: ObjectRef::from_obj(self),
-            role: ZookeeperRole::Server.to_string(),
-            role_group: group_name.into(),
-        }
-    }
-
     pub fn role_config(&self, role: &ZookeeperRole) -> Option<&ZookeeperServerRoleConfig> {
         match role {
             ZookeeperRole::Server => self.spec.servers.as_ref().map(|s| &s.role_config),
         }
-    }
-
-    /// List all pods expected to form the cluster
-    ///
-    /// We try to predict the pods here rather than looking at the current cluster state in order to
-    /// avoid instance churn. For example, regenerating zoo.cfg based on the cluster state would lead to
-    /// a lot of spurious restarts, as well as opening us up to dangerous split-brain conditions because
-    /// the pods have inconsistent snapshots of which servers they should expect to be in quorum.
-    pub fn pods(&self) -> Result<impl Iterator<Item = ZookeeperPodRef> + '_, Error> {
-        let ns = self.metadata.namespace.clone().context(NoNamespaceSnafu)?;
-        let role_groups = self
-            .spec
-            .servers
-            .iter()
-            .flat_map(|role| &role.role_groups)
-            // Order rolegroups consistently, to avoid spurious downstream rewrites
-            .collect::<BTreeMap<_, _>>();
-        let mut pod_refs = Vec::new();
-        for (rolegroup_name, rolegroup) in role_groups {
-            let rolegroup_ref = self.server_rolegroup_ref(rolegroup_name);
-            let myid_offset = self
-                .merged_config(&ZookeeperRole::Server, &rolegroup_ref)?
-                .myid_offset;
-            let ns = ns.clone();
-            // In case no replicas are specified we default to 1
-            for i in 0..rolegroup.replicas.unwrap_or(1) {
-                pod_refs.push(ZookeeperPodRef {
-                    namespace: ns.clone(),
-                    role_group_headless_service_name: rolegroup_ref
-                        .rolegroup_headless_service_name(),
-                    pod_name: format!("{role_group}-{i}", role_group = rolegroup_ref.object_name()),
-                    zookeeper_myid: i + myid_offset,
-                });
-            }
-        }
-        Ok(pod_refs.into_iter())
-    }
-
-    pub fn merged_config(
-        &self,
-        role: &ZookeeperRole,
-        rolegroup_ref: &RoleGroupRef<Self>,
-    ) -> Result<v1alpha1::ZookeeperConfig, Error> {
-        // Initialize the result with all default values as baseline
-        let conf_defaults =
-            v1alpha1::ZookeeperConfig::default_server_config(&self.name_any(), role);
-
-        // Retrieve role resource config
-        let role = self.role(role)?;
-        let mut conf_role = role.config.config.to_owned();
-
-        // Retrieve rolegroup specific resource config
-        let role_group = self.rolegroup(rolegroup_ref)?;
-        let mut conf_role_group = role_group.config.config;
-
-        // Merge more specific configs into default config
-        // Hierarchy is:
-        // 1. RoleGroup
-        // 2. Role
-        // 3. Default
-        conf_role.merge(&conf_defaults);
-        conf_role_group.merge(&conf_role);
-
-        fragment::validate(conf_role_group).context(FragmentValidationFailureSnafu)
-    }
-
-    pub fn logging(
-        &self,
-        role: &ZookeeperRole,
-        rolegroup_ref: &RoleGroupRef<Self>,
-    ) -> Result<Logging<v1alpha1::Container>, Error> {
-        let config = self.merged_config(role, rolegroup_ref)?;
-        Ok(config.logging)
-    }
-
-    /// Build the [`PersistentVolumeClaim`]s and [`ResourceRequirements`] for the given `rolegroup_ref`.
-    /// These can be defined at the role or rolegroup level and as usual, the
-    /// following precedence rules are implemented:
-    /// 1. group pvc
-    /// 2. role pvc
-    /// 3. a default PVC with 1Gi capacity
-    pub fn resources(
-        &self,
-        role: &ZookeeperRole,
-        rolegroup_ref: &RoleGroupRef<v1alpha1::ZookeeperCluster>,
-    ) -> Result<(Vec<PersistentVolumeClaim>, ResourceRequirements), Error> {
-        let config = self.merged_config(role, rolegroup_ref)?;
-        let resources: Resources<v1alpha1::ZookeeperStorageConfig, NoRuntimeLimits> =
-            config.resources;
-
-        let data_pvc = resources
-            .storage
-            .data
-            .build_pvc("data", Some(vec!["ReadWriteOnce"]));
-
-        Ok((vec![data_pvc], resources.into()))
     }
 }
 
@@ -759,7 +472,8 @@ mod tests {
             .cluster_config
             .tls
             .as_ref()
-            .and_then(|tls| tls.server_secret_class.as_deref())
+            .and_then(|tls| tls.server_secret_class.as_ref())
+            .map(AsRef::as_ref)
     }
 
     fn get_quorum_secret_class(zk: &v1alpha1::ZookeeperCluster) -> &str {
@@ -769,7 +483,7 @@ mod tests {
             .as_ref()
             .unwrap()
             .quorum_secret_class
-            .as_str()
+            .as_ref()
     }
 
     #[test]
@@ -787,11 +501,11 @@ mod tests {
             serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
-            tls::server_tls_default().as_deref()
+            tls::server_tls_default().as_ref().map(AsRef::as_ref)
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default().as_str()
+            tls::quorum_tls_default().as_ref()
         );
 
         let input = r#"
@@ -815,7 +529,7 @@ mod tests {
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default().as_str()
+            tls::quorum_tls_default().as_ref()
         );
 
         let input = r#"
@@ -835,7 +549,7 @@ mod tests {
         assert_eq!(get_server_secret_class(&zookeeper), None);
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default().as_str()
+            tls::quorum_tls_default().as_ref()
         );
 
         let input = r#"
@@ -854,7 +568,7 @@ mod tests {
             serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
-            tls::server_tls_default().as_deref()
+            tls::server_tls_default().as_ref().map(AsRef::as_ref)
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
@@ -878,11 +592,11 @@ mod tests {
 
         assert_eq!(
             get_server_secret_class(&zookeeper),
-            tls::server_tls_default().as_deref()
+            tls::server_tls_default().as_ref().map(AsRef::as_ref)
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default()
+            tls::quorum_tls_default().as_ref()
         );
 
         let input = r#"
@@ -901,7 +615,7 @@ mod tests {
             serde_yaml::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
-            tls::server_tls_default().as_deref()
+            tls::server_tls_default().as_ref().map(AsRef::as_ref)
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
@@ -928,7 +642,7 @@ mod tests {
         );
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
-            tls::quorum_tls_default().as_str()
+            tls::quorum_tls_default().as_ref()
         );
     }
 

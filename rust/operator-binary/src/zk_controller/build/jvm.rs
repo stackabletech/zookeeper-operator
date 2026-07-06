@@ -1,13 +1,10 @@
 use snafu::{OptionExt, ResultExt, Snafu};
-use stackable_operator::{
-    memory::{BinaryMultiple, MemoryQuantity},
-    role_utils::{self, JvmArgumentOverrides},
-};
+use stackable_operator::memory::{BinaryMultiple, MemoryQuantity};
 
-use crate::crd::{
-    JMX_METRICS_PORT, JVM_SECURITY_PROPERTIES_FILE, LOG4J_CONFIG_FILE, LOGBACK_CONFIG_FILE,
-    LoggingFramework, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR, ZookeeperServerRoleType,
-    v1alpha1::{ZookeeperCluster, ZookeeperConfig},
+use super::properties::ConfigFileName;
+use crate::{
+    crd::{JMX_METRICS_PORT, STACKABLE_CONFIG_DIR, STACKABLE_LOG_CONFIG_DIR},
+    zk_controller::validate::{ValidatedZookeeperConfig, ZookeeperRoleGroupConfig},
 };
 
 const JAVA_HEAP_FACTOR: f32 = 0.8;
@@ -21,62 +18,46 @@ pub enum Error {
     InvalidMemoryConfig {
         source: stackable_operator::memory::Error,
     },
-
-    #[snafu(display("failed to merge jvm argument overrides"))]
-    MergeJvmArgumentOverrides { source: role_utils::Error },
 }
 
 /// All JVM arguments.
-fn construct_jvm_args(
-    zk: &ZookeeperCluster,
-    role: &ZookeeperServerRoleType,
-    role_group: &str,
-    product_version: &str,
-) -> Result<Vec<String>, Error> {
-    let logging_framework = zk.logging_framework(product_version);
-
+fn construct_jvm_args(rolegroup_config: &ZookeeperRoleGroupConfig) -> Vec<String> {
     let jvm_args = vec![
-        format!("-Djava.security.properties={STACKABLE_CONFIG_DIR}/{JVM_SECURITY_PROPERTIES_FILE}"),
+        format!(
+            "-Djava.security.properties={STACKABLE_CONFIG_DIR}/{}",
+            ConfigFileName::SecurityProperties
+        ),
         format!(
             "-javaagent:/stackable/jmx/jmx_prometheus_javaagent.jar={JMX_METRICS_PORT}:/stackable/jmx/server.yaml"
         ),
-        match logging_framework {
-            LoggingFramework::LOG4J => {
-                format!("-Dlog4j.configuration=file:{STACKABLE_LOG_CONFIG_DIR}/{LOG4J_CONFIG_FILE}")
-            }
-            LoggingFramework::LOGBACK => format!(
-                "-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{LOGBACK_CONFIG_FILE}"
-            ),
-        },
+        format!(
+            "-Dlogback.configurationFile={STACKABLE_LOG_CONFIG_DIR}/{config_file}",
+            config_file = ConfigFileName::LogbackXml
+        ),
     ];
 
-    let operator_generated = JvmArgumentOverrides::new_with_only_additions(jvm_args);
-    let merged = role
-        .get_merged_jvm_argument_overrides(role_group, &operator_generated)
-        .context(MergeJvmArgumentOverridesSnafu)?;
-    Ok(merged
-        .effective_jvm_config_after_merging()
-        // Sorry for the clone, that's how operator-rs is currently modelled :P
-        .clone())
+    // Apply the already-merged (role + role group) JVM argument overrides on top of the
+    // operator-generated base arguments.
+    rolegroup_config
+        .product_specific_common_config
+        .jvm_argument_overrides
+        .apply_to(jvm_args)
 }
 
 /// Arguments that go into `SERVER_JVMFLAGS`, so *not* the heap settings (which you can get using
 /// [`construct_zk_server_heap_env`]).
-pub fn construct_non_heap_jvm_args(
-    zk: &ZookeeperCluster,
-    role: &ZookeeperServerRoleType,
-    role_group: &str,
-    product_version: &str,
-) -> Result<String, Error> {
-    let mut jvm_args = construct_jvm_args(zk, role, role_group, product_version)?;
+pub fn construct_non_heap_jvm_args(rolegroup_config: &ZookeeperRoleGroupConfig) -> String {
+    let mut jvm_args = construct_jvm_args(rolegroup_config);
     jvm_args.retain(|arg| !is_heap_jvm_argument(arg));
 
-    Ok(jvm_args.join(" "))
+    jvm_args.join(" ")
 }
 
 /// This will be put into `ZK_SERVER_HEAP`, which is just the heap size in megabytes (*without* the `m`
 /// unit prepended).
-pub fn construct_zk_server_heap_env(merged_config: &ZookeeperConfig) -> Result<String, Error> {
+pub fn construct_zk_server_heap_env(
+    merged_config: &ValidatedZookeeperConfig,
+) -> Result<String, Error> {
     let heap_size_in_mb = (MemoryQuantity::try_from(
         merged_config
             .resources
@@ -100,8 +81,26 @@ fn is_heap_jvm_argument(jvm_argument: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use stackable_operator::v2::types::operator::RoleGroupName;
+
     use super::*;
-    use crate::crd::ZookeeperRole;
+    use crate::{
+        crd::{ZookeeperRole, v1alpha1::ZookeeperCluster},
+        zk_controller::test_support::{minimal_zk, validated_cluster},
+    };
+
+    /// The validated, merged config for the `default` server role group.
+    fn server_default(zk: &ZookeeperCluster) -> ZookeeperRoleGroupConfig {
+        let default_group = RoleGroupName::from_str("default").expect("valid role group name");
+        validated_cluster(zk)
+            .role_group_configs
+            .get(&ZookeeperRole::Server)
+            .and_then(|groups| groups.get(&default_group))
+            .expect("server default role group should exist")
+            .clone()
+    }
 
     #[test]
     fn test_construct_jvm_arguments_defaults() {
@@ -118,16 +117,11 @@ mod tests {
               default:
                 replicas: 1
         "#;
-        let (zookeeper, merged_config, role, rolegroup) = construct_boilerplate(input);
-        let non_heap_jvm_args = construct_non_heap_jvm_args(
-            &zookeeper,
-            &role,
-            &rolegroup,
-            zookeeper.spec.image.product_version(),
-        )
-        .expect("test: function must pass");
+        let zk = minimal_zk(input);
+        let rg = server_default(&zk);
+        let non_heap_jvm_args = construct_non_heap_jvm_args(&rg);
         let zk_server_heap_env =
-            construct_zk_server_heap_env(&merged_config).expect("test: function must pass");
+            construct_zk_server_heap_env(&rg.config).expect("test: function must pass");
 
         assert_eq!(
             non_heap_jvm_args,
@@ -170,16 +164,11 @@ mod tests {
                     - -Xmx40000m
                     - -Dhttps.proxyPort=1234
         "#;
-        let (zookeeper, merged_config, role, rolegroup) = construct_boilerplate(input);
-        let non_heap_jvm_args = construct_non_heap_jvm_args(
-            &zookeeper,
-            &role,
-            &rolegroup,
-            zookeeper.spec.image.product_version(),
-        )
-        .expect("test: function must pass");
+        let zk = minimal_zk(input);
+        let rg = server_default(&zk);
+        let non_heap_jvm_args = construct_non_heap_jvm_args(&rg);
         let zk_server_heap_env =
-            construct_zk_server_heap_env(&merged_config).expect("test: function must pass");
+            construct_zk_server_heap_env(&rg.config).expect("test: function must pass");
 
         assert_eq!(
             non_heap_jvm_args,
@@ -191,30 +180,5 @@ mod tests {
             -Dhttps.proxyPort=1234"
         );
         assert_eq!(zk_server_heap_env, "34406");
-    }
-
-    fn construct_boilerplate(
-        zookeeper_cluster: &str,
-    ) -> (
-        ZookeeperCluster,
-        ZookeeperConfig,
-        ZookeeperServerRoleType,
-        String,
-    ) {
-        let zookeeper: ZookeeperCluster =
-            serde_yaml::from_str(zookeeper_cluster).expect("illegal test input");
-
-        let zookeeper_role = ZookeeperRole::Server;
-        let rolegroup_ref = zookeeper.server_rolegroup_ref("default");
-        let merged_config = zookeeper
-            .merged_config(&zookeeper_role, &rolegroup_ref)
-            .expect("test: merged config can be created");
-        let role = zookeeper
-            .spec
-            .servers
-            .clone()
-            .expect("test: server role is defined in the ZookeeperCluster");
-
-        (zookeeper, merged_config, role, "default".to_owned())
     }
 }

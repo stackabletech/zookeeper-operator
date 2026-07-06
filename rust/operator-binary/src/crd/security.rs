@@ -4,7 +4,7 @@
 //! and helper functions
 //!
 //! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, str::FromStr};
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
@@ -23,6 +23,7 @@ use stackable_operator::{
     crd::authentication::core,
     k8s_openapi::api::core::v1::Volume,
     shared::time::Duration,
+    v2::types::{common::Port, kubernetes::SecretClassName},
 };
 
 use crate::{
@@ -52,22 +53,27 @@ pub enum Error {
 /// Helper struct combining TLS settings for server and quorum with the resolved AuthenticationClasses
 pub struct ZookeeperSecurity {
     resolved_authentication_classes: DereferencedAuthenticationClasses,
-    server_secret_class: Option<String>,
-    quorum_secret_class: String,
+    server_secret_class: Option<SecretClassName>,
+    quorum_secret_class: SecretClassName,
 }
 
 impl ZookeeperSecurity {
     // ports
-    pub const CLIENT_PORT: u16 = 2181;
+    pub const CLIENT_PORT: Port = Port(2181);
     pub const CLIENT_PORT_NAME: &'static str = "clientPort";
+    // TLS store file names (relative to the respective TLS dir)
+    pub const KEYSTORE_FILE: &'static str = "keystore.p12";
     // directories
     pub const QUORUM_TLS_DIR: &'static str = "/stackable/quorum_tls";
     pub const QUORUM_TLS_MOUNT_DIR: &'static str = "/stackable/quorum_tls_mount";
-    pub const SECURE_CLIENT_PORT: u16 = 2282;
+    pub const QUORUM_TLS_VOLUME_NAME: &'static str = "quorum-tls";
+    pub const SECURE_CLIENT_PORT: Port = Port(2282);
     pub const SECURE_CLIENT_PORT_NAME: &'static str = "secureClientPort";
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
     pub const SERVER_TLS_DIR: &'static str = "/stackable/server_tls";
     pub const SERVER_TLS_MOUNT_DIR: &'static str = "/stackable/server_tls_mount";
+    // TLS volume names (the mount name must match the volume name)
+    pub const SERVER_TLS_VOLUME_NAME: &'static str = "server-tls";
     // Common TLS
     pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
     // Client TLS
@@ -88,6 +94,7 @@ impl ZookeeperSecurity {
     // Mis
     pub const STORE_PASSWORD_ENV: &'static str = "STORE_PASSWORD";
     pub const SYSTEM_TRUST_STORE_DIR: &'static str = "/etc/pki/java/cacerts";
+    pub const TRUSTSTORE_FILE: &'static str = "truststore.p12";
 
     /// Build a `ZookeeperSecurity` from a [`v1alpha1::ZookeeperCluster`] and already-resolved
     /// [`DereferencedAuthenticationClasses`]. Synchronous; intended to be called from the validate
@@ -130,7 +137,7 @@ impl ZookeeperSecurity {
     }
 
     /// Return the ZooKeeper (secure) client port depending on tls or authentication settings.
-    pub fn client_port(&self) -> u16 {
+    pub fn client_port(&self) -> Port {
         if self.tls_enabled() {
             Self::SECURE_CLIENT_PORT
         } else {
@@ -149,7 +156,7 @@ impl ZookeeperSecurity {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
-            let tls_volume_name = "server-tls";
+            let tls_volume_name = Self::SERVER_TLS_VOLUME_NAME;
             cb_zookeeper
                 .add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR)
                 .context(AddVolumeMountSnafu)?;
@@ -163,14 +170,14 @@ impl ZookeeperSecurity {
         }
 
         // quorum
-        let tls_volume_name = "quorum-tls";
+        let tls_volume_name = Self::QUORUM_TLS_VOLUME_NAME;
         cb_zookeeper
             .add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR)
             .context(AddVolumeMountSnafu)?;
         pod_builder
             .add_volume(Self::create_quorum_tls_volume(
                 tls_volume_name,
-                &self.quorum_secret_class,
+                self.quorum_secret_class.as_ref(),
                 requested_secret_lifetime,
             )?)
             .context(AddVolumeSnafu)?;
@@ -201,11 +208,19 @@ impl ZookeeperSecurity {
         // and written later via script in the init container
         config.insert(
             Self::SSL_QUORUM_KEY_STORE_LOCATION.to_string(),
-            format!("{dir}/keystore.p12", dir = Self::QUORUM_TLS_DIR),
+            format!(
+                "{dir}/{file}",
+                dir = Self::QUORUM_TLS_DIR,
+                file = Self::KEYSTORE_FILE
+            ),
         );
         config.insert(
             Self::SSL_QUORUM_TRUST_STORE_LOCATION.to_string(),
-            format!("{dir}/truststore.p12", dir = Self::QUORUM_TLS_DIR),
+            format!(
+                "{dir}/{file}",
+                dir = Self::QUORUM_TLS_DIR,
+                file = Self::TRUSTSTORE_FILE
+            ),
         );
 
         // Server TLS
@@ -254,11 +269,19 @@ impl ZookeeperSecurity {
             // and written later via script in the init container
             config.insert(
                 Self::SSL_KEY_STORE_LOCATION.to_string(),
-                format!("{dir}/keystore.p12", dir = Self::SERVER_TLS_DIR),
+                format!(
+                    "{dir}/{file}",
+                    dir = Self::SERVER_TLS_DIR,
+                    file = Self::KEYSTORE_FILE
+                ),
             );
             config.insert(
                 Self::SSL_TRUST_STORE_LOCATION.to_string(),
-                format!("{dir}/truststore.p12", dir = Self::SERVER_TLS_DIR),
+                format!(
+                    "{dir}/{file}",
+                    dir = Self::SERVER_TLS_DIR,
+                    file = Self::TRUSTSTORE_FILE
+                ),
             );
             // Check if we need to enable client TLS authentication
             if self
@@ -279,19 +302,19 @@ impl ZookeeperSecurity {
     }
 
     /// Returns the `SecretClass` provided in a `AuthenticationClass` for TLS.
-    fn get_tls_secret_class(&self) -> Option<&String> {
+    fn get_tls_secret_class(&self) -> Option<&str> {
         self.resolved_authentication_classes
             .get_tls_authentication_class()
             .and_then(|auth_class| match &auth_class.spec.provider {
                 core::v1alpha1::AuthenticationClassProvider::Tls(tls) => {
-                    tls.client_cert_secret_class.as_ref()
+                    tls.client_cert_secret_class.as_deref()
                 }
                 core::v1alpha1::AuthenticationClassProvider::Ldap(_)
                 | core::v1alpha1::AuthenticationClassProvider::Oidc(_)
                 | core::v1alpha1::AuthenticationClassProvider::Static(_)
                 | core::v1alpha1::AuthenticationClassProvider::Kerberos(_) => None,
             })
-            .or(self.server_secret_class.as_ref())
+            .or(self.server_secret_class.as_ref().map(AsRef::as_ref))
     }
 
     /// Creates ephemeral volumes to mount the `SecretClass` with the listener-volume scope into the Pods.
@@ -352,8 +375,11 @@ impl ZookeeperSecurity {
     pub fn new_for_tests() -> Self {
         ZookeeperSecurity {
             resolved_authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
-            server_secret_class: Some("tls".to_owned()),
-            quorum_secret_class: "tls".to_string(),
+            server_secret_class: Some(
+                SecretClassName::from_str("tls").expect("'tls' is a valid SecretClass name"),
+            ),
+            quorum_secret_class: SecretClassName::from_str("tls")
+                .expect("'tls' is a valid SecretClass name"),
         }
     }
 }
