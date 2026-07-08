@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 - BREAKING: `configOverrides` now only accepts the known config files (`zoo.cfg` and
   `security.properties`).
   Previously, arbitrary file names were silently accepted and ignored ([#1027]).
-- Bump `stackable-operator` to 0.111.1 ([#1027], [#1028]).
+- Bump `stackable-operator` to 0.113.3 ([#1027], [#1028], [#1048]).
 - Internal operator refactoring: introduce dereference() and validate() steps in the reconciler ([#1034]).
 - test: Bump vector-aggregator to 0.55.0, replace /graphql call with gRPC call ([#1038]).
 - BREAKING: Removed product-config machinery. This is a breaking change in terms of configuration.
@@ -26,6 +26,7 @@ All notable changes to this project will be documented in this file.
 [#1034]: https://github.com/stackabletech/zookeeper-operator/pull/1034
 [#1038]: https://github.com/stackabletech/zookeeper-operator/pull/1038
 [#1041]: https://github.com/stackabletech/zookeeper-operator/pull/1041
+[#1048]: https://github.com/stackabletech/zookeeper-operator/pull/1048
 
 ## [26.3.0] - 2026-03-16
 
