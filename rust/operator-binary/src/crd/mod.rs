@@ -110,6 +110,7 @@ pub mod versioned {
     /// [operator documentation](DOCS_BASE_URL_PLACEHOLDER/zookeeper/).
     #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
     #[versioned(crd(
+        doc = "A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper.",
         group = "zookeeper.stackable.tech",
         plural = "zookeeperclusters",
         shortname = "zk",
@@ -284,6 +285,7 @@ pub mod versioned {
     /// [Isolating clients with ZNodes usage guide](DOCS_BASE_URL_PLACEHOLDER/zookeeper/usage_guide/isolating_clients_with_znodes).
     #[derive(Clone, CustomResource, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
     #[versioned(crd(
+        doc = "A claim for a single ZooKeeper ZNode tree (filesystem node).",
         group = "zookeeper.stackable.tech",
         plural = "zookeeperznodes",
         shortname = "zno",
