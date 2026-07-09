@@ -51,3 +51,5 @@ servers:
             data:
               capacity: '1Gi'
 ----
+
+ZooKeeper's JVM heap size is set automatically to 80% of the configured `memory.limit`.
