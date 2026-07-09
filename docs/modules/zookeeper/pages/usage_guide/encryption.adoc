@@ -9,8 +9,8 @@ The utilized certificates can be changed in a top-level config.
 ----
 include::example$usage_guide/example-cluster-tls-encryption.yaml[]
 ----
-<1> The `tls.server.secretClass` refers to the client-to-server encryption. Defaults to the `tls` secret.
-<2> The `tls.quorum.secretClass` refers to the server-to-server quorum encryption. Defaults to the `tls` secret.
+<1> The `tls.serverSecretClass` refers to the client-to-server encryption. Defaults to the `tls` secret.
+<2> The `tls.quorumSecretClass` refers to the server-to-server quorum encryption. Defaults to the `tls` secret.
 
 The `tls` secret is deployed from the xref:secret-operator:index.adoc[Secret Operator] and looks like this:
 
@@ -19,4 +19,6 @@ The `tls` secret is deployed from the xref:secret-operator:index.adoc[Secret Ope
 include::example$usage_guide/example-secret-operator-tls-secret.yaml[]
 ----
 
-You can create your own secrets and reference them e.g. in the `tls.secretClass` to use different certificates.
+You can create your own secrets and reference them in `tls.serverSecretClass` or `tls.quorumSecretClass` to use different certificates.
+
+NOTE: Configuring a client `AuthenticationClass` via xref:usage_guide/authentication.adoc[] overrides the `tls.serverSecretClass` setting.
