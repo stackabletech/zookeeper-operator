@@ -439,10 +439,19 @@ pub(crate) mod test_support {
     pub fn try_validate(
         zk: &v1alpha1::ZookeeperCluster,
     ) -> Result<ValidatedCluster, super::validate::Error> {
+        try_validate_with_auth(zk, DereferencedAuthenticationClasses::new_for_tests())
+    }
+
+    /// Runs the real validate step with caller-supplied (dereferenced) AuthenticationClasses, so
+    /// tests can exercise the client-mTLS matrix.
+    pub fn try_validate_with_auth(
+        zk: &v1alpha1::ZookeeperCluster,
+        authentication_classes: DereferencedAuthenticationClasses,
+    ) -> Result<ValidatedCluster, super::validate::Error> {
         validate(
             zk,
             &DereferencedObjects {
-                authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
+                authentication_classes,
             },
             &operator_environment(),
         )
@@ -452,18 +461,33 @@ pub(crate) mod test_support {
     pub fn validated_cluster(zk: &v1alpha1::ZookeeperCluster) -> ValidatedCluster {
         try_validate(zk).expect("validate should succeed for the test fixture")
     }
+
+    /// Runs the real validate step with a single TLS client-auth `AuthenticationClass`, mirroring
+    /// the `use-client-auth-tls` kuttl scenario.
+    pub fn validated_cluster_with_client_auth(zk: &v1alpha1::ZookeeperCluster) -> ValidatedCluster {
+        try_validate_with_auth(
+            zk,
+            DereferencedAuthenticationClasses::new_for_tests_with_tls_client_auth(),
+        )
+        .expect("validate should succeed for the test fixture")
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::{collections::BTreeSet, str::FromStr};
 
     use stackable_operator::{
         k8s_openapi::api::core::v1::ConfigMap, v2::types::operator::RoleGroupName,
     };
 
     use super::*;
-    use crate::zk_controller::test_support::{cluster_info, minimal_zk, validated_cluster};
+    use crate::zk_controller::{
+        test_support::{
+            cluster_info, minimal_zk, validated_cluster, validated_cluster_with_client_auth,
+        },
+        validate::ValidatedCluster,
+    };
 
     #[test]
     fn test_default_config() {
@@ -536,9 +560,10 @@ mod tests {
 
     #[test]
     fn test_seeded_operator_defaults() {
-        // These values are seeded directly by the ConfigMap builder and must stay
-        // byte-identical (pinned by the kuttl snapshot
-        // `tests/templates/kuttl/smoke/14-assert.yaml.j2`).
+        // These values are seeded directly by the ConfigMap builder and must stay byte-identical.
+        // This test (together with the TLS x client-auth matrix tests below) is the source of truth
+        // for the rendered `zoo.cfg` / `security.properties`; the kuttl smoke keeps only the
+        // live-cluster readiness/status checks.
         let zookeeper_yaml = r#"
         apiVersion: zookeeper.stackable.tech/v1alpha1
         kind: ZookeeperCluster
@@ -731,15 +756,280 @@ mod tests {
         assert!(cm.contains_key("vector.yaml"));
     }
 
+    // ---------------------------------------------------------------------------------------------
+    // TLS x client-auth matrix (candidate #1 in unit-tests.md).
+    //
+    // These four tests own what the kuttl smoke `14-assert` `zoo.cfg` heredoc used to assert across
+    // the `use-server-tls` x `use-client-auth-tls` scenario matrix: the exact set of `zoo.cfg`
+    // properties and the ports/`ssl.*` lines that vary with TLS and client mTLS. Asserting the full
+    // key set (not just `contains`) catches accidentally added *or* removed properties. Client mTLS
+    // is injected via `validated_cluster_with_client_auth`, which the previous `new_for_tests()`
+    // path could not reach.
+    // ---------------------------------------------------------------------------------------------
+
+    /// The `zoo.cfg` keys that are always present regardless of the TLS/client-auth matrix
+    /// (operator-injected defaults + quorum TLS, which is always on).
+    fn base_zoo_cfg_keys() -> BTreeSet<String> {
+        [
+            "admin.serverPort",
+            "authProvider.x509",
+            "clientPort",
+            "dataDir",
+            "initLimit",
+            "metricsProvider.className",
+            "metricsProvider.httpPort",
+            "serverCnxnFactory",
+            "ssl.quorum.clientAuth",
+            "ssl.quorum.hostnameVerification",
+            "ssl.quorum.keyStore.location",
+            "ssl.quorum.trustStore.location",
+            "sslQuorum",
+            "syncLimit",
+            "tickTime",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+    }
+
+    /// The `zoo.cfg` property keys, excluding the replica-dependent `server.<myid>` quorum entries
+    /// (those are asserted separately in `test_server_lines_use_myid_offset_across_rolegroups`).
+    fn zoo_cfg_keys(cm: &ConfigMap) -> BTreeSet<String> {
+        cm.data
+            .as_ref()
+            .unwrap()
+            .get("zoo.cfg")
+            .unwrap()
+            .lines()
+            .filter_map(|line| line.split_once('=').map(|(k, _)| k.to_owned()))
+            .filter(|k| !k.starts_with("server."))
+            .collect()
+    }
+
+    /// TLS off, client-auth off: insecure client port, no server-`ssl.*` lines, no
+    /// `client.portUnification`, no `ssl.clientAuth`.
+    #[test]
+    fn test_matrix_no_tls_no_client_auth() {
+        let cm = build_config_map(
+            r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          clusterConfig:
+            tls:
+              serverSecretClass: null
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#,
+        );
+        let zoo_cfg = cm.data.as_ref().unwrap().get("zoo.cfg").unwrap();
+
+        assert_eq!(zoo_cfg_keys(&cm), base_zoo_cfg_keys());
+        assert!(zoo_cfg.contains("clientPort=2181"), "{zoo_cfg}");
+        assert!(!zoo_cfg.contains("client.portUnification"), "{zoo_cfg}");
+        assert!(!zoo_cfg.contains("ssl.clientAuth"), "{zoo_cfg}");
+        assert!(!zoo_cfg.contains("ssl.keyStore.location"), "{zoo_cfg}");
+    }
+
+    /// TLS on (default), client-auth off: secure client port, server-`ssl.*` lines and
+    /// `client.portUnification`, but no `ssl.clientAuth`.
+    #[test]
+    fn test_matrix_server_tls_no_client_auth() {
+        let cm = build_config_map(
+            r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#,
+        );
+        let zoo_cfg = cm.data.as_ref().unwrap().get("zoo.cfg").unwrap();
+
+        let mut expected = base_zoo_cfg_keys();
+        expected.extend(
+            [
+                "client.portUnification",
+                "ssl.hostnameVerification",
+                "ssl.keyStore.location",
+                "ssl.trustStore.location",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        );
+        assert_eq!(zoo_cfg_keys(&cm), expected);
+        assert!(zoo_cfg.contains("clientPort=2282"), "{zoo_cfg}");
+        assert!(zoo_cfg.contains("client.portUnification=true"), "{zoo_cfg}");
+        assert!(
+            zoo_cfg.contains("ssl.keyStore.location=/stackable/server_tls/keystore.p12"),
+            "{zoo_cfg}"
+        );
+        assert!(!zoo_cfg.contains("ssl.clientAuth"), "{zoo_cfg}");
+    }
+
+    /// TLS on, client-auth on: as above plus `ssl.clientAuth=need`.
+    #[test]
+    fn test_matrix_server_tls_and_client_auth() {
+        let zk = minimal_zk(
+            r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#,
+        );
+        let cm = config_map_for(&validated_cluster_with_client_auth(&zk), "default");
+        let zoo_cfg = cm.data.as_ref().unwrap().get("zoo.cfg").unwrap();
+
+        let mut expected = base_zoo_cfg_keys();
+        expected.extend(
+            [
+                "client.portUnification",
+                "ssl.clientAuth",
+                "ssl.hostnameVerification",
+                "ssl.keyStore.location",
+                "ssl.trustStore.location",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        );
+        assert_eq!(zoo_cfg_keys(&cm), expected);
+        assert!(zoo_cfg.contains("clientPort=2282"), "{zoo_cfg}");
+        assert!(zoo_cfg.contains("ssl.clientAuth=need"), "{zoo_cfg}");
+    }
+
+    /// Client-auth on while server TLS is explicitly disabled: the client `AuthenticationClass`
+    /// alone turns TLS on (secure port, `ssl.*` lines, `client.portUnification`) and adds
+    /// `ssl.clientAuth=need`. This cross term was previously unreachable in unit tests.
+    #[test]
+    fn test_matrix_client_auth_forces_tls_without_server_secret_class() {
+        let zk = minimal_zk(
+            r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          clusterConfig:
+            tls:
+              serverSecretClass: null
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#,
+        );
+        let cm = config_map_for(&validated_cluster_with_client_auth(&zk), "default");
+        let zoo_cfg = cm.data.as_ref().unwrap().get("zoo.cfg").unwrap();
+
+        let mut expected = base_zoo_cfg_keys();
+        expected.extend(
+            [
+                "client.portUnification",
+                "ssl.clientAuth",
+                "ssl.hostnameVerification",
+                "ssl.keyStore.location",
+                "ssl.trustStore.location",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        );
+        assert_eq!(zoo_cfg_keys(&cm), expected);
+        assert!(zoo_cfg.contains("clientPort=2282"), "{zoo_cfg}");
+        assert!(zoo_cfg.contains("client.portUnification=true"), "{zoo_cfg}");
+        assert!(zoo_cfg.contains("ssl.clientAuth=need"), "{zoo_cfg}");
+    }
+
+    /// `server.<myid>` quorum lines are rendered into the per-rolegroup `zoo.cfg` with
+    /// `myidOffset` applied and colons escaped, aggregated across *all* server role groups. Mirrors
+    /// the kuttl smoke `14-assert` `server.N` lines (primary offset 10, secondary offset 20).
+    #[test]
+    fn test_server_lines_use_myid_offset_across_rolegroups() {
+        let zk = minimal_zk(
+            r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: test-zk
+        spec:
+          image:
+            productVersion: "3.9.5"
+          clusterConfig:
+            tls:
+              serverSecretClass: null
+          servers:
+            roleGroups:
+              primary:
+                replicas: 2
+                config:
+                  myidOffset: 10
+              secondary:
+                replicas: 1
+                config:
+                  myidOffset: 20
+        "#,
+        );
+        let validated = validated_cluster(&zk);
+        // The `server.N` lines are identical in every rolegroup's `zoo.cfg`; inspect the primary's.
+        let cm = config_map_for(&validated, "primary");
+        let zoo_cfg = cm.data.as_ref().unwrap().get("zoo.cfg").unwrap();
+
+        // Colons are escaped by the Java-properties writer (`\:`); non-TLS client port 2181.
+        assert!(
+            zoo_cfg.contains(
+                "server.10=test-zk-server-primary-0.test-zk-server-primary-headless.default.svc.cluster.local\\:2888\\:3888;2181"
+            ),
+            "{zoo_cfg}"
+        );
+        assert!(
+            zoo_cfg.contains("server.11=test-zk-server-primary-1."),
+            "{zoo_cfg}"
+        );
+        assert!(
+            zoo_cfg.contains("server.20=test-zk-server-secondary-0."),
+            "{zoo_cfg}"
+        );
+        // Exactly the three expected quorum entries, no more.
+        assert_eq!(
+            zoo_cfg.lines().filter(|l| l.starts_with("server.")).count(),
+            3,
+            "{zoo_cfg}"
+        );
+    }
+
     fn build_config_map(zookeeper_yaml: &str) -> ConfigMap {
-        let zookeeper = minimal_zk(zookeeper_yaml);
-        let validated_cluster = validated_cluster(&zookeeper);
-        let role_group_name = RoleGroupName::from_str("default").expect("valid role group name");
+        config_map_for(&validated_cluster(&minimal_zk(zookeeper_yaml)), "default")
+    }
+
+    /// Builds the rolegroup `ConfigMap` for the named server role group of a validated cluster.
+    fn config_map_for(validated_cluster: &ValidatedCluster, role_group: &str) -> ConfigMap {
+        let role_group_name = RoleGroupName::from_str(role_group).expect("valid role group name");
         let rolegroup_config =
             &validated_cluster.role_group_configs[&ZookeeperRole::Server][&role_group_name];
 
         config_map::build_server_rolegroup_config_map(
-            &validated_cluster,
+            validated_cluster,
             &cluster_info(),
             &role_group_name,
             rolegroup_config,
