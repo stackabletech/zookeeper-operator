@@ -393,16 +393,18 @@ pub fn error_policy(
 /// Shared helpers for building validated test clusters from minimal YAML fixtures.
 #[cfg(test)]
 pub(crate) mod test_support {
+    use std::str::FromStr;
+
     use stackable_operator::{
         cli::OperatorEnvironmentOptions, commons::networking::DomainName,
-        utils::cluster_info::KubernetesClusterInfo,
+        utils::cluster_info::KubernetesClusterInfo, v2::types::operator::RoleGroupName,
     };
 
     use crate::{
-        crd::{authentication::DereferencedAuthenticationClasses, v1alpha1},
+        crd::{ZookeeperRole, authentication::DereferencedAuthenticationClasses, v1alpha1},
         zk_controller::{
             dereference::DereferencedObjects,
-            validate::{ValidatedCluster, validate},
+            validate::{ValidatedCluster, ZookeeperRoleGroupConfig, validate},
         },
     };
 
@@ -471,24 +473,36 @@ pub(crate) mod test_support {
         )
         .expect("validate should succeed for the test fixture")
     }
+
+    /// Looks up the validated, merged config of the named `server` role group together with its
+    /// parsed [`RoleGroupName`] — the standard `(name, config)` inputs to the
+    /// `build_server_rolegroup_*` functions. Panics if the group does not exist.
+    pub fn server_rolegroup_config<'a>(
+        validated: &'a ValidatedCluster,
+        role_group: &str,
+    ) -> (RoleGroupName, &'a ZookeeperRoleGroupConfig) {
+        let role_group_name = RoleGroupName::from_str(role_group).expect("valid role group name");
+        let config = validated
+            .role_group_configs
+            .get(&ZookeeperRole::Server)
+            .and_then(|groups| groups.get(&role_group_name))
+            .unwrap_or_else(|| panic!("server role group {role_group:?} should exist"));
+        (role_group_name, config)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::{BTreeMap, BTreeSet},
-        str::FromStr,
-    };
+    use std::collections::{BTreeMap, BTreeSet};
 
-    use stackable_operator::{
-        k8s_openapi::api::core::v1::ConfigMap, v2::types::operator::RoleGroupName,
-    };
+    use stackable_operator::k8s_openapi::api::core::v1::ConfigMap;
 
     use super::*;
     use crate::zk_controller::{
         build::properties::zoo_cfg,
         test_support::{
-            cluster_info, minimal_zk, validated_cluster, validated_cluster_with_client_auth,
+            cluster_info, minimal_zk, server_rolegroup_config, validated_cluster,
+            validated_cluster_with_client_auth,
         },
         validate::ValidatedCluster,
     };
@@ -967,9 +981,7 @@ mod tests {
     /// pinned separately (`test_server_lines_use_myid_offset_across_rolegroups`,
     /// `test_seeded_operator_defaults`).
     fn zoo_cfg_map(validated: &ValidatedCluster, role_group: &str) -> BTreeMap<String, String> {
-        let role_group_name = RoleGroupName::from_str(role_group).expect("valid role group name");
-        let rolegroup_config =
-            &validated.role_group_configs[&ZookeeperRole::Server][&role_group_name];
+        let (_, rolegroup_config) = server_rolegroup_config(validated, role_group);
         let server_addresses = zoo_cfg::server_addresses(validated, &cluster_info());
         zoo_cfg::build(validated, rolegroup_config, &server_addresses)
     }
@@ -1167,9 +1179,8 @@ mod tests {
 
     /// Builds the rolegroup `ConfigMap` for the named server role group of a validated cluster.
     fn config_map_for(validated_cluster: &ValidatedCluster, role_group: &str) -> ConfigMap {
-        let role_group_name = RoleGroupName::from_str(role_group).expect("valid role group name");
-        let rolegroup_config =
-            &validated_cluster.role_group_configs[&ZookeeperRole::Server][&role_group_name];
+        let (role_group_name, rolegroup_config) =
+            server_rolegroup_config(validated_cluster, role_group);
 
         config_map::build_server_rolegroup_config_map(
             validated_cluster,

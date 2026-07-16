@@ -457,15 +457,16 @@ pub fn build_server_rolegroup_statefulset(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zk_controller::test_support::{minimal_zk, validated_cluster};
+    use crate::zk_controller::test_support::{
+        minimal_zk, server_rolegroup_config, validated_cluster,
+    };
 
     /// Builds the `default` server StatefulSet for `yaml` and returns the ConfigMap name mounted by
     /// its `log-config` volume.
     fn log_config_map_name(yaml: &str) -> String {
         let validated = validated_cluster(&minimal_zk(yaml));
-        let rg_name = RoleGroupName::from_str("default").expect("valid role group name");
-        let rg = validated.role_group_configs[&ZookeeperRole::Server][&rg_name].clone();
-        build_server_rolegroup_statefulset(&validated, &rg_name, &rg)
+        let (rg_name, rg) = server_rolegroup_config(&validated, "default");
+        build_server_rolegroup_statefulset(&validated, &rg_name, rg)
             .expect("statefulset builds")
             .spec
             .and_then(|spec| spec.template.spec)
@@ -540,9 +541,8 @@ mod tests {
 
     fn build_sts(yaml: &str, role_group: &str) -> StatefulSet {
         let validated = validated_cluster(&minimal_zk(yaml));
-        let rg_name = RoleGroupName::from_str(role_group).expect("valid role group name");
-        let rg = validated.role_group_configs[&ZookeeperRole::Server][&rg_name].clone();
-        build_server_rolegroup_statefulset(&validated, &rg_name, &rg).expect("statefulset builds")
+        let (rg_name, rg) = server_rolegroup_config(&validated, role_group);
+        build_server_rolegroup_statefulset(&validated, &rg_name, rg).expect("statefulset builds")
     }
 
     fn zookeeper_container(

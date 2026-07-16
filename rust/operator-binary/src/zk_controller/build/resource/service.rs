@@ -118,12 +118,9 @@ pub(crate) fn build_server_rolegroup_metrics_service(
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
-    use crate::{
-        crd::ZookeeperRole,
-        zk_controller::test_support::{minimal_zk, validated_cluster},
+    use crate::zk_controller::test_support::{
+        minimal_zk, server_rolegroup_config, validated_cluster,
     };
 
     const DEFAULT_ZK: &str = r#"
@@ -157,7 +154,7 @@ mod tests {
     #[test]
     fn headless_service_shape() {
         let validated = validated_cluster(&minimal_zk(DEFAULT_ZK));
-        let rg = RoleGroupName::from_str("default").expect("valid role group name");
+        let (rg, _) = server_rolegroup_config(&validated, "default");
         let service = build_server_rolegroup_headless_service(&validated, &rg);
 
         assert_eq!(
@@ -193,9 +190,8 @@ mod tests {
     #[test]
     fn metrics_service_shape_and_prometheus_annotations() {
         let validated = validated_cluster(&minimal_zk(DEFAULT_ZK));
-        let rg = RoleGroupName::from_str("default").expect("valid role group name");
-        let rg_config = validated.role_group_configs[&ZookeeperRole::Server][&rg].clone();
-        let service = build_server_rolegroup_metrics_service(&validated, &rg, &rg_config);
+        let (rg, rg_config) = server_rolegroup_config(&validated, "default");
+        let service = build_server_rolegroup_metrics_service(&validated, &rg, rg_config);
 
         assert_eq!(
             service.metadata.name.as_deref(),

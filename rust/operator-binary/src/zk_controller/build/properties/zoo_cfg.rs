@@ -177,18 +177,15 @@ impl ValidatedCluster {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use stackable_operator::v2::types::operator::RoleGroupName;
-
     use super::*;
-    use crate::zk_controller::test_support::{cluster_info, minimal_zk, validated_cluster};
+    use crate::zk_controller::test_support::{
+        cluster_info, minimal_zk, server_rolegroup_config, validated_cluster,
+    };
 
     /// Validates `yaml` into a [`ValidatedCluster`] and returns its `server` `default` role group.
     fn validated_with_default_rg(yaml: &str) -> (ValidatedCluster, ZookeeperRoleGroupConfig) {
         let validated = validated_cluster(&minimal_zk(yaml));
-        let rg_name = RoleGroupName::from_str("default").expect("valid role group name");
-        let rg = validated.role_group_configs[&ZookeeperRole::Server][&rg_name].clone();
+        let rg = server_rolegroup_config(&validated, "default").1.clone();
         (validated, rg)
     }
 
