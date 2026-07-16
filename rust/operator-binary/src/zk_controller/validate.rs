@@ -599,7 +599,7 @@ mod tests {
     use stackable_operator::k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 
     use super::*;
-    use crate::zk_controller::test_support::{
+    use crate::test_support::{
         minimal_zk, server_rolegroup_config, try_validate, validated_cluster,
     };
 

@@ -40,6 +40,8 @@ use crate::{
 };
 
 pub mod crd;
+#[cfg(test)]
+mod test_support;
 mod webhooks;
 mod zk_controller;
 mod znode_controller;

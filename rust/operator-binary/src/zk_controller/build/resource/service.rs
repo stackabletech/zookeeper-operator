@@ -119,23 +119,7 @@ pub(crate) fn build_server_rolegroup_metrics_service(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zk_controller::test_support::{
-        minimal_zk, server_rolegroup_config, validated_cluster,
-    };
-
-    const DEFAULT_ZK: &str = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 3
-        "#;
+    use crate::test_support::{minimal_zk_default, server_rolegroup_config, validated_cluster};
 
     fn port(service: &Service, name: &str) -> i32 {
         service
@@ -153,7 +137,7 @@ mod tests {
 
     #[test]
     fn headless_service_shape() {
-        let validated = validated_cluster(&minimal_zk(DEFAULT_ZK));
+        let validated = validated_cluster(&minimal_zk_default(3));
         let (rg, _) = server_rolegroup_config(&validated, "default");
         let service = build_server_rolegroup_headless_service(&validated, &rg);
 
@@ -189,7 +173,7 @@ mod tests {
 
     #[test]
     fn metrics_service_shape_and_prometheus_annotations() {
-        let validated = validated_cluster(&minimal_zk(DEFAULT_ZK));
+        let validated = validated_cluster(&minimal_zk_default(3));
         let (rg, rg_config) = server_rolegroup_config(&validated, "default");
         let service = build_server_rolegroup_metrics_service(&validated, &rg, rg_config);
 

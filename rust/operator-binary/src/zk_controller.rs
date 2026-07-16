@@ -45,7 +45,7 @@ use crate::{
 };
 
 pub(crate) mod build;
-mod dereference;
+pub(crate) mod dereference;
 pub(crate) mod validate;
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
@@ -390,106 +390,6 @@ pub fn error_policy(
     }
 }
 
-/// Shared helpers for building validated test clusters from minimal YAML fixtures.
-#[cfg(test)]
-pub(crate) mod test_support {
-    use std::str::FromStr;
-
-    use stackable_operator::{
-        cli::OperatorEnvironmentOptions, commons::networking::DomainName,
-        utils::cluster_info::KubernetesClusterInfo, v2::types::operator::RoleGroupName,
-    };
-
-    use crate::{
-        crd::{ZookeeperRole, authentication::DereferencedAuthenticationClasses, v1alpha1},
-        zk_controller::{
-            dereference::DereferencedObjects,
-            validate::{ValidatedCluster, ZookeeperRoleGroupConfig, validate},
-        },
-    };
-
-    /// Parses a minimal `ZookeeperCluster` test fixture, defaulting `namespace`/`uid` so the
-    /// validate step can build a [`ValidatedCluster`].
-    pub fn minimal_zk(yaml: &str) -> v1alpha1::ZookeeperCluster {
-        let mut zk: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(yaml).expect("invalid test ZookeeperCluster YAML");
-        zk.metadata
-            .namespace
-            .get_or_insert_with(|| "default".to_owned());
-        zk.metadata
-            .uid
-            .get_or_insert_with(|| "c27b3971-ca72-42c1-80a4-abdfc1db0ddd".to_owned());
-        zk
-    }
-
-    pub fn cluster_info() -> KubernetesClusterInfo {
-        KubernetesClusterInfo {
-            cluster_domain: DomainName::try_from("cluster.local").expect("valid domain"),
-        }
-    }
-
-    fn operator_environment() -> OperatorEnvironmentOptions {
-        OperatorEnvironmentOptions {
-            operator_namespace: "stackable-operators".to_owned(),
-            operator_service_name: "zookeeper-operator".to_owned(),
-            image_repository: "oci.example.org".to_owned(),
-        }
-    }
-
-    /// Runs the real validate step against a minimal (auth-free) fixture, returning the result so
-    /// tests can assert on validation errors.
-    pub fn try_validate(
-        zk: &v1alpha1::ZookeeperCluster,
-    ) -> Result<ValidatedCluster, super::validate::Error> {
-        try_validate_with_auth(zk, DereferencedAuthenticationClasses::new_for_tests())
-    }
-
-    /// Runs the real validate step with caller-supplied (dereferenced) AuthenticationClasses, so
-    /// tests can exercise the client-mTLS matrix.
-    pub fn try_validate_with_auth(
-        zk: &v1alpha1::ZookeeperCluster,
-        authentication_classes: DereferencedAuthenticationClasses,
-    ) -> Result<ValidatedCluster, super::validate::Error> {
-        validate(
-            zk,
-            &DereferencedObjects {
-                authentication_classes,
-            },
-            &operator_environment(),
-        )
-    }
-
-    /// Runs the real validate step against a minimal (auth-free) fixture.
-    pub fn validated_cluster(zk: &v1alpha1::ZookeeperCluster) -> ValidatedCluster {
-        try_validate(zk).expect("validate should succeed for the test fixture")
-    }
-
-    /// Runs the real validate step with a single TLS client-auth `AuthenticationClass`.
-    pub fn validated_cluster_with_client_auth(zk: &v1alpha1::ZookeeperCluster) -> ValidatedCluster {
-        try_validate_with_auth(
-            zk,
-            DereferencedAuthenticationClasses::new_for_tests_with_tls_client_auth(),
-        )
-        .expect("validate should succeed for the test fixture")
-    }
-
-    /// Looks up the validated, merged config of the named `server` role group together with its
-    /// parsed [`RoleGroupName`] — the standard `(name, config)` inputs to the
-    /// `build_server_rolegroup_*` functions. Panics if the group does not exist.
-    pub fn server_rolegroup_config<'a>(
-        validated: &'a ValidatedCluster,
-        role_group: &str,
-    ) -> (RoleGroupName, &'a ZookeeperRoleGroupConfig) {
-        let role_group_name = RoleGroupName::from_str(role_group).expect("valid role group name");
-        let config = validated
-            .role_group_configs
-            .get(&ZookeeperRole::Server)
-            .and_then(|groups| groups.get(&role_group_name))
-            .unwrap_or_else(|| panic!("server role group {role_group:?} should exist"));
-        (role_group_name, config)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
@@ -497,31 +397,17 @@ mod tests {
     use stackable_operator::k8s_openapi::api::core::v1::ConfigMap;
 
     use super::*;
-    use crate::zk_controller::{
-        build::properties::zoo_cfg,
+    use crate::{
         test_support::{
-            cluster_info, minimal_zk, server_rolegroup_config, validated_cluster,
+            cluster_info, minimal_zk, minimal_zk_yaml, server_rolegroup_config, validated_cluster,
             validated_cluster_with_client_auth,
         },
-        validate::ValidatedCluster,
+        zk_controller::{build::properties::zoo_cfg, validate::ValidatedCluster},
     };
 
     #[test]
     fn test_default_config() {
-        let zookeeper_yaml = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 3
-        "#;
-        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let cm = build_config_map(&minimal_zk_yaml(3)).data.unwrap();
         let config = cm.get("zoo.cfg").unwrap();
         assert!(config.contains(
             "authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider"
@@ -581,20 +467,7 @@ mod tests {
         // This test (together with the TLS x client-auth matrix tests below) is the source of truth
         // for the rendered `zoo.cfg` / `security.properties`; the kuttl smoke keeps only the
         // live-cluster readiness/status checks.
-        let zookeeper_yaml = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 3
-        "#;
-        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let cm = build_config_map(&minimal_zk_yaml(3)).data.unwrap();
 
         // `security.properties` is fully operator-injected; assert it byte-for-byte.
         assert_eq!(
@@ -708,20 +581,7 @@ mod tests {
     fn test_custom_log_config_omits_logback() {
         // Automatic logging renders `logback.xml` into the ConfigMap; a custom log ConfigMap
         // suppresses it (the `Custom` arm of `build_logback_config`).
-        let automatic_yaml = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 3
-        "#;
-        let automatic = build_config_map(automatic_yaml).data.unwrap();
+        let automatic = build_config_map(&minimal_zk_yaml(3)).data.unwrap();
         assert!(automatic.contains_key("logback.xml"));
 
         let custom_yaml = r#"

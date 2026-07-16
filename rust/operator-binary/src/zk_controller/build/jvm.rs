@@ -84,7 +84,9 @@ mod tests {
     use super::*;
     use crate::{
         crd::v1alpha1::ZookeeperCluster,
-        zk_controller::test_support::{minimal_zk, server_rolegroup_config, validated_cluster},
+        test_support::{
+            minimal_zk, minimal_zk_default, server_rolegroup_config, validated_cluster,
+        },
     };
 
     /// The validated, merged config for the `default` server role group.
@@ -96,20 +98,7 @@ mod tests {
 
     #[test]
     fn test_construct_jvm_arguments_defaults() {
-        let input = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 1
-        "#;
-        let zk = minimal_zk(input);
+        let zk = minimal_zk_default(1);
         let rg = server_default(&zk);
         let non_heap_jvm_args = construct_non_heap_jvm_args(&rg);
         let zk_server_heap_env =

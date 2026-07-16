@@ -226,10 +226,8 @@ mod tests {
 
     use super::*;
     use crate::{
-        zk_controller::{
-            ZK_CONTROLLER_NAME,
-            test_support::{minimal_zk, validated_cluster},
-        },
+        test_support::{minimal_zk, validated_cluster},
+        zk_controller::ZK_CONTROLLER_NAME,
         znode_controller::{
             ZNODE_CONTROLLER_NAME,
             validate::test_support::{minimal_znode, validated_znode},

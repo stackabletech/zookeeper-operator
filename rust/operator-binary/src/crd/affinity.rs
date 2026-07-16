@@ -35,9 +35,7 @@ mod tests {
         },
     };
 
-    use crate::zk_controller::test_support::{
-        minimal_zk, server_rolegroup_config, validated_cluster,
-    };
+    use crate::test_support::{minimal_zk, server_rolegroup_config, validated_cluster};
 
     #[test]
     fn test_affinity_defaults() {

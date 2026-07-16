@@ -203,7 +203,7 @@ pub fn validate(
 
 /// Shared helpers for building validated test znodes from minimal YAML fixtures.
 ///
-/// Mirrors `zk_controller::test_support`: rather than hand-constructing a [`ValidatedZnode`]
+/// Mirrors the crate-level `test_support`: rather than hand-constructing a [`ValidatedZnode`]
 /// (whose `metadata` is private), tests run the real [`validate`] step so the wiring under test
 /// (product version, `zookeeper_security`, identity) matches production.
 #[cfg(test)]
@@ -213,7 +213,7 @@ pub(crate) mod test_support {
     use super::{ValidatedZnode, validate};
     use crate::{
         crd::{authentication::DereferencedAuthenticationClasses, v1alpha1},
-        zk_controller::test_support::minimal_zk,
+        test_support::minimal_zk,
         znode_controller::dereference::DereferencedObjects,
     };
 

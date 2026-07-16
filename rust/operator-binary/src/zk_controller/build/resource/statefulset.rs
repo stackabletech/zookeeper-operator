@@ -457,8 +457,8 @@ pub fn build_server_rolegroup_statefulset(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zk_controller::test_support::{
-        minimal_zk, server_rolegroup_config, validated_cluster,
+    use crate::test_support::{
+        minimal_zk, minimal_zk_yaml, server_rolegroup_config, validated_cluster,
     };
 
     /// Builds the `default` server StatefulSet for `yaml` and returns the ConfigMap name mounted by
@@ -510,21 +510,7 @@ mod tests {
     #[test]
     fn automatic_log_config_mounts_rolegroup_config_map() {
         // Automatic logging mounts the role group's own ConfigMap, not a user-provided one.
-        let name = log_config_map_name(
-            r#"
-            apiVersion: zookeeper.stackable.tech/v1alpha1
-            kind: ZookeeperCluster
-            metadata:
-              name: simple-zookeeper
-            spec:
-              image:
-                productVersion: "3.9.5"
-              servers:
-                roleGroups:
-                  default:
-                    replicas: 1
-            "#,
-        );
+        let name = log_config_map_name(&minimal_zk_yaml(1));
         assert_ne!(name, "my-log-config");
         assert!(name.contains("simple-zookeeper"), "{name}");
     }
@@ -753,22 +739,7 @@ mod tests {
     fn statefulset_sets_zk_server_heap_env() {
         // The heap value computed in jvm.rs lands on the STS as `ZK_SERVER_HEAP`:
         // 512Mi default memory limit x 0.8 -> 409 MiB (calculation pinned by the jvm.rs tests).
-        let sts = build_sts(
-            r#"
-            apiVersion: zookeeper.stackable.tech/v1alpha1
-            kind: ZookeeperCluster
-            metadata:
-              name: simple-zookeeper
-            spec:
-              image:
-                productVersion: "3.9.5"
-              servers:
-                roleGroups:
-                  default:
-                    replicas: 1
-            "#,
-            "default",
-        );
+        let sts = build_sts(&minimal_zk_yaml(1), "default");
 
         let heap = zookeeper_container(&sts)
             .env
@@ -842,22 +813,7 @@ mod tests {
     fn no_vector_container_without_agent() {
         // Sanity counterpart: with the agent disabled (the default), the StatefulSet carries no
         // `vector` sidecar.
-        let sts = build_sts(
-            r#"
-            apiVersion: zookeeper.stackable.tech/v1alpha1
-            kind: ZookeeperCluster
-            metadata:
-              name: simple-zookeeper
-            spec:
-              image:
-                productVersion: "3.9.5"
-              servers:
-                roleGroups:
-                  default:
-                    replicas: 1
-            "#,
-            "default",
-        );
+        let sts = build_sts(&minimal_zk_yaml(1), "default");
 
         let has_vector = sts
             .spec

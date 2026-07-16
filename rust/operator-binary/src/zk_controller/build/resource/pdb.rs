@@ -43,26 +43,12 @@ mod tests {
     use stackable_operator::k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
 
     use super::*;
-    use crate::zk_controller::test_support::{minimal_zk, validated_cluster};
+    use crate::test_support::{minimal_zk, minimal_zk_default, validated_cluster};
 
     /// By default PDBs are enabled and default to `maxUnavailable: 1` for the server role.
     #[test]
     fn pdb_enabled_by_default_with_max_unavailable_one() {
-        let validated = validated_cluster(&minimal_zk(
-            r#"
-            apiVersion: zookeeper.stackable.tech/v1alpha1
-            kind: ZookeeperCluster
-            metadata:
-              name: simple-zookeeper
-            spec:
-              image:
-                productVersion: "3.9.5"
-              servers:
-                roleGroups:
-                  default:
-                    replicas: 3
-            "#,
-        ));
+        let validated = validated_cluster(&minimal_zk_default(3));
         let role_config = validated.role_config.as_ref().expect("role config present");
 
         let pdb = build_pdb(&role_config.pdb, &validated, &ZookeeperRole::Server)
