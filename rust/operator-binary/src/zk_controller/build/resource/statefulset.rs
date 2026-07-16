@@ -782,6 +782,100 @@ mod tests {
     }
 
     #[test]
+    fn vector_agent_adds_vector_container_to_statefulset() {
+        // Enabling the Vector agent wires a `vector` sidecar onto the StatefulSet, mounting the
+        // `config` (for `vector.yaml`) and `log` volumes. The env vars the sidecar carries are set
+        // by the upstream `vector_container` helper, so this only pins the wiring seam this operator
+        // owns: that the sidecar is added at all when the agent is enabled. Without the agent, no
+        // such container exists.
+        let sts = build_sts(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              clusterConfig:
+                vectorAggregatorConfigMapName: vector-aggregator-discovery
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+                    config:
+                      logging:
+                        enableVectorAgent: true
+            "#,
+            "default",
+        );
+
+        let vector = sts
+            .spec
+            .as_ref()
+            .unwrap()
+            .template
+            .spec
+            .as_ref()
+            .unwrap()
+            .containers
+            .iter()
+            .find(|c| c.name == VECTOR_CONTAINER_NAME.as_ref())
+            .expect("vector container");
+
+        let mount_names: Vec<&str> = vector
+            .volume_mounts
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect();
+        assert!(
+            mount_names.contains(&CONFIG_VOLUME_NAME.as_ref()),
+            "vector container missing `config` volume mount: {mount_names:?}"
+        );
+        assert!(
+            mount_names.contains(&LOG_VOLUME_NAME.as_ref()),
+            "vector container missing `log` volume mount: {mount_names:?}"
+        );
+    }
+
+    #[test]
+    fn no_vector_container_without_agent() {
+        // Sanity counterpart: with the agent disabled (the default), the StatefulSet carries no
+        // `vector` sidecar.
+        let sts = build_sts(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+            "default",
+        );
+
+        let has_vector = sts
+            .spec
+            .as_ref()
+            .unwrap()
+            .template
+            .spec
+            .as_ref()
+            .unwrap()
+            .containers
+            .iter()
+            .any(|c| c.name == VECTOR_CONTAINER_NAME.as_ref());
+        assert!(!has_vector, "unexpected vector container without the agent");
+    }
+
+    #[test]
     fn env_overrides_apply_with_role_group_precedence() {
         // Candidate #4: `envOverrides` land on the zookeeper container, with the rolegroup value
         // winning over the role value on conflict. Mirrors the kuttl smoke `11-assert` setup:
