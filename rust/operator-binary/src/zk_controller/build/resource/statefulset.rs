@@ -780,4 +780,49 @@ mod tests {
             .expect("ZK_SERVER_HEAP env var");
         assert_eq!(heap.value.as_deref(), Some("409"));
     }
+
+    #[test]
+    fn env_overrides_apply_with_role_group_precedence() {
+        // Candidate #4: `envOverrides` land on the zookeeper container, with the rolegroup value
+        // winning over the role value on conflict. Mirrors the kuttl smoke `11-assert` setup:
+        // COMMON_VAR is set at both levels (group wins), ROLE_VAR only at the role, GROUP_VAR only
+        // at the group.
+        let sts = build_sts(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                envOverrides:
+                  COMMON_VAR: role-value
+                  ROLE_VAR: role-value
+                roleGroups:
+                  primary:
+                    replicas: 1
+                    envOverrides:
+                      COMMON_VAR: group-value
+                      GROUP_VAR: group-value
+            "#,
+            "primary",
+        );
+
+        let env = zookeeper_container(&sts).env.as_ref().unwrap();
+        let env_value = |name: &str| {
+            env.iter()
+                .find(|e| e.name == name)
+                .unwrap_or_else(|| panic!("missing env var {name}"))
+                .value
+                .as_deref()
+        };
+
+        // Rolegroup value overrides the role value on conflict.
+        assert_eq!(env_value("COMMON_VAR"), Some("group-value"));
+        // Role-only and group-only overrides are both present.
+        assert_eq!(env_value("ROLE_VAR"), Some("role-value"));
+        assert_eq!(env_value("GROUP_VAR"), Some("group-value"));
+    }
 }
