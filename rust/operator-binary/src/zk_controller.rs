@@ -756,6 +756,159 @@ mod tests {
         assert!(cm.contains_key("vector.yaml"));
     }
 
+    #[test]
+    fn test_vector_config_absent_when_agent_disabled() {
+        // Default logging has the Vector agent disabled, so no `vector.yaml` is added to the
+        // ConfigMap. Pins the negative branch alongside `test_vector_agent_adds_vector_config`.
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        assert!(!cm.contains_key("vector.yaml"));
+    }
+
+    #[test]
+    fn test_logback_default_structure() {
+        // Pins the structural parts of the rendered `logback.xml` that this operator controls (log
+        // dir + file name, console conversion pattern, max file size, appender wiring). This is the
+        // source of truth that used to live in the kuttl smoke `14-assert` heredoc; the levels are
+        // covered separately by `test_logback_renders_zookeeper_container_log_levels`.
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let logback = cm.get("logback.xml").unwrap();
+
+        // Console appender + the operator's conversion pattern.
+        assert!(
+            logback.contains(
+                r#"<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">"#
+            ),
+            "{logback}"
+        );
+        assert!(
+            logback.contains(
+                "<pattern>%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n</pattern>"
+            ),
+            "{logback}"
+        );
+
+        // Rolling file appender writing to the operator's log dir + file name.
+        assert!(
+            logback.contains(
+                r#"<appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">"#
+            ),
+            "{logback}"
+        );
+        assert!(
+            logback.contains("<File>/stackable/log/zookeeper/zookeeper.log4j.xml</File>"),
+            "{logback}"
+        );
+        assert!(
+            logback.contains(
+                "<FileNamePattern>/stackable/log/zookeeper/zookeeper.log4j.xml.%i</FileNamePattern>"
+            ),
+            "{logback}"
+        );
+        // 10 MiB total across 2 files -> 5MB per file (derived from MAX_ZK_LOG_FILES_SIZE).
+        assert!(
+            logback.contains("<MaxFileSize>5MB</MaxFileSize>"),
+            "{logback}"
+        );
+
+        // Root wires both appenders and defaults to INFO.
+        assert!(logback.contains(r#"<root level="INFO">"#), "{logback}");
+        assert!(
+            logback.contains(r#"<appender-ref ref="CONSOLE" />"#)
+                && logback.contains(r#"<appender-ref ref="FILE" />"#),
+            "{logback}"
+        );
+    }
+
+    #[test]
+    fn test_logback_renders_zookeeper_container_log_levels() {
+        // The zookeeper container's automatic log config drives `logback.xml`: the console and file
+        // appender ThresholdFilter levels, per-logger levels, and the root level. (The `prepare` and
+        // `vector` container levels do NOT affect `logback.xml` — they flow into those containers'
+        // own config via upstream behavior — so only the zookeeper container is set here.)
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
+                config:
+                  logging:
+                    containers:
+                      zookeeper:
+                        console:
+                          level: DEBUG
+                        file:
+                          level: WARN
+                        loggers:
+                          ROOT:
+                            level: ERROR
+                          org.apache.zookeeper:
+                            level: TRACE
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let logback = cm.get("logback.xml").unwrap();
+
+        // The console and file appenders share the same ThresholdFilter element, so split on the
+        // FILE appender to tie each level to its appender: console -> DEBUG, file -> WARN.
+        let (console_part, file_part) = logback
+            .split_once(r#"name="FILE""#)
+            .unwrap_or_else(|| panic!("FILE appender present: {logback}"));
+        assert!(
+            console_part.contains("<level>DEBUG</level>"),
+            "console appender level should be DEBUG: {logback}"
+        );
+        assert!(
+            !console_part.contains("<level>WARN</level>"),
+            "console appender level should not be WARN: {logback}"
+        );
+        assert!(
+            file_part.contains("<level>WARN</level>"),
+            "file appender level should be WARN: {logback}"
+        );
+
+        // The ROOT logger level maps to the `<root>` element; a named logger renders its own entry.
+        assert!(
+            logback.contains(r#"<root level="ERROR">"#),
+            "root level should be ERROR: {logback}"
+        );
+        assert!(
+            logback.contains(r#"<logger name="org.apache.zookeeper" level="TRACE" />"#),
+            "named logger should render at TRACE: {logback}"
+        );
+    }
+
     // ---------------------------------------------------------------------------------------------
     // TLS x client-auth matrix (candidate #1 in unit-tests.md).
     //
