@@ -24,45 +24,33 @@ commands:
   # The Vector sidecar's env wiring is set by the upstream `vector_container` helper and its
   # presence on the StatefulSet is unit-tested (statefulset.rs
   # `vector_agent_adds_vector_container_to_statefulset`), so no runtime env assertion is needed here.
+  #
+  # Discovery ConfigMap content (`ZOOKEEPER`/`ZOOKEEPER_HOSTS`/`ZOOKEEPER_CHROOT`/
+  # `ZOOKEEPER_CLIENT_PORT`, incl. the znode chroot suffix and the secure-vs-insecure client port)
+  # is unit-tested by `build_(znode_)discovery_configmap` (discovery.rs). The checks below only guard
+  # what a unit test cannot: that the CMs actually reconciled with the real service-name/namespace
+  # wiring and carry non-empty values.
   - script: |
-      expected=$(cat <<'YAMLEOF' | sed "s|__NAMESPACE__|$NAMESPACE|g" | yq -o=json
-      ZOOKEEPER: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
-      ZOOKEEPER_CHROOT: /
-      ZOOKEEPER_CLIENT_PORT: "{{ zk_client_port }}"
-      ZOOKEEPER_HOSTS: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
-      YAMLEOF
-      )
-      actual=$(kubectl -n $NAMESPACE get cm test-zk -o yaml | yq -o=json '.data')
-      expected_file=$(mktemp) && actual_file=$(mktemp)
-      printf '%s\n' "$expected" > "$expected_file"
-      printf '%s\n' "$actual" > "$actual_file"
-      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
-        echo "ERROR: ConfigMap test-zk data drifted from snapshot."
-        printf '%s\n' "$diff_out"
-        rm -f "$expected_file" "$actual_file"
-        exit 1
-      fi
-      rm -f "$expected_file" "$actual_file"
-  - script: |
-      ZNODE_UID=$(kubectl -n $NAMESPACE get zookeeperznode test-znode -o jsonpath='{.metadata.uid}')
-      expected=$(cat <<'YAMLEOF' | sed -e "s|__NAMESPACE__|$NAMESPACE|g" -e "s|__ZNODE_UID__|$ZNODE_UID|g" | yq -o=json
-      ZOOKEEPER: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}/znode-__ZNODE_UID__
-      ZOOKEEPER_CHROOT: /znode-__ZNODE_UID__
-      ZOOKEEPER_CLIENT_PORT: "{{ zk_client_port }}"
-      ZOOKEEPER_HOSTS: test-zk-server.__NAMESPACE__.svc.cluster.local:{{ zk_client_port }}
-      YAMLEOF
-      )
-      actual=$(kubectl -n $NAMESPACE get cm test-znode -o yaml | yq -o=json '.data')
-      expected_file=$(mktemp) && actual_file=$(mktemp)
-      printf '%s\n' "$expected" > "$expected_file"
-      printf '%s\n' "$actual" > "$actual_file"
-      if ! diff_out=$(diff -u "$expected_file" "$actual_file"); then
-        echo "ERROR: ConfigMap test-znode data drifted from snapshot."
-        printf '%s\n' "$diff_out"
-        rm -f "$expected_file" "$actual_file"
-        exit 1
-      fi
-      rm -f "$expected_file" "$actual_file"
+      for cm in test-zk test-znode; do
+        data=$(kubectl -n $NAMESPACE get cm "$cm" -o yaml | yq -o=json '.data')
+        for key in ZOOKEEPER ZOOKEEPER_HOSTS ZOOKEEPER_CLIENT_PORT ZOOKEEPER_CHROOT; do
+          value=$(printf '%s' "$data" | yq -r ".$key // \"\"")
+          if [ -z "$value" ]; then
+            echo "ERROR: discovery ConfigMap $cm is missing/empty key $key."
+            printf '%s\n' "$data"
+            exit 1
+          fi
+        done
+        # The connection string must point at the cluster-internal Service in this namespace.
+        host=$(printf '%s' "$data" | yq -r '.ZOOKEEPER_HOSTS')
+        case "$host" in
+          test-zk-server.$NAMESPACE.svc.cluster.local:*) ;;
+          *)
+            echo "ERROR: discovery ConfigMap $cm ZOOKEEPER_HOSTS=$host does not target the expected Service."
+            exit 1
+            ;;
+        esac
+      done
   - script: |
       expected=$(cat <<'YAMLEOF' | sed "s|__NAMESPACE__|$NAMESPACE|g" | yq -o=json
       logback.xml: |
