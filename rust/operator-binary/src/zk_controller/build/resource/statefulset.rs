@@ -527,4 +527,257 @@ mod tests {
         assert_ne!(name, "my-log-config");
         assert!(name.contains("simple-zookeeper"), "{name}");
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // StatefulSet resource shapes (candidate #2 in unit-tests.md).
+    //
+    // These own what the kuttl smoke `13-assert` asserted on the StatefulSet spec/metadata:
+    // replicas, `podManagementPolicy`, `serviceName`, graceful-shutdown period, container resources
+    // (including the `podOverrides` merge), the `data`/`listener` PVC templates and the heap env var
+    // (which also covers candidate #7's `test_heap.sh`). The `status:` stanza (`readyReplicas`) is a
+    // runtime signal and stays in kuttl.
+    // ---------------------------------------------------------------------------------------------
+
+    fn build_sts(yaml: &str, role_group: &str) -> StatefulSet {
+        let validated = validated_cluster(&minimal_zk(yaml));
+        let rg_name = RoleGroupName::from_str(role_group).expect("valid role group name");
+        let rg = validated.role_group_configs[&ZookeeperRole::Server][&rg_name].clone();
+        build_server_rolegroup_statefulset(&validated, &rg_name, &rg).expect("statefulset builds")
+    }
+
+    fn zookeeper_container(
+        sts: &StatefulSet,
+    ) -> &stackable_operator::k8s_openapi::api::core::v1::Container {
+        sts.spec
+            .as_ref()
+            .unwrap()
+            .template
+            .spec
+            .as_ref()
+            .unwrap()
+            .containers
+            .iter()
+            .find(|c| c.name == APP_NAME)
+            .expect("zookeeper container")
+    }
+
+    #[test]
+    fn statefulset_shape_defaults() {
+        let sts = build_sts(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 2
+            "#,
+            "default",
+        );
+
+        let spec = sts.spec.as_ref().unwrap();
+        assert_eq!(spec.pod_management_policy.as_deref(), Some("Parallel"));
+        assert_eq!(spec.replicas, Some(2));
+        assert_eq!(
+            spec.service_name.as_deref(),
+            Some("simple-zookeeper-server-default-headless")
+        );
+
+        let pod_spec = spec.template.spec.as_ref().unwrap();
+        // Default graceful-shutdown timeout -> terminationGracePeriodSeconds.
+        assert_eq!(pod_spec.termination_grace_period_seconds, Some(120));
+        assert_eq!(
+            pod_spec.service_account_name.as_deref(),
+            Some("simple-zookeeper-serviceaccount")
+        );
+
+        let labels = sts.metadata.labels.as_ref().unwrap();
+        assert_eq!(
+            labels
+                .get("app.kubernetes.io/component")
+                .map(String::as_str),
+            Some("server")
+        );
+        assert_eq!(
+            labels
+                .get("app.kubernetes.io/role-group")
+                .map(String::as_str),
+            Some("default")
+        );
+        // The restarter label lets the restart controller pick up config changes.
+        assert_eq!(
+            labels
+                .get("restarter.stackable.tech/enabled")
+                .map(String::as_str),
+            Some("true")
+        );
+
+        let owner = &sts.metadata.owner_references.as_ref().unwrap()[0];
+        assert_eq!(owner.kind, "ZookeeperCluster");
+        assert_eq!(owner.name, "simple-zookeeper");
+        assert_eq!(owner.controller, Some(true));
+    }
+
+    #[test]
+    fn statefulset_unset_replicas_leaves_spec_replicas_none() {
+        // An unset replica count leaves `.spec.replicas` unset so an HPA can manage it.
+        let sts = build_sts(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default: {}
+            "#,
+            "default",
+        );
+        assert_eq!(sts.spec.as_ref().unwrap().replicas, None);
+    }
+
+    #[test]
+    fn pod_overrides_merge_into_container_resources() {
+        // The role sets the base resources; a rolegroup `podOverride` overrides only cpu, and the
+        // k8s deep-merge must keep the un-overridden memory. Mirrors the kuttl `secondary` group.
+        let sts = build_sts(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                config:
+                  resources:
+                    cpu:
+                      min: 250m
+                      max: 500m
+                    memory:
+                      limit: 512Mi
+                roleGroups:
+                  default:
+                    replicas: 1
+                    podOverrides:
+                      spec:
+                        containers:
+                          - name: zookeeper
+                            resources:
+                              requests:
+                                cpu: 300m
+                              limits:
+                                cpu: 600m
+            "#,
+            "default",
+        );
+
+        let resources = zookeeper_container(&sts).resources.as_ref().unwrap();
+        let requests = resources.requests.as_ref().unwrap();
+        let limits = resources.limits.as_ref().unwrap();
+        // cpu comes from the podOverride ...
+        assert_eq!(requests.get("cpu").unwrap().0, "300m");
+        assert_eq!(limits.get("cpu").unwrap().0, "600m");
+        // ... memory is untouched by the merge (Stackable sets memory request == limit).
+        assert_eq!(requests.get("memory").unwrap().0, "512Mi");
+        assert_eq!(limits.get("memory").unwrap().0, "512Mi");
+    }
+
+    #[test]
+    fn volume_claim_templates_carry_data_and_listener_pvcs() {
+        let sts = build_sts(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+                    config:
+                      resources:
+                        storage:
+                          data:
+                            capacity: 2Gi
+            "#,
+            "default",
+        );
+
+        let pvcs = sts
+            .spec
+            .as_ref()
+            .unwrap()
+            .volume_claim_templates
+            .as_ref()
+            .unwrap();
+
+        let data = pvcs
+            .iter()
+            .find(|p| p.metadata.name.as_deref() == Some("data"))
+            .expect("data PVC template");
+        let storage = data
+            .spec
+            .as_ref()
+            .unwrap()
+            .resources
+            .as_ref()
+            .unwrap()
+            .requests
+            .as_ref()
+            .unwrap()
+            .get("storage")
+            .unwrap();
+        assert_eq!(storage.0, "2Gi");
+
+        // The listener PVC template is always appended alongside the data PVC.
+        assert!(
+            pvcs.iter()
+                .any(|p| p.metadata.name.as_deref() == Some(LISTENER_VOLUME_NAME)),
+            "missing listener PVC template"
+        );
+    }
+
+    #[test]
+    fn statefulset_sets_zk_server_heap_env() {
+        // Candidate #7: the heap value computed in jvm.rs lands on the STS as `ZK_SERVER_HEAP`.
+        // The 512Mi default memory limit x 0.8 -> 409 MiB (pinned by the jvm.rs unit tests).
+        let sts = build_sts(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+            "default",
+        );
+
+        let heap = zookeeper_container(&sts)
+            .env
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|e| e.name == "ZK_SERVER_HEAP")
+            .expect("ZK_SERVER_HEAP env var");
+        assert_eq!(heap.value.as_deref(), Some("409"));
+    }
 }

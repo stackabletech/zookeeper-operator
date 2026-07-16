@@ -115,3 +115,125 @@ pub(crate) fn build_server_rolegroup_metrics_service(
         status: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+    use crate::{
+        crd::ZookeeperRole,
+        zk_controller::test_support::{minimal_zk, validated_cluster},
+    };
+
+    const DEFAULT_ZK: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+
+    fn port(service: &Service, name: &str) -> i32 {
+        service
+            .spec
+            .as_ref()
+            .unwrap()
+            .ports
+            .as_ref()
+            .unwrap()
+            .iter()
+            .find(|p| p.name.as_deref() == Some(name))
+            .unwrap_or_else(|| panic!("missing service port {name}"))
+            .port
+    }
+
+    #[test]
+    fn headless_service_shape() {
+        let validated = validated_cluster(&minimal_zk(DEFAULT_ZK));
+        let rg = RoleGroupName::from_str("default").expect("valid role group name");
+        let service = build_server_rolegroup_headless_service(&validated, &rg);
+
+        assert_eq!(
+            service.metadata.name.as_deref(),
+            Some("simple-zookeeper-server-default-headless")
+        );
+
+        let spec = service.spec.as_ref().unwrap();
+        assert_eq!(spec.type_.as_deref(), Some("ClusterIP"));
+        assert_eq!(spec.cluster_ip.as_deref(), Some("None"));
+        assert_eq!(spec.publish_not_ready_addresses, Some(true));
+
+        // Only the leader/election ports (independent of the client TLS matrix).
+        assert_eq!(port(&service, ZOOKEEPER_LEADER_PORT_NAME), 2888);
+        assert_eq!(port(&service, ZOOKEEPER_ELECTION_PORT_NAME), 3888);
+        assert_eq!(spec.ports.as_ref().unwrap().len(), 2);
+
+        let selector = spec.selector.as_ref().unwrap();
+        assert_eq!(
+            selector
+                .get("app.kubernetes.io/component")
+                .map(String::as_str),
+            Some("server")
+        );
+        assert_eq!(
+            selector
+                .get("app.kubernetes.io/role-group")
+                .map(String::as_str),
+            Some("default")
+        );
+    }
+
+    #[test]
+    fn metrics_service_shape_and_prometheus_annotations() {
+        let validated = validated_cluster(&minimal_zk(DEFAULT_ZK));
+        let rg = RoleGroupName::from_str("default").expect("valid role group name");
+        let rg_config = validated.role_group_configs[&ZookeeperRole::Server][&rg].clone();
+        let service = build_server_rolegroup_metrics_service(&validated, &rg, &rg_config);
+
+        assert_eq!(
+            service.metadata.name.as_deref(),
+            Some("simple-zookeeper-server-default-metrics")
+        );
+
+        // Prometheus scrape annotations.
+        let annotations = service.metadata.annotations.as_ref().unwrap();
+        assert_eq!(
+            annotations.get("prometheus.io/path").map(String::as_str),
+            Some("/metrics")
+        );
+        assert_eq!(
+            annotations.get("prometheus.io/port").map(String::as_str),
+            Some("7000")
+        );
+        assert_eq!(
+            annotations.get("prometheus.io/scheme").map(String::as_str),
+            Some("http")
+        );
+        assert_eq!(
+            annotations.get("prometheus.io/scrape").map(String::as_str),
+            Some("true")
+        );
+        // ... and the scrape label.
+        assert_eq!(
+            service
+                .metadata
+                .labels
+                .as_ref()
+                .unwrap()
+                .get("prometheus.io/scrape")
+                .map(String::as_str),
+            Some("true")
+        );
+
+        // Legacy JMX port plus the Prometheus http port.
+        assert_eq!(port(&service, JMX_METRICS_PORT_NAME), 9505);
+        assert_eq!(port(&service, METRICS_PROVIDER_HTTP_PORT_NAME), 7000);
+    }
+}
