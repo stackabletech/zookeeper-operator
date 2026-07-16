@@ -1,7 +1,6 @@
 {# Templating flags used throughout this file. #}
-{% set use_client_tls = test_scenario['values']['use-server-tls'] == 'true'
-                     or test_scenario['values']['use-client-auth-tls'] == 'true' %}
-{% set use_client_auth = test_scenario['values']['use-client-auth-tls'] == 'true' %}
+{% set use_client_tls = test_scenario['values']['use-tls'] == 'true' %}
+{% set use_client_auth = test_scenario['values']['use-tls'] == 'true' %}
 {% set vector_enabled = lookup('env', 'VECTOR_AGGREGATOR') | length > 0 %}
 {% set zk_client_port = 2282 if use_client_tls else 2181 %}
 ---
