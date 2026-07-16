@@ -132,10 +132,9 @@ impl DereferencedAuthenticationClasses {
         }
     }
 
-    /// USE ONLY IN TESTS! Builds a [`DereferencedAuthenticationClasses`] holding a single TLS
-    /// `AuthenticationClass`, mirroring the `use-client-auth-tls` kuttl scenario. This exercises the
-    /// client-mTLS branches of [`crate::crd::security::ZookeeperSecurity`] (secure client port and
-    /// `ssl.clientAuth=need`), including the case where server TLS is otherwise disabled and the
+    /// Builds a [`DereferencedAuthenticationClasses`] holding a single TLS `AuthenticationClass`.
+    /// Exercises the client-mTLS branches of [`crate::crd::security::ZookeeperSecurity`] (secure
+    /// client port and `ssl.clientAuth=need`), including the case where server TLS is off and the
     /// auth class alone turns TLS on.
     #[cfg(test)]
     pub fn new_for_tests_with_tls_client_auth() -> Self {

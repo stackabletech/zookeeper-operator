@@ -81,24 +81,16 @@ fn is_heap_jvm_argument(jvm_argument: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use stackable_operator::v2::types::operator::RoleGroupName;
-
     use super::*;
     use crate::{
-        crd::{ZookeeperRole, v1alpha1::ZookeeperCluster},
-        zk_controller::test_support::{minimal_zk, validated_cluster},
+        crd::v1alpha1::ZookeeperCluster,
+        zk_controller::test_support::{minimal_zk, server_rolegroup_config, validated_cluster},
     };
 
     /// The validated, merged config for the `default` server role group.
     fn server_default(zk: &ZookeeperCluster) -> ZookeeperRoleGroupConfig {
-        let default_group = RoleGroupName::from_str("default").expect("valid role group name");
-        validated_cluster(zk)
-            .role_group_configs
-            .get(&ZookeeperRole::Server)
-            .and_then(|groups| groups.get(&default_group))
-            .expect("server default role group should exist")
+        server_rolegroup_config(&validated_cluster(zk), "default")
+            .1
             .clone()
     }
 

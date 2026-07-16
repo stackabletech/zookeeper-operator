@@ -530,13 +530,12 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // StatefulSet resource shapes (candidate #2 in unit-tests.md).
+    // StatefulSet resource shapes.
     //
-    // These own what the kuttl smoke `13-assert` asserted on the StatefulSet spec/metadata:
-    // replicas, `podManagementPolicy`, `serviceName`, graceful-shutdown period, container resources
-    // (including the `podOverrides` merge), the `data`/`listener` PVC templates and the heap env var
-    // (which also covers candidate #7's `test_heap.sh`). The `status:` stanza (`readyReplicas`) is a
-    // runtime signal and stays in kuttl.
+    // These own what the kuttl smoke `13-assert` checked on the StatefulSet spec/metadata: replicas,
+    // `podManagementPolicy`, `serviceName`, graceful-shutdown period, container resources (incl. the
+    // `podOverrides` merge), the `data`/`listener` PVC templates and the heap env var. The `status:`
+    // stanza (`readyReplicas`) is a runtime signal and stays in kuttl.
     // ---------------------------------------------------------------------------------------------
 
     fn build_sts(yaml: &str, role_group: &str) -> StatefulSet {
@@ -752,8 +751,8 @@ mod tests {
 
     #[test]
     fn statefulset_sets_zk_server_heap_env() {
-        // Candidate #7: the heap value computed in jvm.rs lands on the STS as `ZK_SERVER_HEAP`.
-        // The 512Mi default memory limit x 0.8 -> 409 MiB (pinned by the jvm.rs unit tests).
+        // The heap value computed in jvm.rs lands on the STS as `ZK_SERVER_HEAP`:
+        // 512Mi default memory limit x 0.8 -> 409 MiB (calculation pinned by the jvm.rs tests).
         let sts = build_sts(
             r#"
             apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -784,10 +783,9 @@ mod tests {
     #[test]
     fn vector_agent_adds_vector_container_to_statefulset() {
         // Enabling the Vector agent wires a `vector` sidecar onto the StatefulSet, mounting the
-        // `config` (for `vector.yaml`) and `log` volumes. The env vars the sidecar carries are set
-        // by the upstream `vector_container` helper, so this only pins the wiring seam this operator
-        // owns: that the sidecar is added at all when the agent is enabled. Without the agent, no
-        // such container exists.
+        // `config` (for `vector.yaml`) and `log` volumes. Its env vars come from the upstream
+        // `vector_container` helper, so this pins only the seam this operator owns: that the sidecar
+        // is added when the agent is enabled.
         let sts = build_sts(
             r#"
             apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -877,10 +875,9 @@ mod tests {
 
     #[test]
     fn env_overrides_apply_with_role_group_precedence() {
-        // Candidate #4: `envOverrides` land on the zookeeper container, with the rolegroup value
-        // winning over the role value on conflict. Mirrors the kuttl smoke `11-assert` setup:
-        // COMMON_VAR is set at both levels (group wins), ROLE_VAR only at the role, GROUP_VAR only
-        // at the group.
+        // `envOverrides` land on the zookeeper container, with the rolegroup value winning over the
+        // role value on conflict: COMMON_VAR is set at both levels (group wins), ROLE_VAR only at
+        // the role, GROUP_VAR only at the group.
         let sts = build_sts(
             r#"
             apiVersion: zookeeper.stackable.tech/v1alpha1

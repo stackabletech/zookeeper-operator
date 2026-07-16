@@ -464,8 +464,7 @@ pub(crate) mod test_support {
         try_validate(zk).expect("validate should succeed for the test fixture")
     }
 
-    /// Runs the real validate step with a single TLS client-auth `AuthenticationClass`, mirroring
-    /// the `use-client-auth-tls` kuttl scenario.
+    /// Runs the real validate step with a single TLS client-auth `AuthenticationClass`.
     pub fn validated_cluster_with_client_auth(zk: &v1alpha1::ZookeeperCluster) -> ValidatedCluster {
         try_validate_with_auth(
             zk,
@@ -778,43 +777,16 @@ mod tests {
     fn test_vector_config_absent_when_agent_disabled() {
         // Default logging has the Vector agent disabled, so no `vector.yaml` is added to the
         // ConfigMap. Pins the negative branch alongside `test_vector_agent_adds_vector_config`.
-        let zookeeper_yaml = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 3
-        "#;
-        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let cm = build_config_map(SERVER_TLS_YAML).data.unwrap();
         assert!(!cm.contains_key("vector.yaml"));
     }
 
     #[test]
     fn test_logback_default_structure() {
         // Pins the structural parts of the rendered `logback.xml` that this operator controls (log
-        // dir + file name, console conversion pattern, max file size, appender wiring). This is the
-        // source of truth that used to live in the kuttl smoke `14-assert` heredoc; the levels are
-        // covered separately by `test_logback_renders_zookeeper_container_log_levels`.
-        let zookeeper_yaml = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 3
-        "#;
-        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        // dir + file name, console conversion pattern, max file size, appender wiring). The levels
+        // are covered separately by `test_logback_renders_zookeeper_container_log_levels`.
+        let cm = build_config_map(SERVER_TLS_YAML).data.unwrap();
         let logback = cm.get("logback.xml").unwrap();
 
         // Console appender + the operator's conversion pattern.
@@ -928,18 +900,14 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------------------------------
-    // TLS x client-auth matrix (candidate #1 in unit-tests.md).
+    // TLS x client-auth matrix.
     //
-    // These four tests own what the kuttl smoke `14-assert` `zoo.cfg` heredoc used to assert across
-    // the `use-server-tls` x `use-client-auth-tls` scenario matrix: the exact set of `zoo.cfg`
-    // properties and the ports/`ssl.*` lines that vary with TLS and client mTLS. They assert on the
-    // structured key/value map produced by the pure `zoo_cfg::build` seam (via `zoo_cfg_map`) rather
-    // than re-parsing rendered text, so key sets and values are compared exactly. Asserting the full
-    // key set catches accidentally added *or* removed properties, and makes the negative cases
-    // (`ssl.clientAuth` absent, etc.) fall out of the set equality instead of needing brittle
-    // `!contains` checks. Only two fixtures are needed: server TLS on vs. off. Client mTLS is layered
-    // on via `validated_cluster_with_client_auth`, which the previous `new_for_tests()` path could
-    // not reach.
+    // These four tests own the `zoo.cfg` TLS/client-mTLS matrix the kuttl smoke `14-assert` heredoc
+    // used to check: the exact property key set plus the ports/`ssl.*` lines that vary with server
+    // TLS and client mTLS. They assert on the structured map from the pure `zoo_cfg::build` seam
+    // (via `zoo_cfg_map`), so the full key set compares exactly: a missing or extra property fails
+    // set equality, with no brittle `!contains` checks. Server TLS is toggled by the two fixtures;
+    // client mTLS is layered on via `validated_cluster_with_client_auth`.
     // ---------------------------------------------------------------------------------------------
 
     /// Server role group with default TLS (server `AuthenticationClass` off, server TLS on).
@@ -1112,8 +1080,8 @@ mod tests {
     }
 
     /// `server.<myid>` quorum lines are rendered into the per-rolegroup `zoo.cfg` with
-    /// `myidOffset` applied and colons escaped, aggregated across *all* server role groups. Mirrors
-    /// the kuttl smoke `14-assert` `server.N` lines (primary offset 10, secondary offset 20).
+    /// `myidOffset` applied and colons escaped, aggregated across *all* server role groups
+    /// (primary offset 10, secondary offset 20).
     #[test]
     fn test_server_lines_use_myid_offset_across_rolegroups() {
         let zk = minimal_zk(
