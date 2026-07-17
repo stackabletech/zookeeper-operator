@@ -754,9 +754,10 @@ mod tests {
     #[test]
     fn vector_agent_adds_vector_container_to_statefulset() {
         // Enabling the Vector agent wires a `vector` sidecar onto the StatefulSet, mounting the
-        // `config` (for `vector.yaml`) and `log` volumes. Its env vars come from the upstream
-        // `vector_container` helper, so this pins only the seam this operator owns: that the sidecar
-        // is added when the agent is enabled.
+        // `config` (for `vector.yaml`) and `log` volumes. The env var format comes from the
+        // upstream `vector_container` helper, but the identity values (cluster/role/role-group) and
+        // the aggregator ConfigMap reference are wiring this operator supplies, so those are pinned
+        // here (they were previously only checked by the kuttl smoke `14-assert` heredoc).
         let sts = build_sts(
             r#"
             apiVersion: zookeeper.stackable.tech/v1alpha1
@@ -807,6 +808,31 @@ mod tests {
             mount_names.contains(&LOG_VOLUME_NAME.as_ref()),
             "vector container missing `log` volume mount: {mount_names:?}"
         );
+
+        // Identity wiring this operator passes into the upstream `vector_container` helper.
+        let env = vector.env.as_ref().expect("vector container env");
+        let env_value = |name: &str| {
+            env.iter()
+                .find(|e| e.name == name)
+                .unwrap_or_else(|| panic!("vector env {name} missing"))
+                .value
+                .as_deref()
+        };
+        assert_eq!(env_value("CLUSTER_NAME"), Some("simple-zookeeper"));
+        assert_eq!(env_value("ROLE_NAME"), Some("server"));
+        assert_eq!(env_value("ROLE_GROUP_NAME"), Some("default"));
+
+        // The aggregator address resolves from the discovery ConfigMap named in `clusterConfig`.
+        let aggregator = env
+            .iter()
+            .find(|e| e.name == "VECTOR_AGGREGATOR_ADDRESS")
+            .expect("VECTOR_AGGREGATOR_ADDRESS env var")
+            .value_from
+            .as_ref()
+            .and_then(|source| source.config_map_key_ref.as_ref())
+            .expect("VECTOR_AGGREGATOR_ADDRESS resolved from a ConfigMap key");
+        assert_eq!(aggregator.name, "vector-aggregator-discovery");
+        assert_eq!(aggregator.key, "ADDRESS");
     }
 
     #[test]

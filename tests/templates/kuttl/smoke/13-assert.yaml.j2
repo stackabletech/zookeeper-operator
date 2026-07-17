@@ -7,7 +7,11 @@
 #
 #   * the StatefulSets actually reconciled to a running state (status.readyReplicas)
 #   * the data PVCs were provisioned and bound (status.phase: Bound)
-#   * the PDB this operator builds is actually applied (bare existence)
+#   * the PDB this operator builds is applied and matched the running server pods
+#     (status.expectedPods)
+#   * the metrics Services this operator builds actually reconciled (bare existence
+#     per role group): readiness does not depend on them, so a unit test alone would
+#     not catch a reconcile that stopped emitting them
 #   * the resources this operator does NOT build itself exist at runtime:
 #       - the cluster-internal `test-zk-server` Service (created by the
 #         listener-operator from the Listener object)
@@ -33,12 +37,26 @@ status:
   readyReplicas: 1
   replicas: 1
 ---
-# Built by this operator; its shape is unit-tested in pdb.rs. Kept here as a bare
-# existence check so the smoke test still proves the PDB is actually applied.
+# Built by this operator; its shape is unit-tested in pdb.rs. Kept here to prove the
+# PDB is applied and that k8s matched it against the 3 running server pods.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: test-zk-server
+status:
+  expectedPods: 3
+---
+# Metrics Services built by this operator (shape unit-tested in service.rs); one bare
+# existence check per role group so a reconcile that stopped emitting them fails here.
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-primary-metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-secondary-metrics
 ---
 # Created at runtime by the listener-operator, not by this operator's build code.
 apiVersion: v1

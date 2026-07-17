@@ -208,12 +208,10 @@ pub fn validate(
 /// (product version, `zookeeper_security`, identity) matches production.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use stackable_operator::cli::OperatorEnvironmentOptions;
-
     use super::{ValidatedZnode, validate};
     use crate::{
         crd::{authentication::DereferencedAuthenticationClasses, v1alpha1},
-        test_support::minimal_zk,
+        test_support::{minimal_zk, operator_environment},
         znode_controller::dereference::DereferencedObjects,
     };
 
@@ -231,14 +229,6 @@ pub(crate) mod test_support {
             .uid
             .get_or_insert_with(|| "5f1d9a2e-3c4b-4a1e-9b7d-2e6f8c0a1b3c".to_owned());
         znode
-    }
-
-    fn operator_environment() -> OperatorEnvironmentOptions {
-        OperatorEnvironmentOptions {
-            operator_namespace: "stackable-operators".to_owned(),
-            operator_service_name: "zookeeper-operator".to_owned(),
-            image_repository: "oci.example.org".to_owned(),
-        }
     }
 
     /// Runs the real znode validate step against a minimal znode fixture and the given

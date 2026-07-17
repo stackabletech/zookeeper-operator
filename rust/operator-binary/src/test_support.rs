@@ -66,7 +66,7 @@ pub fn cluster_info() -> KubernetesClusterInfo {
     }
 }
 
-fn operator_environment() -> OperatorEnvironmentOptions {
+pub(crate) fn operator_environment() -> OperatorEnvironmentOptions {
     OperatorEnvironmentOptions {
         operator_namespace: "stackable-operators".to_owned(),
         operator_service_name: "zookeeper-operator".to_owned(),
