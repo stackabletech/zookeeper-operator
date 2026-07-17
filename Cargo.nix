@@ -10527,7 +10527,7 @@ rec {
       };
       "stackable-zookeeper-operator" = rec {
         crateName = "stackable-zookeeper-operator";
-        version = "0.0.0-dev";
+        version = "26.7.0-rc1";
         edition = "2024";
         crateBin = [
           {
