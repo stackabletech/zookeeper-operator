@@ -599,7 +599,9 @@ mod tests {
     use stackable_operator::k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 
     use super::*;
-    use crate::zk_controller::test_support::{minimal_zk, try_validate, validated_cluster};
+    use crate::test_support::{
+        minimal_zk, server_rolegroup_config, try_validate, validated_cluster,
+    };
 
     #[test]
     fn enabling_vector_without_aggregator_name_fails_validation() {
@@ -658,17 +660,11 @@ mod tests {
     }
 
     /// Looks up the validated, merged config of a single server role group by name.
-    fn server_role_group(
-        validated: &ValidatedCluster,
+    fn server_role_group<'a>(
+        validated: &'a ValidatedCluster,
         role_group: &str,
-    ) -> ZookeeperRoleGroupConfig {
-        let role_group_name = RoleGroupName::from_str(role_group).expect("valid role group name");
-        validated
-            .role_group_configs
-            .get(&ZookeeperRole::Server)
-            .and_then(|groups| groups.get(&role_group_name))
-            .unwrap_or_else(|| panic!("server role group {role_group:?} should exist"))
-            .clone()
+    ) -> &'a ZookeeperRoleGroupConfig {
+        server_rolegroup_config(validated, role_group).1
     }
 
     /// Mirrors the `resources` integration test (which can no longer use >16 character role-group

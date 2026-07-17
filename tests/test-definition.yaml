@@ -11,11 +11,13 @@ dimensions:
       - 3.9.5
       # To use a custom image, add a comma and the full name after the product version
       # - x.x.x,oci.stackable.tech/sdp/zookeeper:x.x.x-stackable0.0.0-dev
-  - name: use-server-tls
-    values:
-      - "true"
-      - "false"
-  - name: use-client-auth-tls
+  # A single toggle for the runtime smoke test: "true" enables server TLS *and*
+  # client-auth (mutual) TLS together, "false" disables TLS entirely. The full
+  # use-server-tls x use-client-auth-tls config-text matrix (server-only TLS, the
+  # auth-forces-TLS cross term, port/ssl.* lines) is covered exhaustively by the
+  # Rust unit tests in zk_controller.rs, so the runtime smoke only needs one TLS
+  # run (exercising test_tls.sh's mutual handshake) and one non-TLS run.
+  - name: use-tls
     values:
       - "true"
       - "false"
@@ -26,8 +28,7 @@ tests:
   - name: smoke
     dimensions:
       - zookeeper
-      - use-server-tls
-      - use-client-auth-tls
+      - use-tls
       - openshift
   - name: delete-rolegroup
     dimensions:
@@ -51,9 +52,7 @@ suites:
       - dimensions:
           - name: zookeeper
             expr: last
-          - name: use-server-tls
-            expr: "true"
-          - name: use-client-auth-tls
+          - name: use-tls
             expr: "true"
   - name: smoke-latest
     select:
@@ -68,9 +67,7 @@ suites:
       - dimensions:
           - name: zookeeper
             expr: last
-          - name: use-server-tls
-            expr: "true"
-          - name: use-client-auth-tls
+          - name: use-tls
             expr: "true"
           - name: openshift
             expr: "true"

@@ -45,7 +45,7 @@ use crate::{
 };
 
 pub(crate) mod build;
-mod dereference;
+pub(crate) mod dereference;
 pub(crate) mod validate;
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
@@ -390,97 +390,24 @@ pub fn error_policy(
     }
 }
 
-/// Shared helpers for building validated test clusters from minimal YAML fixtures.
-#[cfg(test)]
-pub(crate) mod test_support {
-    use stackable_operator::{
-        cli::OperatorEnvironmentOptions, commons::networking::DomainName,
-        utils::cluster_info::KubernetesClusterInfo,
-    };
-
-    use crate::{
-        crd::{authentication::DereferencedAuthenticationClasses, v1alpha1},
-        zk_controller::{
-            dereference::DereferencedObjects,
-            validate::{ValidatedCluster, validate},
-        },
-    };
-
-    /// Parses a minimal `ZookeeperCluster` test fixture, defaulting `namespace`/`uid` so the
-    /// validate step can build a [`ValidatedCluster`].
-    pub fn minimal_zk(yaml: &str) -> v1alpha1::ZookeeperCluster {
-        let mut zk: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(yaml).expect("invalid test ZookeeperCluster YAML");
-        zk.metadata
-            .namespace
-            .get_or_insert_with(|| "default".to_owned());
-        zk.metadata
-            .uid
-            .get_or_insert_with(|| "c27b3971-ca72-42c1-80a4-abdfc1db0ddd".to_owned());
-        zk
-    }
-
-    pub fn cluster_info() -> KubernetesClusterInfo {
-        KubernetesClusterInfo {
-            cluster_domain: DomainName::try_from("cluster.local").expect("valid domain"),
-        }
-    }
-
-    fn operator_environment() -> OperatorEnvironmentOptions {
-        OperatorEnvironmentOptions {
-            operator_namespace: "stackable-operators".to_owned(),
-            operator_service_name: "zookeeper-operator".to_owned(),
-            image_repository: "oci.example.org".to_owned(),
-        }
-    }
-
-    /// Runs the real validate step against a minimal (auth-free) fixture, returning the result so
-    /// tests can assert on validation errors.
-    pub fn try_validate(
-        zk: &v1alpha1::ZookeeperCluster,
-    ) -> Result<ValidatedCluster, super::validate::Error> {
-        validate(
-            zk,
-            &DereferencedObjects {
-                authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
-            },
-            &operator_environment(),
-        )
-    }
-
-    /// Runs the real validate step against a minimal (auth-free) fixture.
-    pub fn validated_cluster(zk: &v1alpha1::ZookeeperCluster) -> ValidatedCluster {
-        try_validate(zk).expect("validate should succeed for the test fixture")
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::collections::{BTreeMap, BTreeSet};
 
-    use stackable_operator::{
-        k8s_openapi::api::core::v1::ConfigMap, v2::types::operator::RoleGroupName,
-    };
+    use stackable_operator::k8s_openapi::api::core::v1::ConfigMap;
 
     use super::*;
-    use crate::zk_controller::test_support::{cluster_info, minimal_zk, validated_cluster};
+    use crate::{
+        test_support::{
+            cluster_info, minimal_zk, minimal_zk_yaml, server_rolegroup_config, validated_cluster,
+            validated_cluster_with_client_auth,
+        },
+        zk_controller::{build::properties::zoo_cfg, validate::ValidatedCluster},
+    };
 
     #[test]
     fn test_default_config() {
-        let zookeeper_yaml = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 3
-        "#;
-        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let cm = build_config_map(&minimal_zk_yaml(3)).data.unwrap();
         let config = cm.get("zoo.cfg").unwrap();
         assert!(config.contains(
             "authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider"
@@ -536,23 +463,11 @@ mod tests {
 
     #[test]
     fn test_seeded_operator_defaults() {
-        // These values are seeded directly by the ConfigMap builder and must stay
-        // byte-identical (pinned by the kuttl snapshot
-        // `tests/templates/kuttl/smoke/14-assert.yaml.j2`).
-        let zookeeper_yaml = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 3
-        "#;
-        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        // These values are seeded directly by the ConfigMap builder and must stay byte-identical.
+        // This test (together with the TLS x client-auth matrix tests below) is the source of truth
+        // for the rendered `zoo.cfg` / `security.properties`; the kuttl smoke keeps only the
+        // live-cluster readiness/status checks.
+        let cm = build_config_map(&minimal_zk_yaml(3)).data.unwrap();
 
         // `security.properties` is fully operator-injected; assert it byte-for-byte.
         assert_eq!(
@@ -666,20 +581,7 @@ mod tests {
     fn test_custom_log_config_omits_logback() {
         // Automatic logging renders `logback.xml` into the ConfigMap; a custom log ConfigMap
         // suppresses it (the `Custom` arm of `build_logback_config`).
-        let automatic_yaml = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 3
-        "#;
-        let automatic = build_config_map(automatic_yaml).data.unwrap();
+        let automatic = build_config_map(&minimal_zk_yaml(3)).data.unwrap();
         assert!(automatic.contains_key("logback.xml"));
 
         let custom_yaml = r#"
@@ -731,15 +633,385 @@ mod tests {
         assert!(cm.contains_key("vector.yaml"));
     }
 
+    #[test]
+    fn test_vector_config_absent_when_agent_disabled() {
+        // Default logging has the Vector agent disabled, so no `vector.yaml` is added to the
+        // ConfigMap. Pins the negative branch alongside `test_vector_agent_adds_vector_config`.
+        let cm = build_config_map(SERVER_TLS_YAML).data.unwrap();
+        assert!(!cm.contains_key("vector.yaml"));
+    }
+
+    #[test]
+    fn test_logback_default_structure() {
+        // Pins the structural parts of the rendered `logback.xml` that this operator controls (log
+        // dir + file name, console conversion pattern, max file size, appender wiring). The levels
+        // are covered separately by `test_logback_renders_zookeeper_container_log_levels`.
+        let cm = build_config_map(SERVER_TLS_YAML).data.unwrap();
+        let logback = cm.get("logback.xml").unwrap();
+
+        // Console appender + the operator's conversion pattern.
+        assert!(
+            logback.contains(
+                r#"<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">"#
+            ),
+            "{logback}"
+        );
+        assert!(
+            logback.contains(
+                "<pattern>%d{ISO8601} [myid:%X{myid}] - %-5p [%t:%C{1}@%L] - %m%n</pattern>"
+            ),
+            "{logback}"
+        );
+
+        // Rolling file appender writing to the operator's log dir + file name.
+        assert!(
+            logback.contains(
+                r#"<appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">"#
+            ),
+            "{logback}"
+        );
+        assert!(
+            logback.contains("<File>/stackable/log/zookeeper/zookeeper.log4j.xml</File>"),
+            "{logback}"
+        );
+        assert!(
+            logback.contains(
+                "<FileNamePattern>/stackable/log/zookeeper/zookeeper.log4j.xml.%i</FileNamePattern>"
+            ),
+            "{logback}"
+        );
+        // 10 MiB total across 2 files -> 5MB per file (derived from MAX_ZK_LOG_FILES_SIZE).
+        assert!(
+            logback.contains("<MaxFileSize>5MB</MaxFileSize>"),
+            "{logback}"
+        );
+
+        // Root wires both appenders and defaults to INFO.
+        assert!(logback.contains(r#"<root level="INFO">"#), "{logback}");
+        assert!(
+            logback.contains(r#"<appender-ref ref="CONSOLE" />"#)
+                && logback.contains(r#"<appender-ref ref="FILE" />"#),
+            "{logback}"
+        );
+    }
+
+    #[test]
+    fn test_logback_renders_zookeeper_container_log_levels() {
+        // The zookeeper container's automatic log config drives `logback.xml`: the console and file
+        // appender ThresholdFilter levels, per-logger levels, and the root level. (The `prepare` and
+        // `vector` container levels do NOT affect `logback.xml` — they flow into those containers'
+        // own config via upstream behavior — so only the zookeeper container is set here.)
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
+                config:
+                  logging:
+                    containers:
+                      zookeeper:
+                        console:
+                          level: DEBUG
+                        file:
+                          level: WARN
+                        loggers:
+                          ROOT:
+                            level: ERROR
+                          org.apache.zookeeper:
+                            level: TRACE
+        "#;
+        let cm = build_config_map(zookeeper_yaml).data.unwrap();
+        let logback = cm.get("logback.xml").unwrap();
+
+        // The console and file appenders share the same ThresholdFilter element, so split on the
+        // FILE appender to tie each level to its appender: console -> DEBUG, file -> WARN.
+        let (console_part, file_part) = logback
+            .split_once(r#"name="FILE""#)
+            .unwrap_or_else(|| panic!("FILE appender present: {logback}"));
+        assert!(
+            console_part.contains("<level>DEBUG</level>"),
+            "console appender level should be DEBUG: {logback}"
+        );
+        assert!(
+            !console_part.contains("<level>WARN</level>"),
+            "console appender level should not be WARN: {logback}"
+        );
+        assert!(
+            file_part.contains("<level>WARN</level>"),
+            "file appender level should be WARN: {logback}"
+        );
+
+        // The ROOT logger level maps to the `<root>` element; a named logger renders its own entry.
+        assert!(
+            logback.contains(r#"<root level="ERROR">"#),
+            "root level should be ERROR: {logback}"
+        );
+        assert!(
+            logback.contains(r#"<logger name="org.apache.zookeeper" level="TRACE" />"#),
+            "named logger should render at TRACE: {logback}"
+        );
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // TLS x client-auth matrix.
+    //
+    // These four tests own the `zoo.cfg` TLS/client-mTLS matrix the kuttl smoke `14-assert` heredoc
+    // used to check: the exact property key set plus the ports/`ssl.*` lines that vary with server
+    // TLS and client mTLS. They assert on the structured map from the pure `zoo_cfg::build` seam
+    // (via `zoo_cfg_map`), so the full key set compares exactly: a missing or extra property fails
+    // set equality, with no brittle `!contains` checks. Server TLS is toggled by the two fixtures;
+    // client mTLS is layered on via `validated_cluster_with_client_auth`.
+    // ---------------------------------------------------------------------------------------------
+
+    /// Server role group with default TLS (server `AuthenticationClass` off, server TLS on).
+    const SERVER_TLS_YAML: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+
+    /// As [`SERVER_TLS_YAML`] but with server TLS explicitly disabled (`serverSecretClass: null`).
+    const NO_SERVER_TLS_YAML: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          clusterConfig:
+            tls:
+              serverSecretClass: null
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+
+    /// Builds the structured `zoo.cfg` key/value map for a server role group via the pure
+    /// `zoo_cfg::build` seam (before Java-properties serialization). Asserting on this map gives
+    /// exact key-set and value comparisons without a hand-rolled parser; the serialization itself is
+    /// pinned separately (`test_server_lines_use_myid_offset_across_rolegroups`,
+    /// `test_seeded_operator_defaults`).
+    fn zoo_cfg_map(validated: &ValidatedCluster, role_group: &str) -> BTreeMap<String, String> {
+        let (_, rolegroup_config) = server_rolegroup_config(validated, role_group);
+        let server_addresses = zoo_cfg::server_addresses(validated, &cluster_info());
+        zoo_cfg::build(validated, rolegroup_config, &server_addresses)
+    }
+
+    /// Builds a `BTreeSet<String>` from string slices, for comparing against `zoo.cfg` key sets.
+    fn key_set<'a>(keys: impl IntoIterator<Item = &'a str>) -> BTreeSet<String> {
+        keys.into_iter().map(str::to_owned).collect()
+    }
+
+    /// The non-`server.<myid>` property keys of a built `zoo.cfg` map. The quorum `server.<myid>`
+    /// entries are replica-dependent and asserted separately in
+    /// `test_server_lines_use_myid_offset_across_rolegroups`.
+    fn property_keys(zoo_cfg: &BTreeMap<String, String>) -> BTreeSet<String> {
+        zoo_cfg
+            .keys()
+            .filter(|k| !k.starts_with("server."))
+            .cloned()
+            .collect()
+    }
+
+    /// The `zoo.cfg` keys that are always present regardless of the TLS/client-auth matrix
+    /// (operator-injected defaults + quorum TLS, which is always on).
+    fn base_zoo_cfg_keys() -> BTreeSet<String> {
+        key_set([
+            "admin.serverPort",
+            "authProvider.x509",
+            "clientPort",
+            "dataDir",
+            "initLimit",
+            "metricsProvider.className",
+            "metricsProvider.httpPort",
+            "serverCnxnFactory",
+            "ssl.quorum.clientAuth",
+            "ssl.quorum.hostnameVerification",
+            "ssl.quorum.keyStore.location",
+            "ssl.quorum.trustStore.location",
+            "sslQuorum",
+            "syncLimit",
+            "tickTime",
+        ])
+    }
+
+    /// TLS off, client-auth off: insecure client port, no server-`ssl.*` lines, no
+    /// `client.portUnification`, no `ssl.clientAuth`.
+    #[test]
+    fn test_matrix_no_tls_no_client_auth() {
+        let zoo_cfg = zoo_cfg_map(
+            &validated_cluster(&minimal_zk(NO_SERVER_TLS_YAML)),
+            "default",
+        );
+
+        // The exact base key set proves the absence of every server-TLS / client-auth property.
+        assert_eq!(property_keys(&zoo_cfg), base_zoo_cfg_keys());
+        assert_eq!(zoo_cfg["clientPort"], "2181");
+    }
+
+    /// TLS on (default), client-auth off: secure client port, server-`ssl.*` lines and
+    /// `client.portUnification`, but no `ssl.clientAuth` (proven by the key set).
+    #[test]
+    fn test_matrix_server_tls_no_client_auth() {
+        let zoo_cfg = zoo_cfg_map(&validated_cluster(&minimal_zk(SERVER_TLS_YAML)), "default");
+
+        assert_eq!(
+            property_keys(&zoo_cfg),
+            &base_zoo_cfg_keys()
+                | &key_set([
+                    "client.portUnification",
+                    "ssl.hostnameVerification",
+                    "ssl.keyStore.location",
+                    "ssl.trustStore.location",
+                ]),
+        );
+        assert_eq!(zoo_cfg["clientPort"], "2282");
+        assert_eq!(zoo_cfg["client.portUnification"], "true");
+        assert_eq!(
+            zoo_cfg["ssl.keyStore.location"],
+            "/stackable/server_tls/keystore.p12"
+        );
+    }
+
+    /// TLS on, client-auth on: as above plus `ssl.clientAuth=need`.
+    #[test]
+    fn test_matrix_server_tls_and_client_auth() {
+        let zoo_cfg = zoo_cfg_map(
+            &validated_cluster_with_client_auth(&minimal_zk(SERVER_TLS_YAML)),
+            "default",
+        );
+
+        assert_eq!(
+            property_keys(&zoo_cfg),
+            &base_zoo_cfg_keys()
+                | &key_set([
+                    "client.portUnification",
+                    "ssl.clientAuth",
+                    "ssl.hostnameVerification",
+                    "ssl.keyStore.location",
+                    "ssl.trustStore.location",
+                ]),
+        );
+        assert_eq!(zoo_cfg["clientPort"], "2282");
+        assert_eq!(zoo_cfg["ssl.clientAuth"], "need");
+    }
+
+    /// Client-auth on while server TLS is explicitly disabled: the client `AuthenticationClass`
+    /// alone turns TLS on (secure port, `ssl.*` lines, `client.portUnification`) and adds
+    /// `ssl.clientAuth=need`. This cross term was previously unreachable in unit tests.
+    #[test]
+    fn test_matrix_client_auth_forces_tls_without_server_secret_class() {
+        let zoo_cfg = zoo_cfg_map(
+            &validated_cluster_with_client_auth(&minimal_zk(NO_SERVER_TLS_YAML)),
+            "default",
+        );
+
+        assert_eq!(
+            property_keys(&zoo_cfg),
+            &base_zoo_cfg_keys()
+                | &key_set([
+                    "client.portUnification",
+                    "ssl.clientAuth",
+                    "ssl.hostnameVerification",
+                    "ssl.keyStore.location",
+                    "ssl.trustStore.location",
+                ]),
+        );
+        assert_eq!(zoo_cfg["clientPort"], "2282");
+        assert_eq!(zoo_cfg["client.portUnification"], "true");
+        assert_eq!(zoo_cfg["ssl.clientAuth"], "need");
+    }
+
+    /// `server.<myid>` quorum lines are rendered into the per-rolegroup `zoo.cfg` with
+    /// `myidOffset` applied and colons escaped, aggregated across *all* server role groups
+    /// (primary offset 10, secondary offset 20).
+    #[test]
+    fn test_server_lines_use_myid_offset_across_rolegroups() {
+        let zk = minimal_zk(
+            r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: test-zk
+        spec:
+          image:
+            productVersion: "3.9.5"
+          clusterConfig:
+            tls:
+              serverSecretClass: null
+          servers:
+            roleGroups:
+              primary:
+                replicas: 2
+                config:
+                  myidOffset: 10
+              secondary:
+                replicas: 1
+                config:
+                  myidOffset: 20
+        "#,
+        );
+        let validated = validated_cluster(&zk);
+
+        // The `server.N` entries are identical in every rolegroup's `zoo.cfg`; inspect the primary's.
+        let zoo_cfg = zoo_cfg_map(&validated, "primary");
+        let server_keys: BTreeSet<String> = zoo_cfg
+            .keys()
+            .filter(|k| k.starts_with("server."))
+            .cloned()
+            .collect();
+        // Exactly the offset-shifted ids and nothing else: primary (offset 10) -> 10, 11;
+        // secondary (offset 20) -> 20.
+        assert_eq!(
+            server_keys,
+            key_set(["server.10", "server.11", "server.20"])
+        );
+        // Composed value (pre-serialization, colons unescaped): FQDN + leader/election ports +
+        // non-TLS client port 2181.
+        assert_eq!(
+            zoo_cfg["server.10"],
+            "test-zk-server-primary-0.test-zk-server-primary-headless.default.svc.cluster.local:2888:3888;2181"
+        );
+
+        // The Java-properties serializer escapes the colons (`\:`); pin that on the rendered file.
+        let rendered = config_map_for(&validated, "primary");
+        let zoo_cfg_file = rendered.data.as_ref().unwrap().get("zoo.cfg").unwrap();
+        assert!(
+            zoo_cfg_file.contains(
+                "server.10=test-zk-server-primary-0.test-zk-server-primary-headless.default.svc.cluster.local\\:2888\\:3888;2181"
+            ),
+            "{zoo_cfg_file}"
+        );
+    }
+
     fn build_config_map(zookeeper_yaml: &str) -> ConfigMap {
-        let zookeeper = minimal_zk(zookeeper_yaml);
-        let validated_cluster = validated_cluster(&zookeeper);
-        let role_group_name = RoleGroupName::from_str("default").expect("valid role group name");
-        let rolegroup_config =
-            &validated_cluster.role_group_configs[&ZookeeperRole::Server][&role_group_name];
+        config_map_for(&validated_cluster(&minimal_zk(zookeeper_yaml)), "default")
+    }
+
+    /// Builds the rolegroup `ConfigMap` for the named server role group of a validated cluster.
+    fn config_map_for(validated_cluster: &ValidatedCluster, role_group: &str) -> ConfigMap {
+        let (role_group_name, rolegroup_config) =
+            server_rolegroup_config(validated_cluster, role_group);
 
         config_map::build_server_rolegroup_config_map(
-            &validated_cluster,
+            validated_cluster,
             &cluster_info(),
             &role_group_name,
             rolegroup_config,

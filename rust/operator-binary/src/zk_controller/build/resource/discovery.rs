@@ -225,6 +225,59 @@ mod tests {
     };
 
     use super::*;
+    use crate::{
+        test_support::{minimal_zk, validated_cluster},
+        zk_controller::ZK_CONTROLLER_NAME,
+        znode_controller::{
+            ZNODE_CONTROLLER_NAME,
+            validate::test_support::{minimal_znode, validated_znode},
+        },
+    };
+
+    /// A `ZookeeperCluster` fixture. `test_support`'s auth-free `new_for_tests()` still enables
+    /// server TLS, so this resolves to the secure client port (2282).
+    const TLS_ZK: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: test-zk
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+
+    /// Same as [`TLS_ZK`] but with `serverSecretClass: null`, disabling server TLS so the insecure
+    /// client port (2181) is used.
+    const NON_TLS_ZK: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: test-zk
+        spec:
+          image:
+            productVersion: "3.9.5"
+          clusterConfig:
+            tls:
+              serverSecretClass: null
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+
+    const ZNODE: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperZnode
+        metadata:
+          name: test-znode
+        spec:
+          clusterRef:
+            name: test-zk
+        "#;
 
     fn listener(ingress_addresses: Option<Vec<ListenerIngress>>) -> Listener {
         Listener {
@@ -241,12 +294,24 @@ mod tests {
         }
     }
 
-    fn ingress(port: i32) -> ListenerIngress {
+    fn ingress_at(address: &str, port: i32) -> ListenerIngress {
         ListenerIngress {
-            address: "node-0".to_owned(),
+            address: address.to_owned(),
             address_type: AddressType::Hostname,
             ports: BTreeMap::from([(ZOOKEEPER_SERVER_PORT_NAME.to_owned(), port)]),
         }
+    }
+
+    fn ingress(port: i32) -> ListenerIngress {
+        ingress_at("node-0", port)
+    }
+
+    /// Pulls a `.data` key out of a built ConfigMap.
+    fn data<'a>(cm: &'a ConfigMap, key: &str) -> &'a str {
+        cm.data
+            .as_ref()
+            .and_then(|d| d.get(key))
+            .unwrap_or_else(|| panic!("discovery ConfigMap missing key {key}"))
     }
 
     #[test]
@@ -283,6 +348,93 @@ mod tests {
         assert!(matches!(
             listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME),
             Err(Error::InvalidPort { .. })
+        ));
+    }
+
+    #[test]
+    fn cluster_discovery_cm_data_tls() {
+        // TLS cluster -> secure client port 2282. The listener exposes the same port, as it does at
+        // runtime. No chroot, so `ZOOKEEPER` equals `ZOOKEEPER_HOSTS` and `ZOOKEEPER_CHROOT` is `/`.
+        let validated = validated_cluster(&minimal_zk(TLS_ZK));
+        let cm = build_discovery_configmap(
+            &validated,
+            ZK_CONTROLLER_NAME,
+            listener(Some(vec![ingress(2282)])),
+        )
+        .expect("discovery CM builds");
+
+        assert_eq!(data(&cm, "ZOOKEEPER"), "node-0:2282");
+        assert_eq!(data(&cm, "ZOOKEEPER_HOSTS"), "node-0:2282");
+        assert_eq!(data(&cm, "ZOOKEEPER_CLIENT_PORT"), "2282");
+        assert_eq!(data(&cm, "ZOOKEEPER_CHROOT"), "/");
+    }
+
+    #[test]
+    fn cluster_discovery_cm_data_non_tls() {
+        // Server TLS disabled -> insecure client port 2181.
+        let validated = validated_cluster(&minimal_zk(NON_TLS_ZK));
+        let cm = build_discovery_configmap(
+            &validated,
+            ZK_CONTROLLER_NAME,
+            listener(Some(vec![ingress(2181)])),
+        )
+        .expect("discovery CM builds");
+
+        assert_eq!(data(&cm, "ZOOKEEPER"), "node-0:2181");
+        assert_eq!(data(&cm, "ZOOKEEPER_HOSTS"), "node-0:2181");
+        assert_eq!(data(&cm, "ZOOKEEPER_CLIENT_PORT"), "2181");
+        assert_eq!(data(&cm, "ZOOKEEPER_CHROOT"), "/");
+    }
+
+    #[test]
+    fn cluster_discovery_cm_joins_multiple_hosts_sorted() {
+        // Multiple listener ingress addresses are joined into one comma-separated connection string,
+        // ordered by the `BTreeSet` in `listener_addresses` (i.e. sorted).
+        let validated = validated_cluster(&minimal_zk(TLS_ZK));
+        let cm = build_discovery_configmap(
+            &validated,
+            ZK_CONTROLLER_NAME,
+            listener(Some(vec![
+                ingress_at("node-1", 2282),
+                ingress_at("node-0", 2282),
+            ])),
+        )
+        .expect("discovery CM builds");
+
+        assert_eq!(data(&cm, "ZOOKEEPER"), "node-0:2282,node-1:2282");
+        assert_eq!(data(&cm, "ZOOKEEPER_HOSTS"), "node-0:2282,node-1:2282");
+    }
+
+    #[test]
+    fn znode_discovery_cm_appends_chroot_to_connection_string_only() {
+        // The chroot is appended to `ZOOKEEPER` (the merged Java client string) but NOT to
+        // `ZOOKEEPER_HOSTS` (kept separate for clients that don't understand the merged format).
+        let validated = validated_znode(&minimal_znode(ZNODE), TLS_ZK);
+        let cm = build_znode_discovery_configmap(
+            &validated,
+            ZNODE_CONTROLLER_NAME,
+            listener(Some(vec![ingress(2282)])),
+            "/znode-abc",
+        )
+        .expect("znode discovery CM builds");
+
+        assert_eq!(data(&cm, "ZOOKEEPER"), "node-0:2282/znode-abc");
+        assert_eq!(data(&cm, "ZOOKEEPER_HOSTS"), "node-0:2282");
+        assert_eq!(data(&cm, "ZOOKEEPER_CLIENT_PORT"), "2282");
+        assert_eq!(data(&cm, "ZOOKEEPER_CHROOT"), "/znode-abc");
+    }
+
+    #[test]
+    fn znode_discovery_cm_rejects_relative_chroot() {
+        let validated = validated_znode(&minimal_znode(ZNODE), TLS_ZK);
+        assert!(matches!(
+            build_znode_discovery_configmap(
+                &validated,
+                ZNODE_CONTROLLER_NAME,
+                listener(Some(vec![ingress(2282)])),
+                "znode-abc",
+            ),
+            Err(Error::RelativeChroot { .. })
         ));
     }
 }

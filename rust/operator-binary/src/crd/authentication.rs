@@ -131,4 +131,27 @@ impl DereferencedAuthenticationClasses {
             dereferenced_authentication_classes: vec![],
         }
     }
+
+    /// Builds a [`DereferencedAuthenticationClasses`] holding a single TLS `AuthenticationClass`.
+    /// Exercises the client-mTLS branches of [`crate::crd::security::ZookeeperSecurity`] (secure
+    /// client port and `ssl.clientAuth=need`), including the case where server TLS is off and the
+    /// auth class alone turns TLS on.
+    #[cfg(test)]
+    pub fn new_for_tests_with_tls_client_auth() -> Self {
+        use stackable_operator::crd::authentication::tls;
+
+        let auth_class = core::v1alpha1::AuthenticationClass::new(
+            "zk-client-auth-tls",
+            core::v1alpha1::AuthenticationClassSpec {
+                provider: core::v1alpha1::AuthenticationClassProvider::Tls(
+                    tls::v1alpha1::AuthenticationProvider {
+                        client_cert_secret_class: Some("zk-client-auth-secret".to_owned()),
+                    },
+                ),
+            },
+        );
+        DereferencedAuthenticationClasses {
+            dereferenced_authentication_classes: vec![auth_class],
+        }
+    }
 }

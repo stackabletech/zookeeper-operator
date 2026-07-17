@@ -200,3 +200,48 @@ pub fn validate(
         object_overrides: znode.spec.object_overrides.clone(),
     })
 }
+
+/// Shared helpers for building validated test znodes from minimal YAML fixtures.
+///
+/// Mirrors the crate-level `test_support`: rather than hand-constructing a [`ValidatedZnode`]
+/// (whose `metadata` is private), tests run the real [`validate`] step so the wiring under test
+/// (product version, `zookeeper_security`, identity) matches production.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::{ValidatedZnode, validate};
+    use crate::{
+        crd::{authentication::DereferencedAuthenticationClasses, v1alpha1},
+        test_support::{minimal_zk, operator_environment},
+        znode_controller::dereference::DereferencedObjects,
+    };
+
+    /// Parses a minimal `ZookeeperZnode` test fixture, defaulting `namespace`/`uid` so the
+    /// validate step can build a [`ValidatedZnode`].
+    pub fn minimal_znode(yaml: &str) -> v1alpha1::ZookeeperZnode {
+        let mut znode: v1alpha1::ZookeeperZnode =
+            serde_yaml::from_str(yaml).expect("invalid test ZookeeperZnode YAML");
+        znode
+            .metadata
+            .namespace
+            .get_or_insert_with(|| "default".to_owned());
+        znode
+            .metadata
+            .uid
+            .get_or_insert_with(|| "5f1d9a2e-3c4b-4a1e-9b7d-2e6f8c0a1b3c".to_owned());
+        znode
+    }
+
+    /// Runs the real znode validate step against a minimal znode fixture and the given
+    /// `ZookeeperCluster` YAML (which controls product version and `zookeeper_security`).
+    pub fn validated_znode(znode: &v1alpha1::ZookeeperZnode, zk_yaml: &str) -> ValidatedZnode {
+        validate(
+            znode,
+            &DereferencedObjects {
+                zk: minimal_zk(zk_yaml),
+                authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
+            },
+            &operator_environment(),
+        )
+        .expect("znode validate should succeed for the test fixture")
+    }
+}
