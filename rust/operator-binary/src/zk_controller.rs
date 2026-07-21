@@ -3,11 +3,17 @@ use std::{hash::Hasher, str::FromStr, sync::Arc};
 
 use const_format::concatcp;
 use fnv::FnvHasher;
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::ClusterResourceApplyStrategy,
     commons::rbac::build_rbac_resources,
+    crd::listener::v1alpha1::Listener,
+    k8s_openapi::api::{
+        apps::v1::StatefulSet,
+        core::v1::{ConfigMap, Service},
+        policy::v1::PodDisruptionBudget,
+    },
     kube::{
         api::DynamicObject,
         core::{DeserializeGuard, error_boundary},
@@ -20,26 +26,15 @@ use stackable_operator::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
     },
-    v2::{
-        cluster_resources::cluster_resources_new,
-        types::operator::{ControllerName, RoleGroupName},
-    },
+    v2::{cluster_resources::cluster_resources_new, types::operator::ControllerName},
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
     APP_NAME, OPERATOR_NAME, ObjectRef,
-    crd::{ZookeeperRole, v1alpha1},
+    crd::v1alpha1,
     zk_controller::{
-        build::resource::{
-            config_map, discovery,
-            listener::build_role_listener,
-            pdb::build_pdb,
-            service::{
-                build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
-            },
-            statefulset::build_server_rolegroup_statefulset,
-        },
+        build::resource::discovery,
         validate::{operator_name, product_name},
     },
 };
@@ -62,7 +57,6 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Snafu, Debug, EnumDiscriminants)]
 #[strum_discriminants(derive(IntoStaticStr))]
-#[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[snafu(display("ZookeeperCluster object is invalid"))]
     InvalidZookeeperCluster {
@@ -81,40 +75,23 @@ pub enum Error {
     #[snafu(display("internal operator failure"))]
     InternalOperatorFailure { source: crate::crd::Error },
 
-    #[snafu(display("failed to apply Service for role group {rolegroup}"))]
-    ApplyRoleGroupService {
+    #[snafu(display("failed to build the Kubernetes resources"))]
+    BuildResources { source: build::Error },
+
+    #[snafu(display("failed to apply Kubernetes resource"))]
+    ApplyResource {
         source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupName,
-    },
-
-    #[snafu(display("failed to build ConfigMap for role group {rolegroup}"))]
-    BuildRoleGroupConfigMap {
-        source: config_map::Error,
-        rolegroup: RoleGroupName,
-    },
-
-    #[snafu(display("failed to apply ConfigMap for role group {rolegroup}"))]
-    ApplyRoleGroupConfig {
-        source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupName,
-    },
-
-    #[snafu(display("failed to build StatefulSet for role group {rolegroup}"))]
-    BuildRoleGroupStatefulSet {
-        source: build::resource::statefulset::Error,
-        rolegroup: RoleGroupName,
-    },
-
-    #[snafu(display("failed to apply StatefulSet for role group {rolegroup}"))]
-    ApplyRoleGroupStatefulSet {
-        source: stackable_operator::cluster_resources::Error,
-        rolegroup: RoleGroupName,
     },
 
     #[snafu(display("object is missing metadata to build owner reference"))]
     ObjectMissingMetadataForOwnerRef {
         source: stackable_operator::builder::meta::Error,
     },
+
+    #[snafu(display(
+        "no role Listener was applied; the discovery ConfigMap is derived from the applied role Listener"
+    ))]
+    NoRoleListener,
 
     #[snafu(display("failed to build discovery ConfigMap"))]
     BuildDiscoveryConfig { source: discovery::Error },
@@ -149,22 +126,12 @@ pub enum Error {
         source: stackable_operator::cluster_resources::Error,
     },
 
-    #[snafu(display("failed to apply PodDisruptionBudget"))]
-    ApplyPdb {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
     #[snafu(display("failed to build label"))]
     BuildLabel { source: LabelError },
 
     #[snafu(display("failed to build object meta data"))]
     ObjectMeta {
         source: stackable_operator::builder::meta::Error,
-    },
-
-    #[snafu(display("failed to apply group listener"))]
-    ApplyGroupListener {
-        source: stackable_operator::cluster_resources::Error,
     },
 }
 
@@ -180,12 +147,10 @@ impl ReconcilerError for Error {
             Error::ValidateCluster { .. } => None,
             Error::CrdValidationFailure { .. } => None,
             Error::InternalOperatorFailure { .. } => None,
-            Error::ApplyRoleGroupService { .. } => None,
-            Error::BuildRoleGroupConfigMap { .. } => None,
-            Error::ApplyRoleGroupConfig { .. } => None,
-            Error::BuildRoleGroupStatefulSet { .. } => None,
-            Error::ApplyRoleGroupStatefulSet { .. } => None,
+            Error::BuildResources { .. } => None,
+            Error::ApplyResource { .. } => None,
             Error::ObjectMissingMetadataForOwnerRef { .. } => None,
+            Error::NoRoleListener => None,
             Error::BuildDiscoveryConfig { .. } => None,
             Error::ApplyDiscoveryConfig { .. } => None,
             Error::ApplyStatus { .. } => None,
@@ -193,12 +158,21 @@ impl ReconcilerError for Error {
             Error::ApplyRoleBinding { .. } => None,
             Error::BuildRbacResources { .. } => None,
             Error::DeleteOrphans { .. } => None,
-            Error::ApplyPdb { .. } => None,
             Error::BuildLabel { .. } => None,
             Error::ObjectMeta { .. } => None,
-            Error::ApplyGroupListener { .. } => None,
         }
     }
+}
+
+/// Every Kubernetes resource produced by the client-free [`build()`](build::build) step.
+///
+/// The discovery `ConfigMap` is deliberately absent — see [`build()`](build::build).
+pub struct KubernetesResources {
+    pub stateful_sets: Vec<StatefulSet>,
+    pub services: Vec<Service>,
+    pub listeners: Vec<Listener>,
+    pub config_maps: Vec<ConfigMap>,
+    pub pod_disruption_budgets: Vec<PodDisruptionBudget>,
 }
 
 pub async fn reconcile_zk(
@@ -245,7 +219,7 @@ pub async fn reconcile_zk(
     .context(BuildRbacResourcesSnafu)?;
 
     cluster_resources
-        .add(client, rbac_sa.clone())
+        .add(client, rbac_sa)
         .await
         .context(ApplyServiceAccountSnafu)?;
 
@@ -254,98 +228,63 @@ pub async fn reconcile_zk(
         .await
         .context(ApplyRoleBindingSnafu)?;
 
+    let resources = build::build(&validated_cluster, &client.kubernetes_cluster_info)
+        .context(BuildResourcesSnafu)?;
+
     let mut ss_cond_builder = StatefulSetConditionBuilder::default();
 
-    let zk_role = ZookeeperRole::Server;
-    let server_role_group_configs = validated_cluster
-        .role_group_configs
-        .get(&zk_role)
-        .into_iter()
-        .flatten();
-    for (rolegroup_name, rolegroup_config) in server_role_group_configs {
-        // Resource naming, labels and owner references are derived from the `ValidatedCluster` and
-        // the type-safe `RoleGroupName`.
-        let rg_headless_service =
-            build_server_rolegroup_headless_service(&validated_cluster, rolegroup_name);
-        let rg_metrics_service = build_server_rolegroup_metrics_service(
-            &validated_cluster,
-            rolegroup_name,
-            rolegroup_config,
-        );
-        let rg_configmap = config_map::build_server_rolegroup_config_map(
-            &validated_cluster,
-            &client.kubernetes_cluster_info,
-            rolegroup_name,
-            rolegroup_config,
-        )
-        .context(BuildRoleGroupConfigMapSnafu {
-            rolegroup: rolegroup_name.clone(),
-        })?;
-        let rg_statefulset = build_server_rolegroup_statefulset(
-            &validated_cluster,
-            rolegroup_name,
-            rolegroup_config,
-        )
-        .with_context(|_| BuildRoleGroupStatefulSetSnafu {
-            rolegroup: rolegroup_name.clone(),
-        })?;
-
+    for service in resources.services {
         cluster_resources
-            .add(client, rg_headless_service)
+            .add(client, service)
             .await
-            .with_context(|_| ApplyRoleGroupServiceSnafu {
-                rolegroup: rolegroup_name.clone(),
-            })?;
-        cluster_resources
-            .add(client, rg_metrics_service)
-            .await
-            .with_context(|_| ApplyRoleGroupServiceSnafu {
-                rolegroup: rolegroup_name.clone(),
-            })?;
-        cluster_resources
-            .add(client, rg_configmap)
-            .await
-            .with_context(|_| ApplyRoleGroupConfigSnafu {
-                rolegroup: rolegroup_name.clone(),
-            })?;
-
-        // Note: The StatefulSet needs to be applied after all ConfigMaps and Secrets it mounts
-        // to prevent unnecessary Pod restarts.
-        // See https://github.com/stackabletech/commons-operator/issues/111 for details.
-        ss_cond_builder.add(
-            cluster_resources
-                .add(client, rg_statefulset)
-                .await
-                .with_context(|_| ApplyRoleGroupStatefulSetSnafu {
-                    rolegroup: rolegroup_name.clone(),
-                })?,
-        );
+            .context(ApplyResourceSnafu)?;
     }
 
-    if let Some(role_config) = &validated_cluster.role_config
-        && let Some(pdb) = build_pdb(&role_config.pdb, &validated_cluster, &zk_role)
-    {
+    // ZooKeeper has a single role Listener; the applied object feeds the discovery ConfigMap.
+    let mut applied_role_listener: Option<Listener> = None;
+    for listener in resources.listeners {
+        applied_role_listener = Some(
+            cluster_resources
+                .add(client, listener)
+                .await
+                .context(ApplyResourceSnafu)?,
+        );
+    }
+    let role_listener = applied_role_listener.context(NoRoleListenerSnafu)?;
+
+    for config_map in resources.config_maps {
+        cluster_resources
+            .add(client, config_map)
+            .await
+            .context(ApplyResourceSnafu)?;
+    }
+
+    for pdb in resources.pod_disruption_budgets {
         cluster_resources
             .add(client, pdb)
             .await
-            .context(ApplyPdbSnafu)?;
+            .context(ApplyResourceSnafu)?;
     }
 
-    let listener = build_role_listener(&validated_cluster, &zk_role);
-    let applied_listener = cluster_resources
-        .add(client, listener)
-        .await
-        .context(ApplyGroupListenerSnafu)?;
+    // Note: The StatefulSet needs to be applied after all ConfigMaps and Secrets it mounts
+    // to prevent unnecessary Pod restarts.
+    // See https://github.com/stackabletech/commons-operator/issues/111 for details.
+    for statefulset in resources.stateful_sets {
+        ss_cond_builder.add(
+            cluster_resources
+                .add(client, statefulset)
+                .await
+                .context(ApplyResourceSnafu)?,
+        );
+    }
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
-    let discovery_cm = discovery::build_discovery_configmap(
-        &validated_cluster,
-        ZK_CONTROLLER_NAME,
-        applied_listener,
-    )
-    .context(BuildDiscoveryConfigSnafu)?;
+
+    let discovery_cm =
+        discovery::build_discovery_configmap(&validated_cluster, ZK_CONTROLLER_NAME, role_listener)
+            .context(BuildDiscoveryConfigSnafu)?;
 
     let discovery_cm = cluster_resources
         .add(client, discovery_cm)
@@ -462,8 +401,13 @@ mod tests {
         k8s_openapi::api::core::v1::ConfigMap, v2::types::operator::RoleGroupName,
     };
 
-    use super::*;
-    use crate::zk_controller::test_support::{cluster_info, minimal_zk, validated_cluster};
+    use crate::{
+        crd::ZookeeperRole,
+        zk_controller::{
+            build::resource::config_map,
+            test_support::{cluster_info, minimal_zk, validated_cluster},
+        },
+    };
 
     #[test]
     fn test_default_config() {
