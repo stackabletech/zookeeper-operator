@@ -13,8 +13,7 @@ use std::str::FromStr;
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
-    utils::cluster_info::KubernetesClusterInfo,
-    v2::types::operator::{ProductVersion, RoleGroupName},
+    utils::cluster_info::KubernetesClusterInfo, v2::types::operator::RoleGroupName,
 };
 
 use crate::{
@@ -25,6 +24,7 @@ use crate::{
             config_map,
             listener::build_role_listener,
             pdb::build_pdb,
+            rbac::{build_role_binding, build_service_account},
             service::{
                 build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
             },
@@ -41,10 +41,6 @@ stackable_operator::constant!(pub(crate) PLACEHOLDER_DISCOVERY_ROLE_GROUP: RoleG
 // Placeholder role-group name used for the recommended labels of the role-level `Listener`
 // (which is not tied to a single role group).
 stackable_operator::constant!(pub(crate) PLACEHOLDER_LISTENER_ROLE_GROUP: RoleGroupName = "none");
-
-// Placeholder product version used for labels on PVC templates, which cannot be modified once
-// deployed. A constant value keeps the labels stable across version upgrades.
-stackable_operator::constant!(pub(crate) UNVERSIONED_PRODUCT_VERSION: ProductVersion = "none");
 
 pub mod command;
 pub mod graceful_shutdown;
@@ -137,11 +133,15 @@ pub fn build(
         listeners,
         config_maps,
         pod_disruption_budgets,
+        service_accounts: vec![build_service_account(cluster)],
+        role_bindings: vec![build_role_binding(cluster)],
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use stackable_operator::kube::Resource;
 
     use super::build;
@@ -215,5 +215,69 @@ mod tests {
             sorted_names(&resources.pod_disruption_budgets),
             ["simple-zookeeper-server"]
         );
+    }
+
+    /// Locks the RBAC resource names, the roleRef, and the recommended label set against
+    /// accidental drift. The fixture's cluster name deliberately differs from the product name so
+    /// that swapped `name`/`instance` label values cannot pass unnoticed.
+    #[test]
+    fn build_produces_rbac() {
+        let zookeeper_yaml = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
+        "#;
+        let zookeeper = minimal_zk(zookeeper_yaml);
+        let cluster = validated_cluster(&zookeeper);
+
+        let resources = build(&cluster, &cluster_info()).expect("build succeeds");
+
+        assert_eq!(
+            sorted_names(&resources.service_accounts),
+            ["simple-zookeeper-serviceaccount"]
+        );
+        assert_eq!(
+            sorted_names(&resources.role_bindings),
+            ["simple-zookeeper-rolebinding"]
+        );
+
+        let expected_labels = BTreeMap::from(
+            [
+                ("app.kubernetes.io/component", "none"),
+                ("app.kubernetes.io/instance", "simple-zookeeper"),
+                (
+                    "app.kubernetes.io/managed-by",
+                    "zookeeper.stackable.tech_zookeepercluster",
+                ),
+                ("app.kubernetes.io/name", "zookeeper"),
+                ("app.kubernetes.io/role-group", "none"),
+                ("app.kubernetes.io/version", "3.9.5-stackable0.0.0-dev"),
+                ("stackable.tech/vendor", "Stackable"),
+            ]
+            .map(|(key, value)| (key.to_string(), value.to_string())),
+        );
+        let service_account = resources
+            .service_accounts
+            .first()
+            .expect("a ServiceAccount is built");
+        assert_eq!(
+            service_account.metadata.labels,
+            Some(expected_labels.clone())
+        );
+
+        let role_binding = resources
+            .role_bindings
+            .first()
+            .expect("a RoleBinding is built");
+        assert_eq!(role_binding.metadata.labels, Some(expected_labels));
+        assert_eq!(role_binding.role_ref.name, "zookeeper-clusterrole");
     }
 }

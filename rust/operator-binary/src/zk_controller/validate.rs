@@ -41,14 +41,9 @@ use stackable_operator::{
             validate_logging_configuration_for_container,
         },
         role_group_utils::ResourceNames,
-        role_utils::{
-            JavaCommonConfig, ResourceNames as RbacResourceNames, RoleGroupConfig,
-            with_validated_config,
-        },
+        role_utils::{self, JavaCommonConfig, RoleGroupConfig, with_validated_config},
         types::{
-            kubernetes::{
-                ConfigMapName, ListenerClassName, NamespaceName, ServiceAccountName, Uid,
-            },
+            kubernetes::{ConfigMapName, ListenerClassName, NamespaceName, Uid},
             operator::{
                 ClusterName, ControllerName, OperatorName, ProductName, ProductVersion,
                 RoleGroupName, RoleName,
@@ -259,6 +254,10 @@ pub struct ValidatedCluster {
     pub object_overrides: ObjectOverrides,
 }
 
+// Placeholder product version used for labels on PVC templates, which cannot be modified once
+// deployed. A constant value keeps the labels stable across version upgrades.
+stackable_operator::constant!(UNVERSIONED_PRODUCT_VERSION: ProductVersion = "none");
+
 impl ValidatedCluster {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -311,26 +310,39 @@ impl ValidatedCluster {
         }
     }
 
-    /// The RBAC ServiceAccount name for this cluster, `<cluster>-serviceaccount`.
-    ///
-    /// Matches the name produced by
-    /// [`build_rbac_resources`](stackable_operator::commons::rbac::build_rbac_resources) so the
-    /// StatefulSet can reference the ServiceAccount without depending on the built object.
-    pub(crate) fn rbac_service_account_name(&self) -> ServiceAccountName {
-        RbacResourceNames {
+    /// Type-safe names for the per-cluster RBAC resources: the ServiceAccount shared by all
+    /// Pods, its (namespaced) RoleBinding, and the operator-deployed ClusterRole it binds.
+    pub fn rbac_resource_names(&self) -> role_utils::ResourceNames {
+        role_utils::ResourceNames {
             cluster_name: self.name.clone(),
             product_name: product_name(),
         }
-        .service_account_name()
     }
 
-    /// Recommended labels for a role-group resource, using the given product version.
-    ///
-    /// Used for PVC templates that cannot be modified once deployed: passing a constant version
-    /// (e.g. `none`) keeps those labels stable across product version upgrades.
-    pub(crate) fn recommended_labels_for(
+    pub fn recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
+        self.recommended_labels_for(&Self::role_name(), role_group_name)
+    }
+
+    pub fn recommended_labels_for(
+        &self,
+        role_name: &RoleName,
+        role_group_name: &RoleGroupName,
+    ) -> Labels {
+        self.recommended_labels_with(&self.product_version, role_name, role_group_name)
+    }
+
+    pub fn unversioned_recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
+        self.recommended_labels_with(
+            &UNVERSIONED_PRODUCT_VERSION,
+            &Self::role_name(),
+            role_group_name,
+        )
+    }
+
+    fn recommended_labels_with(
         &self,
         product_version: &ProductVersion,
+        role_name: &RoleName,
         role_group_name: &RoleGroupName,
     ) -> Labels {
         recommended_labels(
@@ -339,14 +351,9 @@ impl ValidatedCluster {
             product_version,
             &operator_name(),
             &controller_name(),
-            &Self::role_name(),
+            role_name,
             role_group_name,
         )
-    }
-
-    /// Recommended labels for a role-group resource.
-    pub fn recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
-        self.recommended_labels_for(&self.product_version, role_group_name)
     }
 
     /// Selector labels matching the pods of a role group.

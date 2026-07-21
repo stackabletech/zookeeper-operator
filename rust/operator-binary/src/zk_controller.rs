@@ -7,19 +7,18 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::ClusterResourceApplyStrategy,
-    commons::rbac::build_rbac_resources,
     crd::listener::v1alpha1::Listener,
     k8s_openapi::api::{
         apps::v1::StatefulSet,
-        core::v1::{ConfigMap, Service},
+        core::v1::{ConfigMap, Service, ServiceAccount},
         policy::v1::PodDisruptionBudget,
+        rbac::v1::RoleBinding,
     },
     kube::{
         api::DynamicObject,
         core::{DeserializeGuard, error_boundary},
         runtime::controller,
     },
-    kvp::LabelError,
     logging::controller::ReconcilerError,
     shared::time::Duration,
     status::condition::{
@@ -31,7 +30,7 @@ use stackable_operator::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
-    APP_NAME, OPERATOR_NAME, ObjectRef,
+    OPERATOR_NAME, ObjectRef,
     crd::v1alpha1,
     zk_controller::{
         build::resource::discovery,
@@ -106,28 +105,10 @@ pub enum Error {
         source: stackable_operator::client::Error,
     },
 
-    #[snafu(display("failed to create RBAC service account"))]
-    ApplyServiceAccount {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
-    #[snafu(display("failed to create RBAC role binding"))]
-    ApplyRoleBinding {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
-    #[snafu(display("failed to build RBAC resources"))]
-    BuildRbacResources {
-        source: stackable_operator::commons::rbac::Error,
-    },
-
     #[snafu(display("failed to delete orphaned resources"))]
     DeleteOrphans {
         source: stackable_operator::cluster_resources::Error,
     },
-
-    #[snafu(display("failed to build label"))]
-    BuildLabel { source: LabelError },
 
     #[snafu(display("failed to build object meta data"))]
     ObjectMeta {
@@ -154,11 +135,7 @@ impl ReconcilerError for Error {
             Error::BuildDiscoveryConfig { .. } => None,
             Error::ApplyDiscoveryConfig { .. } => None,
             Error::ApplyStatus { .. } => None,
-            Error::ApplyServiceAccount { .. } => None,
-            Error::ApplyRoleBinding { .. } => None,
-            Error::BuildRbacResources { .. } => None,
             Error::DeleteOrphans { .. } => None,
-            Error::BuildLabel { .. } => None,
             Error::ObjectMeta { .. } => None,
         }
     }
@@ -173,6 +150,8 @@ pub struct KubernetesResources {
     pub listeners: Vec<Listener>,
     pub config_maps: Vec<ConfigMap>,
     pub pod_disruption_budgets: Vec<PodDisruptionBudget>,
+    pub service_accounts: Vec<ServiceAccount>,
+    pub role_bindings: Vec<RoleBinding>,
 }
 
 pub async fn reconcile_zk(
@@ -209,29 +188,23 @@ pub async fn reconcile_zk(
         &validated_cluster.object_overrides,
     );
 
-    let (rbac_sa, rbac_rolebinding) = build_rbac_resources(
-        zk,
-        APP_NAME,
-        cluster_resources
-            .get_required_labels()
-            .context(BuildLabelSnafu)?,
-    )
-    .context(BuildRbacResourcesSnafu)?;
-
-    cluster_resources
-        .add(client, rbac_sa)
-        .await
-        .context(ApplyServiceAccountSnafu)?;
-
-    cluster_resources
-        .add(client, rbac_rolebinding)
-        .await
-        .context(ApplyRoleBindingSnafu)?;
-
     let resources = build::build(&validated_cluster, &client.kubernetes_cluster_info)
         .context(BuildResourcesSnafu)?;
 
     let mut ss_cond_builder = StatefulSetConditionBuilder::default();
+
+    for service_account in resources.service_accounts {
+        cluster_resources
+            .add(client, service_account)
+            .await
+            .context(ApplyResourceSnafu)?;
+    }
+    for role_binding in resources.role_bindings {
+        cluster_resources
+            .add(client, role_binding)
+            .await
+            .context(ApplyResourceSnafu)?;
+    }
 
     for service in resources.services {
         cluster_resources
