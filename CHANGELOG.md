@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Internal operator refactoring: introduce a build() step in the reconciler that
+  assembles all relevant Kubernetes resources before anything is applied ([#1053]).
+
+[#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
+
 ## [26.7.0] - 2026-07-21
 
 ## [26.7.0-rc1] - 2026-07-16
