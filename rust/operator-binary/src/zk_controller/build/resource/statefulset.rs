@@ -155,7 +155,7 @@ pub fn build_server_rolegroup_statefulset(
     rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> Result<StatefulSet> {
     let merged_config = &rolegroup_config.config;
-    let resource_names = cluster.resource_names(role_group_name);
+    let resource_names = cluster.role_group_resource_names(role_group_name);
     let resolved_product_image = &cluster.image;
     let zookeeper_security = &cluster.cluster_config.zookeeper_security;
     let metrics_port = cluster.metrics_http_port(rolegroup_config);
@@ -381,7 +381,7 @@ pub fn build_server_rolegroup_statefulset(
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(cluster.rbac_resource_names().service_account_name());
+        .service_account_name(cluster.cluster_resource_names().service_account_name());
 
     // Use the user-provided custom log ConfigMap if one is configured, otherwise fall back to the
     // rolegroup's own ConfigMap. This branches on the *validated* logging choice.
