@@ -6,7 +6,7 @@ use crate::{
     crd::{
         ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, role_listener_name, security::ZookeeperSecurity,
     },
-    zk_controller::{build::PLACEHOLDER_LISTENER_ROLE_GROUP, validate::ValidatedCluster},
+    zk_controller::{build::NONE_ROLE_GROUP_NAME, validate::ValidatedCluster},
 };
 
 /// Builds the role-level [`Listener`](listener::v1alpha1::Listener) exposing the ZooKeeper servers.
@@ -21,7 +21,7 @@ pub fn build_role_listener(
         metadata: cluster
             .object_meta(
                 role_listener_name(cluster.name.as_ref(), zk_role),
-                &PLACEHOLDER_LISTENER_ROLE_GROUP,
+                &NONE_ROLE_GROUP_NAME,
             )
             .build(),
         spec: listener::v1alpha1::ListenerSpec {

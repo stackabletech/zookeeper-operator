@@ -57,7 +57,6 @@ use crate::{
     zk_controller::{
         LISTENER_VOLUME_DIR, LISTENER_VOLUME_NAME,
         build::{
-            UNVERSIONED_PRODUCT_VERSION,
             command::create_init_container_command_args,
             graceful_shutdown::add_graceful_shutdown_config,
             jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
@@ -156,7 +155,7 @@ pub fn build_server_rolegroup_statefulset(
     rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> Result<StatefulSet> {
     let merged_config = &rolegroup_config.config;
-    let resource_names = cluster.resource_names(role_group_name);
+    let resource_names = cluster.role_group_resource_names(role_group_name);
     let resolved_product_image = &cluster.image;
     let zookeeper_security = &cluster.cluster_config.zookeeper_security;
     let metrics_port = cluster.metrics_http_port(rolegroup_config);
@@ -194,8 +193,7 @@ pub fn build_server_rolegroup_statefulset(
 
     // Used for PVC templates that cannot be modified once they are deployed. A constant version
     // keeps the labels stable across version upgrades.
-    let unversioned_recommended_labels =
-        cluster.recommended_labels_for(&UNVERSIONED_PRODUCT_VERSION, role_group_name);
+    let unversioned_recommended_labels = cluster.unversioned_recommended_labels(role_group_name);
 
     let listener_pvc = build_role_listener_pvc(
         role_listener_name(cluster.name.as_ref(), &ZookeeperRole::Server).as_ref(),
@@ -383,7 +381,7 @@ pub fn build_server_rolegroup_statefulset(
             fs_group: Some(1000),
             ..PodSecurityContext::default()
         })
-        .service_account_name(cluster.rbac_service_account_name());
+        .service_account_name(cluster.cluster_resource_names().service_account_name());
 
     // Use the user-provided custom log ConfigMap if one is configured, otherwise fall back to the
     // rolegroup's own ConfigMap. This branches on the *validated* logging choice.

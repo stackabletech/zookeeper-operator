@@ -31,6 +31,7 @@ use stackable_operator::{
             kubernetes::{
                 ConfigMapName, ListenerClassName, ListenerName, NamespaceName, ServiceName,
             },
+            operator::RoleName,
         },
     },
     versioned::versioned,
@@ -333,6 +334,18 @@ pub mod versioned {
 pub enum ZookeeperRole {
     #[strum(serialize = "server")]
     Server,
+}
+
+impl From<ZookeeperRole> for RoleName {
+    fn from(value: ZookeeperRole) -> Self {
+        RoleName::from_str(&value.to_string()).expect("a ZookeeperRole is a valid role name")
+    }
+}
+
+impl From<&ZookeeperRole> for RoleName {
+    fn from(value: &ZookeeperRole) -> Self {
+        RoleName::from_str(&value.to_string()).expect("a ZookeeperRole is a valid role name")
+    }
 }
 
 /// Reference to a single `Pod` that is a component of a [`v1alpha1::ZookeeperCluster`]

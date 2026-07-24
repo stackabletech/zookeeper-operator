@@ -41,14 +41,9 @@ use stackable_operator::{
             validate_logging_configuration_for_container,
         },
         role_group_utils::ResourceNames,
-        role_utils::{
-            JavaCommonConfig, ResourceNames as RbacResourceNames, RoleGroupConfig,
-            with_validated_config,
-        },
+        role_utils::{self, JavaCommonConfig, RoleGroupConfig, with_validated_config},
         types::{
-            kubernetes::{
-                ConfigMapName, ListenerClassName, NamespaceName, ServiceAccountName, Uid,
-            },
+            kubernetes::{ConfigMapName, ListenerClassName, NamespaceName, Uid},
             operator::{
                 ClusterName, ControllerName, OperatorName, ProductName, ProductVersion,
                 RoleGroupName, RoleName,
@@ -259,6 +254,10 @@ pub struct ValidatedCluster {
     pub object_overrides: ObjectOverrides,
 }
 
+// Placeholder product version used for labels on PVC templates, which cannot be modified once
+// deployed. A constant value keeps the labels stable across version upgrades.
+stackable_operator::constant!(UNVERSIONED_PRODUCT_VERSION: ProductVersion = "none");
+
 impl ValidatedCluster {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -296,41 +295,51 @@ impl ValidatedCluster {
         }
     }
 
-    /// The one ZooKeeper role name (`server`).
-    pub fn role_name() -> RoleName {
-        RoleName::from_str(&ZookeeperRole::Server.to_string())
-            .expect("the server role name is a valid role name")
-    }
-
     /// Type-safe names for the resources of a given role group.
-    pub(crate) fn resource_names(&self, role_group_name: &RoleGroupName) -> ResourceNames {
+    pub(crate) fn role_group_resource_names(
+        &self,
+        role_group_name: &RoleGroupName,
+    ) -> ResourceNames {
         ResourceNames {
             cluster_name: self.name.clone(),
-            role_name: Self::role_name(),
+            role_name: ZookeeperRole::Server.into(),
             role_group_name: role_group_name.clone(),
         }
     }
 
-    /// The RBAC ServiceAccount name for this cluster, `<cluster>-serviceaccount`.
-    ///
-    /// Matches the name produced by
-    /// [`build_rbac_resources`](stackable_operator::commons::rbac::build_rbac_resources) so the
-    /// StatefulSet can reference the ServiceAccount without depending on the built object.
-    pub(crate) fn rbac_service_account_name(&self) -> ServiceAccountName {
-        RbacResourceNames {
+    /// Type-safe names for the per-cluster RBAC resources: the ServiceAccount shared by all
+    /// Pods, its (namespaced) RoleBinding, and the operator-deployed ClusterRole it binds.
+    pub fn cluster_resource_names(&self) -> role_utils::ResourceNames {
+        role_utils::ResourceNames {
             cluster_name: self.name.clone(),
             product_name: product_name(),
         }
-        .service_account_name()
     }
 
-    /// Recommended labels for a role-group resource, using the given product version.
-    ///
-    /// Used for PVC templates that cannot be modified once deployed: passing a constant version
-    /// (e.g. `none`) keeps those labels stable across product version upgrades.
-    pub(crate) fn recommended_labels_for(
+    pub fn recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
+        self.recommended_labels_for(&ZookeeperRole::Server.into(), role_group_name)
+    }
+
+    pub fn recommended_labels_for(
+        &self,
+        role_name: &RoleName,
+        role_group_name: &RoleGroupName,
+    ) -> Labels {
+        self.recommended_labels_with(&self.product_version, role_name, role_group_name)
+    }
+
+    pub fn unversioned_recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
+        self.recommended_labels_with(
+            &UNVERSIONED_PRODUCT_VERSION,
+            &ZookeeperRole::Server.into(),
+            role_group_name,
+        )
+    }
+
+    fn recommended_labels_with(
         &self,
         product_version: &ProductVersion,
+        role_name: &RoleName,
         role_group_name: &RoleGroupName,
     ) -> Labels {
         recommended_labels(
@@ -339,19 +348,19 @@ impl ValidatedCluster {
             product_version,
             &operator_name(),
             &controller_name(),
-            &Self::role_name(),
+            role_name,
             role_group_name,
         )
     }
 
-    /// Recommended labels for a role-group resource.
-    pub fn recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
-        self.recommended_labels_for(&self.product_version, role_group_name)
-    }
-
     /// Selector labels matching the pods of a role group.
     pub fn role_group_selector(&self, role_group_name: &RoleGroupName) -> Labels {
-        role_group_selector(self, &product_name(), &Self::role_name(), role_group_name)
+        role_group_selector(
+            self,
+            &product_name(),
+            &ZookeeperRole::Server.into(),
+            role_group_name,
+        )
     }
 
     /// Returns an [`ObjectMetaBuilder`] pre-filled with the namespace, an owner reference back to
@@ -738,5 +747,15 @@ mod tests {
             from_role_group.config.resources.memory.limit,
             Some(Quantity("3Gi".to_owned()))
         );
+    }
+
+    /// Locks the invariant behind the `expect` in the `From<ZookeeperRole> for RoleName` impls:
+    /// every `ZookeeperRole` variant (present and future) must serialise to a valid `RoleName`.
+    #[test]
+    fn every_zookeeper_role_serialises_to_a_valid_role_name() {
+        for role in ZookeeperRole::iter() {
+            let _: RoleName = (&role).into();
+            let _: RoleName = role.into();
+        }
     }
 }
