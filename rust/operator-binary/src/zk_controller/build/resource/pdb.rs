@@ -24,7 +24,7 @@ pub fn build_pdb(
     let pdb = pod_disruption_budget_builder_with_role(
         cluster,
         &product_name(),
-        &ValidatedCluster::role_name(),
+        &ZookeeperRole::Server.into(),
         &operator_name(),
         &controller_name(),
     )

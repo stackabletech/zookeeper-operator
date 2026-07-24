@@ -295,12 +295,6 @@ impl ValidatedCluster {
         }
     }
 
-    /// The one ZooKeeper role name (`server`).
-    pub fn role_name() -> RoleName {
-        RoleName::from_str(&ZookeeperRole::Server.to_string())
-            .expect("the server role name is a valid role name")
-    }
-
     /// Type-safe names for the resources of a given role group.
     pub(crate) fn role_group_resource_names(
         &self,
@@ -308,7 +302,7 @@ impl ValidatedCluster {
     ) -> ResourceNames {
         ResourceNames {
             cluster_name: self.name.clone(),
-            role_name: Self::role_name(),
+            role_name: ZookeeperRole::Server.into(),
             role_group_name: role_group_name.clone(),
         }
     }
@@ -323,7 +317,7 @@ impl ValidatedCluster {
     }
 
     pub fn recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
-        self.recommended_labels_for(&Self::role_name(), role_group_name)
+        self.recommended_labels_for(&ZookeeperRole::Server.into(), role_group_name)
     }
 
     pub fn recommended_labels_for(
@@ -337,7 +331,7 @@ impl ValidatedCluster {
     pub fn unversioned_recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
         self.recommended_labels_with(
             &UNVERSIONED_PRODUCT_VERSION,
-            &Self::role_name(),
+            &ZookeeperRole::Server.into(),
             role_group_name,
         )
     }
@@ -361,7 +355,12 @@ impl ValidatedCluster {
 
     /// Selector labels matching the pods of a role group.
     pub fn role_group_selector(&self, role_group_name: &RoleGroupName) -> Labels {
-        role_group_selector(self, &product_name(), &Self::role_name(), role_group_name)
+        role_group_selector(
+            self,
+            &product_name(),
+            &ZookeeperRole::Server.into(),
+            role_group_name,
+        )
     }
 
     /// Returns an [`ObjectMetaBuilder`] pre-filled with the namespace, an owner reference back to
@@ -748,5 +747,15 @@ mod tests {
             from_role_group.config.resources.memory.limit,
             Some(Quantity("3Gi".to_owned()))
         );
+    }
+
+    /// Locks the invariant behind the `expect` in the `From<ZookeeperRole> for RoleName` impls:
+    /// every `ZookeeperRole` variant (present and future) must serialise to a valid `RoleName`.
+    #[test]
+    fn every_zookeeper_role_serialises_to_a_valid_role_name() {
+        for role in ZookeeperRole::iter() {
+            let _: RoleName = (&role).into();
+            let _: RoleName = role.into();
+        }
     }
 }
