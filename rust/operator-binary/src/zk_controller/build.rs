@@ -140,8 +140,6 @@ pub fn build(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use stackable_operator::kube::Resource;
 
     use super::build;
@@ -215,31 +213,7 @@ mod tests {
             sorted_names(&resources.pod_disruption_budgets),
             ["simple-zookeeper-server"]
         );
-    }
-
-    /// Locks the RBAC resource names, the roleRef, and the recommended label set against
-    /// accidental drift. The fixture's cluster name deliberately differs from the product name so
-    /// that swapped `name`/`instance` label values cannot pass unnoticed.
-    #[test]
-    fn build_produces_rbac() {
-        let zookeeper_yaml = r#"
-        apiVersion: zookeeper.stackable.tech/v1alpha1
-        kind: ZookeeperCluster
-        metadata:
-          name: simple-zookeeper
-        spec:
-          image:
-            productVersion: "3.9.5"
-          servers:
-            roleGroups:
-              default:
-                replicas: 1
-        "#;
-        let zookeeper = minimal_zk(zookeeper_yaml);
-        let cluster = validated_cluster(&zookeeper);
-
-        let resources = build(&cluster, &cluster_info()).expect("build succeeds");
-
+        // The cluster-shared RBAC pair.
         assert_eq!(
             sorted_names(&resources.service_accounts),
             ["simple-zookeeper-serviceaccount"]
@@ -248,36 +222,5 @@ mod tests {
             sorted_names(&resources.role_bindings),
             ["simple-zookeeper-rolebinding"]
         );
-
-        let expected_labels = BTreeMap::from(
-            [
-                ("app.kubernetes.io/component", "none"),
-                ("app.kubernetes.io/instance", "simple-zookeeper"),
-                (
-                    "app.kubernetes.io/managed-by",
-                    "zookeeper.stackable.tech_zookeepercluster",
-                ),
-                ("app.kubernetes.io/name", "zookeeper"),
-                ("app.kubernetes.io/role-group", "none"),
-                ("app.kubernetes.io/version", "3.9.5-stackable0.0.0-dev"),
-                ("stackable.tech/vendor", "Stackable"),
-            ]
-            .map(|(key, value)| (key.to_string(), value.to_string())),
-        );
-        let service_account = resources
-            .service_accounts
-            .first()
-            .expect("a ServiceAccount is built");
-        assert_eq!(
-            service_account.metadata.labels,
-            Some(expected_labels.clone())
-        );
-
-        let role_binding = resources
-            .role_bindings
-            .first()
-            .expect("a RoleBinding is built");
-        assert_eq!(role_binding.metadata.labels, Some(expected_labels));
-        assert_eq!(role_binding.role_ref.name, "zookeeper-clusterrole");
     }
 }

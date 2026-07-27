@@ -318,8 +318,22 @@ pub(crate) mod test_support {
         },
     };
 
+    /// The expected `app.kubernetes.io/version` label value for the given product version.
+    ///
+    /// The `-stackable` suffix carries the operator's own version, which is `0.0.0-dev` on main
+    /// but rewritten by the release process — so tests must derive it rather than hardcode it,
+    /// or they fail on release branches.
+    pub fn app_version_label(product_version: &str) -> String {
+        format!(
+            "{product_version}-stackable{}",
+            crate::built_info::PKG_VERSION
+        )
+    }
+
     /// Parses a minimal `ZookeeperCluster` test fixture, defaulting `namespace`/`uid` so the
-    /// validate step can build a [`ValidatedCluster`].
+    /// validate step can build a [`ValidatedCluster`]. Test fixtures name their clusters
+    /// `simple-zookeeper` — deliberately different from the product name (`zookeeper`), so tests
+    /// asserting recommended labels catch swapped `name`/`instance` values.
     pub fn minimal_zk(yaml: &str) -> v1alpha1::ZookeeperCluster {
         let mut zk: v1alpha1::ZookeeperCluster =
             serde_yaml::from_str(yaml).expect("invalid test ZookeeperCluster YAML");

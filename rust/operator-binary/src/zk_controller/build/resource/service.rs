@@ -115,3 +115,104 @@ pub(crate) fn build_server_rolegroup_metrics_service(
         status: None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use stackable_operator::v2::types::operator::RoleGroupName;
+
+    use super::*;
+    use crate::{
+        crd::ZookeeperRole,
+        zk_controller::test_support::{app_version_label, minimal_zk, validated_cluster},
+    };
+
+    /// Every metrics Service must carry the Prometheus scrape label and the
+    /// `prometheus.io/path|port|scheme|scrape` annotations, or Prometheus stops discovering the
+    /// endpoints.
+    #[test]
+    fn test_rolegroup_metrics_service() {
+        let zookeeper = minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+        );
+        let cluster = validated_cluster(&zookeeper);
+        let role_group_name: RoleGroupName = "default".parse().expect("valid role group name");
+        let rolegroup_config =
+            &cluster.role_group_configs[&ZookeeperRole::Server][&role_group_name];
+
+        let service =
+            build_server_rolegroup_metrics_service(&cluster, &role_group_name, rolegroup_config);
+
+        assert_eq!(
+            json!({
+                "apiVersion": "v1",
+                "kind": "Service",
+                "metadata": {
+                    "annotations": {
+                        "prometheus.io/path": "/metrics",
+                        "prometheus.io/port": "7000",
+                        "prometheus.io/scheme": "http",
+                        "prometheus.io/scrape": "true"
+                    },
+                    "labels": {
+                        "app.kubernetes.io/component": "server",
+                        "app.kubernetes.io/instance": "simple-zookeeper",
+                        "app.kubernetes.io/managed-by": "zookeeper.stackable.tech_zookeepercluster",
+                        "app.kubernetes.io/name": "zookeeper",
+                        "app.kubernetes.io/role-group": "default",
+                        "app.kubernetes.io/version": app_version_label("3.9.5"),
+                        "prometheus.io/scrape": "true",
+                        "stackable.tech/vendor": "Stackable"
+                    },
+                    "name": "simple-zookeeper-server-default-metrics",
+                    "namespace": "default",
+                    "ownerReferences": [
+                        {
+                            "apiVersion": "zookeeper.stackable.tech/v1alpha1",
+                            "controller": true,
+                            "kind": "ZookeeperCluster",
+                            "name": "simple-zookeeper",
+                            "uid": "c27b3971-ca72-42c1-80a4-abdfc1db0ddd"
+                        }
+                    ]
+                },
+                "spec": {
+                    "clusterIP": "None",
+                    "ports": [
+                        {
+                            "name": "jmx-metrics",
+                            "port": 9505,
+                            "protocol": "TCP"
+                        },
+                        {
+                            "name": "metrics",
+                            "port": 7000,
+                            "protocol": "TCP"
+                        }
+                    ],
+                    "publishNotReadyAddresses": true,
+                    "selector": {
+                        "app.kubernetes.io/component": "server",
+                        "app.kubernetes.io/instance": "simple-zookeeper",
+                        "app.kubernetes.io/name": "zookeeper",
+                        "app.kubernetes.io/role-group": "default"
+                    },
+                    "type": "ClusterIP"
+                }
+            }),
+            serde_json::to_value(service).expect("must be serializable")
+        );
+    }
+}
