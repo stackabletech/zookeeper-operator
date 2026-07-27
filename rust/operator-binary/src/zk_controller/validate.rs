@@ -52,7 +52,7 @@ use strum::IntoEnumIterator;
 use crate::{
     crd::{
         APP_NAME, CONTAINER_IMAGE_BASE_NAME, OPERATOR_NAME, ZookeeperRole, ZookeeperServerRoleType,
-        authentication, default_listener_class,
+        authentication,
         security::ZookeeperSecurity,
         v1alpha1::{self, ZookeeperConfig, ZookeeperConfigOverrides, ZookeeperServerRoleConfig},
     },
@@ -68,12 +68,6 @@ pub enum Error {
 
     #[snafu(display("failed to validate authentication classes"))]
     InvalidAuthenticationClassConfiguration { source: authentication::Error },
-
-    #[snafu(display("failed to retrieve role {role:?}"))]
-    MissingRole {
-        source: crate::crd::Error,
-        role: String,
-    },
 
     #[snafu(display("failed to parse role group name {role_group:?}"))]
     ParseRoleGroupName {
@@ -238,7 +232,7 @@ pub struct ValidatedCluster {
     pub cluster_config: ValidatedClusterConfig,
     /// Per-role config (currently just the PodDisruptionBudget), extracted during validation so the
     /// apply step does not reach into the raw [`crate::crd::v1alpha1::ZookeeperCluster`].
-    pub role_config: Option<ValidatedRoleConfig>,
+    pub role_config: ValidatedRoleConfig,
     pub role_group_configs:
         BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>>,
     /// The cluster's operation settings (pause/stop), from which the
@@ -263,7 +257,7 @@ impl ValidatedCluster {
         image: ResolvedProductImage,
         product_version: ProductVersion,
         cluster_config: ValidatedClusterConfig,
-        role_config: Option<ValidatedRoleConfig>,
+        role_config: ValidatedRoleConfig,
         role_group_configs: BTreeMap<
             ZookeeperRole,
             BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>,
@@ -471,9 +465,7 @@ pub fn validate(
 
     let mut role_group_configs = BTreeMap::new();
     for zk_role in ZookeeperRole::iter() {
-        let role = zk.role(&zk_role).with_context(|_| MissingRoleSnafu {
-            role: zk_role.to_string(),
-        })?;
+        let role = zk.role(&zk_role);
         let default_config = ZookeeperConfig::default_server_config(&zk.name_any(), &zk_role);
 
         let mut groups = BTreeMap::new();
@@ -507,14 +499,14 @@ pub fn validate(
 
     let listener_class = zk
         .role(&ZookeeperRole::Server)
-        .map(|role| role.role_config.listener_class.clone())
-        .unwrap_or_else(|_| default_listener_class());
+        .role_config
+        .listener_class
+        .clone();
 
-    let role_config = zk.role_config(&ZookeeperRole::Server).map(
-        |ZookeeperServerRoleConfig { common, .. }| ValidatedRoleConfig {
-            pdb: common.pod_disruption_budget.clone(),
-        },
-    );
+    let ZookeeperServerRoleConfig { common, .. } = zk.role_config(&ZookeeperRole::Server);
+    let role_config = ValidatedRoleConfig {
+        pdb: common.pod_disruption_budget.clone(),
+    };
 
     Ok(ValidatedCluster::new(
         name,

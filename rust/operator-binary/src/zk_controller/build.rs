@@ -121,9 +121,7 @@ pub fn build(
         );
     }
 
-    if let Some(role_config) = &cluster.role_config
-        && let Some(pdb) = build_pdb(&role_config.pdb, cluster, &zk_role)
-    {
+    if let Some(pdb) = build_pdb(&cluster.role_config.pdb, cluster, &zk_role) {
         pod_disruption_budgets.push(pdb);
     }
 

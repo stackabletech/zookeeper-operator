@@ -68,12 +68,6 @@ pub enum Error {
     #[snafu(display("failed to validate cluster"))]
     ValidateCluster { source: validate::Error },
 
-    #[snafu(display("crd validation failure"))]
-    CrdValidationFailure { source: crate::crd::Error },
-
-    #[snafu(display("internal operator failure"))]
-    InternalOperatorFailure { source: crate::crd::Error },
-
     #[snafu(display("failed to build the Kubernetes resources"))]
     BuildResources { source: build::Error },
 
@@ -126,8 +120,6 @@ impl ReconcilerError for Error {
             Error::InvalidZookeeperCluster { .. } => None,
             Error::Dereference { .. } => None,
             Error::ValidateCluster { .. } => None,
-            Error::CrdValidationFailure { .. } => None,
-            Error::InternalOperatorFailure { .. } => None,
             Error::BuildResources { .. } => None,
             Error::ApplyResource { .. } => None,
             Error::ObjectMissingMetadataForOwnerRef { .. } => None,

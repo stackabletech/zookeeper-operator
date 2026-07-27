@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - Bump `stackable-operator` to 0.114.0 ([#1063]).
 - The RBAC ServiceAccount and RoleBinding are now built with the operator-rs `v2::rbac`
   functions and carry the full set of recommended labels ([#1060]).
+- BREAKING: The `servers` role is now required by the CRD.
+  Previously a ZookeeperCluster without it was accepted by the API server but failed reconciliation ([#1060]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060

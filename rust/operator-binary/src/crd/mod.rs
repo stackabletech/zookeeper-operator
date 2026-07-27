@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
-use snafu::{OptionExt, Snafu};
 use stackable_operator::{
     commons::{
         affinity::StackableAffinity,
@@ -82,12 +81,6 @@ pub const CONTAINER_IMAGE_BASE_NAME: &str = "zookeeper";
 const DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_minutes_unchecked(2);
 pub const DEFAULT_LISTENER_CLASS: &str = "cluster-internal";
 
-#[derive(Snafu, Debug)]
-pub enum Error {
-    #[snafu(display("the role {role} is not defined"))]
-    CannotRetrieveZookeeperRole { role: String },
-}
-
 pub type ZookeeperServerRoleType = Role<
     v1alpha1::ZookeeperConfigFragment,
     v1alpha1::ZookeeperConfigOverrides,
@@ -137,8 +130,7 @@ pub mod versioned {
         pub image: ProductImage,
 
         // no doc - it's in the struct.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub servers: Option<ZookeeperServerRoleType>,
+        pub servers: ZookeeperServerRoleType,
     }
 
     #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
@@ -459,19 +451,16 @@ impl v1alpha1::ZookeeperCluster {
         ))
     }
 
-    /// Returns a reference to the role. Raises an error if the role is not defined.
-    pub fn role(&self, role_variant: &ZookeeperRole) -> Result<&ZookeeperServerRoleType, Error> {
+    /// Returns the given role (the `servers` role is required by the CRD).
+    pub fn role(&self, role_variant: &ZookeeperRole) -> &ZookeeperServerRoleType {
         match role_variant {
-            ZookeeperRole::Server => self.spec.servers.as_ref(),
+            ZookeeperRole::Server => &self.spec.servers,
         }
-        .with_context(|| CannotRetrieveZookeeperRoleSnafu {
-            role: role_variant.to_string(),
-        })
     }
 
-    pub fn role_config(&self, role: &ZookeeperRole) -> Option<&ZookeeperServerRoleConfig> {
+    pub fn role_config(&self, role: &ZookeeperRole) -> &ZookeeperServerRoleConfig {
         match role {
-            ZookeeperRole::Server => self.spec.servers.as_ref().map(|s| &s.role_config),
+            ZookeeperRole::Server => &self.spec.servers.role_config,
         }
     }
 }
@@ -511,6 +500,10 @@ mod tests {
         spec:
           image:
             productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
         "#;
         let zookeeper: v1alpha1::ZookeeperCluster =
             serde_yaml::from_str(input).expect("illegal test input");
@@ -531,6 +524,10 @@ mod tests {
         spec:
           image:
             productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-client-tls
@@ -555,6 +552,10 @@ mod tests {
         spec:
           image:
             productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
           clusterConfig:
             tls:
               serverSecretClass: null
@@ -575,6 +576,10 @@ mod tests {
         spec:
           image:
             productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -601,6 +606,10 @@ mod tests {
         spec:
           image:
             productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
         "#;
         let zookeeper: v1alpha1::ZookeeperCluster =
             serde_yaml::from_str(input).expect("illegal test input");
@@ -622,6 +631,10 @@ mod tests {
         spec:
           image:
             productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
           clusterConfig:
             tls:
               quorumSecretClass: simple-zookeeper-quorum-tls
@@ -645,6 +658,10 @@ mod tests {
         spec:
           image:
             productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 1
           clusterConfig:
             tls:
               serverSecretClass: simple-zookeeper-server-tls
