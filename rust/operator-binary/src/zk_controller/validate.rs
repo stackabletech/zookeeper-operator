@@ -577,7 +577,78 @@ mod tests {
     use stackable_operator::k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 
     use super::*;
-    use crate::zk_controller::test_support::{minimal_zk, try_validate, validated_cluster};
+    use crate::zk_controller::test_support::{
+        app_version_label, minimal_zk, try_validate, validated_cluster,
+    };
+
+    /// Locks every value the validate step itself derives from the minimal fixture — so a
+    /// validation regression fails here, with a validate-shaped message, instead of surfacing as
+    /// a confusing build-test failure downstream.
+    ///
+    /// The merged per-role-group config (resources, affinity, logging defaults, …) is produced by
+    /// the config merge machinery, whose contracts are tested in operator-rs; only the values
+    /// this module derives on top are re-asserted here.
+    #[test]
+    fn validate_ok_derives_expected_values() {
+        let zookeeper = minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 3
+            "#,
+        );
+        let validated = validated_cluster(&zookeeper);
+
+        assert_eq!(validated.name.to_string(), "simple-zookeeper");
+        assert_eq!(validated.namespace.to_string(), "default");
+        assert_eq!(
+            validated.uid.to_string(),
+            "c27b3971-ca72-42c1-80a4-abdfc1db0ddd"
+        );
+        assert_eq!(
+            validated.image.image,
+            format!("oci.example.org/zookeeper:{}", app_version_label("3.9.5"))
+        );
+        assert_eq!(validated.image.product_version, "3.9.5");
+        assert_eq!(
+            validated.product_version.to_string(),
+            app_version_label("3.9.5")
+        );
+
+        // TLS towards clients is enabled by default (the secure client port), and the listener
+        // class falls back to its default.
+        let cluster_config = &validated.cluster_config;
+        assert!(cluster_config.zookeeper_security.tls_enabled());
+        assert_eq!(
+            cluster_config.listener_class.to_string(),
+            "cluster-internal"
+        );
+
+        // The role config falls back to its defaults: PDBs enabled.
+        assert!(validated.role_config.pdb.enabled);
+        assert_eq!(validated.role_config.pdb.max_unavailable, None);
+
+        // The single `server` role with the single `default` role group; the Vector agent is off.
+        assert_eq!(validated.role_group_configs.len(), 1);
+        let role_groups = &validated.role_group_configs[&ZookeeperRole::Server];
+        let role_group_names: Vec<String> = role_groups.keys().map(ToString::to_string).collect();
+        assert_eq!(role_group_names, ["default"]);
+        let role_group = role_groups
+            .values()
+            .next()
+            .expect("the default role group exists");
+        assert_eq!(role_group.replicas, Some(3));
+        assert!(!role_group.config.logging.enable_vector_agent);
+        assert_eq!(role_group.config.logging.vector_container, None);
+    }
 
     #[test]
     fn enabling_vector_without_aggregator_name_fails_validation() {
