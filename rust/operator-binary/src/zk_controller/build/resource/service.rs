@@ -12,7 +12,10 @@ use crate::{
         ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_LEADER_PORT,
         ZOOKEEPER_LEADER_PORT_NAME,
     },
-    zk_controller::validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
+    zk_controller::{
+        build::object_meta,
+        validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
+    },
 };
 
 /// The rolegroup [`Service`] is a headless service that allows internal access to the instances of a certain rolegroup
@@ -22,15 +25,15 @@ pub(crate) fn build_server_rolegroup_headless_service(
     cluster: &ValidatedCluster,
     role_group_name: &RoleGroupName,
 ) -> Service {
-    let metadata = cluster
-        .object_meta(
-            cluster
-                .role_group_resource_names(role_group_name)
-                .headless_service_name()
-                .to_string(),
-            role_group_name,
-        )
-        .build();
+    let metadata = object_meta(
+        cluster,
+        cluster
+            .role_group_resource_names(role_group_name)
+            .headless_service_name()
+            .to_string(),
+        role_group_name,
+    )
+    .build();
 
     let service_spec = ServiceSpec {
         // Internal communication does not need to be exposed
@@ -69,21 +72,21 @@ pub(crate) fn build_server_rolegroup_metrics_service(
     rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> Service {
     let metrics_port = cluster.metrics_http_port(rolegroup_config);
-    let metadata = cluster
-        .object_meta(
-            cluster
-                .role_group_resource_names(role_group_name)
-                .metrics_service_name(),
-            role_group_name,
-        )
-        .with_labels(prometheus_labels(&Scraping::Enabled))
-        .with_annotations(prometheus_annotations(
-            &Scraping::Enabled,
-            &Scheme::Http,
-            "/metrics",
-            &metrics_port,
-        ))
-        .build();
+    let metadata = object_meta(
+        cluster,
+        cluster
+            .role_group_resource_names(role_group_name)
+            .metrics_service_name(),
+        role_group_name,
+    )
+    .with_labels(prometheus_labels(&Scraping::Enabled))
+    .with_annotations(prometheus_annotations(
+        &Scraping::Enabled,
+        &Scheme::Http,
+        "/metrics",
+        &metrics_port,
+    ))
+    .build();
 
     let service_spec = ServiceSpec {
         // Internal communication does not need to be exposed

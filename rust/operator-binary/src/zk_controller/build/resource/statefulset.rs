@@ -60,6 +60,7 @@ use crate::{
             command::create_init_container_command_args,
             graceful_shutdown::add_graceful_shutdown_config,
             jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
+            object_meta,
             properties::{self, ConfigFileName},
         },
         validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
@@ -422,13 +423,13 @@ pub fn build_server_rolegroup_statefulset(
     let mut pod_template = pod_builder.build_template();
     pod_template.merge_from(rolegroup_config.pod_overrides.clone());
 
-    let metadata = cluster
-        .object_meta(
-            resource_names.stateful_set_name().to_string(),
-            role_group_name,
-        )
-        .with_label(RESTART_CONTROLLER_ENABLED_LABEL.to_owned())
-        .build();
+    let metadata = object_meta(
+        cluster,
+        resource_names.stateful_set_name().to_string(),
+        role_group_name,
+    )
+    .with_label(RESTART_CONTROLLER_ENABLED_LABEL.to_owned())
+    .build();
 
     let statefulset_spec = StatefulSetSpec {
         pod_management_policy: Some("Parallel".to_string()),
