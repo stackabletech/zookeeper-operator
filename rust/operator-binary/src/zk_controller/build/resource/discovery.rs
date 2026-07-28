@@ -15,7 +15,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{ZOOKEEPER_SERVER_PORT_NAME, security::ZookeeperSecurity},
+    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity},
     zk_controller::{
         build::PLACEHOLDER_DISCOVERY_ROLE_GROUP,
         validate::{ValidatedCluster, operator_name, product_name},
@@ -150,7 +150,7 @@ fn build_discovery_configmap_for_owner(
                     product_version,
                     &operator_name(),
                     &controller_name,
-                    &ValidatedCluster::role_name(),
+                    &ZookeeperRole::Server.into(),
                     &role_group_name,
                 ))
                 .build(),

@@ -38,7 +38,7 @@ pub(crate) fn server_addresses(
         .into_iter()
         .flatten()
     {
-        let resource_names = cluster.resource_names(rg_name);
+        let resource_names = cluster.role_group_resource_names(rg_name);
         let headless_service_name = resource_names.headless_service_name();
         let stateful_set_name = resource_names.stateful_set_name().to_string();
         // An unset replica count (HPA-managed) predicts a single-server quorum entry, matching

@@ -20,7 +20,10 @@ use stackable_operator::{
 };
 
 use crate::zk_controller::{
-    build::properties::{ConfigFileName, product_logging, security_properties, zoo_cfg},
+    build::{
+        object_meta,
+        properties::{ConfigFileName, product_logging, security_properties, zoo_cfg},
+    },
     validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
 };
 
@@ -97,15 +100,15 @@ pub fn build_server_rolegroup_config_map(
 
     ConfigMapBuilder::new()
         .metadata(
-            cluster
-                .object_meta(
-                    cluster
-                        .resource_names(role_group_name)
-                        .role_group_config_map()
-                        .to_string(),
-                    role_group_name,
-                )
-                .build(),
+            object_meta(
+                cluster,
+                cluster
+                    .role_group_resource_names(role_group_name)
+                    .role_group_config_map()
+                    .to_string(),
+                role_group_name,
+            )
+            .build(),
         )
         .data(data)
         .build()

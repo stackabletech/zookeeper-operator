@@ -13,8 +13,9 @@ use std::str::FromStr;
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
+    builder::meta::ObjectMetaBuilder,
     utils::cluster_info::KubernetesClusterInfo,
-    v2::types::operator::{ProductVersion, RoleGroupName},
+    v2::{builder::meta::ownerreference_from_resource, types::operator::RoleGroupName},
 };
 
 use crate::{
@@ -25,6 +26,7 @@ use crate::{
             config_map,
             listener::build_role_listener,
             pdb::build_pdb,
+            rbac::{build_role_binding, build_service_account},
             service::{
                 build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
             },
@@ -40,11 +42,7 @@ stackable_operator::constant!(pub(crate) PLACEHOLDER_DISCOVERY_ROLE_GROUP: RoleG
 
 // Placeholder role-group name used for the recommended labels of the role-level `Listener`
 // (which is not tied to a single role group).
-stackable_operator::constant!(pub(crate) PLACEHOLDER_LISTENER_ROLE_GROUP: RoleGroupName = "none");
-
-// Placeholder product version used for labels on PVC templates, which cannot be modified once
-// deployed. A constant value keeps the labels stable across version upgrades.
-stackable_operator::constant!(pub(crate) UNVERSIONED_PRODUCT_VERSION: ProductVersion = "none");
+stackable_operator::constant!(pub(crate) NONE_ROLE_GROUP_NAME: RoleGroupName = "none");
 
 pub mod command;
 pub mod graceful_shutdown;
@@ -123,9 +121,7 @@ pub fn build(
         );
     }
 
-    if let Some(role_config) = &cluster.role_config
-        && let Some(pdb) = build_pdb(&role_config.pdb, cluster, &zk_role)
-    {
+    if let Some(pdb) = build_pdb(&cluster.role_config.pdb, cluster, &zk_role) {
         pod_disruption_budgets.push(pdb);
     }
 
@@ -137,7 +133,28 @@ pub fn build(
         listeners,
         config_maps,
         pod_disruption_budgets,
+        service_accounts: vec![build_service_account(cluster)],
+        role_bindings: vec![build_role_binding(cluster)],
     })
+}
+
+/// Returns an [`ObjectMetaBuilder`] pre-filled with the namespace, an owner reference back to
+/// the cluster, and the recommended labels for a resource named `name` in `role_group_name`.
+///
+/// Consolidates the metadata chain repeated by the child-resource builders. Call sites that
+/// need extra labels/annotations chain them onto the returned builder.
+pub(crate) fn object_meta(
+    cluster: &ValidatedCluster,
+    name: impl Into<String>,
+    role_group_name: &RoleGroupName,
+) -> ObjectMetaBuilder {
+    let mut builder = ObjectMetaBuilder::new();
+    builder
+        .name_and_namespace(cluster)
+        .name(name)
+        .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
+        .with_labels(cluster.recommended_labels(role_group_name));
+    builder
 }
 
 #[cfg(test)]
@@ -214,6 +231,15 @@ mod tests {
         assert_eq!(
             sorted_names(&resources.pod_disruption_budgets),
             ["simple-zookeeper-server"]
+        );
+        // The cluster-shared RBAC pair.
+        assert_eq!(
+            sorted_names(&resources.service_accounts),
+            ["simple-zookeeper-serviceaccount"]
+        );
+        assert_eq!(
+            sorted_names(&resources.role_bindings),
+            ["simple-zookeeper-rolebinding"]
         );
     }
 }

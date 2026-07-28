@@ -11,7 +11,6 @@ use std::{collections::BTreeMap, str::FromStr};
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    builder::meta::ObjectMetaBuilder,
     cli::OperatorEnvironmentOptions,
     commons::{
         affinity::StackableAffinity,
@@ -30,10 +29,7 @@ use stackable_operator::{
     shared::time::Duration,
     v2::{
         HasName, HasUid, NameIsValidLabelValue,
-        builder::{
-            meta::ownerreference_from_resource,
-            pod::container::{EnvVarName, EnvVarSet},
-        },
+        builder::pod::container::{EnvVarName, EnvVarSet},
         controller_utils::{get_cluster_name, get_namespace, get_uid},
         kvp::label::{recommended_labels, role_group_selector},
         product_logging::framework::{
@@ -41,14 +37,9 @@ use stackable_operator::{
             validate_logging_configuration_for_container,
         },
         role_group_utils::ResourceNames,
-        role_utils::{
-            JavaCommonConfig, ResourceNames as RbacResourceNames, RoleGroupConfig,
-            with_validated_config,
-        },
+        role_utils::{self, JavaCommonConfig, RoleGroupConfig, with_validated_config},
         types::{
-            kubernetes::{
-                ConfigMapName, ListenerClassName, NamespaceName, ServiceAccountName, Uid,
-            },
+            kubernetes::{ConfigMapName, ListenerClassName, NamespaceName, Uid},
             operator::{
                 ClusterName, ControllerName, OperatorName, ProductName, ProductVersion,
                 RoleGroupName, RoleName,
@@ -61,7 +52,7 @@ use strum::IntoEnumIterator;
 use crate::{
     crd::{
         APP_NAME, CONTAINER_IMAGE_BASE_NAME, OPERATOR_NAME, ZookeeperRole, ZookeeperServerRoleType,
-        authentication, default_listener_class,
+        authentication,
         security::ZookeeperSecurity,
         v1alpha1::{self, ZookeeperConfig, ZookeeperConfigOverrides, ZookeeperServerRoleConfig},
     },
@@ -77,12 +68,6 @@ pub enum Error {
 
     #[snafu(display("failed to validate authentication classes"))]
     InvalidAuthenticationClassConfiguration { source: authentication::Error },
-
-    #[snafu(display("failed to retrieve role {role:?}"))]
-    MissingRole {
-        source: crate::crd::Error,
-        role: String,
-    },
 
     #[snafu(display("failed to parse role group name {role_group:?}"))]
     ParseRoleGroupName {
@@ -247,7 +232,7 @@ pub struct ValidatedCluster {
     pub cluster_config: ValidatedClusterConfig,
     /// Per-role config (currently just the PodDisruptionBudget), extracted during validation so the
     /// apply step does not reach into the raw [`crate::crd::v1alpha1::ZookeeperCluster`].
-    pub role_config: Option<ValidatedRoleConfig>,
+    pub role_config: ValidatedRoleConfig,
     pub role_group_configs:
         BTreeMap<ZookeeperRole, BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>>,
     /// The cluster's operation settings (pause/stop), from which the
@@ -259,6 +244,10 @@ pub struct ValidatedCluster {
     pub object_overrides: ObjectOverrides,
 }
 
+// Placeholder product version used for labels on PVC templates, which cannot be modified once
+// deployed. A constant value keeps the labels stable across version upgrades.
+stackable_operator::constant!(UNVERSIONED_PRODUCT_VERSION: ProductVersion = "none");
+
 impl ValidatedCluster {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -268,7 +257,7 @@ impl ValidatedCluster {
         image: ResolvedProductImage,
         product_version: ProductVersion,
         cluster_config: ValidatedClusterConfig,
-        role_config: Option<ValidatedRoleConfig>,
+        role_config: ValidatedRoleConfig,
         role_group_configs: BTreeMap<
             ZookeeperRole,
             BTreeMap<RoleGroupName, ZookeeperRoleGroupConfig>,
@@ -296,41 +285,51 @@ impl ValidatedCluster {
         }
     }
 
-    /// The one ZooKeeper role name (`server`).
-    pub fn role_name() -> RoleName {
-        RoleName::from_str(&ZookeeperRole::Server.to_string())
-            .expect("the server role name is a valid role name")
-    }
-
     /// Type-safe names for the resources of a given role group.
-    pub(crate) fn resource_names(&self, role_group_name: &RoleGroupName) -> ResourceNames {
+    pub(crate) fn role_group_resource_names(
+        &self,
+        role_group_name: &RoleGroupName,
+    ) -> ResourceNames {
         ResourceNames {
             cluster_name: self.name.clone(),
-            role_name: Self::role_name(),
+            role_name: ZookeeperRole::Server.into(),
             role_group_name: role_group_name.clone(),
         }
     }
 
-    /// The RBAC ServiceAccount name for this cluster, `<cluster>-serviceaccount`.
-    ///
-    /// Matches the name produced by
-    /// [`build_rbac_resources`](stackable_operator::commons::rbac::build_rbac_resources) so the
-    /// StatefulSet can reference the ServiceAccount without depending on the built object.
-    pub(crate) fn rbac_service_account_name(&self) -> ServiceAccountName {
-        RbacResourceNames {
+    /// Type-safe names for the per-cluster RBAC resources: the ServiceAccount shared by all
+    /// Pods, its (namespaced) RoleBinding, and the operator-deployed ClusterRole it binds.
+    pub fn cluster_resource_names(&self) -> role_utils::ResourceNames {
+        role_utils::ResourceNames {
             cluster_name: self.name.clone(),
             product_name: product_name(),
         }
-        .service_account_name()
     }
 
-    /// Recommended labels for a role-group resource, using the given product version.
-    ///
-    /// Used for PVC templates that cannot be modified once deployed: passing a constant version
-    /// (e.g. `none`) keeps those labels stable across product version upgrades.
-    pub(crate) fn recommended_labels_for(
+    pub fn recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
+        self.recommended_labels_for(&ZookeeperRole::Server.into(), role_group_name)
+    }
+
+    pub fn recommended_labels_for(
+        &self,
+        role_name: &RoleName,
+        role_group_name: &RoleGroupName,
+    ) -> Labels {
+        self.recommended_labels_with(&self.product_version, role_name, role_group_name)
+    }
+
+    pub fn unversioned_recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
+        self.recommended_labels_with(
+            &UNVERSIONED_PRODUCT_VERSION,
+            &ZookeeperRole::Server.into(),
+            role_group_name,
+        )
+    }
+
+    fn recommended_labels_with(
         &self,
         product_version: &ProductVersion,
+        role_name: &RoleName,
         role_group_name: &RoleGroupName,
     ) -> Labels {
         recommended_labels(
@@ -339,38 +338,19 @@ impl ValidatedCluster {
             product_version,
             &operator_name(),
             &controller_name(),
-            &Self::role_name(),
+            role_name,
             role_group_name,
         )
     }
 
-    /// Recommended labels for a role-group resource.
-    pub fn recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
-        self.recommended_labels_for(&self.product_version, role_group_name)
-    }
-
     /// Selector labels matching the pods of a role group.
     pub fn role_group_selector(&self, role_group_name: &RoleGroupName) -> Labels {
-        role_group_selector(self, &product_name(), &Self::role_name(), role_group_name)
-    }
-
-    /// Returns an [`ObjectMetaBuilder`] pre-filled with the namespace, an owner reference back to
-    /// this cluster, and the recommended labels for a resource named `name` in `role_group_name`.
-    ///
-    /// Consolidates the metadata chain repeated by the child-resource builders. Call sites that
-    /// need extra labels/annotations chain them onto the returned builder.
-    pub(crate) fn object_meta(
-        &self,
-        name: impl Into<String>,
-        role_group_name: &RoleGroupName,
-    ) -> ObjectMetaBuilder {
-        let mut builder = ObjectMetaBuilder::new();
-        builder
-            .name_and_namespace(self)
-            .name(name)
-            .ownerreference(ownerreference_from_resource(self, None, Some(true)))
-            .with_labels(self.recommended_labels(role_group_name));
-        builder
+        role_group_selector(
+            self,
+            &product_name(),
+            &ZookeeperRole::Server.into(),
+            role_group_name,
+        )
     }
 }
 
@@ -485,9 +465,7 @@ pub fn validate(
 
     let mut role_group_configs = BTreeMap::new();
     for zk_role in ZookeeperRole::iter() {
-        let role = zk.role(&zk_role).with_context(|_| MissingRoleSnafu {
-            role: zk_role.to_string(),
-        })?;
+        let role = zk.role(&zk_role);
         let default_config = ZookeeperConfig::default_server_config(&zk.name_any(), &zk_role);
 
         let mut groups = BTreeMap::new();
@@ -521,14 +499,14 @@ pub fn validate(
 
     let listener_class = zk
         .role(&ZookeeperRole::Server)
-        .map(|role| role.role_config.listener_class.clone())
-        .unwrap_or_else(|_| default_listener_class());
+        .role_config
+        .listener_class
+        .clone();
 
-    let role_config = zk.role_config(&ZookeeperRole::Server).map(
-        |ZookeeperServerRoleConfig { common, .. }| ValidatedRoleConfig {
-            pdb: common.pod_disruption_budget.clone(),
-        },
-    );
+    let ZookeeperServerRoleConfig { common, .. } = zk.role_config(&ZookeeperRole::Server);
+    let role_config = ValidatedRoleConfig {
+        pdb: common.pod_disruption_budget.clone(),
+    };
 
     Ok(ValidatedCluster::new(
         name,
@@ -599,7 +577,78 @@ mod tests {
     use stackable_operator::k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 
     use super::*;
-    use crate::zk_controller::test_support::{minimal_zk, try_validate, validated_cluster};
+    use crate::zk_controller::test_support::{
+        app_version_label, minimal_zk, try_validate, validated_cluster,
+    };
+
+    /// Locks every value the validate step itself derives from the minimal fixture — so a
+    /// validation regression fails here, with a validate-shaped message, instead of surfacing as
+    /// a confusing build-test failure downstream.
+    ///
+    /// The merged per-role-group config (resources, affinity, logging defaults, …) is produced by
+    /// the config merge machinery, whose contracts are tested in operator-rs; only the values
+    /// this module derives on top are re-asserted here.
+    #[test]
+    fn validate_ok_derives_expected_values() {
+        let zookeeper = minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 3
+            "#,
+        );
+        let validated = validated_cluster(&zookeeper);
+
+        assert_eq!(validated.name.to_string(), "simple-zookeeper");
+        assert_eq!(validated.namespace.to_string(), "default");
+        assert_eq!(
+            validated.uid.to_string(),
+            "c27b3971-ca72-42c1-80a4-abdfc1db0ddd"
+        );
+        assert_eq!(
+            validated.image.image,
+            format!("oci.example.org/zookeeper:{}", app_version_label("3.9.5"))
+        );
+        assert_eq!(validated.image.product_version, "3.9.5");
+        assert_eq!(
+            validated.product_version.to_string(),
+            app_version_label("3.9.5")
+        );
+
+        // TLS towards clients is enabled by default (the secure client port), and the listener
+        // class falls back to its default.
+        let cluster_config = &validated.cluster_config;
+        assert!(cluster_config.zookeeper_security.tls_enabled());
+        assert_eq!(
+            cluster_config.listener_class.to_string(),
+            "cluster-internal"
+        );
+
+        // The role config falls back to its defaults: PDBs enabled.
+        assert!(validated.role_config.pdb.enabled);
+        assert_eq!(validated.role_config.pdb.max_unavailable, None);
+
+        // The single `server` role with the single `default` role group; the Vector agent is off.
+        assert_eq!(validated.role_group_configs.len(), 1);
+        let role_groups = &validated.role_group_configs[&ZookeeperRole::Server];
+        let role_group_names: Vec<String> = role_groups.keys().map(ToString::to_string).collect();
+        assert_eq!(role_group_names, ["default"]);
+        let role_group = role_groups
+            .values()
+            .next()
+            .expect("the default role group exists");
+        assert_eq!(role_group.replicas, Some(3));
+        assert!(!role_group.config.logging.enable_vector_agent);
+        assert_eq!(role_group.config.logging.vector_container, None);
+    }
 
     #[test]
     fn enabling_vector_without_aggregator_name_fails_validation() {
@@ -738,5 +787,15 @@ mod tests {
             from_role_group.config.resources.memory.limit,
             Some(Quantity("3Gi".to_owned()))
         );
+    }
+
+    /// Locks the invariant behind the `expect` in the `From<ZookeeperRole> for RoleName` impls:
+    /// every `ZookeeperRole` variant (present and future) must serialise to a valid `RoleName`.
+    #[test]
+    fn every_zookeeper_role_serialises_to_a_valid_role_name() {
+        for role in ZookeeperRole::iter() {
+            let _: RoleName = (&role).into();
+            let _: RoleName = role.into();
+        }
     }
 }

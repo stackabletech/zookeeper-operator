@@ -7,19 +7,18 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::ClusterResourceApplyStrategy,
-    commons::rbac::build_rbac_resources,
     crd::listener::v1alpha1::Listener,
     k8s_openapi::api::{
         apps::v1::StatefulSet,
-        core::v1::{ConfigMap, Service},
+        core::v1::{ConfigMap, Service, ServiceAccount},
         policy::v1::PodDisruptionBudget,
+        rbac::v1::RoleBinding,
     },
     kube::{
         api::DynamicObject,
         core::{DeserializeGuard, error_boundary},
         runtime::controller,
     },
-    kvp::LabelError,
     logging::controller::ReconcilerError,
     shared::time::Duration,
     status::condition::{
@@ -31,7 +30,7 @@ use stackable_operator::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
-    APP_NAME, OPERATOR_NAME, ObjectRef,
+    OPERATOR_NAME, ObjectRef,
     crd::v1alpha1,
     zk_controller::{
         build::resource::discovery,
@@ -69,12 +68,6 @@ pub enum Error {
     #[snafu(display("failed to validate cluster"))]
     ValidateCluster { source: validate::Error },
 
-    #[snafu(display("crd validation failure"))]
-    CrdValidationFailure { source: crate::crd::Error },
-
-    #[snafu(display("internal operator failure"))]
-    InternalOperatorFailure { source: crate::crd::Error },
-
     #[snafu(display("failed to build the Kubernetes resources"))]
     BuildResources { source: build::Error },
 
@@ -106,28 +99,10 @@ pub enum Error {
         source: stackable_operator::client::Error,
     },
 
-    #[snafu(display("failed to create RBAC service account"))]
-    ApplyServiceAccount {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
-    #[snafu(display("failed to create RBAC role binding"))]
-    ApplyRoleBinding {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
-    #[snafu(display("failed to build RBAC resources"))]
-    BuildRbacResources {
-        source: stackable_operator::commons::rbac::Error,
-    },
-
     #[snafu(display("failed to delete orphaned resources"))]
     DeleteOrphans {
         source: stackable_operator::cluster_resources::Error,
     },
-
-    #[snafu(display("failed to build label"))]
-    BuildLabel { source: LabelError },
 
     #[snafu(display("failed to build object meta data"))]
     ObjectMeta {
@@ -145,8 +120,6 @@ impl ReconcilerError for Error {
             Error::InvalidZookeeperCluster { .. } => None,
             Error::Dereference { .. } => None,
             Error::ValidateCluster { .. } => None,
-            Error::CrdValidationFailure { .. } => None,
-            Error::InternalOperatorFailure { .. } => None,
             Error::BuildResources { .. } => None,
             Error::ApplyResource { .. } => None,
             Error::ObjectMissingMetadataForOwnerRef { .. } => None,
@@ -154,11 +127,7 @@ impl ReconcilerError for Error {
             Error::BuildDiscoveryConfig { .. } => None,
             Error::ApplyDiscoveryConfig { .. } => None,
             Error::ApplyStatus { .. } => None,
-            Error::ApplyServiceAccount { .. } => None,
-            Error::ApplyRoleBinding { .. } => None,
-            Error::BuildRbacResources { .. } => None,
             Error::DeleteOrphans { .. } => None,
-            Error::BuildLabel { .. } => None,
             Error::ObjectMeta { .. } => None,
         }
     }
@@ -173,6 +142,8 @@ pub struct KubernetesResources {
     pub listeners: Vec<Listener>,
     pub config_maps: Vec<ConfigMap>,
     pub pod_disruption_budgets: Vec<PodDisruptionBudget>,
+    pub service_accounts: Vec<ServiceAccount>,
+    pub role_bindings: Vec<RoleBinding>,
 }
 
 pub async fn reconcile_zk(
@@ -209,29 +180,23 @@ pub async fn reconcile_zk(
         &validated_cluster.object_overrides,
     );
 
-    let (rbac_sa, rbac_rolebinding) = build_rbac_resources(
-        zk,
-        APP_NAME,
-        cluster_resources
-            .get_required_labels()
-            .context(BuildLabelSnafu)?,
-    )
-    .context(BuildRbacResourcesSnafu)?;
-
-    cluster_resources
-        .add(client, rbac_sa)
-        .await
-        .context(ApplyServiceAccountSnafu)?;
-
-    cluster_resources
-        .add(client, rbac_rolebinding)
-        .await
-        .context(ApplyRoleBindingSnafu)?;
-
     let resources = build::build(&validated_cluster, &client.kubernetes_cluster_info)
         .context(BuildResourcesSnafu)?;
 
     let mut ss_cond_builder = StatefulSetConditionBuilder::default();
+
+    for service_account in resources.service_accounts {
+        cluster_resources
+            .add(client, service_account)
+            .await
+            .context(ApplyResourceSnafu)?;
+    }
+    for role_binding in resources.role_bindings {
+        cluster_resources
+            .add(client, role_binding)
+            .await
+            .context(ApplyResourceSnafu)?;
+    }
 
     for service in resources.services {
         cluster_resources
@@ -345,8 +310,22 @@ pub(crate) mod test_support {
         },
     };
 
+    /// The expected `app.kubernetes.io/version` label value for the given product version.
+    ///
+    /// The `-stackable` suffix carries the operator's own version, which is `0.0.0-dev` on main
+    /// but rewritten by the release process — so tests must derive it rather than hardcode it,
+    /// or they fail on release branches.
+    pub fn app_version_label(product_version: &str) -> String {
+        format!(
+            "{product_version}-stackable{}",
+            crate::built_info::PKG_VERSION
+        )
+    }
+
     /// Parses a minimal `ZookeeperCluster` test fixture, defaulting `namespace`/`uid` so the
-    /// validate step can build a [`ValidatedCluster`].
+    /// validate step can build a [`ValidatedCluster`]. Test fixtures name their clusters
+    /// `simple-zookeeper` — deliberately different from the product name (`zookeeper`), so tests
+    /// asserting recommended labels catch swapped `name`/`instance` values.
     pub fn minimal_zk(yaml: &str) -> v1alpha1::ZookeeperCluster {
         let mut zk: v1alpha1::ZookeeperCluster =
             serde_yaml::from_str(yaml).expect("invalid test ZookeeperCluster YAML");
