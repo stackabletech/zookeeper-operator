@@ -43,7 +43,7 @@ jobs:
       # TODO: Enable the scheduled runs which hard-code what profile to use
       - name: Run Integration Test
         id: test
-        uses: stackabletech/actions/run-integration-test@e5f521489c1b6bdc047b8ad1bdd31d5c4a197bfb # vxxx
+        uses: stackabletech/actions/run-integration-test@run-integration-test-otel # vxxx
         with:
           replicated-api-token: ${{ secrets.REPLICATED_API_TOKEN }}
           otlp-bearer-token: ${{ secrets.OTLP_BEARER_TOKEN }}
