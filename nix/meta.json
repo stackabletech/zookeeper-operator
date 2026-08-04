@@ -1,1 +1,1 @@
-{"operator": {"name": "zookeeper-operator", "pretty_string": "Apache ZooKeeper", "product_string": "zookeeper", "url": "stackabletech/zookeeper-operator.git"}}
+{"operator": {"name": "zookeeper-operator", "pretty_string": "Apache ZooKeeper", "product_string": "zookeeper", "url": "stackabletech/zookeeper-operator.git", "chart_description": "Kubernetes operator for Apache ZooKeeper. Deploy and run ZooKeeper ensembles with the Stackable Data Platform (SDP).", "keywords": ["apache-zookeeper", "zookeeper", "coordination", "kubernetes", "operator", "big-data"]}}
