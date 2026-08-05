@@ -1,5 +1,5 @@
 //! Ensures that `Pod`s are configured and running for each [`v1alpha1::ZookeeperCluster`]
-use std::{hash::Hasher, str::FromStr, sync::Arc};
+use std::{hash::Hasher, marker::PhantomData, sync::Arc};
 
 use const_format::concatcp;
 use fnv::FnvHasher;
@@ -25,16 +25,16 @@ use stackable_operator::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
     },
-    v2::{cluster_resources::cluster_resources_new, types::operator::ControllerName},
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
     OPERATOR_NAME, ObjectRef,
     crd::v1alpha1,
-    zk_controller::validate::{operator_name, product_name},
+    zk_controller::apply::Applier,
 };
 
+pub(crate) mod apply;
 pub(crate) mod build;
 mod dereference;
 pub(crate) mod validate;
@@ -68,19 +68,12 @@ pub enum Error {
     #[snafu(display("failed to build the Kubernetes resources"))]
     BuildResources { source: build::Error },
 
-    #[snafu(display("failed to apply Kubernetes resource"))]
-    ApplyResource {
-        source: stackable_operator::cluster_resources::Error,
-    },
+    #[snafu(display("failed to apply the Kubernetes resources"))]
+    ApplyResources { source: apply::Error },
 
     #[snafu(display("failed to update status"))]
     ApplyStatus {
         source: stackable_operator::client::Error,
-    },
-
-    #[snafu(display("failed to delete orphaned resources"))]
-    DeleteOrphans {
-        source: stackable_operator::cluster_resources::Error,
     },
 }
 
@@ -95,15 +88,24 @@ impl ReconcilerError for Error {
             Error::Dereference { .. } => None,
             Error::ValidateCluster { .. } => None,
             Error::BuildResources { .. } => None,
-            Error::ApplyResource { .. } => None,
+            Error::ApplyResources { .. } => None,
             Error::ApplyStatus { .. } => None,
-            Error::DeleteOrphans { .. } => None,
         }
     }
 }
 
+/// Marker for prepared Kubernetes resources which are not applied yet.
+pub struct Prepared;
+
+/// Marker for applied Kubernetes resources.
+pub struct Applied;
+
 /// Every Kubernetes resource produced by the client-free [`build()`](build::build) step.
-pub struct KubernetesResources {
+///
+/// `T` is a marker that indicates if these resources are only [`Prepared`] or already [`Applied`].
+/// The marker is useful e.g. to ensure that the cluster status is updated based on the applied
+/// resources.
+pub struct KubernetesResources<T> {
     pub stateful_sets: Vec<StatefulSet>,
     pub services: Vec<Service>,
     pub listeners: Vec<Listener>,
@@ -115,6 +117,7 @@ pub struct KubernetesResources {
     pub pod_disruption_budgets: Vec<PodDisruptionBudget>,
     pub service_accounts: Vec<ServiceAccount>,
     pub role_bindings: Vec<RoleBinding>,
+    pub status: PhantomData<T>,
 }
 
 pub async fn reconcile_zk(
@@ -138,89 +141,34 @@ pub async fn reconcile_zk(
         validate::validate(zk, &dereferenced_objects, &ctx.operator_environment)
             .context(ValidateClusterSnafu)?;
 
-    // Names are derived from compile-time constants.
-    let mut cluster_resources = cluster_resources_new(
-        &product_name(),
-        &operator_name(),
-        &ControllerName::from_str(ZK_CONTROLLER_NAME)
-            .expect("ZK_CONTROLLER_NAME should be a valid controller name"),
-        &validated_cluster.name,
-        &validated_cluster.namespace,
-        &validated_cluster.uid,
-        ClusterResourceApplyStrategy::from(&validated_cluster.cluster_operation),
-        &validated_cluster.object_overrides,
-    );
-
+    // build (no client required)
     let resources = build::build(&validated_cluster, &client.kubernetes_cluster_info)
         .context(BuildResourcesSnafu)?;
 
+    // apply (client required)
+    let applied = Applier::new(
+        client,
+        &validated_cluster,
+        ClusterResourceApplyStrategy::from(&validated_cluster.cluster_operation),
+        &validated_cluster.object_overrides,
+    )
+    .apply(resources)
+    .await
+    .context(ApplyResourcesSnafu)?;
+
     let mut ss_cond_builder = StatefulSetConditionBuilder::default();
-
-    for service_account in resources.service_accounts {
-        cluster_resources
-            .add(client, service_account)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-    for role_binding in resources.role_bindings {
-        cluster_resources
-            .add(client, role_binding)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-
-    for service in resources.services {
-        cluster_resources
-            .add(client, service)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-
-    for listener in resources.listeners {
-        cluster_resources
-            .add(client, listener)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-
-    for config_map in resources.config_maps {
-        cluster_resources
-            .add(client, config_map)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-
-    for pdb in resources.pod_disruption_budgets {
-        cluster_resources
-            .add(client, pdb)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-
-    // Note: The StatefulSet needs to be applied after all ConfigMaps and Secrets it mounts
-    // to prevent unnecessary Pod restarts.
-    // See https://github.com/stackabletech/commons-operator/issues/111 for details.
-    for statefulset in resources.stateful_sets {
-        ss_cond_builder.add(
-            cluster_resources
-                .add(client, statefulset)
-                .await
-                .context(ApplyResourceSnafu)?,
-        );
+    for stateful_set in applied.stateful_sets {
+        ss_cond_builder.add(stateful_set);
     }
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
 
-    if let Some(discovery_cm) = resources.maybe_discovery_config_map {
-        let discovery_cm = cluster_resources
-            .add(client, discovery_cm)
-            .await
-            .context(ApplyResourceSnafu)?;
-        if let Some(generation) = discovery_cm.metadata.resource_version {
-            discovery_hash.write(generation.as_bytes())
-        }
+    if let Some(discovery_cm) = applied.maybe_discovery_config_map
+        && let Some(generation) = discovery_cm.metadata.resource_version
+    {
+        discovery_hash.write(generation.as_bytes())
     }
 
     let cluster_operation_cond_builder =
@@ -233,10 +181,6 @@ pub async fn reconcile_zk(
         conditions: compute_conditions(zk, &[&ss_cond_builder, &cluster_operation_cond_builder]),
     };
 
-    cluster_resources
-        .delete_orphaned_resources(client)
-        .await
-        .context(DeleteOrphansSnafu)?;
     client
         .apply_patch_status(OPERATOR_NAME, zk, &status)
         .await

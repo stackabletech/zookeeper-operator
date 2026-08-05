@@ -9,7 +9,7 @@
 //! remaining submodules ([`command`], [`graceful_shutdown`], [`jvm`],
 //! [`properties`]) produce fragments that those resource builders assemble.
 
-use std::str::FromStr;
+use std::{marker::PhantomData, str::FromStr};
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
@@ -21,7 +21,7 @@ use stackable_operator::{
 use crate::{
     crd::ZookeeperRole,
     zk_controller::{
-        KubernetesResources, ZK_CONTROLLER_NAME,
+        KubernetesResources, Prepared, ZK_CONTROLLER_NAME,
         build::resource::{
             config_map, discovery,
             listener::build_role_listener,
@@ -84,7 +84,7 @@ pub enum Error {
 pub fn build(
     cluster: &ValidatedCluster,
     cluster_info: &KubernetesClusterInfo,
-) -> Result<KubernetesResources, Error> {
+) -> Result<KubernetesResources<Prepared>, Error> {
     let mut stateful_sets = vec![];
     let mut services = vec![];
     let mut config_maps = vec![];
@@ -151,6 +151,7 @@ pub fn build(
         pod_disruption_budgets,
         service_accounts: vec![build_service_account(cluster)],
         role_bindings: vec![build_role_binding(cluster)],
+        status: PhantomData,
     })
 }
 
