@@ -13,10 +13,13 @@ All notable changes to this project will be documented in this file.
   functions and carry the full set of recommended labels ([#1060]).
 - BREAKING: The `servers` role is now required by the CRD.
   Previously a ZookeeperCluster without it was accepted by the API server but failed reconciliation ([#1060]).
+- The reconciler now applies resources and derives the cluster status in discrete
+  apply and update_status steps for the `zk_controller` and `znode_controller` ([#1069]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
 [#1063]: https://github.com/stackabletech/zookeeper-operator/pull/1063
+[#1069]: https://github.com/stackabletech/zookeeper-operator/pull/1069
 
 ## [26.7.0] - 2026-07-21
 
