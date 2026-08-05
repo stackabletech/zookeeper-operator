@@ -1,0 +1,39 @@
+= Data directory
+:description: How ZooKeeper manages its data directory and which zoo.cfg properties control it.
+:zk-admin-advanced: https://zookeeper.apache.org/doc/r3.9.5/zookeeperAdmin.html#sc_advancedConfiguration
+
+This page is meant as a general explanation of how ZooKeeper manages the files in its data directory over time.
+To see a simple list of the properties the operator sets in relation to that and their defaults, see xref:reference/zoo_cfg_properties.adoc#data-dir-props[`zoo.cfg` properties reference].
+
+== Data directory files
+
+The data directory is located at the path specified by `dataDir` in `zoo.cfg`.
+The operator sets this to `/stackable/data` by default.
+This directory contains two types of files, which together persist the ZNode data:
+
+* Transaction log files: An append-only write-ahead log. Every change to the ZNodes is appended here first.
+* Snapshot files: A full dump of the current state of all ZNodes. Snapshots let ZooKeeper recover quickly after a restart.
+
+ZooKeeper can write the transaction logs to a separate directory, configured with `dataLogDir`.
+The operator does not set this property, so both file types share `dataDir` and therefore the same volume.
+
+ZooKeeper pre-allocates its transaction log file in fixed-size blocks of a certain size (`preAllocSize`) so it does not have to grow the file with every write, which keeps writes fast.
+
+== Snapshot creation and auto-purge
+
+A snapshot is written and the transaction log rolled to a fresh file when either of two independent limits is reached:
+
+`snapCount`:: Create snapshot after roughly this many transactions. The operator does not set this property, consult the {zk-admin-advanced}[ZooKeeper Administrator's Guide{external-link-icon}^] for its default.
+`snapSizeLimitInKb`:: Create snapshot after the transaction log reaches roughly this size.
+
+Snapshots and their logs accumulate indefinitely unless the auto-purge feature is enabled.
+The operator enables this feature by default.
+
+There are two settings to control auto-purge:
+
+`autopurge.purgeInterval`:: Time between cleanup runs, in hours.
+`autopurge.snapRetainCount`:: How many of the most recent snapshots to keep, together with the transaction logs belonging to them. The rest are deleted during the cleanup.
+
+Together these two settings control how large the data directory can grow.
+`autopurge.snapRetainCount` sets how much history a cleanup keeps, while `autopurge.purgeInterval` sets how long it takes until the next cleanup, during which new snapshots and logs keep accumulating.
+The volume needs to be sized accordingly, see xref:usage_guide/resource_configuration.adoc[].

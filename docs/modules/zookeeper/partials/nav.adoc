@@ -3,6 +3,7 @@
 ** xref:zookeeper:getting_started/first_steps.adoc[]
 * Concepts
 ** xref:zookeeper:znodes.adoc[]
+** xref:zookeeper:data_directory.adoc[]
 * xref:zookeeper:usage_guide/index.adoc[]
 ** xref:zookeeper:usage_guide/listenerclass.adoc[]
 ** xref:zookeeper:usage_guide/encryption.adoc[]
@@ -25,3 +26,4 @@
 ** xref:zookeeper:reference/discovery.adoc[]
 ** xref:zookeeper:reference/commandline-parameters.adoc[]
 ** xref:zookeeper:reference/environment-variables.adoc[]
+** xref:zookeeper:reference/zoo_cfg_properties.adoc[]
