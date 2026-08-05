@@ -1,8 +1,11 @@
 //! Ensures that `Pod`s are configured and running for each [`v1alpha1::ZookeeperCluster`]
-use std::{hash::Hasher, marker::PhantomData, sync::Arc};
+//!
+//! This is the controller driver: it runs the
+//! `dereference -> validate -> build -> apply -> update_status` pipeline, with each step living
+//! in its own submodule.
+use std::{marker::PhantomData, sync::Arc};
 
 use const_format::concatcp;
-use fnv::FnvHasher;
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
@@ -21,22 +24,19 @@ use stackable_operator::{
     },
     logging::controller::ReconcilerError,
     shared::time::Duration,
-    status::condition::{
-        compute_conditions, operations::ClusterOperationsConditionBuilder,
-        statefulset::StatefulSetConditionBuilder,
-    },
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
     OPERATOR_NAME, ObjectRef,
     crd::v1alpha1,
-    zk_controller::apply::Applier,
+    zk_controller::{apply::Applier, update_status::update_status},
 };
 
 pub(crate) mod apply;
 pub(crate) mod build;
 mod dereference;
+mod update_status;
 pub(crate) mod validate;
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
@@ -71,10 +71,8 @@ pub enum Error {
     #[snafu(display("failed to apply the Kubernetes resources"))]
     ApplyResources { source: apply::Error },
 
-    #[snafu(display("failed to update status"))]
-    ApplyStatus {
-        source: stackable_operator::client::Error,
-    },
+    #[snafu(display("failed to update the cluster status"))]
+    UpdateStatus { source: update_status::Error },
 }
 
 impl ReconcilerError for Error {
@@ -89,7 +87,7 @@ impl ReconcilerError for Error {
             Error::ValidateCluster { .. } => None,
             Error::BuildResources { .. } => None,
             Error::ApplyResources { .. } => None,
-            Error::ApplyStatus { .. } => None,
+            Error::UpdateStatus { .. } => None,
         }
     }
 }
@@ -156,35 +154,10 @@ pub async fn reconcile_zk(
     .await
     .context(ApplyResourcesSnafu)?;
 
-    let mut ss_cond_builder = StatefulSetConditionBuilder::default();
-    for stateful_set in applied.stateful_sets {
-        ss_cond_builder.add(stateful_set);
-    }
-
-    // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
-    // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
-    let mut discovery_hash = FnvHasher::with_key(0);
-
-    if let Some(discovery_cm) = applied.maybe_discovery_config_map
-        && let Some(generation) = discovery_cm.metadata.resource_version
-    {
-        discovery_hash.write(generation.as_bytes())
-    }
-
-    let cluster_operation_cond_builder =
-        ClusterOperationsConditionBuilder::new(&zk.spec.cluster_operation);
-
-    let status = v1alpha1::ZookeeperClusterStatus {
-        // Serialize as a string to discourage users from trying to parse the value,
-        // and to keep things flexible if we end up changing the hasher at some point.
-        discovery_hash: Some(discovery_hash.finish().to_string()),
-        conditions: compute_conditions(zk, &[&ss_cond_builder, &cluster_operation_cond_builder]),
-    };
-
-    client
-        .apply_patch_status(OPERATOR_NAME, zk, &status)
+    // update_status (client required)
+    update_status(client, zk, &applied)
         .await
-        .context(ApplyStatusSnafu)?;
+        .context(UpdateStatusSnafu)?;
 
     Ok(controller::Action::await_change())
 }
