@@ -1,17 +1,20 @@
 //! Reconciles state for ZooKeeper znodes between Kubernetes [`v1alpha1::ZookeeperZnode`] objects and the ZooKeeper cluster
 //!
 //! See [`v1alpha1::ZookeeperZnode`] for more details.
+//!
+//! This is the controller driver: it runs the `dereference -> validate -> build -> apply`
+//! pipeline, with each step living in its own submodule. There is no update_status step, because
+//! the only status the ZookeeperZnode carries (the znode path) is written before the finalizer
+//! runs.
 use std::{borrow::Cow, convert::Infallible, sync::Arc};
 
 use const_format::concatcp;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
-    cluster_resources::{ClusterResourceApplyStrategy, ClusterResources},
-    crd::listener,
+    cluster_resources::ClusterResourceApplyStrategy,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::{
-        Resource, ResourceExt,
         api::ObjectMeta,
         core::{DeserializeGuard, DynamicObject, error_boundary},
         runtime::{controller, finalizer, reflector::ObjectRef},
@@ -24,15 +27,13 @@ use strum::{EnumDiscriminants, IntoStaticStr};
 use tracing::{debug, info};
 
 use crate::{
-    APP_NAME, OPERATOR_NAME,
-    crd::{
-        ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, role_listener_name, security::ZookeeperSecurity,
-        v1alpha1,
-    },
-    listener_addresses::{self, listener_addresses},
-    zk_controller::build::resource::discovery::{self, build_znode_discovery_configmap},
+    OPERATOR_NAME,
+    crd::{security::ZookeeperSecurity, v1alpha1},
+    znode_controller::apply::{Applier, ensure_znode_exists},
 };
 
+pub(crate) mod apply;
+pub(crate) mod build;
 mod dereference;
 pub(crate) mod validate;
 
@@ -64,22 +65,9 @@ pub enum Error {
     ))]
     ObjectMissingMetadata,
 
-    #[snafu(display("could not find server role service for {zk:?}"))]
-    FindZkSvc {
-        source: stackable_operator::client::Error,
-        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
-    },
-
     #[snafu(display("failed to calculate FQDN for {zk:?}"))]
     NoZkFqdn {
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
-    },
-
-    #[snafu(display("failed to ensure that ZNode {znode_path:?} exists in {zk:?}"))]
-    EnsureZnode {
-        source: znode_mgmt::Error,
-        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
-        znode_path: String,
     },
 
     #[snafu(display("failed to ensure that ZNode {znode_path:?} is missing from {zk:?}"))]
@@ -89,22 +77,11 @@ pub enum Error {
         znode_path: String,
     },
 
-    #[snafu(display("failed to read the addresses published by the ZooKeeper role Listener"))]
-    ReadListenerAddresses { source: listener_addresses::Error },
+    #[snafu(display("failed to build the Kubernetes resources"))]
+    BuildResources { source: build::Error },
 
-    #[snafu(display("{listener} has not published any addresses yet"))]
-    NoListenerAddresses {
-        listener: ObjectRef<listener::v1alpha1::Listener>,
-    },
-
-    #[snafu(display("failed to build discovery information"))]
-    BuildDiscoveryConfigMap { source: discovery::Error },
-
-    #[snafu(display("failed to save discovery information to {cm:?}"))]
-    ApplyDiscoveryConfigMap {
-        source: stackable_operator::cluster_resources::Error,
-        cm: ObjectRef<ConfigMap>,
-    },
+    #[snafu(display("failed to apply the Kubernetes resources"))]
+    ApplyResources { source: apply::Error },
 
     #[snafu(display("failed to update status"))]
     ApplyStatus {
@@ -115,14 +92,6 @@ pub enum Error {
     Finalizer {
         source: finalizer::Error<Infallible>,
     },
-
-    #[snafu(display("failed to delete orphaned resources"))]
-    DeleteOrphans {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
-    #[snafu(display("object has no namespace"))]
-    ObjectHasNoNamespace,
 }
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -158,20 +127,22 @@ impl ReconcilerError for Error {
             Error::Dereference { .. } => None,
             Error::ValidateCluster { .. } => None,
             Error::ObjectMissingMetadata => None,
-            Error::FindZkSvc { zk, .. } => Some(zk.clone().erase()),
             Error::NoZkFqdn { zk } => Some(zk.clone().erase()),
-            Error::EnsureZnode { zk, .. } => Some(zk.clone().erase()),
             Error::EnsureZnodeMissing { zk, .. } => Some(zk.clone().erase()),
-            Error::ReadListenerAddresses { .. } => None,
-            Error::NoListenerAddresses { listener } => Some(listener.clone().erase()),
-            Error::BuildDiscoveryConfigMap { .. } => None,
-            Error::ApplyDiscoveryConfigMap { cm, .. } => Some(cm.clone().erase()),
+            Error::BuildResources { .. } => None,
+            Error::ApplyResources { .. } => None,
             Error::ApplyStatus { .. } => None,
             Error::Finalizer { .. } => None,
-            Error::DeleteOrphans { .. } => None,
-            Error::ObjectHasNoNamespace => None,
         }
     }
+}
+
+/// Every Kubernetes resource produced by the client-free [`build()`](build::build) step.
+///
+/// The znode path inside the ZooKeeper ensemble is not a Kubernetes object, so it is absent here
+/// and created by the apply step instead.
+pub struct KubernetesResources {
+    pub discovery_config_maps: Vec<ConfigMap>,
 }
 
 pub async fn reconcile_znode(
@@ -274,23 +245,8 @@ async fn reconcile_apply(
     zk: v1alpha1::ZookeeperCluster,
     znode_path: &str,
 ) -> Result<controller::Action> {
-    // Infallible: `ValidatedZnode`'s object reference always contains name, namespace and uid
-    // (set unconditionally during the validate step), which is all `ClusterResources::new`
-    // requires.
-    let mut cluster_resources = ClusterResources::new(
-        APP_NAME,
-        OPERATOR_NAME,
-        ZNODE_CONTROLLER_NAME,
-        &validated_znode.object_ref(&()),
-        ClusterResourceApplyStrategy::from(&validated_znode.cluster_operation),
-        &validated_znode.object_overrides,
-    )
-    .expect(
-        "ClusterResources should be created because the ValidatedZnode's object reference \
-         always contains name, namespace and uid",
-    );
-
-    znode_mgmt::ensure_znode_exists(
+    // The znode must exist in the ZooKeeper ensemble before the discovery ConfigMap advertises it.
+    ensure_znode_exists(
         &zk_mgmt_addr(
             &zk,
             &validated_znode.zookeeper_security,
@@ -299,48 +255,22 @@ async fn reconcile_apply(
         znode_path,
     )
     .await
-    .with_context(|_| EnsureZnodeSnafu {
-        zk: ObjectRef::from_obj(&zk),
-        znode_path,
-    })?;
+    .context(ApplyResourcesSnafu)?;
 
-    let listener = client
-        .get::<listener::v1alpha1::Listener>(
-            role_listener_name(&zk.name_any(), &ZookeeperRole::Server).as_ref(),
-            zk.metadata
-                .namespace
-                .as_deref()
-                .context(ObjectHasNoNamespaceSnafu)?,
-        )
-        .await
-        .context(FindZkSvcSnafu {
-            zk: ObjectRef::from_obj(&zk),
-        })?;
+    // build (no client required)
+    let resources = build::build(validated_znode, znode_path).context(BuildResourcesSnafu)?;
 
-    let listener_addresses = listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)
-        .context(ReadListenerAddressesSnafu)?
-        .with_context(|| NoListenerAddressesSnafu {
-            listener: ObjectRef::from_obj(&listener),
-        })?;
-
-    let discovery_cm = build_znode_discovery_configmap(
+    // apply (client required)
+    Applier::new(
+        client,
         validated_znode,
-        ZNODE_CONTROLLER_NAME,
-        &listener_addresses,
-        znode_path,
+        ClusterResourceApplyStrategy::from(&validated_znode.cluster_operation),
+        &validated_znode.object_overrides,
     )
-    .context(BuildDiscoveryConfigMapSnafu)?;
+    .apply(resources)
+    .await
+    .context(ApplyResourcesSnafu)?;
 
-    let obj_ref = ObjectRef::from_obj(&discovery_cm);
-    cluster_resources
-        .add(client, discovery_cm)
-        .await
-        .with_context(|_| ApplyDiscoveryConfigMapSnafu { cm: obj_ref })?;
-
-    cluster_resources
-        .delete_orphaned_resources(client)
-        .await
-        .context(DeleteOrphansSnafu)?;
     Ok(controller::Action::await_change())
 }
 

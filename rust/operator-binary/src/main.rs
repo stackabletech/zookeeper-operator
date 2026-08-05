@@ -41,6 +41,7 @@ use crate::{
 };
 
 pub mod crd;
+mod discovery;
 mod listener_addresses;
 mod webhooks;
 mod zk_controller;

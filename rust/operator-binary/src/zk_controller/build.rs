@@ -20,10 +20,11 @@ use stackable_operator::{
 
 use crate::{
     crd::ZookeeperRole,
+    discovery,
     zk_controller::{
         KubernetesResources, Prepared, ZK_CONTROLLER_NAME,
         build::resource::{
-            config_map, discovery,
+            config_map,
             listener::build_role_listener,
             pdb::build_pdb,
             rbac::{build_role_binding, build_service_account},
@@ -35,10 +36,6 @@ use crate::{
         validate::ValidatedCluster,
     },
 };
-
-// Placeholder role-group name used for the recommended labels of the role-level discovery
-// `ConfigMap` (which is not tied to a single role group).
-stackable_operator::constant!(pub(crate) PLACEHOLDER_DISCOVERY_ROLE_GROUP: RoleGroupName = "discovery");
 
 // Placeholder role-group name used for the recommended labels of the role-level `Listener`
 // (which is not tied to a single role group).

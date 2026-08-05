@@ -1,3 +1,8 @@
+//! Builders for the discovery ConfigMaps, which advertise how to connect to a ZooKeeper ensemble.
+//!
+//! Shared by the build steps of both controllers: the ZookeeperCluster controller publishes the
+//! whole ensemble, the ZookeeperZnode controller publishes the same ensemble narrowed to a chroot.
+
 use std::str::FromStr;
 
 use snafu::{ResultExt, Snafu};
@@ -9,19 +14,20 @@ use stackable_operator::{
         HasName, HasUid, NameIsValidLabelValue,
         builder::meta::ownerreference_from_resource,
         kvp::label::recommended_labels,
-        types::operator::{ControllerName, ProductVersion},
+        types::operator::{ControllerName, ProductVersion, RoleGroupName},
     },
 };
 
 use crate::{
     crd::{ZookeeperRole, security::ZookeeperSecurity},
     listener_addresses::ListenerAddresses,
-    zk_controller::{
-        build::PLACEHOLDER_DISCOVERY_ROLE_GROUP,
-        validate::{ValidatedCluster, operator_name, product_name},
-    },
+    zk_controller::validate::{ValidatedCluster, operator_name, product_name},
     znode_controller::validate::ValidatedZnode,
 };
+
+// Placeholder role-group name used for the recommended labels of the role-level discovery
+// `ConfigMap` (which is not tied to a single role group).
+stackable_operator::constant!(PLACEHOLDER_DISCOVERY_ROLE_GROUP: RoleGroupName = "discovery");
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 

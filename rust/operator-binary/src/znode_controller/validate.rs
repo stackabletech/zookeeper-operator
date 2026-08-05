@@ -24,7 +24,11 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{CONTAINER_IMAGE_BASE_NAME, authentication, security::ZookeeperSecurity, v1alpha1},
+    crd::{
+        CONTAINER_IMAGE_BASE_NAME, ZOOKEEPER_SERVER_PORT_NAME, authentication,
+        security::ZookeeperSecurity, v1alpha1,
+    },
+    listener_addresses::{self, ListenerAddresses, listener_addresses},
     znode_controller::dereference::DereferencedObjects,
 };
 
@@ -62,6 +66,14 @@ pub enum Error {
         source: stackable_operator::v2::macros::attributed_string_type::Error,
         product_version: String,
     },
+
+    #[snafu(display("failed to read the addresses published by the ZooKeeper role Listener"))]
+    ReadRoleListenerAddresses { source: listener_addresses::Error },
+
+    #[snafu(display(
+        "the ZooKeeper role Listener does not exist yet, or has not published any addresses yet"
+    ))]
+    NoRoleListenerAddresses,
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -92,6 +104,12 @@ pub struct ValidatedZnode {
     /// Object overrides applied to the znode's resources, carried so the apply step does not reach
     /// into the raw [`v1alpha1::ZookeeperZnode`].
     pub object_overrides: ObjectOverrides,
+    /// The client addresses published by the referenced cluster's role Listener, which the znode's
+    /// discovery ConfigMap advertises.
+    ///
+    /// Unlike the cluster controller, the znode controller cannot produce anything without them,
+    /// so validation fails while they are missing and the reconciliation is retried.
+    pub discovery_addresses: ListenerAddresses,
 }
 
 impl HasName for ValidatedZnode {
@@ -184,6 +202,15 @@ pub fn validate(
             }
         })?;
 
+    let discovery_addresses = dereferenced_objects
+        .maybe_role_listener
+        .as_ref()
+        .map(|listener| listener_addresses(listener, ZOOKEEPER_SERVER_PORT_NAME))
+        .transpose()
+        .context(ReadRoleListenerAddressesSnafu)?
+        .flatten()
+        .context(NoRoleListenerAddressesSnafu)?;
+
     Ok(ValidatedZnode {
         metadata: ObjectMeta {
             name: Some(name.clone()),
@@ -198,5 +225,6 @@ pub fn validate(
         zookeeper_security,
         cluster_operation: dereferenced_objects.zk.spec.cluster_operation.clone(),
         object_overrides: znode.spec.object_overrides.clone(),
+        discovery_addresses,
     })
 }
