@@ -118,8 +118,9 @@ rules:
     verbs:
       - create
       - patch
-  # Listener created per role group for external access. Applied via SSA and tracked for
-  # orphan cleanup.
+  # Listener created per role for external access. Applied via SSA and tracked for
+  # orphan cleanup. Watched as well, because the discovery ConfigMap advertises the addresses
+  # that the listener operator publishes on it.
   - apiGroups:
       - listeners.stackable.tech
     resources:
@@ -130,6 +131,7 @@ rules:
       - get
       - list
       - patch
+      - watch
   # Primary CRD: watched and read during reconciliation.
   - apiGroups:
       - {{ include "operator.name" . }}.stackable.tech

@@ -21,9 +21,9 @@ use stackable_operator::{
 use crate::{
     crd::ZookeeperRole,
     zk_controller::{
-        KubernetesResources,
+        KubernetesResources, ZK_CONTROLLER_NAME,
         build::resource::{
-            config_map,
+            config_map, discovery,
             listener::build_role_listener,
             pdb::build_pdb,
             rbac::{build_role_binding, build_service_account},
@@ -63,6 +63,9 @@ pub enum Error {
         source: statefulset::Error,
         rolegroup: RoleGroupName,
     },
+
+    #[snafu(display("failed to build the discovery ConfigMap"))]
+    DiscoveryConfigMap { source: discovery::Error },
 }
 
 /// Builds every Kubernetes resource for the given validated cluster.
@@ -72,9 +75,12 @@ pub enum Error {
 /// failures only. `cluster_info` is static cluster metadata (not a client call), consumed by the
 /// role-group ConfigMap builder.
 ///
-/// The discovery `ConfigMap` is deliberately absent: it is built from the *applied* role
-/// [`Listener`](stackable_operator::crd::listener::v1alpha1::Listener)'s ingress addresses, so it
-/// is assembled in the reconcile step after the Listener has been applied, not here.
+/// The discovery `ConfigMap` is only built once the role
+/// [`Listener`](stackable_operator::crd::listener::v1alpha1::Listener) publishes ingress addresses.
+/// Those are dereferenced and validated into
+/// [`ValidatedCluster::discovery_addresses`](ValidatedCluster#structfield.discovery_addresses)
+/// before this step runs, so the ConfigMap is absent during the reconciliation that first creates
+/// the Listener, and built by the one that the Listener watch triggers afterwards.
 pub fn build(
     cluster: &ValidatedCluster,
     cluster_info: &KubernetesClusterInfo,
@@ -127,11 +133,21 @@ pub fn build(
 
     let listeners = vec![build_role_listener(cluster, &zk_role)];
 
+    let maybe_discovery_config_map = cluster
+        .discovery_addresses
+        .as_ref()
+        .map(|listener_addresses| {
+            discovery::build_discovery_configmap(cluster, ZK_CONTROLLER_NAME, listener_addresses)
+        })
+        .transpose()
+        .context(DiscoveryConfigMapSnafu)?;
+
     Ok(KubernetesResources {
         stateful_sets,
         services,
         listeners,
         config_maps,
+        maybe_discovery_config_map,
         pod_disruption_budgets,
         service_accounts: vec![build_service_account(cluster)],
         role_bindings: vec![build_role_binding(cluster)],
@@ -214,7 +230,7 @@ mod tests {
                 "simple-zookeeper-server-secondary-metrics",
             ]
         );
-        // One ConfigMap per role group; the discovery ConfigMap is absent — see `build()`.
+        // One ConfigMap per role group.
         assert_eq!(
             sorted_names(&resources.config_maps),
             [
@@ -222,6 +238,8 @@ mod tests {
                 "simple-zookeeper-server-secondary",
             ]
         );
+        // The fixture has no role Listener yet, so the discovery ConfigMap is absent (see `build()`).
+        assert!(resources.maybe_discovery_config_map.is_none());
         // The single role-level Listener for the one ZooKeeper role (`server`).
         assert_eq!(
             sorted_names(&resources.listeners),

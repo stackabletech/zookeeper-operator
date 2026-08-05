@@ -25,7 +25,11 @@ use tracing::{debug, info};
 
 use crate::{
     APP_NAME, OPERATOR_NAME,
-    crd::{ZookeeperRole, role_listener_name, security::ZookeeperSecurity, v1alpha1},
+    crd::{
+        ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, role_listener_name, security::ZookeeperSecurity,
+        v1alpha1,
+    },
+    listener_addresses::{self, listener_addresses},
     zk_controller::build::resource::discovery::{self, build_znode_discovery_configmap},
 };
 
@@ -83,6 +87,14 @@ pub enum Error {
         source: znode_mgmt::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
         znode_path: String,
+    },
+
+    #[snafu(display("failed to read the addresses published by the ZooKeeper role Listener"))]
+    ReadListenerAddresses { source: listener_addresses::Error },
+
+    #[snafu(display("{listener} has not published any addresses yet"))]
+    NoListenerAddresses {
+        listener: ObjectRef<listener::v1alpha1::Listener>,
     },
 
     #[snafu(display("failed to build discovery information"))]
@@ -150,6 +162,8 @@ impl ReconcilerError for Error {
             Error::NoZkFqdn { zk } => Some(zk.clone().erase()),
             Error::EnsureZnode { zk, .. } => Some(zk.clone().erase()),
             Error::EnsureZnodeMissing { zk, .. } => Some(zk.clone().erase()),
+            Error::ReadListenerAddresses { .. } => None,
+            Error::NoListenerAddresses { listener } => Some(listener.clone().erase()),
             Error::BuildDiscoveryConfigMap { .. } => None,
             Error::ApplyDiscoveryConfigMap { cm, .. } => Some(cm.clone().erase()),
             Error::ApplyStatus { .. } => None,
@@ -303,10 +317,16 @@ async fn reconcile_apply(
             zk: ObjectRef::from_obj(&zk),
         })?;
 
+    let listener_addresses = listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)
+        .context(ReadListenerAddressesSnafu)?
+        .with_context(|| NoListenerAddressesSnafu {
+            listener: ObjectRef::from_obj(&listener),
+        })?;
+
     let discovery_cm = build_znode_discovery_configmap(
         validated_znode,
         ZNODE_CONTROLLER_NAME,
-        listener,
+        &listener_addresses,
         znode_path,
     )
     .context(BuildDiscoveryConfigMapSnafu)?;

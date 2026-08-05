@@ -13,6 +13,7 @@ use futures::{FutureExt, StreamExt, TryFutureExt};
 use stackable_operator::{
     YamlSchema,
     cli::{Command, RunArguments},
+    crd::listener::v1alpha1::Listener,
     eos::EndOfSupportChecker,
     k8s_openapi::api::{
         apps::v1::StatefulSet,
@@ -40,6 +41,7 @@ use crate::{
 };
 
 pub mod crd;
+mod listener_addresses;
 mod webhooks;
 mod zk_controller;
 mod znode_controller;
@@ -137,6 +139,13 @@ async fn main() -> anyhow::Result<()> {
                 )
                 .owns(
                     watch_namespace.get_api::<DeserializeGuard<ConfigMap>>(&client),
+                    watcher::Config::default(),
+                )
+                // The discovery ConfigMap advertises the addresses that the listener operator
+                // publishes on the role Listener, so a reconciliation must run once they appear
+                // or change.
+                .owns(
+                    watch_namespace.get_api::<DeserializeGuard<Listener>>(&client),
                     watcher::Config::default(),
                 )
                 .graceful_shutdown_on(sigterm_watcher.handle())

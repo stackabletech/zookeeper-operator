@@ -3,7 +3,7 @@ use std::{hash::Hasher, str::FromStr, sync::Arc};
 
 use const_format::concatcp;
 use fnv::FnvHasher;
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::ClusterResourceApplyStrategy,
@@ -32,10 +32,7 @@ use strum::{EnumDiscriminants, IntoStaticStr};
 use crate::{
     OPERATOR_NAME, ObjectRef,
     crd::v1alpha1,
-    zk_controller::{
-        build::resource::discovery,
-        validate::{operator_name, product_name},
-    },
+    zk_controller::validate::{operator_name, product_name},
 };
 
 pub(crate) mod build;
@@ -76,24 +73,6 @@ pub enum Error {
         source: stackable_operator::cluster_resources::Error,
     },
 
-    #[snafu(display("object is missing metadata to build owner reference"))]
-    ObjectMissingMetadataForOwnerRef {
-        source: stackable_operator::builder::meta::Error,
-    },
-
-    #[snafu(display(
-        "no role Listener was applied; the discovery ConfigMap is derived from the applied role Listener"
-    ))]
-    NoRoleListener,
-
-    #[snafu(display("failed to build discovery ConfigMap"))]
-    BuildDiscoveryConfig { source: discovery::Error },
-
-    #[snafu(display("failed to apply discovery ConfigMap"))]
-    ApplyDiscoveryConfig {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
     #[snafu(display("failed to update status"))]
     ApplyStatus {
         source: stackable_operator::client::Error,
@@ -102,11 +81,6 @@ pub enum Error {
     #[snafu(display("failed to delete orphaned resources"))]
     DeleteOrphans {
         source: stackable_operator::cluster_resources::Error,
-    },
-
-    #[snafu(display("failed to build object meta data"))]
-    ObjectMeta {
-        source: stackable_operator::builder::meta::Error,
     },
 }
 
@@ -122,25 +96,22 @@ impl ReconcilerError for Error {
             Error::ValidateCluster { .. } => None,
             Error::BuildResources { .. } => None,
             Error::ApplyResource { .. } => None,
-            Error::ObjectMissingMetadataForOwnerRef { .. } => None,
-            Error::NoRoleListener => None,
-            Error::BuildDiscoveryConfig { .. } => None,
-            Error::ApplyDiscoveryConfig { .. } => None,
             Error::ApplyStatus { .. } => None,
             Error::DeleteOrphans { .. } => None,
-            Error::ObjectMeta { .. } => None,
         }
     }
 }
 
 /// Every Kubernetes resource produced by the client-free [`build()`](build::build) step.
-///
-/// The discovery `ConfigMap` is deliberately absent — see [`build()`](build::build).
 pub struct KubernetesResources {
     pub stateful_sets: Vec<StatefulSet>,
     pub services: Vec<Service>,
     pub listeners: Vec<Listener>,
     pub config_maps: Vec<ConfigMap>,
+    /// The discovery `ConfigMap`, which is only built once the role Listener publishes its
+    /// addresses (see [`build()`](build::build)). It is kept apart from the role group
+    /// `config_maps` because the cluster status carries a hash of it.
+    pub maybe_discovery_config_map: Option<ConfigMap>,
     pub pod_disruption_budgets: Vec<PodDisruptionBudget>,
     pub service_accounts: Vec<ServiceAccount>,
     pub role_bindings: Vec<RoleBinding>,
@@ -205,17 +176,12 @@ pub async fn reconcile_zk(
             .context(ApplyResourceSnafu)?;
     }
 
-    // ZooKeeper has a single role Listener; the applied object feeds the discovery ConfigMap.
-    let mut applied_role_listener: Option<Listener> = None;
     for listener in resources.listeners {
-        applied_role_listener = Some(
-            cluster_resources
-                .add(client, listener)
-                .await
-                .context(ApplyResourceSnafu)?,
-        );
+        cluster_resources
+            .add(client, listener)
+            .await
+            .context(ApplyResourceSnafu)?;
     }
-    let role_listener = applied_role_listener.context(NoRoleListenerSnafu)?;
 
     for config_map in resources.config_maps {
         cluster_resources
@@ -247,16 +213,14 @@ pub async fn reconcile_zk(
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
 
-    let discovery_cm =
-        discovery::build_discovery_configmap(&validated_cluster, ZK_CONTROLLER_NAME, role_listener)
-            .context(BuildDiscoveryConfigSnafu)?;
-
-    let discovery_cm = cluster_resources
-        .add(client, discovery_cm)
-        .await
-        .context(ApplyDiscoveryConfigSnafu)?;
-    if let Some(generation) = discovery_cm.metadata.resource_version {
-        discovery_hash.write(generation.as_bytes())
+    if let Some(discovery_cm) = resources.maybe_discovery_config_map {
+        let discovery_cm = cluster_resources
+            .add(client, discovery_cm)
+            .await
+            .context(ApplyResourceSnafu)?;
+        if let Some(generation) = discovery_cm.metadata.resource_version {
+            discovery_hash.write(generation.as_bytes())
+        }
     }
 
     let cluster_operation_cond_builder =
@@ -361,6 +325,7 @@ pub(crate) mod test_support {
             zk,
             &DereferencedObjects {
                 authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
+                maybe_role_listener: None,
             },
             &operator_environment(),
         )
