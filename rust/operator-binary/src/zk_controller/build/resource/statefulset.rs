@@ -12,6 +12,7 @@ use stackable_operator::{
             PodBuilder,
             container::ContainerBuilder,
             resources::ResourceRequirementsBuilder,
+            security::PodSecurityContextBuilder,
             volume::{ListenerOperatorVolumeSourceBuilder, ListenerReference},
         },
     },
@@ -22,8 +23,7 @@ use stackable_operator::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
                 ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource, ExecAction,
-                ObjectFieldSelector, PersistentVolumeClaim, PodSecurityContext, Probe,
-                ResourceRequirements, Volume,
+                ObjectFieldSelector, PersistentVolumeClaim, Probe, ResourceRequirements, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
@@ -378,10 +378,11 @@ pub fn build_server_rolegroup_statefulset(
             )),
         )
         .context(AddVolumeSnafu)?
-        .security_context(PodSecurityContext {
-            fs_group: Some(1000),
-            ..PodSecurityContext::default()
-        })
+        .security_context(
+            PodSecurityContextBuilder::with_stackable_defaults()
+                .fs_group(1000)
+                .build(),
+        )
         .service_account_name(cluster.cluster_resource_names().service_account_name());
 
     // Use the user-provided custom log ConfigMap if one is configured, otherwise fall back to the
