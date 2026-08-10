@@ -6,7 +6,6 @@ metadata:
 spec:
   group: zookeeper.stackable.tech
   names:
-    categories: []
     kind: ZookeeperCluster
     plural: zookeeperclusters
     shortNames:
@@ -14,8 +13,7 @@ spec:
     singular: zookeepercluster
   scope: Namespaced
   versions:
-  - additionalPrinterColumns: []
-    name: v1alpha1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: A ZooKeeper cluster stacklet. This resource is managed by the Stackable operator for Apache ZooKeeper.
@@ -1366,7 +1364,6 @@ metadata:
 spec:
   group: zookeeper.stackable.tech
   names:
-    categories: []
     kind: ZookeeperZnode
     plural: zookeeperznodes
     shortNames:
@@ -1375,8 +1372,7 @@ spec:
     singular: zookeeperznode
   scope: Namespaced
   versions:
-  - additionalPrinterColumns: []
-    name: v1alpha1
+  - name: v1alpha1
     schema:
       openAPIV3Schema:
         description: A claim for a single ZooKeeper ZNode tree (filesystem node).

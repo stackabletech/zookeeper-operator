@@ -17,11 +17,19 @@ All notable changes to this project will be documented in this file.
   functions and carry the full set of recommended labels ([#1060]).
 - BREAKING: The `servers` role is now required by the CRD.
   Previously a ZookeeperCluster without it was accepted by the API server but failed reconciliation ([#1060]).
+- All product containers now run with `securityContext.runAsNonRoot` set to `true` to improve security ([#1070]).
+
+### Fixed
+
+- Fix a longstanding problem of including empty `categories`, `shortNames` and `additionalPrinterColumns` in the CRDs,
+  which could cause problems with GitOps tools (e.g. ArgoCD) reporting a diff in the custom resources.
+  See [our internal issue](https://github.com/stackabletech/hdfs-operator/issues/626) and [the fix](https://github.com/kube-rs/kube/pull/2042) for details ([#1070]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
 [#1063]: https://github.com/stackabletech/zookeeper-operator/pull/1063
 [#1068]: https://github.com/stackabletech/zookeeper-operator/pull/1068
+[#1070]: https://github.com/stackabletech/zookeeper-operator/pull/1070
 
 ## [26.7.0] - 2026-07-21
 
