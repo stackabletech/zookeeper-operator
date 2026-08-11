@@ -1,0 +1,40 @@
+= `zoo.cfg` properties
+:description: Reference for the zoo.cfg properties set by the Stackable Operator for Apache ZooKeeper.
+
+This is a reference page for `zoo.cfg` properties set by the operator.
+
+[[data-dir-props]]
+== Data directory properties
+
+The following `zoo.cfg` properties control how ZooKeeper manages the files in its data directory.
+You can override them using xref:usage_guide/overrides.adoc[configOverrides].
+
+[cols="2,1,2,3",options="header"]
+|===
+| Property | Unit | Default set by the operator | Description
+
+| `dataDir`
+| path
+| `/stackable/data`
+| The location where ZooKeeper stores the snapshots of its in-memory database and the transaction log of updates to that database.
+
+| `autopurge.purgeInterval`
+| hours
+| `6`
+| Time between cleanup runs. `0` disables auto-purge.
+
+| `autopurge.snapRetainCount`
+| count
+| `3`
+| Number of recent snapshots (and their transaction logs) to keep. Minimum `3`.
+
+| `snapSizeLimitInKb`
+| KiB
+| `102400` (= 100 MiB)
+| Take a snapshot after the log reaches roughly this size. A non-positive value disables this trigger.
+
+| `preAllocSize`
+| KiB
+| `16384` (= 16 MiB)
+| Block size in which the transaction log file is pre-allocated.
+|===

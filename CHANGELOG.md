@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- BREAKING: Enable auto-purge feature for data directory cleanup ([#1068]).
+
 ### Changed
 
 - Internal operator refactoring: introduce a build() step in the reconciler that
@@ -24,6 +28,7 @@ All notable changes to this project will be documented in this file.
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
 [#1063]: https://github.com/stackabletech/zookeeper-operator/pull/1063
+[#1068]: https://github.com/stackabletech/zookeeper-operator/pull/1068
 [#1070]: https://github.com/stackabletech/zookeeper-operator/pull/1070
 
 ## [26.7.0] - 2026-07-21
