@@ -11,12 +11,11 @@ runners:
         nodes: 3
 
 profiles:
-  # TODO (@Techassi): This will be enabled later
-  # schedule:
-  #   strategy: use-runner
-  #   runner: amd64
-  #   options:
-  #     beku-parallelism: 2
+  schedule:
+    strategy: use-runner
+    runner: amd64
+    options:
+      beku-parallelism: 2
   smoke-latest:
     strategy: use-runner
     runner: amd64
