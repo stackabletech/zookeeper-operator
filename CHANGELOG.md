@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
   Previously a ZookeeperCluster without it was accepted by the API server but failed reconciliation ([#1060]).
 - The reconciler now applies resources and derives the cluster status in discrete
   apply and update_status steps for the `zk_controller` and `znode_controller` ([#1069]).
+- The discovery ConfigMap is now always written, with empty `ZOOKEEPER` and `ZOOKEEPER_HOSTS` while
+  the listener publishes no addresses ([#1069]).
 - All product containers now run with `securityContext.runAsNonRoot` set to `true` to improve security ([#1070]).
 
 ### Fixed
