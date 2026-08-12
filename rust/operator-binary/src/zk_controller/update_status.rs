@@ -86,3 +86,35 @@ fn discovery_hash(discovery_config_map: &ConfigMap) -> String {
     // and to keep things flexible if we end up changing the hasher at some point.
     discovery_hash.finish().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use stackable_operator::kube::api::ObjectMeta;
+
+    use super::{ConfigMap, discovery_hash};
+
+    fn discovery_config_map(resource_version: Option<&str>) -> ConfigMap {
+        ConfigMap {
+            metadata: ObjectMeta {
+                name: Some("simple-zookeeper".to_owned()),
+                resource_version: resource_version.map(ToOwned::to_owned),
+                ..ObjectMeta::default()
+            },
+            ..ConfigMap::default()
+        }
+    }
+
+    /// The hash exists so that clients can tell when the published connection details changed, so
+    /// it must follow the discovery ConfigMap's resource version.
+    #[test]
+    fn discovery_hash_tracks_the_resource_version() {
+        let hash = discovery_hash(&discovery_config_map(Some("42")));
+
+        assert_ne!(hash, discovery_hash(&discovery_config_map(Some("43"))));
+        assert_eq!(hash, discovery_hash(&discovery_config_map(Some("42"))));
+
+        // A ConfigMap that was never applied carries no resource version, in which case the hash
+        // covers nothing and stays at the hasher's initial state.
+        assert_ne!(hash, discovery_hash(&discovery_config_map(None)));
+    }
+}
