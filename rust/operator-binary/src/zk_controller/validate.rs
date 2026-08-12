@@ -51,11 +51,12 @@ use strum::IntoEnumIterator;
 
 use crate::{
     crd::{
-        APP_NAME, CONTAINER_IMAGE_BASE_NAME, OPERATOR_NAME, ZookeeperRole, ZookeeperServerRoleType,
-        authentication,
+        APP_NAME, CONTAINER_IMAGE_BASE_NAME, OPERATOR_NAME, ZOOKEEPER_SERVER_PORT_NAME,
+        ZookeeperRole, ZookeeperServerRoleType, authentication,
         security::ZookeeperSecurity,
         v1alpha1::{self, ZookeeperConfig, ZookeeperConfigOverrides, ZookeeperServerRoleConfig},
     },
+    listener_addresses::{self, ListenerAddresses, listener_addresses},
     zk_controller::{ZK_CONTROLLER_NAME, dereference::DereferencedObjects},
 };
 
@@ -117,6 +118,9 @@ pub enum Error {
         "the Vector agent is enabled but no Vector aggregator discovery ConfigMap name is set"
     ))]
     MissingVectorAggregatorConfigMapName,
+
+    #[snafu(display("failed to read the addresses published by the role Listener"))]
+    ReadRoleListenerAddresses { source: listener_addresses::Error },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -242,6 +246,13 @@ pub struct ValidatedCluster {
     /// Object overrides applied to the cluster's resources, carried so the apply step does not reach
     /// into the raw [`v1alpha1::ZookeeperCluster`].
     pub object_overrides: ObjectOverrides,
+    /// The client addresses published by the role Listener, which the discovery ConfigMap
+    /// advertises.
+    ///
+    /// Empty until the listener operator has published them, in which case the discovery ConfigMap
+    /// advertises an empty connection string until the reconciliation that the Listener watch
+    /// triggers fills it in.
+    pub discovery_addresses: ListenerAddresses,
 }
 
 // Placeholder product version used for labels on PVC templates, which cannot be modified once
@@ -264,6 +275,7 @@ impl ValidatedCluster {
         >,
         cluster_operation: ClusterOperation,
         object_overrides: ObjectOverrides,
+        discovery_addresses: ListenerAddresses,
     ) -> Self {
         Self {
             metadata: ObjectMeta {
@@ -282,6 +294,7 @@ impl ValidatedCluster {
             role_group_configs,
             cluster_operation,
             object_overrides,
+            discovery_addresses,
         }
     }
 
@@ -508,6 +521,19 @@ pub fn validate(
         pdb: common.pod_disruption_budget.clone(),
     };
 
+    // The role Listener does not exist during the very first reconciliation, and carries no
+    // addresses until the listener operator has published them. Both cases resolve to no addresses
+    // rather than an error, so that the discovery ConfigMap is still built (see
+    // [`build_discovery_configmap`](crate::discovery::build_discovery_configmap)).
+    let discovery_addresses = dereferenced_objects
+        .maybe_role_listener
+        .as_ref()
+        .map(|listener| listener_addresses(listener, ZOOKEEPER_SERVER_PORT_NAME))
+        .transpose()
+        .context(ReadRoleListenerAddressesSnafu)?
+        .flatten()
+        .unwrap_or_default();
+
     Ok(ValidatedCluster::new(
         name,
         namespace,
@@ -522,6 +548,7 @@ pub fn validate(
         role_group_configs,
         zk.spec.cluster_operation.clone(),
         zk.spec.object_overrides.clone(),
+        discovery_addresses,
     ))
 }
 
@@ -577,9 +604,27 @@ mod tests {
     use stackable_operator::k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 
     use super::*;
-    use crate::zk_controller::test_support::{
-        app_version_label, minimal_zk, try_validate, validated_cluster,
+    use crate::{
+        listener_addresses::test_support::{ingress_address, role_listener},
+        zk_controller::test_support::{
+            app_version_label, minimal_zk, try_validate, try_validate_with_role_listener,
+            validated_cluster,
+        },
     };
+
+    const MINIMAL_ZK_YAML: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
 
     /// Locks every value the validate step itself derives from the minimal fixture — so a
     /// validation regression fails here, with a validate-shaped message, instead of surfacing as
@@ -797,5 +842,56 @@ mod tests {
             let _: RoleName = (&role).into();
             let _: RoleName = role.into();
         }
+    }
+
+    /// The `zk` port is a constant, so a role Listener that publishes addresses without it is a
+    /// fault rather than a transient state, and must fail validation.
+    #[test]
+    fn role_listener_without_the_expected_port_fails_validation() {
+        let zk = minimal_zk(MINIMAL_ZK_YAML);
+        let listener = role_listener(Some(vec![ingress_address(
+            "node-0",
+            "not-the-zk-port",
+            2181,
+        )]));
+
+        assert!(matches!(
+            try_validate_with_role_listener(&zk, Some(listener)),
+            Err(Error::ReadRoleListenerAddresses { .. })
+        ));
+    }
+
+    /// The published addresses reach the discovery ConfigMap through `discovery_addresses`.
+    #[test]
+    fn role_listener_addresses_are_carried_into_the_validated_cluster() {
+        let zk = minimal_zk(MINIMAL_ZK_YAML);
+        let listener = role_listener(Some(vec![
+            ingress_address("node-1", ZOOKEEPER_SERVER_PORT_NAME, 2181),
+            ingress_address("node-0", ZOOKEEPER_SERVER_PORT_NAME, 2181),
+        ]));
+
+        let validated = try_validate_with_role_listener(&zk, Some(listener))
+            .expect("validate should succeed for the test fixture");
+
+        assert_eq!(
+            validated.discovery_addresses.to_connection_string(),
+            "node-0:2181,node-1:2181"
+        );
+    }
+
+    /// Unlike the znode controller, missing addresses are not an error here: the reconciliation
+    /// that creates the role Listener in the first place has to get as far as the apply step.
+    #[test]
+    fn missing_role_listener_addresses_validate_to_no_addresses() {
+        let zk = minimal_zk(MINIMAL_ZK_YAML);
+
+        // The Listener does not exist yet.
+        let validated = validated_cluster(&zk);
+        assert_eq!(validated.discovery_addresses, ListenerAddresses::default());
+
+        // The Listener exists, but the listener operator has not published its status yet.
+        let validated = try_validate_with_role_listener(&zk, Some(role_listener(None)))
+            .expect("validate should succeed for the test fixture");
+        assert_eq!(validated.discovery_addresses, ListenerAddresses::default());
     }
 }

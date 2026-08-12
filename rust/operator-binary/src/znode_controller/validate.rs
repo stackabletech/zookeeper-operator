@@ -24,7 +24,11 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{CONTAINER_IMAGE_BASE_NAME, authentication, security::ZookeeperSecurity, v1alpha1},
+    crd::{
+        CONTAINER_IMAGE_BASE_NAME, ZOOKEEPER_SERVER_PORT_NAME, authentication,
+        security::ZookeeperSecurity, v1alpha1,
+    },
+    listener_addresses::{self, ListenerAddresses, listener_addresses},
     znode_controller::dereference::DereferencedObjects,
 };
 
@@ -62,6 +66,14 @@ pub enum Error {
         source: stackable_operator::v2::macros::attributed_string_type::Error,
         product_version: String,
     },
+
+    #[snafu(display("failed to read the addresses published by the ZooKeeper role Listener"))]
+    ReadRoleListenerAddresses { source: listener_addresses::Error },
+
+    #[snafu(display(
+        "the ZooKeeper role Listener does not exist yet, or has not published any addresses yet"
+    ))]
+    NoRoleListenerAddresses,
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -92,6 +104,12 @@ pub struct ValidatedZnode {
     /// Object overrides applied to the znode's resources, carried so the apply step does not reach
     /// into the raw [`v1alpha1::ZookeeperZnode`].
     pub object_overrides: ObjectOverrides,
+    /// The client addresses published by the referenced cluster's role Listener, which the znode's
+    /// discovery ConfigMap advertises.
+    ///
+    /// Unlike the cluster controller, the znode controller cannot produce anything without them,
+    /// so validation fails while they are missing and the reconciliation is retried.
+    pub discovery_addresses: ListenerAddresses,
 }
 
 impl HasName for ValidatedZnode {
@@ -184,6 +202,15 @@ pub fn validate(
             }
         })?;
 
+    let discovery_addresses = dereferenced_objects
+        .maybe_role_listener
+        .as_ref()
+        .map(|listener| listener_addresses(listener, ZOOKEEPER_SERVER_PORT_NAME))
+        .transpose()
+        .context(ReadRoleListenerAddressesSnafu)?
+        .flatten()
+        .context(NoRoleListenerAddressesSnafu)?;
+
     Ok(ValidatedZnode {
         metadata: ObjectMeta {
             name: Some(name.clone()),
@@ -198,5 +225,86 @@ pub fn validate(
         zookeeper_security,
         cluster_operation: dereferenced_objects.zk.spec.cluster_operation.clone(),
         object_overrides: znode.spec.object_overrides.clone(),
+        discovery_addresses,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        listener_addresses::test_support::{ingress_address, role_listener},
+        zk_controller::test_support::app_version_label,
+        znode_controller::test_support::{minimal_znode, try_validate, validated_znode},
+    };
+
+    const ZNODE_YAML: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperZnode
+        metadata:
+          name: simple-znode
+        spec:
+          clusterRef:
+            name: simple-zookeeper
+        "#;
+
+    /// Locks the values the validate step derives from the znode itself and from the referenced
+    /// cluster, including the addresses that the znode's discovery ConfigMap advertises.
+    #[test]
+    fn validate_ok_derives_expected_values() {
+        let validated = validated_znode(&minimal_znode(ZNODE_YAML));
+
+        assert_eq!(validated.name, "simple-znode");
+        assert_eq!(validated.namespace.to_string(), "default");
+        assert_eq!(
+            validated.uid.to_string(),
+            "e5dbf9c2-d8b0-4c1e-9f4a-1d2e3f4a5b6c"
+        );
+        // The product version comes from the referenced cluster, not from the znode.
+        assert_eq!(
+            validated.product_version.to_string(),
+            app_version_label("3.9.5")
+        );
+        assert!(validated.zookeeper_security.tls_enabled());
+        assert_eq!(
+            validated.discovery_addresses.to_connection_string(),
+            "node-0:2282"
+        );
+    }
+
+    /// The znode's discovery ConfigMap is the only resource this controller produces, so a role
+    /// Listener that publishes addresses the znode cannot use must fail validation rather than
+    /// advertise nothing.
+    #[test]
+    fn role_listener_without_the_expected_port_fails_validation() {
+        let listener = role_listener(Some(vec![ingress_address(
+            "node-0",
+            "not-the-zk-port",
+            2181,
+        )]));
+
+        assert!(matches!(
+            try_validate(&minimal_znode(ZNODE_YAML), Some(listener)),
+            Err(Error::ReadRoleListenerAddresses { .. })
+        ));
+    }
+
+    /// The znode controller runs on its own schedule, so it can observe the referenced cluster
+    /// before the cluster controller has created the role Listener at all.
+    #[test]
+    fn missing_role_listener_fails_validation() {
+        assert!(matches!(
+            try_validate(&minimal_znode(ZNODE_YAML), None),
+            Err(Error::NoRoleListenerAddresses)
+        ));
+    }
+
+    /// The Listener exists, but the listener operator has not published its addresses yet.
+    #[test]
+    fn role_listener_without_addresses_fails_validation() {
+        assert!(matches!(
+            try_validate(&minimal_znode(ZNODE_YAML), Some(role_listener(None))),
+            Err(Error::NoRoleListenerAddresses)
+        ));
+    }
 }

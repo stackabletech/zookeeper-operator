@@ -1,19 +1,21 @@
 //! The dereference step in the ZookeeperZnode controller.
 //!
 //! Fetches the parent [`v1alpha1::ZookeeperCluster`] referenced by the znode's
-//! `spec.clusterRef`, plus the [`DereferencedAuthenticationClasses`] of that cluster. Both Apply
-//! and Cleanup paths in `reconcile_znode` share this output. Synchronous validation of the
-//! fetched objects happens in the validate step.
+//! `spec.clusterRef`, plus the [`DereferencedAuthenticationClasses`] and the role Listener of that
+//! cluster. Both Apply and Cleanup paths in `reconcile_znode` share this output. Synchronous
+//! validation of the fetched objects happens in the validate step.
 
-use snafu::{ResultExt, Snafu};
+use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     client::Client,
-    kube::{self, runtime::reflector::ObjectRef},
+    crd::listener,
+    kube::{self, ResourceExt, runtime::reflector::ObjectRef},
 };
 
 use crate::crd::{
+    ZookeeperRole,
     authentication::{self, DereferencedAuthenticationClasses},
-    v1alpha1,
+    role_listener_name, v1alpha1,
 };
 
 #[derive(Snafu, Debug)]
@@ -35,6 +37,17 @@ pub enum Error {
 
     #[snafu(display("failed to fetch authentication classes"))]
     FetchAuthenticationClasses { source: authentication::Error },
+
+    #[snafu(display("{zk} has no namespace"))]
+    ZkHasNoNamespace {
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
+    },
+
+    #[snafu(display("failed to fetch the role Listener of {zk}"))]
+    FetchRoleListener {
+        source: stackable_operator::client::Error,
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
+    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -43,6 +56,13 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub struct DereferencedObjects {
     pub zk: v1alpha1::ZookeeperCluster,
     pub authentication_classes: DereferencedAuthenticationClasses,
+
+    /// The role Listener of the referenced cluster, if it exists already.
+    ///
+    /// The znode's discovery ConfigMap advertises the addresses that the listener operator
+    /// publishes on it. The Cleanup path does not need it, so a missing Listener is not an error
+    /// here and never blocks finalizer removal.
+    pub maybe_role_listener: Option<listener::v1alpha1::Listener>,
 }
 
 /// Fetches all Kubernetes objects referenced from the [`v1alpha1::ZookeeperZnode`] spec.
@@ -59,10 +79,31 @@ pub async fn dereference(
     .await
     .context(FetchAuthenticationClassesSnafu)?;
 
+    let maybe_role_listener = fetch_role_listener(client, &zk).await?;
+
     Ok(DereferencedObjects {
         zk,
         authentication_classes,
+        maybe_role_listener,
     })
+}
+
+async fn fetch_role_listener(
+    client: &Client,
+    zk: &v1alpha1::ZookeeperCluster,
+) -> Result<Option<listener::v1alpha1::Listener>> {
+    let zk_ref = ObjectRef::from_obj(zk);
+    let namespace = zk
+        .metadata
+        .namespace
+        .as_deref()
+        .with_context(|| ZkHasNoNamespaceSnafu { zk: zk_ref.clone() })?;
+    let listener_name = role_listener_name(&zk.name_any(), &ZookeeperRole::Server);
+
+    client
+        .get_opt(listener_name.as_ref(), namespace)
+        .await
+        .with_context(|_| FetchRoleListenerSnafu { zk: zk_ref })
 }
 
 async fn find_zk_of_znode(

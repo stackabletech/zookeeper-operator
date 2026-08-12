@@ -1,9 +1,12 @@
 //! Ensures that `Pod`s are configured and running for each [`v1alpha1::ZookeeperCluster`]
-use std::{hash::Hasher, str::FromStr, sync::Arc};
+//!
+//! This is the controller driver: it runs the
+//! `dereference -> validate -> build -> apply -> update_status` pipeline, with each step living
+//! in its own submodule.
+use std::{marker::PhantomData, sync::Arc};
 
 use const_format::concatcp;
-use fnv::FnvHasher;
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::ClusterResourceApplyStrategy,
@@ -21,25 +24,19 @@ use stackable_operator::{
     },
     logging::controller::ReconcilerError,
     shared::time::Duration,
-    status::condition::{
-        compute_conditions, operations::ClusterOperationsConditionBuilder,
-        statefulset::StatefulSetConditionBuilder,
-    },
-    v2::{cluster_resources::cluster_resources_new, types::operator::ControllerName},
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
     OPERATOR_NAME, ObjectRef,
     crd::v1alpha1,
-    zk_controller::{
-        build::resource::discovery,
-        validate::{operator_name, product_name},
-    },
+    zk_controller::{apply::Applier, update_status::update_status},
 };
 
+pub(crate) mod apply;
 pub(crate) mod build;
 mod dereference;
+mod update_status;
 pub(crate) mod validate;
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
@@ -71,43 +68,11 @@ pub enum Error {
     #[snafu(display("failed to build the Kubernetes resources"))]
     BuildResources { source: build::Error },
 
-    #[snafu(display("failed to apply Kubernetes resource"))]
-    ApplyResource {
-        source: stackable_operator::cluster_resources::Error,
-    },
+    #[snafu(display("failed to apply the Kubernetes resources"))]
+    ApplyResources { source: apply::Error },
 
-    #[snafu(display("object is missing metadata to build owner reference"))]
-    ObjectMissingMetadataForOwnerRef {
-        source: stackable_operator::builder::meta::Error,
-    },
-
-    #[snafu(display(
-        "no role Listener was applied; the discovery ConfigMap is derived from the applied role Listener"
-    ))]
-    NoRoleListener,
-
-    #[snafu(display("failed to build discovery ConfigMap"))]
-    BuildDiscoveryConfig { source: discovery::Error },
-
-    #[snafu(display("failed to apply discovery ConfigMap"))]
-    ApplyDiscoveryConfig {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
-    #[snafu(display("failed to update status"))]
-    ApplyStatus {
-        source: stackable_operator::client::Error,
-    },
-
-    #[snafu(display("failed to delete orphaned resources"))]
-    DeleteOrphans {
-        source: stackable_operator::cluster_resources::Error,
-    },
-
-    #[snafu(display("failed to build object meta data"))]
-    ObjectMeta {
-        source: stackable_operator::builder::meta::Error,
-    },
+    #[snafu(display("failed to update the cluster status"))]
+    UpdateStatus { source: update_status::Error },
 }
 
 impl ReconcilerError for Error {
@@ -121,29 +86,35 @@ impl ReconcilerError for Error {
             Error::Dereference { .. } => None,
             Error::ValidateCluster { .. } => None,
             Error::BuildResources { .. } => None,
-            Error::ApplyResource { .. } => None,
-            Error::ObjectMissingMetadataForOwnerRef { .. } => None,
-            Error::NoRoleListener => None,
-            Error::BuildDiscoveryConfig { .. } => None,
-            Error::ApplyDiscoveryConfig { .. } => None,
-            Error::ApplyStatus { .. } => None,
-            Error::DeleteOrphans { .. } => None,
-            Error::ObjectMeta { .. } => None,
+            Error::ApplyResources { .. } => None,
+            Error::UpdateStatus { .. } => None,
         }
     }
 }
 
+/// Marker for prepared Kubernetes resources which are not applied yet.
+pub struct Prepared;
+
+/// Marker for applied Kubernetes resources.
+pub struct Applied;
+
 /// Every Kubernetes resource produced by the client-free [`build()`](build::build) step.
 ///
-/// The discovery `ConfigMap` is deliberately absent — see [`build()`](build::build).
-pub struct KubernetesResources {
+/// `T` is a marker that indicates if these resources are only [`Prepared`] or already [`Applied`].
+/// The marker is useful e.g. to ensure that the cluster status is updated based on the applied
+/// resources.
+pub struct KubernetesResources<T> {
     pub stateful_sets: Vec<StatefulSet>,
     pub services: Vec<Service>,
     pub listeners: Vec<Listener>,
     pub config_maps: Vec<ConfigMap>,
+    /// The discovery `ConfigMap`, kept apart from the role group `config_maps` because the cluster
+    /// status carries a hash of it.
+    pub discovery_config_map: ConfigMap,
     pub pod_disruption_budgets: Vec<PodDisruptionBudget>,
     pub service_accounts: Vec<ServiceAccount>,
     pub role_bindings: Vec<RoleBinding>,
+    pub status: PhantomData<T>,
 }
 
 pub async fn reconcile_zk(
@@ -167,116 +138,25 @@ pub async fn reconcile_zk(
         validate::validate(zk, &dereferenced_objects, &ctx.operator_environment)
             .context(ValidateClusterSnafu)?;
 
-    // Names are derived from compile-time constants.
-    let mut cluster_resources = cluster_resources_new(
-        &product_name(),
-        &operator_name(),
-        &ControllerName::from_str(ZK_CONTROLLER_NAME)
-            .expect("ZK_CONTROLLER_NAME should be a valid controller name"),
-        &validated_cluster.name,
-        &validated_cluster.namespace,
-        &validated_cluster.uid,
-        ClusterResourceApplyStrategy::from(&validated_cluster.cluster_operation),
-        &validated_cluster.object_overrides,
-    );
-
+    // build (no client required)
     let resources = build::build(&validated_cluster, &client.kubernetes_cluster_info)
         .context(BuildResourcesSnafu)?;
 
-    let mut ss_cond_builder = StatefulSetConditionBuilder::default();
+    // apply (client required)
+    let applied = Applier::new(
+        client,
+        &validated_cluster,
+        ClusterResourceApplyStrategy::from(&validated_cluster.cluster_operation),
+        &validated_cluster.object_overrides,
+    )
+    .apply(resources)
+    .await
+    .context(ApplyResourcesSnafu)?;
 
-    for service_account in resources.service_accounts {
-        cluster_resources
-            .add(client, service_account)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-    for role_binding in resources.role_bindings {
-        cluster_resources
-            .add(client, role_binding)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-
-    for service in resources.services {
-        cluster_resources
-            .add(client, service)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-
-    // ZooKeeper has a single role Listener; the applied object feeds the discovery ConfigMap.
-    let mut applied_role_listener: Option<Listener> = None;
-    for listener in resources.listeners {
-        applied_role_listener = Some(
-            cluster_resources
-                .add(client, listener)
-                .await
-                .context(ApplyResourceSnafu)?,
-        );
-    }
-    let role_listener = applied_role_listener.context(NoRoleListenerSnafu)?;
-
-    for config_map in resources.config_maps {
-        cluster_resources
-            .add(client, config_map)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-
-    for pdb in resources.pod_disruption_budgets {
-        cluster_resources
-            .add(client, pdb)
-            .await
-            .context(ApplyResourceSnafu)?;
-    }
-
-    // Note: The StatefulSet needs to be applied after all ConfigMaps and Secrets it mounts
-    // to prevent unnecessary Pod restarts.
-    // See https://github.com/stackabletech/commons-operator/issues/111 for details.
-    for statefulset in resources.stateful_sets {
-        ss_cond_builder.add(
-            cluster_resources
-                .add(client, statefulset)
-                .await
-                .context(ApplyResourceSnafu)?,
-        );
-    }
-
-    // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
-    // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
-    let mut discovery_hash = FnvHasher::with_key(0);
-
-    let discovery_cm =
-        discovery::build_discovery_configmap(&validated_cluster, ZK_CONTROLLER_NAME, role_listener)
-            .context(BuildDiscoveryConfigSnafu)?;
-
-    let discovery_cm = cluster_resources
-        .add(client, discovery_cm)
+    // update_status (client required)
+    update_status(client, zk, &applied)
         .await
-        .context(ApplyDiscoveryConfigSnafu)?;
-    if let Some(generation) = discovery_cm.metadata.resource_version {
-        discovery_hash.write(generation.as_bytes())
-    }
-
-    let cluster_operation_cond_builder =
-        ClusterOperationsConditionBuilder::new(&zk.spec.cluster_operation);
-
-    let status = v1alpha1::ZookeeperClusterStatus {
-        // Serialize as a string to discourage users from trying to parse the value,
-        // and to keep things flexible if we end up changing the hasher at some point.
-        discovery_hash: Some(discovery_hash.finish().to_string()),
-        conditions: compute_conditions(zk, &[&ss_cond_builder, &cluster_operation_cond_builder]),
-    };
-
-    cluster_resources
-        .delete_orphaned_resources(client)
-        .await
-        .context(DeleteOrphansSnafu)?;
-    client
-        .apply_patch_status(OPERATOR_NAME, zk, &status)
-        .await
-        .context(ApplyStatusSnafu)?;
+        .context(UpdateStatusSnafu)?;
 
     Ok(controller::Action::await_change())
 }
@@ -298,7 +178,7 @@ pub fn error_policy(
 #[cfg(test)]
 pub(crate) mod test_support {
     use stackable_operator::{
-        cli::OperatorEnvironmentOptions, commons::networking::DomainName,
+        cli::OperatorEnvironmentOptions, commons::networking::DomainName, crd::listener,
         utils::cluster_info::KubernetesClusterInfo,
     };
 
@@ -344,7 +224,7 @@ pub(crate) mod test_support {
         }
     }
 
-    fn operator_environment() -> OperatorEnvironmentOptions {
+    pub fn operator_environment() -> OperatorEnvironmentOptions {
         OperatorEnvironmentOptions {
             operator_namespace: "stackable-operators".to_owned(),
             operator_service_name: "zookeeper-operator".to_owned(),
@@ -352,15 +232,25 @@ pub(crate) mod test_support {
         }
     }
 
-    /// Runs the real validate step against a minimal (auth-free) fixture, returning the result so
-    /// tests can assert on validation errors.
+    /// Runs the real validate step against a minimal (auth-free) fixture whose role Listener does
+    /// not exist yet, returning the result so tests can assert on validation errors.
     pub fn try_validate(
         zk: &v1alpha1::ZookeeperCluster,
+    ) -> Result<ValidatedCluster, super::validate::Error> {
+        try_validate_with_role_listener(zk, None)
+    }
+
+    /// Runs the real validate step against a minimal (auth-free) fixture and the given role
+    /// Listener, returning the result so tests can assert on validation errors.
+    pub fn try_validate_with_role_listener(
+        zk: &v1alpha1::ZookeeperCluster,
+        maybe_role_listener: Option<listener::v1alpha1::Listener>,
     ) -> Result<ValidatedCluster, super::validate::Error> {
         validate(
             zk,
             &DereferencedObjects {
                 authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
+                maybe_role_listener,
             },
             &operator_environment(),
         )

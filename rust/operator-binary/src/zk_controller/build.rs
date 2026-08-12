@@ -9,7 +9,7 @@
 //! remaining submodules ([`command`], [`graceful_shutdown`], [`jvm`],
 //! [`properties`]) produce fragments that those resource builders assemble.
 
-use std::str::FromStr;
+use std::{marker::PhantomData, str::FromStr};
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
@@ -20,8 +20,9 @@ use stackable_operator::{
 
 use crate::{
     crd::ZookeeperRole,
+    discovery,
     zk_controller::{
-        KubernetesResources,
+        KubernetesResources, Prepared, ZK_CONTROLLER_NAME,
         build::resource::{
             config_map,
             listener::build_role_listener,
@@ -35,10 +36,6 @@ use crate::{
         validate::ValidatedCluster,
     },
 };
-
-// Placeholder role-group name used for the recommended labels of the role-level discovery
-// `ConfigMap` (which is not tied to a single role group).
-stackable_operator::constant!(pub(crate) PLACEHOLDER_DISCOVERY_ROLE_GROUP: RoleGroupName = "discovery");
 
 // Placeholder role-group name used for the recommended labels of the role-level `Listener`
 // (which is not tied to a single role group).
@@ -63,6 +60,9 @@ pub enum Error {
         source: statefulset::Error,
         rolegroup: RoleGroupName,
     },
+
+    #[snafu(display("failed to build the discovery ConfigMap"))]
+    DiscoveryConfigMap { source: discovery::Error },
 }
 
 /// Builds every Kubernetes resource for the given validated cluster.
@@ -72,13 +72,16 @@ pub enum Error {
 /// failures only. `cluster_info` is static cluster metadata (not a client call), consumed by the
 /// role-group ConfigMap builder.
 ///
-/// The discovery `ConfigMap` is deliberately absent: it is built from the *applied* role
-/// [`Listener`](stackable_operator::crd::listener::v1alpha1::Listener)'s ingress addresses, so it
-/// is assembled in the reconcile step after the Listener has been applied, not here.
+/// This includes the discovery `ConfigMap`, built from the addresses published by the role
+/// [`Listener`](stackable_operator::crd::listener::v1alpha1::Listener) that were dereferenced and
+/// validated into
+/// [`ValidatedCluster::discovery_addresses`](ValidatedCluster#structfield.discovery_addresses); see
+/// [`build_discovery_configmap`](discovery::build_discovery_configmap) for how its content depends
+/// on them.
 pub fn build(
     cluster: &ValidatedCluster,
     cluster_info: &KubernetesClusterInfo,
-) -> Result<KubernetesResources, Error> {
+) -> Result<KubernetesResources<Prepared>, Error> {
     let mut stateful_sets = vec![];
     let mut services = vec![];
     let mut config_maps = vec![];
@@ -127,14 +130,23 @@ pub fn build(
 
     let listeners = vec![build_role_listener(cluster, &zk_role)];
 
+    let discovery_config_map = discovery::build_discovery_configmap(
+        cluster,
+        ZK_CONTROLLER_NAME,
+        &cluster.discovery_addresses,
+    )
+    .context(DiscoveryConfigMapSnafu)?;
+
     Ok(KubernetesResources {
         stateful_sets,
         services,
         listeners,
         config_maps,
+        discovery_config_map,
         pod_disruption_budgets,
         service_accounts: vec![build_service_account(cluster)],
         role_bindings: vec![build_role_binding(cluster)],
+        status: PhantomData,
     })
 }
 
@@ -214,13 +226,19 @@ mod tests {
                 "simple-zookeeper-server-secondary-metrics",
             ]
         );
-        // One ConfigMap per role group; the discovery ConfigMap is absent — see `build()`.
+        // One ConfigMap per role group.
         assert_eq!(
             sorted_names(&resources.config_maps),
             [
                 "simple-zookeeper-server-default",
                 "simple-zookeeper-server-secondary",
             ]
+        );
+        // The discovery ConfigMap is named after the cluster, and written even though the fixture
+        // has no role Listener publishing addresses yet (see `build()`).
+        assert_eq!(
+            resources.discovery_config_map.meta().name.as_deref(),
+            Some("simple-zookeeper")
         );
         // The single role-level Listener for the one ZooKeeper role (`server`).
         assert_eq!(
