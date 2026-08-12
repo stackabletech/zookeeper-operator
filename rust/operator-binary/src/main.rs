@@ -55,6 +55,8 @@ struct Opts {
     cmd: Command,
 }
 
+// need a change to trigger an image build, else tests can't pull the image with the PR tag.
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let opts = Opts::parse();
