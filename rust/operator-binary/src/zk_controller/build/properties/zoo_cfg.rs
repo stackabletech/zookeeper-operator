@@ -22,6 +22,15 @@ const DEFAULT_INIT_LIMIT: &str = "5";
 const DEFAULT_SYNC_LIMIT: &str = "2";
 const DEFAULT_TICK_TIME: &str = "3000";
 
+const AUTOPURGE_SNAP_RETAIN_COUNT_KEY: &str = "autopurge.snapRetainCount";
+const DEFAULT_AUTOPURGE_SNAP_RETAIN_COUNT: &str = "3";
+const AUTOPURGE_PURGE_INTERVAL_KEY: &str = "autopurge.purgeInterval";
+const DEFAULT_AUTOPURGE_PURGE_INTERVAL: &str = "6"; // in hours
+const SNAP_SIZE_LIMIT_IN_KB_KEY: &str = "snapSizeLimitInKb";
+const DEFAULT_SNAP_SIZE_LIMIT_IN_KB: &str = "102400"; // 100MiB
+const PRE_ALLOC_SIZE_KEY: &str = "preAllocSize";
+const DEFAULT_PRE_ALLOC_SIZE: &str = "16384"; // 16MiB
+
 /// Builds the `server.<myid>` quorum entries for `zoo.cfg` from the expected pods.
 ///
 /// The pods are predicted from the validated role-group configs (`replicas` + `myidOffset`)
@@ -113,6 +122,22 @@ fn build_base(
     zoo_cfg.insert(
         METRICS_PROVIDER_HTTP_PORT_KEY.to_string(),
         METRICS_PROVIDER_HTTP_PORT.to_string(),
+    );
+    zoo_cfg.insert(
+        AUTOPURGE_SNAP_RETAIN_COUNT_KEY.to_string(),
+        DEFAULT_AUTOPURGE_SNAP_RETAIN_COUNT.to_string(),
+    );
+    zoo_cfg.insert(
+        AUTOPURGE_PURGE_INTERVAL_KEY.to_string(),
+        DEFAULT_AUTOPURGE_PURGE_INTERVAL.to_string(),
+    );
+    zoo_cfg.insert(
+        SNAP_SIZE_LIMIT_IN_KB_KEY.to_string(),
+        DEFAULT_SNAP_SIZE_LIMIT_IN_KB.to_string(),
+    );
+    zoo_cfg.insert(
+        PRE_ALLOC_SIZE_KEY.to_string(),
+        DEFAULT_PRE_ALLOC_SIZE.to_string(),
     );
 
     // 2. TLS / quorum settings.

@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- BREAKING: Enable auto-purge feature for data directory cleanup ([#1068]).
+
 ### Changed
 
 - Internal operator refactoring: introduce a build() step in the reconciler that
@@ -15,11 +19,20 @@ All notable changes to this project will be documented in this file.
   Previously a ZookeeperCluster without it was accepted by the API server but failed reconciliation ([#1060]).
 - The reconciler now applies resources and derives the cluster status in discrete
   apply and update_status steps for the `zk_controller` and `znode_controller` ([#1069]).
+- All product containers now run with `securityContext.runAsNonRoot` set to `true` to improve security ([#1070]).
+
+### Fixed
+
+- Fix a longstanding problem of including empty `categories`, `shortNames` and `additionalPrinterColumns` in the CRDs,
+  which could cause problems with GitOps tools (e.g. ArgoCD) reporting a diff in the custom resources.
+  See [our internal issue](https://github.com/stackabletech/hdfs-operator/issues/626) and [the fix](https://github.com/kube-rs/kube/pull/2042) for details ([#1070]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
 [#1063]: https://github.com/stackabletech/zookeeper-operator/pull/1063
+[#1068]: https://github.com/stackabletech/zookeeper-operator/pull/1068
 [#1069]: https://github.com/stackabletech/zookeeper-operator/pull/1069
+[#1070]: https://github.com/stackabletech/zookeeper-operator/pull/1070
 
 ## [26.7.0] - 2026-07-21
 

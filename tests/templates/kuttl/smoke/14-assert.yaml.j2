@@ -322,6 +322,8 @@ commands:
       zoo.cfg: |
         admin.serverPort=8080
         authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider
+        autopurge.purgeInterval=6
+        autopurge.snapRetainCount=3
 {% if use_client_tls %}
         client.portUnification=true
 {% endif %}
@@ -330,6 +332,7 @@ commands:
         initLimit=5
         metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider
         metricsProvider.httpPort=7000
+        preAllocSize=16384
         prop.common=group
         prop.group=group
         prop.role=role
@@ -337,6 +340,7 @@ commands:
         server.11=test-zk-server-primary-1.test-zk-server-primary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
         server.20=test-zk-server-secondary-0.test-zk-server-secondary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
         serverCnxnFactory=org.apache.zookeeper.server.NettyServerCnxnFactory
+        snapSizeLimitInKb=102400
 {% if use_client_auth %}
         ssl.clientAuth=need
 {% endif %}
@@ -601,6 +605,8 @@ commands:
       zoo.cfg: |
         admin.serverPort=8080
         authProvider.x509=org.apache.zookeeper.server.auth.X509AuthenticationProvider
+        autopurge.purgeInterval=6
+        autopurge.snapRetainCount=3
 {% if use_client_tls %}
         client.portUnification=true
 {% endif %}
@@ -609,12 +615,14 @@ commands:
         initLimit=5
         metricsProvider.className=org.apache.zookeeper.metrics.prometheus.PrometheusMetricsProvider
         metricsProvider.httpPort=7000
+        preAllocSize=16384
         prop.common=role
         prop.role=role
         server.10=test-zk-server-primary-0.test-zk-server-primary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
         server.11=test-zk-server-primary-1.test-zk-server-primary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
         server.20=test-zk-server-secondary-0.test-zk-server-secondary-headless.__NAMESPACE__.svc.cluster.local\:2888\:3888;{{ zk_client_port }}
         serverCnxnFactory=org.apache.zookeeper.server.NettyServerCnxnFactory
+        snapSizeLimitInKb=102400
 {% if use_client_auth %}
         ssl.clientAuth=need
 {% endif %}

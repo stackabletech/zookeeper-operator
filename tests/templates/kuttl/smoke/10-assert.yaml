@@ -6,3 +6,4 @@ metadata:
 timeout: 300
 commands:
   - script: kubectl -n $NAMESPACE wait --for=condition=available=true zookeeperclusters.zookeeper.stackable.tech/test-zk --timeout 301s
+  - script: kubectl -n $NAMESPACE wait --for=create configmap/test-znode --timeout 301s

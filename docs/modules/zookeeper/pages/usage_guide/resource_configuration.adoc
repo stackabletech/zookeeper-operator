@@ -22,6 +22,9 @@ In the above example, all ZooKeeper nodes in the default group will store data (
 
 You can also configure which StorageClass to use, consult the xref:concepts:resources.adoc#storageclass[resources docs] to learn more.
 
+ZooKeeper stores both its snapshots and transaction logs on this volume.
+See the xref:data_directory.adoc[data directory docs] for how that data grows and is reclaimed over time.
+
 == Resource requests
 
 include::home:concepts:stackable_resource_requests.adoc[]
