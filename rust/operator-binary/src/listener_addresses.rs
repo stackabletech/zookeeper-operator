@@ -92,8 +92,9 @@ pub fn listener_addresses(
     }
 }
 
+/// Shared helpers for building role [`Listener`](listener::v1alpha1::Listener) fixtures.
 #[cfg(test)]
-mod tests {
+pub(crate) mod test_support {
     use std::collections::BTreeMap;
 
     use stackable_operator::{
@@ -103,10 +104,9 @@ mod tests {
         k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
     };
 
-    use super::*;
-    use crate::crd::ZOOKEEPER_SERVER_PORT_NAME;
-
-    fn listener(ingress_addresses: Option<Vec<ListenerIngress>>) -> Listener {
+    /// A role Listener publishing `ingress_addresses`. `None` is a Listener that the listener
+    /// operator has not written a status for yet.
+    pub fn role_listener(ingress_addresses: Option<Vec<ListenerIngress>>) -> Listener {
         Listener {
             metadata: ObjectMeta {
                 name: Some("test-listener".to_owned()),
@@ -121,17 +121,33 @@ mod tests {
         }
     }
 
-    fn ingress(port: i32) -> ListenerIngress {
+    /// A single ingress address of a role Listener, publishing `port` under `port_name`.
+    pub fn ingress_address(address: &str, port_name: &str, port: i32) -> ListenerIngress {
         ListenerIngress {
-            address: "node-0".to_owned(),
+            address: address.to_owned(),
             address_type: AddressType::Hostname,
-            ports: BTreeMap::from([(ZOOKEEPER_SERVER_PORT_NAME.to_owned(), port)]),
+            ports: BTreeMap::from([(port_name.to_owned(), port)]),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use stackable_operator::crd::listener::v1alpha1::ListenerIngress;
+
+    use super::{
+        test_support::{ingress_address, role_listener},
+        *,
+    };
+    use crate::crd::ZOOKEEPER_SERVER_PORT_NAME;
+
+    fn ingress(port: i32) -> ListenerIngress {
+        ingress_address("node-0", ZOOKEEPER_SERVER_PORT_NAME, port)
     }
 
     #[test]
     fn listener_addresses_returns_host_port_pairs() {
-        let listener = listener(Some(vec![ingress(2181)]));
+        let listener = role_listener(Some(vec![ingress(2181)]));
         let addresses = listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)
             .expect("addresses")
             .expect("the listener publishes addresses");
@@ -141,14 +157,15 @@ mod tests {
     #[test]
     fn listener_addresses_without_ingress_is_not_ready_yet() {
         assert_eq!(
-            listener_addresses(&listener(None), ZOOKEEPER_SERVER_PORT_NAME).expect("addresses"),
+            listener_addresses(&role_listener(None), ZOOKEEPER_SERVER_PORT_NAME)
+                .expect("addresses"),
             None
         );
     }
 
     #[test]
     fn listener_addresses_missing_port_name_is_error() {
-        let listener = listener(Some(vec![ingress(2181)]));
+        let listener = role_listener(Some(vec![ingress(2181)]));
         assert!(matches!(
             listener_addresses(&listener, "does-not-exist"),
             Err(Error::PortNotFound { .. })
@@ -158,7 +175,7 @@ mod tests {
     #[test]
     fn listener_addresses_port_out_of_u16_range_is_error() {
         // A port number that does not fit into a u16 must be rejected.
-        let listener = listener(Some(vec![ingress(70_000)]));
+        let listener = role_listener(Some(vec![ingress(70_000)]));
         assert!(matches!(
             listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME),
             Err(Error::InvalidPort { .. })

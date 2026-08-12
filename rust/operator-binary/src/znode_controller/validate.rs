@@ -228,3 +228,79 @@ pub fn validate(
         discovery_addresses,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        listener_addresses::test_support::{ingress_address, role_listener},
+        zk_controller::test_support::app_version_label,
+        znode_controller::test_support::{minimal_znode, try_validate, validated_znode},
+    };
+
+    const ZNODE_YAML: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperZnode
+        metadata:
+          name: simple-znode
+        spec:
+          clusterRef:
+            name: simple-zookeeper
+        "#;
+
+    /// Locks the values the validate step derives from the znode itself and from the referenced
+    /// cluster, including the addresses that the znode's discovery ConfigMap advertises.
+    #[test]
+    fn validate_ok_derives_expected_values() {
+        let validated = validated_znode(&minimal_znode(ZNODE_YAML));
+
+        assert_eq!(validated.name, "simple-znode");
+        assert_eq!(validated.namespace.to_string(), "default");
+        assert_eq!(
+            validated.uid.to_string(),
+            "e5dbf9c2-d8b0-4c1e-9f4a-1d2e3f4a5b6c"
+        );
+        // The product version comes from the referenced cluster, not from the znode.
+        assert_eq!(
+            validated.product_version.to_string(),
+            app_version_label("3.9.5")
+        );
+        assert!(validated.zookeeper_security.tls_enabled());
+        assert_eq!(
+            validated.discovery_addresses.to_connection_string(),
+            "node-0:2181"
+        );
+    }
+
+    /// The znode's discovery ConfigMap is the only resource this controller produces, so a role
+    /// Listener that publishes addresses the znode cannot use must fail validation rather than
+    /// advertise nothing.
+    #[test]
+    fn role_listener_without_the_expected_port_fails_validation() {
+        let listener = role_listener(Some(vec![ingress_address("node-0", "not-the-zk-port", 2181)]));
+
+        assert!(matches!(
+            try_validate(&minimal_znode(ZNODE_YAML), Some(listener)),
+            Err(Error::ReadRoleListenerAddresses { .. })
+        ));
+    }
+
+    /// The znode controller runs on its own schedule, so it can observe the referenced cluster
+    /// before the cluster controller has created the role Listener at all.
+    #[test]
+    fn missing_role_listener_fails_validation() {
+        assert!(matches!(
+            try_validate(&minimal_znode(ZNODE_YAML), None),
+            Err(Error::NoRoleListenerAddresses)
+        ));
+    }
+
+    /// The Listener exists, but the listener operator has not published its addresses yet.
+    #[test]
+    fn role_listener_without_addresses_fails_validation() {
+        assert!(matches!(
+            try_validate(&minimal_znode(ZNODE_YAML), Some(role_listener(None))),
+            Err(Error::NoRoleListenerAddresses)
+        ));
+    }
+}

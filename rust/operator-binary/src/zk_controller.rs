@@ -224,7 +224,7 @@ pub(crate) mod test_support {
         }
     }
 
-    fn operator_environment() -> OperatorEnvironmentOptions {
+    pub fn operator_environment() -> OperatorEnvironmentOptions {
         OperatorEnvironmentOptions {
             operator_namespace: "stackable-operators".to_owned(),
             operator_service_name: "zookeeper-operator".to_owned(),

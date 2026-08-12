@@ -330,6 +330,93 @@ pub fn error_policy(
     controller::Action::requeue(*Duration::from_secs(5))
 }
 
+/// Shared helpers for building validated test znodes from minimal YAML fixtures.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use stackable_operator::crd::listener;
+
+    use crate::{
+        crd::{authentication::DereferencedAuthenticationClasses, v1alpha1},
+        zk_controller::test_support::{minimal_zk, operator_environment},
+        znode_controller::{
+            dereference::DereferencedObjects,
+            validate::{ValidatedZnode, validate},
+        },
+    };
+
+    /// Parses a minimal `ZookeeperZnode` test fixture, defaulting `namespace`/`uid` so the validate
+    /// step can build a [`ValidatedZnode`].
+    pub fn minimal_znode(yaml: &str) -> v1alpha1::ZookeeperZnode {
+        let mut znode: v1alpha1::ZookeeperZnode =
+            serde_yaml::from_str(yaml).expect("invalid test ZookeeperZnode YAML");
+        znode
+            .metadata
+            .namespace
+            .get_or_insert_with(|| "default".to_owned());
+        znode
+            .metadata
+            .uid
+            .get_or_insert_with(|| "e5dbf9c2-d8b0-4c1e-9f4a-1d2e3f4a5b6c".to_owned());
+        znode
+    }
+
+    /// The `ZookeeperCluster` that the znode fixtures reference. The znode validate step reads the
+    /// image, security settings and cluster operation from it.
+    pub fn referenced_zk() -> v1alpha1::ZookeeperCluster {
+        minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 3
+            "#,
+        )
+    }
+
+    /// Runs the real validate step against a minimal (auth-free) fixture and the referenced
+    /// cluster's role Listener, returning the result so tests can assert on validation errors.
+    pub fn try_validate(
+        znode: &v1alpha1::ZookeeperZnode,
+        maybe_role_listener: Option<listener::v1alpha1::Listener>,
+    ) -> Result<ValidatedZnode, super::validate::Error> {
+        validate(
+            znode,
+            &DereferencedObjects {
+                zk: referenced_zk(),
+                authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
+                maybe_role_listener,
+            },
+            &operator_environment(),
+        )
+    }
+
+    /// Runs the real validate step against a minimal (auth-free) fixture whose role Listener
+    /// publishes `node-0:2181`.
+    pub fn validated_znode(znode: &v1alpha1::ZookeeperZnode) -> ValidatedZnode {
+        use crate::{
+            crd::ZOOKEEPER_SERVER_PORT_NAME,
+            listener_addresses::test_support::{ingress_address, role_listener},
+        };
+
+        try_validate(
+            znode,
+            Some(role_listener(Some(vec![ingress_address(
+                "node-0",
+                ZOOKEEPER_SERVER_PORT_NAME,
+                2181,
+            )]))),
+        )
+        .expect("validate should succeed for the test fixture")
+    }
+}
+
 mod znode_mgmt {
     use std::{collections::VecDeque, net::SocketAddr};
 
