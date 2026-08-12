@@ -268,7 +268,7 @@ mod tests {
         assert!(validated.zookeeper_security.tls_enabled());
         assert_eq!(
             validated.discovery_addresses.to_connection_string(),
-            "node-0:2181"
+            "node-0:2282"
         );
     }
 
@@ -277,7 +277,11 @@ mod tests {
     /// advertise nothing.
     #[test]
     fn role_listener_without_the_expected_port_fails_validation() {
-        let listener = role_listener(Some(vec![ingress_address("node-0", "not-the-zk-port", 2181)]));
+        let listener = role_listener(Some(vec![ingress_address(
+            "node-0",
+            "not-the-zk-port",
+            2181,
+        )]));
 
         assert!(matches!(
             try_validate(&minimal_znode(ZNODE_YAML), Some(listener)),

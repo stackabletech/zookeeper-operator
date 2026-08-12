@@ -849,7 +849,11 @@ mod tests {
     #[test]
     fn role_listener_without_the_expected_port_fails_validation() {
         let zk = minimal_zk(MINIMAL_ZK_YAML);
-        let listener = role_listener(Some(vec![ingress_address("node-0", "not-the-zk-port", 2181)]));
+        let listener = role_listener(Some(vec![ingress_address(
+            "node-0",
+            "not-the-zk-port",
+            2181,
+        )]));
 
         assert!(matches!(
             try_validate_with_role_listener(&zk, Some(listener)),

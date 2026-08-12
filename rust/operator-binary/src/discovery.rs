@@ -158,3 +158,168 @@ fn build_discovery_configmap_for_owner(
         .build()
         .context(BuildConfigMapSnafu)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        crd::ZOOKEEPER_SERVER_PORT_NAME,
+        listener_addresses::{
+            listener_addresses,
+            test_support::{ingress_address, role_listener},
+        },
+        zk_controller::{
+            ZK_CONTROLLER_NAME,
+            test_support::{minimal_zk, try_validate_with_role_listener},
+        },
+        znode_controller::{
+            ZNODE_CONTROLLER_NAME,
+            test_support::{minimal_znode, validated_znode},
+        },
+    };
+
+    const ZK_YAML: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.5"
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
+        "#;
+
+    const ZNODE_YAML: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperZnode
+        metadata:
+          name: simple-znode
+        spec:
+          clusterRef:
+            name: simple-zookeeper
+        "#;
+
+    /// The znode path that the znode controller derives from the fixture's UID.
+    const ZNODE_PATH: &str = "/znode-e5dbf9c2-d8b0-4c1e-9f4a-1d2e3f4a5b6c";
+
+    /// The value of `key` in the given discovery ConfigMap.
+    fn data(config_map: &ConfigMap, key: &str) -> String {
+        config_map
+            .data
+            .as_ref()
+            .expect("the discovery ConfigMap should carry data")
+            .get(key)
+            .unwrap_or_else(|| panic!("the discovery ConfigMap should carry {key}"))
+            .clone()
+    }
+
+    /// Addresses published under the ZooKeeper server port name, built through the real reader so
+    /// the fixtures cannot drift from what the validate step produces.
+    fn published_addresses(addresses: &[(&str, u16)]) -> ListenerAddresses {
+        let listener = role_listener(Some(
+            addresses
+                .iter()
+                .map(|(address, port)| {
+                    ingress_address(address, ZOOKEEPER_SERVER_PORT_NAME, i32::from(*port))
+                })
+                .collect(),
+        ));
+
+        listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)
+            .expect("the fixture publishes addresses under the server port name")
+            .expect("the fixture publishes addresses")
+    }
+
+    /// The cluster controller advertises the whole ensemble, rooted at `/`. The fixture keeps TLS
+    /// enabled, so the client port is the secure one.
+    #[test]
+    fn cluster_discovery_config_map_advertises_the_published_addresses() {
+        let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None)
+            .expect("validate should succeed for the test fixture");
+        let addresses = published_addresses(&[("node-0", 2282), ("node-1", 2282)]);
+
+        let config_map =
+            build_discovery_configmap(&cluster, ZK_CONTROLLER_NAME, &addresses).expect("build");
+
+        assert_eq!(
+            config_map.metadata.name.as_deref(),
+            Some("simple-zookeeper")
+        );
+        assert_eq!(config_map.metadata.namespace.as_deref(), Some("default"));
+        assert_eq!(data(&config_map, "ZOOKEEPER"), "node-0:2282,node-1:2282");
+        assert_eq!(
+            data(&config_map, "ZOOKEEPER_HOSTS"),
+            "node-0:2282,node-1:2282"
+        );
+        assert_eq!(data(&config_map, "ZOOKEEPER_CLIENT_PORT"), "2282");
+        assert_eq!(data(&config_map, "ZOOKEEPER_CHROOT"), "/");
+    }
+
+    /// While the role Listener publishes no addresses the ConfigMap is still written, with an
+    /// empty connection string, so that the apply step does not delete the published one as an
+    /// orphan.
+    #[test]
+    fn cluster_discovery_config_map_without_addresses_is_still_written() {
+        let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None)
+            .expect("validate should succeed for the test fixture");
+
+        let config_map =
+            build_discovery_configmap(&cluster, ZK_CONTROLLER_NAME, &ListenerAddresses::default())
+                .expect("build");
+
+        assert_eq!(
+            config_map.metadata.name.as_deref(),
+            Some("simple-zookeeper")
+        );
+        assert_eq!(data(&config_map, "ZOOKEEPER"), "");
+        assert_eq!(data(&config_map, "ZOOKEEPER_HOSTS"), "");
+        // The port and chroot do not depend on the addresses, so they stay populated.
+        assert_eq!(data(&config_map, "ZOOKEEPER_CLIENT_PORT"), "2282");
+        assert_eq!(data(&config_map, "ZOOKEEPER_CHROOT"), "/");
+    }
+
+    /// The znode controller advertises the same ensemble, narrowed to the znode's chroot. Only
+    /// `ZOOKEEPER` carries the chroot, because some clients cannot parse the merged format.
+    #[test]
+    fn znode_discovery_config_map_narrows_the_ensemble_to_the_chroot() {
+        let znode = validated_znode(&minimal_znode(ZNODE_YAML));
+
+        let config_map = build_znode_discovery_configmap(
+            &znode,
+            ZNODE_CONTROLLER_NAME,
+            &znode.discovery_addresses,
+            ZNODE_PATH,
+        )
+        .expect("build");
+
+        // The ConfigMap is named after the znode, not after the referenced cluster.
+        assert_eq!(config_map.metadata.name.as_deref(), Some("simple-znode"));
+        assert_eq!(config_map.metadata.namespace.as_deref(), Some("default"));
+        assert_eq!(
+            data(&config_map, "ZOOKEEPER"),
+            format!("node-0:2282{ZNODE_PATH}")
+        );
+        assert_eq!(data(&config_map, "ZOOKEEPER_HOSTS"), "node-0:2282");
+        assert_eq!(data(&config_map, "ZOOKEEPER_CLIENT_PORT"), "2282");
+        assert_eq!(data(&config_map, "ZOOKEEPER_CHROOT"), ZNODE_PATH);
+    }
+
+    /// A relative chroot would silently produce a connection string pointing at the ensemble root.
+    #[test]
+    fn relative_chroot_is_rejected() {
+        let znode = validated_znode(&minimal_znode(ZNODE_YAML));
+
+        assert!(matches!(
+            build_znode_discovery_configmap(
+                &znode,
+                ZNODE_CONTROLLER_NAME,
+                &znode.discovery_addresses,
+                "znode-without-a-leading-slash",
+            ),
+            Err(Error::RelativeChroot { .. })
+        ));
+    }
+}

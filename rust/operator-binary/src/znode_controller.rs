@@ -398,7 +398,8 @@ pub(crate) mod test_support {
     }
 
     /// Runs the real validate step against a minimal (auth-free) fixture whose role Listener
-    /// publishes `node-0:2181`.
+    /// publishes `node-0:2282`, the secure client port that the referenced cluster serves because
+    /// its fixture keeps TLS enabled.
     pub fn validated_znode(znode: &v1alpha1::ZookeeperZnode) -> ValidatedZnode {
         use crate::{
             crd::ZOOKEEPER_SERVER_PORT_NAME,
@@ -410,7 +411,7 @@ pub(crate) mod test_support {
             Some(role_listener(Some(vec![ingress_address(
                 "node-0",
                 ZOOKEEPER_SERVER_PORT_NAME,
-                2181,
+                2282,
             )]))),
         )
         .expect("validate should succeed for the test fixture")
