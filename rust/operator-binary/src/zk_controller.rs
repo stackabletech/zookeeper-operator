@@ -178,7 +178,7 @@ pub fn error_policy(
 #[cfg(test)]
 pub(crate) mod test_support {
     use stackable_operator::{
-        cli::OperatorEnvironmentOptions, commons::networking::DomainName,
+        cli::OperatorEnvironmentOptions, commons::networking::DomainName, crd::listener,
         utils::cluster_info::KubernetesClusterInfo,
     };
 
@@ -232,16 +232,25 @@ pub(crate) mod test_support {
         }
     }
 
-    /// Runs the real validate step against a minimal (auth-free) fixture, returning the result so
-    /// tests can assert on validation errors.
+    /// Runs the real validate step against a minimal (auth-free) fixture whose role Listener does
+    /// not exist yet, returning the result so tests can assert on validation errors.
     pub fn try_validate(
         zk: &v1alpha1::ZookeeperCluster,
+    ) -> Result<ValidatedCluster, super::validate::Error> {
+        try_validate_with_role_listener(zk, None)
+    }
+
+    /// Runs the real validate step against a minimal (auth-free) fixture and the given role
+    /// Listener, returning the result so tests can assert on validation errors.
+    pub fn try_validate_with_role_listener(
+        zk: &v1alpha1::ZookeeperCluster,
+        maybe_role_listener: Option<listener::v1alpha1::Listener>,
     ) -> Result<ValidatedCluster, super::validate::Error> {
         validate(
             zk,
             &DereferencedObjects {
                 authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
-                maybe_role_listener: None,
+                maybe_role_listener,
             },
             &operator_environment(),
         )
