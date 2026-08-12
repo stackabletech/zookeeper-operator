@@ -119,7 +119,7 @@ impl<'a> Applier<'a> {
 ///
 /// The znode is a path inside ZooKeeper rather than a Kubernetes object, so it cannot be part of
 /// the client-free `build()` step, and it is not tracked in
-/// [`ClusterResources`](stackable_operator::cluster_resources::ClusterResources) either. It must
+/// [`ClusterResources`] either. It must
 /// exist before the discovery ConfigMap advertises it to clients.
 pub async fn ensure_znode_exists(zk_mgmt_addr: &str, znode_path: &str) -> Result<()> {
     znode_mgmt::ensure_znode_exists(zk_mgmt_addr, znode_path)

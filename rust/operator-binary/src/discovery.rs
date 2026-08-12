@@ -86,8 +86,8 @@ pub fn build_znode_discovery_configmap(
     )
 }
 
-/// Build a discovery [`ConfigMap`] containing ZooKeeper connection details from a
-/// [`listener::v1alpha1::Listener`].
+/// Build a discovery [`ConfigMap`] containing ZooKeeper connection details from the
+/// [`ListenerAddresses`] published by the role Listener.
 ///
 /// `owner` owns the ConfigMap (the [`ZookeeperCluster`](crate::crd::v1alpha1::ZookeeperCluster) for the cluster
 /// controller, or the [`ZookeeperZnode`](crate::crd::v1alpha1::ZookeeperZnode) for the znode controller) and
