@@ -249,9 +249,10 @@ pub struct ValidatedCluster {
     /// The client addresses published by the role Listener, which the discovery ConfigMap
     /// advertises.
     ///
-    /// `None` until the listener operator has published them, in which case the discovery
-    /// ConfigMap is skipped and built by the reconciliation that the Listener watch triggers.
-    pub discovery_addresses: Option<ListenerAddresses>,
+    /// Empty until the listener operator has published them, in which case the discovery ConfigMap
+    /// advertises an empty connection string until the reconciliation that the Listener watch
+    /// triggers fills it in.
+    pub discovery_addresses: ListenerAddresses,
 }
 
 // Placeholder product version used for labels on PVC templates, which cannot be modified once
@@ -274,7 +275,7 @@ impl ValidatedCluster {
         >,
         cluster_operation: ClusterOperation,
         object_overrides: ObjectOverrides,
-        discovery_addresses: Option<ListenerAddresses>,
+        discovery_addresses: ListenerAddresses,
     ) -> Self {
         Self {
             metadata: ObjectMeta {
@@ -521,14 +522,17 @@ pub fn validate(
     };
 
     // The role Listener does not exist during the very first reconciliation, and carries no
-    // addresses until the listener operator has published them.
+    // addresses until the listener operator has published them. Both cases resolve to no addresses
+    // rather than an error, so that the discovery ConfigMap is still built (see
+    // [`build_discovery_configmap`](crate::discovery::build_discovery_configmap)).
     let discovery_addresses = dereferenced_objects
         .maybe_role_listener
         .as_ref()
         .map(|listener| listener_addresses(listener, ZOOKEEPER_SERVER_PORT_NAME))
         .transpose()
         .context(ReadRoleListenerAddressesSnafu)?
-        .flatten();
+        .flatten()
+        .unwrap_or_default();
 
     Ok(ValidatedCluster::new(
         name,

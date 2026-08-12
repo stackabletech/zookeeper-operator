@@ -72,12 +72,12 @@ pub enum Error {
 /// failures only. `cluster_info` is static cluster metadata (not a client call), consumed by the
 /// role-group ConfigMap builder.
 ///
-/// The discovery `ConfigMap` is only built once the role
-/// [`Listener`](stackable_operator::crd::listener::v1alpha1::Listener) publishes ingress addresses.
-/// Those are dereferenced and validated into
-/// [`ValidatedCluster::discovery_addresses`](ValidatedCluster#structfield.discovery_addresses)
-/// before this step runs, so the ConfigMap is absent during the reconciliation that first creates
-/// the Listener, and built by the one that the Listener watch triggers afterwards.
+/// This includes the discovery `ConfigMap`, built from the addresses published by the role
+/// [`Listener`](stackable_operator::crd::listener::v1alpha1::Listener) that were dereferenced and
+/// validated into
+/// [`ValidatedCluster::discovery_addresses`](ValidatedCluster#structfield.discovery_addresses); see
+/// [`build_discovery_configmap`](discovery::build_discovery_configmap) for how its content depends
+/// on them.
 pub fn build(
     cluster: &ValidatedCluster,
     cluster_info: &KubernetesClusterInfo,
@@ -130,21 +130,19 @@ pub fn build(
 
     let listeners = vec![build_role_listener(cluster, &zk_role)];
 
-    let maybe_discovery_config_map = cluster
-        .discovery_addresses
-        .as_ref()
-        .map(|listener_addresses| {
-            discovery::build_discovery_configmap(cluster, ZK_CONTROLLER_NAME, listener_addresses)
-        })
-        .transpose()
-        .context(DiscoveryConfigMapSnafu)?;
+    let discovery_config_map = discovery::build_discovery_configmap(
+        cluster,
+        ZK_CONTROLLER_NAME,
+        &cluster.discovery_addresses,
+    )
+    .context(DiscoveryConfigMapSnafu)?;
 
     Ok(KubernetesResources {
         stateful_sets,
         services,
         listeners,
         config_maps,
-        maybe_discovery_config_map,
+        discovery_config_map,
         pod_disruption_budgets,
         service_accounts: vec![build_service_account(cluster)],
         role_bindings: vec![build_role_binding(cluster)],
@@ -236,8 +234,12 @@ mod tests {
                 "simple-zookeeper-server-secondary",
             ]
         );
-        // The fixture has no role Listener yet, so the discovery ConfigMap is absent (see `build()`).
-        assert!(resources.maybe_discovery_config_map.is_none());
+        // The discovery ConfigMap is named after the cluster, and written even though the fixture
+        // has no role Listener publishing addresses yet (see `build()`).
+        assert_eq!(
+            resources.discovery_config_map.meta().name.as_deref(),
+            Some("simple-zookeeper")
+        );
         // The single role-level Listener for the one ZooKeeper role (`server`).
         assert_eq!(
             sorted_names(&resources.listeners),

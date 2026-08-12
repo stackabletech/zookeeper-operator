@@ -79,7 +79,7 @@ impl<'a> Applier<'a> {
             services,
             listeners,
             config_maps,
-            maybe_discovery_config_map,
+            discovery_config_map,
             pod_disruption_budgets,
             service_accounts,
             role_bindings,
@@ -94,10 +94,7 @@ impl<'a> Applier<'a> {
         let services = self.add_resources(services).await?;
         let listeners = self.add_resources(listeners).await?;
         let config_maps = self.add_resources(config_maps).await?;
-        let maybe_discovery_config_map = match maybe_discovery_config_map {
-            Some(config_map) => Some(self.add_resource(config_map).await?),
-            None => None,
-        };
+        let discovery_config_map = self.add_resource(discovery_config_map).await?;
         let pod_disruption_budgets = self.add_resources(pod_disruption_budgets).await?;
         let stateful_sets = self.add_resources(stateful_sets).await?;
 
@@ -111,7 +108,7 @@ impl<'a> Applier<'a> {
             services,
             listeners,
             config_maps,
-            maybe_discovery_config_map,
+            discovery_config_map,
             pod_disruption_budgets,
             service_accounts,
             role_bindings,

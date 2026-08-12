@@ -6,6 +6,7 @@ use fnv::FnvHasher;
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     client::Client,
+    k8s_openapi::api::core::v1::ConfigMap,
     status::condition::{
         compute_conditions, operations::ClusterOperationsConditionBuilder,
         statefulset::StatefulSetConditionBuilder,
@@ -49,7 +50,7 @@ pub async fn update_status(
         ClusterOperationsConditionBuilder::new(&zk.spec.cluster_operation);
 
     let status = v1alpha1::ZookeeperClusterStatus {
-        discovery_hash: Some(discovery_hash(applied)),
+        discovery_hash: Some(discovery_hash(&applied.discovery_config_map)),
         conditions: compute_conditions(
             zk,
             &[
@@ -70,16 +71,14 @@ pub async fn update_status(
 /// Hashes the resource version of the applied discovery ConfigMap, so that clients can tell when
 /// the published connection details changed.
 ///
-/// The hash covers nothing while the discovery ConfigMap is absent, which is the case until the
-/// role Listener publishes its addresses.
-fn discovery_hash(applied: &KubernetesResources<Applied>) -> String {
+/// A ConfigMap that was never applied carries no resource version, in which case the hash covers
+/// nothing.
+fn discovery_hash(discovery_config_map: &ConfigMap) -> String {
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
 
-    if let Some(discovery_config_map) = &applied.maybe_discovery_config_map
-        && let Some(resource_version) = &discovery_config_map.metadata.resource_version
-    {
+    if let Some(resource_version) = &discovery_config_map.metadata.resource_version {
         discovery_hash.write(resource_version.as_bytes())
     }
 

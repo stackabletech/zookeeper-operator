@@ -47,6 +47,15 @@ pub enum Error {
 ///
 /// The ConfigMap is owned by, and placed in the namespace of, the cluster. The image and security
 /// settings are taken from the [`ValidatedCluster`] rather than being passed in separately.
+///
+/// The connection details are read from the addresses published by the role Listener (carried on
+/// [`ValidatedCluster::discovery_addresses`](ValidatedCluster#structfield.discovery_addresses),
+/// fetched in the dereference step), which only the listener operator writes. While no address
+/// exists around the first reconciliations, which create the Listener in the first place, the
+/// ConfigMap is still written, with an empty `ZOOKEEPER` value: omitting it instead would let the
+/// apply step delete an existing discovery ConfigMap as an orphan, breaking consumers that mount
+/// it. The Listener watch triggers a new run that fills in the value once the addresses are
+/// published.
 pub fn build_discovery_configmap(
     validated_cluster: &ValidatedCluster,
     controller_name: &str,

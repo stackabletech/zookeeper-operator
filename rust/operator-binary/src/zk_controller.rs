@@ -108,10 +108,9 @@ pub struct KubernetesResources<T> {
     pub services: Vec<Service>,
     pub listeners: Vec<Listener>,
     pub config_maps: Vec<ConfigMap>,
-    /// The discovery `ConfigMap`, which is only built once the role Listener publishes its
-    /// addresses (see [`build()`](build::build)). It is kept apart from the role group
-    /// `config_maps` because the cluster status carries a hash of it.
-    pub maybe_discovery_config_map: Option<ConfigMap>,
+    /// The discovery `ConfigMap`, kept apart from the role group `config_maps` because the cluster
+    /// status carries a hash of it.
+    pub discovery_config_map: ConfigMap,
     pub pod_disruption_budgets: Vec<PodDisruptionBudget>,
     pub service_accounts: Vec<ServiceAccount>,
     pub role_bindings: Vec<RoleBinding>,
