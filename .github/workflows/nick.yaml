@@ -17,7 +17,7 @@ jobs:
         id: a
         run: |
           echo -e "DOES_IT_WORK<<EOF\nsmoke_beans-3.9.5_use-server-tls-true_use-client-auth-tls-true_openshift-false (130.85s)\nEOF" | tee -a "$GITHUB_OUTPUT"
-          echo "FAILED_TESTS<<EOF\nsmoke_ribs-3.9.5_use-server-tls-true_use-client-auth-tls-true_openshift-false (130.85s)\nEOF" | tee -a "$GITHUB_OUTPUT"
+          # echo "FAILED_TESTS<<EOF\nsmoke_ribs-3.9.5_use-server-tls-true_use-client-auth-tls-true_openshift-false (130.85s)\nEOF" | tee -a "$GITHUB_OUTPUT"
       - name: Step B
         id: b
         env:
