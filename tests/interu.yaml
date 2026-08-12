@@ -1,7 +1,7 @@
 ---
 runners:
   amd64:
-    platform: aks-1.32
+    platform: aks-1.36
     ttl: 6h
     node-groups:
       - name: default
