@@ -9,7 +9,7 @@ use stackable_operator::{
     cluster_resources::ClusterResourceApplyStrategy,
     crd::listener::v1alpha1::Listener,
     k8s_openapi::api::{
-        apps::v1::StatefulSet,
+        apps::v1::{Deployment, StatefulSet},
         core::v1::{ConfigMap, Service, ServiceAccount},
         policy::v1::PodDisruptionBudget,
         rbac::v1::RoleBinding,
@@ -50,6 +50,10 @@ pub const LISTENER_VOLUME_DIR: &str = "/stackable/listener";
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
     pub operator_environment: OperatorEnvironmentOptions,
+    /// The operator's own container image, propagated to per-cluster znode agent Deployments so
+    /// they run the same binary in `agent` mode. `None` if `OPERATOR_IMAGE` was not set (agent
+    /// Deployments are then skipped — the operator fallback still provisions znodes).
+    pub operator_image: Option<String>,
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -144,6 +148,8 @@ pub struct KubernetesResources {
     pub pod_disruption_budgets: Vec<PodDisruptionBudget>,
     pub service_accounts: Vec<ServiceAccount>,
     pub role_bindings: Vec<RoleBinding>,
+    /// Per-cluster znode agent Deployment(s) (spike). Empty unless `platformAccess` is configured.
+    pub deployments: Vec<Deployment>,
 }
 
 pub async fn reconcile_zk(
@@ -180,8 +186,13 @@ pub async fn reconcile_zk(
         &validated_cluster.object_overrides,
     );
 
-    let resources = build::build(&validated_cluster, &client.kubernetes_cluster_info)
-        .context(BuildResourcesSnafu)?;
+    let resources = build::build(
+        &validated_cluster,
+        &client.kubernetes_cluster_info,
+        ctx.operator_image.as_deref(),
+        &ctx.operator_environment.image_repository,
+    )
+    .context(BuildResourcesSnafu)?;
 
     let mut ss_cond_builder = StatefulSetConditionBuilder::default();
 
@@ -241,6 +252,15 @@ pub async fn reconcile_zk(
                 .await
                 .context(ApplyResourceSnafu)?,
         );
+    }
+
+    // Per-cluster znode agent Deployment(s) (spike). Deliberately not wired into the cluster
+    // conditions: an agent image-pull failure must not redden the whole ZookeeperCluster.
+    for deployment in resources.deployments {
+        cluster_resources
+            .add(client, deployment)
+            .await
+            .context(ApplyResourceSnafu)?;
     }
 
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.

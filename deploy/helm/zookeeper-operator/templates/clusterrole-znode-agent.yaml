@@ -1,0 +1,77 @@
+---
+# Znode-agent ClusterRole (spike): bound — via a per-ZookeeperCluster, namespaced RoleBinding the
+# operator creates — to the ServiceAccount each per-cluster ZookeeperZnode agent runs as. A
+# ClusterRole (not a namespaced Role) because the operator has no `roles` RBAC and would hit
+# escalation-prevention checks trying to create one; the namespaced RoleBinding still scopes these
+# permissions to the agent's own namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "operator.name" . }}-znode-agent-clusterrole
+  labels:
+  {{- include "operator.labels" . | nindent 4 }}
+rules:
+  # Primary CRD: watched and read; patch manages the znode finalizer and status.
+  - apiGroups:
+      - {{ include "operator.name" . }}.stackable.tech
+    resources:
+      - {{ include "operator.name" . }}znodes
+    verbs:
+      - get
+      - list
+      - patch
+      - watch
+  - apiGroups:
+      - {{ include "operator.name" . }}.stackable.tech
+    resources:
+      - {{ include "operator.name" . }}znodes/status
+    verbs:
+      - patch
+  # The parent cluster: read and watched (so re-creating a deleted cluster re-reconciles).
+  - apiGroups:
+      - {{ include "operator.name" . }}.stackable.tech
+    resources:
+      - {{ include "operator.name" . }}clusters
+    verbs:
+      - get
+      - list
+      - watch
+  # Discovery ConfigMap owned per ZookeeperZnode: applied via SSA and tracked for orphan cleanup.
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - watch
+  # The role Listener is read to build the discovery connection string.
+  - apiGroups:
+      - listeners.stackable.tech
+    resources:
+      - listeners
+    verbs:
+      - get
+  # Required to report reconciliation results and warnings.
+  - apiGroups:
+      - events.k8s.io
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  # Liveness Lease: the agent renews it on a short period; the operator watches it for staleness to
+  # surface "agent unavailable" on the ZookeeperZnodes (spike step 4c). `patch` is required because
+  # the agent renews via server-side apply (an HTTP PATCH).
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - patch
+      - update

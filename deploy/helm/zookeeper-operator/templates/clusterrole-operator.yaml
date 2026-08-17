@@ -52,7 +52,9 @@ rules:
       - get
       - list
       - patch
-  # Required to bind the product ClusterRole to the per-cluster ServiceAccount.
+  # Required to bind the product ClusterRole to the per-cluster ServiceAccount, and the znode-agent
+  # ClusterRole to each per-cluster agent ServiceAccount (spike). Both must be listed or creating the
+  # RoleBinding is rejected as privilege escalation.
   - apiGroups:
       - rbac.authorization.k8s.io
     resources:
@@ -61,12 +63,14 @@ rules:
       - bind
     resourceNames:
       - {{ include "operator.name" . }}-clusterrole
-  # StatefulSet created per role group. Applied via SSA, tracked for orphan cleanup,
-  # and owned by the controller.
+      - {{ include "operator.name" . }}-znode-agent-clusterrole
+  # StatefulSet created per role group, and Deployment created per ZookeeperCluster for the
+  # znode agent (spike). Applied via SSA, tracked for orphan cleanup, and owned by the controller.
   - apiGroups:
       - apps
     resources:
       - statefulsets
+      - deployments
     verbs:
       - create
       - delete
@@ -106,6 +110,26 @@ rules:
       - authentication.stackable.tech
     resources:
       - authenticationclasses
+    verbs:
+      - get
+      - list
+      - watch
+  # Validate the platformAccess SecretClass referenced in the ZookeeperCluster spec before creating
+  # the agent (spike); watched so creating the missing one re-reconciles.
+  - apiGroups:
+      - secrets.stackable.tech
+    resources:
+      - secretclasses
+    verbs:
+      - get
+      - list
+      - watch
+  # Observe the znode agent's liveness Lease; staleness surfaces as an AgentUnavailable condition on
+  # the bound ZookeeperZnodes (spike step 4c).
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
     verbs:
       - get
       - list

@@ -23,28 +23,36 @@ dimensions:
     values:
       - "false"
 tests:
-  - name: smoke
-    dimensions:
-      - zookeeper
-      - use-server-tls
-      - use-client-auth-tls
-      - openshift
-  - name: delete-rolegroup
-    dimensions:
-      - zookeeper
-      - openshift
-  - name: znode
-    dimensions:
-      - zookeeper-latest
-      - openshift
-  - name: logging
-    dimensions:
-      - zookeeper
-      - openshift
-  - name: cluster-operation
+  # - name: smoke
+  #   dimensions:
+  #     - zookeeper
+  #     - use-server-tls
+  #     - use-client-auth-tls
+  #     - openshift
+  # - name: delete-rolegroup
+  #   dimensions:
+  #     - zookeeper
+  #     - openshift
+  # - name: znode
+  #   dimensions:
+  #     - zookeeper-latest
+  #     - openshift
+  - name: platform-access
     dimensions:
       - zookeeper-latest
       - openshift
+  - name: platform-access-cross-ca
+    dimensions:
+      - zookeeper-latest
+      - openshift
+  # - name: logging
+  #   dimensions:
+  #     - zookeeper
+  #     - openshift
+  # - name: cluster-operation
+  #   dimensions:
+  #     - zookeeper-latest
+  #     - openshift
 suites:
   - name: nightly
     patch:

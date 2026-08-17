@@ -10,12 +10,15 @@ use stackable_operator::{
         HasName, HasUid, NameIsValidLabelValue,
         builder::meta::ownerreference_from_resource,
         kvp::label::recommended_labels,
-        types::operator::{ControllerName, ProductVersion},
+        types::{
+            common::Port,
+            operator::{ControllerName, ProductVersion},
+        },
     },
 };
 
 use crate::{
-    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole, security::ZookeeperSecurity},
+    crd::{ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole},
     zk_controller::{
         build::PLACEHOLDER_DISCOVERY_ROLE_GROUP,
         validate::{ValidatedCluster, operator_name, product_name},
@@ -70,7 +73,10 @@ pub fn build_discovery_configmap(
         &validated_cluster.product_version,
         listener,
         None,
-        &validated_cluster.cluster_config.zookeeper_security,
+        validated_cluster
+            .cluster_config
+            .zookeeper_security
+            .client_port(),
     )
 }
 
@@ -93,7 +99,7 @@ pub fn build_znode_discovery_configmap(
         &validated_znode.product_version,
         listener,
         Some(chroot),
-        &validated_znode.zookeeper_security,
+        validated_znode.client_port.clone(),
     )
 }
 
@@ -110,7 +116,7 @@ fn build_discovery_configmap_for_owner(
     product_version: &ProductVersion,
     listener: listener::v1alpha1::Listener,
     chroot: Option<&str>,
-    zookeeper_security: &ZookeeperSecurity,
+    client_port: Port,
 ) -> Result<ConfigMap> {
     let name = owner.to_name();
 
@@ -158,10 +164,7 @@ fn build_discovery_configmap_for_owner(
         .add_data("ZOOKEEPER", conn_str)
         // Some clients don't support ZooKeeper's merged `hosts/chroot` format, so export them separately for these clients
         .add_data("ZOOKEEPER_HOSTS", listener_addresses)
-        .add_data(
-            "ZOOKEEPER_CLIENT_PORT",
-            zookeeper_security.client_port().to_string(),
-        )
+        .add_data("ZOOKEEPER_CLIENT_PORT", client_port.to_string())
         .add_data("ZOOKEEPER_CHROOT", chroot.unwrap_or("/"))
         .build()
         .context(BuildConfigMapSnafu)

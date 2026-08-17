@@ -1,0 +1,11 @@
+---
+# The agent successfully provisioned the znode (over mTLS) and wrote its discovery ConfigMap. If the
+# mTLS connection or znode creation had failed, this ConfigMap would never appear.
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 300
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-znode

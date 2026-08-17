@@ -20,6 +20,14 @@ fnv = "1.0"
 futures = { version = "0.3", features = ["compat"] }
 indoc = "2.0"
 pin-project = "1.1"
+# Spike: build the agent's mTLS ClientConfig. `ring` provider to match tokio-zookeeper's `tls`
+# feature; rustls 0.23.41 is already in the lockfile via kube-client.
+rustls = { version = "0.23.41", default-features = false, features = [
+    "ring",
+    "std",
+    "tls12",
+    "logging",
+] }
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -35,5 +43,6 @@ tracing = "0.1"
 # stackable-operator = { path = "../operator-rs/crates/stackable-operator" }
 
 [patch.crates-io]
-# tokio-zookeeper = { path = "../tokio-zookeeper" }
+# Spike: local fork adding the mTLS transport (`tls` feature) — see ../tokio-zookeeper.
+tokio-zookeeper = { path = "../tokio-zookeeper" }
 # tokio-zookeeper = { git = "https://github.com/stackabletech/tokio-zookeeper.git", branch = "bugfix/whatever-thread-safety" }

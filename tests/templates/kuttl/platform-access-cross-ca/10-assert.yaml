@@ -1,0 +1,21 @@
+---
+# The ZooKeeper ensemble and — the new part — the per-cluster znode agent Deployment must both come
+# up. The agent runs the operator image in `agent` mode with the mounted platform-access credential.
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 600
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: test-zk-server-default
+status:
+  readyReplicas: 1
+  replicas: 1
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-zk-znode-agent
+status:
+  readyReplicas: 1

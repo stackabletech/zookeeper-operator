@@ -59,6 +59,61 @@ spec:
                       - authenticationClass
                       type: object
                     type: array
+                  platformAccess:
+                    description: |-
+                      Grants the Stackable platform authenticated access to this ZooKeeper ensemble via a
+                      per-cluster [`ZookeeperZnode`] agent. Absent (the default) means no dedicated agent;
+                      znode provisioning uses the central operator's plaintext connection.
+                      Read more in the platform-access design (spike ADR).
+                    nullable: true
+                    properties:
+                      credential:
+                        description: |-
+                          The client credential (certificate + private key) the agent authenticates with. Exactly
+                          one variant. Both variants land on the same files (`tls.crt` / `tls.key`) in the same
+                          directory, so the agent code is identical across them.
+                        oneOf:
+                        - required:
+                          - secretClass
+                        - required:
+                          - secret
+                        properties:
+                          secret:
+                            description: |-
+                              The name of an existing `kubernetes.io/tls` Secret (e.g. one cert-manager emits, or a
+                              certificate a customer dropped in). Its well-known `tls.crt` / `tls.key` keys are mounted
+                              directly, producing exactly the layout a secret-operator CSI volume does.
+                            type: string
+                          secretClass:
+                            description: |-
+                              A [SecretClass](https://docs.stackable.tech/home/nightly/secret-operator/secretclass) that
+                              secret-operator mints a certificate from, mounted into the agent via a CSI ephemeral
+                              volume (never written to etcd).
+                            maxLength: 253
+                            minLength: 1
+                            pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                            type: string
+                        type: object
+                      trustAnchorSecretClass:
+                        description: |-
+                          The [SecretClass](https://docs.stackable.tech/home/nightly/secret-operator/secretclass) whose CA
+                          ZooKeeper should trust for platform (agent) client certificates. This is what
+                          `ssl.trustStore.location` is populated from (a PKCS#12 truststore minted by
+                          secret-operator).
+
+                          Kept separate from `credential` because a customer-supplied static certificate
+                          (`credential.secret`) has no SecretClass CA to expose, so the trust anchor must be stated
+                          explicitly. For a minted certificate this typically names the same SecretClass as
+                          `credential.secretClass`. Pointing it at the platform `tls` SecretClass reuses the autoTls
+                          CA — a choice the customer wrote down, not an implicit backdoor.
+                        maxLength: 253
+                        minLength: 1
+                        pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$
+                        type: string
+                    required:
+                    - credential
+                    - trustAnchorSecretClass
+                    type: object
                   tls:
                     default:
                       quorumSecretClass: tls
@@ -1431,6 +1486,48 @@ spec:
           status:
             nullable: true
             properties:
+              conditions:
+                description: |-
+                  Conditions describing the znode's provisioning state. When no platform-access credential
+                  can be provided (a typo'd SecretClass, a missing Secret, a certificate ZooKeeper rejects,
+                  or a cert whose renewal is failing), or when no agent is running to provision the znode at
+                  all, this surfaces as `Degraded=True` with a distinguishing `reason`. See the spike ADR.
+                items:
+                  properties:
+                    lastTransitionTime:
+                      description: Last time the condition transitioned from one status to another.
+                      format: date-time
+                      nullable: true
+                      type: string
+                    message:
+                      description: A human readable message indicating details about the transition.
+                      nullable: true
+                      type: string
+                    reason:
+                      description: The reason for the condition's last transition.
+                      nullable: true
+                      type: string
+                    status:
+                      description: Status of the condition, one of True, False, Unknown.
+                      enum:
+                      - 'True'
+                      - 'False'
+                      - Unknown
+                      type: string
+                    type:
+                      description: Type of deployment condition.
+                      enum:
+                      - Available
+                      - Degraded
+                      - Progressing
+                      - ReconciliationPaused
+                      - Stopped
+                      type: string
+                  required:
+                  - status
+                  - type
+                  type: object
+                type: array
               znodePath:
                 description: |-
                   The absolute ZNode allocated to the ZookeeperZnode. This will typically be set by the operator.

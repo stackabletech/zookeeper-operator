@@ -1,9 +1,13 @@
 //! The dereference step in the ZookeeperZnode controller.
 //!
-//! Fetches the parent [`v1alpha1::ZookeeperCluster`] referenced by the znode's
-//! `spec.clusterRef`, plus the [`DereferencedAuthenticationClasses`] of that cluster. Both Apply
-//! and Cleanup paths in `reconcile_znode` share this output. Synchronous validation of the
-//! fetched objects happens in the validate step.
+//! Fetches the parent [`v1alpha1::ZookeeperCluster`] referenced by the znode's `spec.clusterRef`.
+//! Both Apply and Cleanup paths in `reconcile_znode` share this output. Synchronous validation of
+//! the fetched objects happens in the validate step.
+//!
+//! Spike note: this deliberately does **not** resolve the cluster's `AuthenticationClass`
+//! references. The per-cluster znode agent runs namespaced and must not read cluster-scoped
+//! objects, so the znode path only ever needs the ZooKeeper client port (derived synchronously from
+//! the cluster's TLS settings in the validate step via [`crate::crd::security::client_port`]).
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
@@ -11,10 +15,7 @@ use stackable_operator::{
     kube::{self, runtime::reflector::ObjectRef},
 };
 
-use crate::crd::{
-    authentication::{self, DereferencedAuthenticationClasses},
-    v1alpha1,
-};
+use crate::crd::v1alpha1;
 
 #[derive(Snafu, Debug)]
 pub enum Error {
@@ -32,9 +33,6 @@ pub enum Error {
         source: stackable_operator::client::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
-
-    #[snafu(display("failed to fetch authentication classes"))]
-    FetchAuthenticationClasses { source: authentication::Error },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -42,7 +40,6 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 /// Kubernetes objects referenced from the [`v1alpha1::ZookeeperZnode`] spec, already fetched.
 pub struct DereferencedObjects {
     pub zk: v1alpha1::ZookeeperCluster,
-    pub authentication_classes: DereferencedAuthenticationClasses,
 }
 
 /// Fetches all Kubernetes objects referenced from the [`v1alpha1::ZookeeperZnode`] spec.
@@ -52,17 +49,7 @@ pub async fn dereference(
 ) -> Result<DereferencedObjects> {
     let zk = find_zk_of_znode(client, znode).await?;
 
-    let authentication_classes = DereferencedAuthenticationClasses::fetch_references(
-        client,
-        &zk.spec.cluster_config.authentication,
-    )
-    .await
-    .context(FetchAuthenticationClassesSnafu)?;
-
-    Ok(DereferencedObjects {
-        zk,
-        authentication_classes,
-    })
+    Ok(DereferencedObjects { zk })
 }
 
 async fn find_zk_of_znode(

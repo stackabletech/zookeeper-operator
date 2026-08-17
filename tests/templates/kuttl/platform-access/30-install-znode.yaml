@@ -1,0 +1,10 @@
+---
+# Created *after* the agent has its principal, so the agent provisions it with a restrictive x509
+# ACL. Same namespace as the cluster ⇒ the per-cluster agent (not the operator fallback) claims it.
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperZnode
+metadata:
+  name: test-znode
+spec:
+  clusterRef:
+    name: test-zk

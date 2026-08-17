@@ -10431,6 +10431,12 @@ rec {
             packageId = "pin-project";
           }
           {
+            name = "rustls";
+            packageId = "rustls";
+            usesDefaultFeatures = false;
+            features = [ "ring" "std" "tls12" "logging" ];
+          }
+          {
             name = "semver";
             packageId = "semver";
           }
@@ -10465,6 +10471,7 @@ rec {
           {
             name = "tokio-zookeeper";
             packageId = "tokio-zookeeper";
+            features = [ "tls" ];
           }
           {
             name = "tracing";
@@ -11293,8 +11300,8 @@ rec {
       "tokio-zookeeper" = rec {
         crateName = "tokio-zookeeper";
         version = "0.4.0";
-        edition = "2021";
-        sha256 = "1gl7151662918v4mynh4jx1c1h1wys3hcgl96sbxyjjbqs5q76ha";
+        edition = "2024";
+        src = lib.cleanSourceWith { filter = sourceFilter;  src = ../tokio-zookeeper; };
         libName = "tokio_zookeeper";
         authors = [
           "Jon Gjengset <jon@thesquareplanet.com>"
@@ -11302,20 +11309,12 @@ rec {
         ];
         dependencies = [
           {
-            name = "async-trait";
-            packageId = "async-trait";
-          }
-          {
             name = "byteorder";
             packageId = "byteorder";
           }
           {
             name = "futures";
             packageId = "futures 0.3.32";
-          }
-          {
-            name = "once_cell";
-            packageId = "once_cell";
           }
           {
             name = "pin-project";
@@ -11331,6 +11330,13 @@ rec {
             features = [ "net" "rt" "time" ];
           }
           {
+            name = "tokio-rustls";
+            packageId = "tokio-rustls";
+            optional = true;
+            usesDefaultFeatures = false;
+            features = [ "ring" "tls12" "logging" ];
+          }
+          {
             name = "tracing";
             packageId = "tracing";
           }
@@ -11339,10 +11345,14 @@ rec {
           {
             name = "tokio";
             packageId = "tokio";
-            features = [ "macros" ];
+            features = [ "macros" "rt-multi-thread" ];
           }
         ];
-
+        features = {
+          "leader_recipe" = [ "dep:backon" "dep:uuid" "tokio/sync" ];
+          "tls" = [ "dep:tokio-rustls" ];
+        };
+        resolvedDefaultFeatures = [ "tls" ];
       };
       "tonic" = rec {
         crateName = "tonic";

@@ -1,0 +1,23 @@
+---
+# The agent ACLs the znodes it creates to the x509 principal ZooKeeper derives from the agent's
+# client certificate. Read that DN (RFC 2253, the format `X509AuthenticationProvider` gets from
+# `X500Principal#getName()`) straight from the mounted cert, and configure the agent with it *before*
+# the znode is created — otherwise the znode would be created world-readable.
+#
+# Spike note: this step is exactly what validates the answer to the open question Step 0 poses — what
+# principal string ZooKeeper derives — and it exercises the mTLS transport end to end. If the exact
+# DN string differs from what `openssl ... -nameopt RFC2253` prints, this is the single place to
+# adjust.
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+timeout: 300
+commands:
+  - script: |
+      set -euo pipefail
+      DN=$(kubectl exec -n "$NAMESPACE" deploy/test-zk-znode-agent -- \
+             cat /stackable/platform_access_tls/tls.crt \
+           | openssl x509 -noout -subject -nameopt RFC2253 \
+           | sed 's/^subject=//')
+      echo "Agent x509 principal: ${DN}"
+      kubectl set env -n "$NAMESPACE" deployment/test-zk-znode-agent PLATFORM_ACCESS_PRINCIPAL="${DN}"
+      kubectl rollout status -n "$NAMESPACE" deployment/test-zk-znode-agent --timeout=180s

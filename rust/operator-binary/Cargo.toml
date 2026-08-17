@@ -19,12 +19,13 @@ fnv.workspace = true
 futures.workspace = true
 indoc.workspace = true
 pin-project.workspace = true
+rustls.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 snafu.workspace = true
 strum.workspace = true
-tokio-zookeeper.workspace = true
+tokio-zookeeper = { workspace = true, features = ["tls"] }
 tokio.workspace = true
 tracing.workspace = true
 

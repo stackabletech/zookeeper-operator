@@ -7,7 +7,6 @@ use std::str::FromStr;
 
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
-    cli::OperatorEnvironmentOptions,
     commons::{cluster_operation::ClusterOperation, product_image_selection},
     deep_merger::ObjectOverrides,
     k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
@@ -17,6 +16,7 @@ use stackable_operator::{
         HasName, HasUid, NameIsValidLabelValue,
         controller_utils::{get_namespace, get_uid},
         types::{
+            common::Port,
             kubernetes::{NamespaceName, Uid},
             operator::ProductVersion,
         },
@@ -24,7 +24,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{CONTAINER_IMAGE_BASE_NAME, authentication, security::ZookeeperSecurity, v1alpha1},
+    crd::{CONTAINER_IMAGE_BASE_NAME, security, v1alpha1},
     znode_controller::dereference::DereferencedObjects,
 };
 
@@ -34,9 +34,6 @@ pub enum Error {
     ResolveProductImage {
         source: product_image_selection::Error,
     },
-
-    #[snafu(display("failed to validate authentication classes"))]
-    InvalidAuthenticationClassConfiguration { source: authentication::Error },
 
     #[snafu(display("object has no name"))]
     ObjectMissingName,
@@ -83,7 +80,10 @@ pub struct ValidatedZnode {
     /// The product version as a valid label value, used for the recommended
     /// `app.kubernetes.io/version` label.
     pub product_version: ProductVersion,
-    pub zookeeper_security: ZookeeperSecurity,
+    /// The ZooKeeper client port to connect to, derived from the referenced cluster's TLS settings
+    /// (see [`crate::crd::security::client_port`]). Replaces a full `ZookeeperSecurity` so the znode
+    /// path never resolves cluster-scoped AuthenticationClasses.
+    pub client_port: Port,
     /// The parent cluster's operation settings (pause/stop), from which the
     /// [`ClusterResourceApplyStrategy`](stackable_operator::cluster_resources::ClusterResourceApplyStrategy)
     /// for the znode's resources is derived. Carried here so the apply step does not reach into the
@@ -145,7 +145,7 @@ impl Resource for ValidatedZnode {
 pub fn validate(
     znode: &v1alpha1::ZookeeperZnode,
     dereferenced_objects: &DereferencedObjects,
-    operator_environment: &OperatorEnvironmentOptions,
+    image_repository: &str,
 ) -> Result<ValidatedZnode> {
     let image = dereferenced_objects
         .zk
@@ -153,18 +153,12 @@ pub fn validate(
         .image
         .resolve(
             CONTAINER_IMAGE_BASE_NAME,
-            &operator_environment.image_repository,
+            image_repository,
             crate::built_info::PKG_VERSION,
         )
         .context(ResolveProductImageSnafu)?;
 
-    let resolved_authentication_classes = dereferenced_objects
-        .authentication_classes
-        .validate()
-        .context(InvalidAuthenticationClassConfigurationSnafu)?;
-
-    let zookeeper_security =
-        ZookeeperSecurity::new(&dereferenced_objects.zk, resolved_authentication_classes);
+    let client_port = security::client_port(&dereferenced_objects.zk);
 
     // Scoped to this function so the `Lookup` metadata accessors don't collide with `Resource`'s
     // in the `impl Resource for ValidatedZnode` block.
@@ -195,7 +189,7 @@ pub fn validate(
         namespace,
         uid,
         product_version,
-        zookeeper_security,
+        client_port,
         cluster_operation: dereferenced_objects.zk.spec.cluster_operation.clone(),
         object_overrides: znode.spec.object_overrides.clone(),
     })

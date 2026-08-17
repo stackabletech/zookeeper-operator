@@ -27,7 +27,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::{authentication::DereferencedAuthenticationClasses, tls, v1alpha1},
+    crd::{authentication::DereferencedAuthenticationClasses, platform_access, tls, v1alpha1},
     zk_controller::LISTENER_VOLUME_NAME,
 };
 
@@ -55,6 +55,10 @@ pub struct ZookeeperSecurity {
     resolved_authentication_classes: DereferencedAuthenticationClasses,
     server_secret_class: Option<SecretClassName>,
     quorum_secret_class: SecretClassName,
+    /// Platform-access configuration. When present, ZooKeeper's client truststore is populated from
+    /// the platform trust anchor (rather than the server's own CA) and client certificate auth is
+    /// required. See [`platform_access`].
+    platform_access: Option<platform_access::v1alpha1::ZookeeperPlatformAccess>,
 }
 
 impl ZookeeperSecurity {
@@ -74,6 +78,10 @@ impl ZookeeperSecurity {
     pub const SERVER_TLS_MOUNT_DIR: &'static str = "/stackable/server_tls_mount";
     // TLS volume names (the mount name must match the volume name)
     pub const SERVER_TLS_VOLUME_NAME: &'static str = "server-tls";
+    // Platform-access trust anchor: ZooKeeper's client truststore when platformAccess is configured.
+    pub const PLATFORM_ACCESS_TRUSTSTORE_DIR: &'static str =
+        "/stackable/platform_access_truststore";
+    pub const PLATFORM_ACCESS_TRUSTSTORE_VOLUME_NAME: &'static str = "platform-access-truststore";
     // Common TLS
     pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
     // Client TLS
@@ -118,7 +126,21 @@ impl ZookeeperSecurity {
                 .as_ref()
                 .map(|tls| tls.quorum_secret_class.clone())
                 .unwrap_or_else(tls::quorum_tls_default),
+            platform_access: zk.spec.cluster_config.platform_access.clone(),
         }
+    }
+
+    /// The configured platform access, if any.
+    pub fn platform_access(
+        &self,
+    ) -> Option<&platform_access::v1alpha1::ZookeeperPlatformAccess> {
+        self.platform_access.as_ref()
+    }
+
+    /// The server TLS SecretClass, if configured. Its CA is what clients — including the platform
+    /// agent — verify the ZooKeeper server certificate against.
+    pub fn server_secret_class(&self) -> Option<&SecretClassName> {
+        self.server_secret_class.as_ref()
     }
 
     /// Check if TLS encryption is enabled. This could be due to:
@@ -181,6 +203,22 @@ impl ZookeeperSecurity {
                 requested_secret_lifetime,
             )?)
             .context(AddVolumeSnafu)?;
+
+        // Platform-access trust anchor: mounts *only* the CA truststore that ZooKeeper uses to
+        // verify platform (agent) client certificates. Only added when platformAccess is set.
+        if let Some(platform_access) = &self.platform_access {
+            let volume_name = Self::PLATFORM_ACCESS_TRUSTSTORE_VOLUME_NAME;
+            cb_zookeeper
+                .add_volume_mount(volume_name, Self::PLATFORM_ACCESS_TRUSTSTORE_DIR)
+                .context(AddVolumeMountSnafu)?;
+            pod_builder
+                .add_volume(Self::create_platform_access_truststore_volume(
+                    volume_name,
+                    platform_access.trust_anchor_secret_class.as_ref(),
+                    requested_secret_lifetime,
+                )?)
+                .context(AddVolumeSnafu)?;
+        }
 
         Ok(())
     }
@@ -275,19 +313,30 @@ impl ZookeeperSecurity {
                     file = Self::KEYSTORE_FILE
                 ),
             );
+            // Server truststore: normally the server's own SecretClass CA (so ZooKeeper accepts
+            // client certs from its own issuer). When platformAccess is configured, the platform
+            // trust anchor's truststore is used instead — this is the "truststore split" that stops
+            // ZooKeeper trusting any cert from its own server CA by construction.
+            let trust_store_dir = if self.platform_access.is_some() {
+                Self::PLATFORM_ACCESS_TRUSTSTORE_DIR
+            } else {
+                Self::SERVER_TLS_DIR
+            };
             config.insert(
                 Self::SSL_TRUST_STORE_LOCATION.to_string(),
                 format!(
                     "{dir}/{file}",
-                    dir = Self::SERVER_TLS_DIR,
+                    dir = trust_store_dir,
                     file = Self::TRUSTSTORE_FILE
                 ),
             );
-            // Check if we need to enable client TLS authentication
-            if self
-                .resolved_authentication_classes
-                .get_tls_authentication_class()
-                .is_some()
+            // Enable client TLS authentication when required by a client-auth AuthenticationClass or
+            // by platformAccess (so ZooKeeper actually verifies platform/agent client certificates).
+            if self.platform_access.is_some()
+                || self
+                    .resolved_authentication_classes
+                    .get_tls_authentication_class()
+                    .is_some()
             {
                 config.insert(Self::SSL_CLIENT_AUTH.to_string(), "need".to_string());
             }
@@ -371,6 +420,33 @@ impl ZookeeperSecurity {
         Ok(volume)
     }
 
+    /// Creates an ephemeral volume mounting **only** the truststore (CA) of the platform trust
+    /// anchor SecretClass, used by ZooKeeper to verify platform (agent) client certificates.
+    ///
+    /// Uses [`SecretClassVolumeProvisionParts::Public`] (truststore only) — ZooKeeper presents its
+    /// own server certificate from the separate server-TLS keystore. No pod/listener scope is
+    /// required because a CA truststore does not depend on the consuming Pod's identity.
+    fn create_platform_access_truststore_volume(
+        volume_name: &str,
+        secret_class_name: &str,
+        requested_secret_lifetime: &Duration,
+    ) -> Result<Volume> {
+        let volume = VolumeBuilder::new(volume_name)
+            .ephemeral(
+                SecretOperatorVolumeSourceBuilder::new(
+                    secret_class_name,
+                    SecretClassVolumeProvisionParts::Public,
+                )
+                .with_format(SecretFormat::TlsPkcs12)
+                .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
+                .build()
+                .context(BuildTlsVolumeSnafu { volume_name })?,
+            )
+            .build();
+
+        Ok(volume)
+    }
+
     /// USE ONLY IN TESTS! We can not put it behind `#[cfg(test)]` because of <https://github.com/rust-lang/cargo/issues/8379>
     pub fn new_for_tests() -> Self {
         ZookeeperSecurity {
@@ -380,6 +456,31 @@ impl ZookeeperSecurity {
             ),
             quorum_secret_class: SecretClassName::from_str("tls")
                 .expect("'tls' is a valid SecretClass name"),
+            platform_access: None,
         }
+    }
+}
+
+/// The ZooKeeper client port implied by a cluster's TLS settings, computed **without** resolving
+/// any AuthenticationClasses.
+///
+/// The znode path (both the operator fallback and the namespaced agent) uses this instead of
+/// [`ZookeeperSecurity::client_port`]: the agent must not read cluster-scoped AuthenticationClass
+/// objects, so it cannot construct a full [`ZookeeperSecurity`]. TLS-towards-clients is approximated
+/// by the presence of a server `SecretClass` — the only supported way to run client mTLS anyway, so
+/// this matches [`ZookeeperSecurity::tls_enabled`] for every configuration the agent can actually
+/// talk to.
+pub fn client_port(zk: &v1alpha1::ZookeeperCluster) -> Port {
+    let tls_enabled = zk
+        .spec
+        .cluster_config
+        .tls
+        .as_ref()
+        .and_then(|tls| tls.server_secret_class.as_ref())
+        .is_some();
+    if tls_enabled {
+        ZookeeperSecurity::SECURE_CLIENT_PORT
+    } else {
+        ZookeeperSecurity::CLIENT_PORT
     }
 }

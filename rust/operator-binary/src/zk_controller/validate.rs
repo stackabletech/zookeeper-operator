@@ -69,6 +69,13 @@ pub enum Error {
     #[snafu(display("failed to validate authentication classes"))]
     InvalidAuthenticationClassConfiguration { source: authentication::Error },
 
+    #[snafu(display(
+        "platformAccess is configured but no server TLS SecretClass is set. platformAccess requires \
+         server TLS (set `clusterConfig.tls.serverSecretClass`); otherwise the truststore redirect \
+         and `ssl.clientAuth=need` are silently ignored"
+    ))]
+    PlatformAccessRequiresServerTls,
+
     #[snafu(display("failed to parse role group name {role_group:?}"))]
     ParseRoleGroupName {
         source: stackable_operator::v2::macros::attributed_string_type::Error,
@@ -345,12 +352,21 @@ impl ValidatedCluster {
 
     /// Selector labels matching the pods of a role group.
     pub fn role_group_selector(&self, role_group_name: &RoleGroupName) -> Labels {
-        role_group_selector(
-            self,
-            &product_name(),
-            &ZookeeperRole::Server.into(),
-            role_group_name,
-        )
+        self.role_group_selector_for(&ZookeeperRole::Server.into(), role_group_name)
+    }
+
+    /// Selector labels matching the pods of a role group of an arbitrary role.
+    ///
+    /// Used by the znode agent, whose Deployment must select on a role *other* than `server` so its
+    /// pods are not picked up by the server Services. Deliberately version-free (via
+    /// [`role_group_selector`]): Deployment/StatefulSet selectors are immutable, so they must not
+    /// carry the `app.kubernetes.io/version` label, which changes on upgrade.
+    pub fn role_group_selector_for(
+        &self,
+        role_name: &RoleName,
+        role_group_name: &RoleGroupName,
+    ) -> Labels {
+        role_group_selector(self, &product_name(), role_name, role_group_name)
     }
 }
 
@@ -455,6 +471,19 @@ pub fn validate(
         .context(InvalidAuthenticationClassConfigurationSnafu)?;
 
     let zookeeper_security = ZookeeperSecurity::new(zk, resolved_authentication_classes);
+
+    // platformAccess redirects `ssl.trustStore.location` and sets `ssl.clientAuth=need`, both of
+    // which live inside the server-TLS block that is only emitted when a server TLS SecretClass is
+    // set. Without it the settings would be silently dropped, so reject the combination up front.
+    let server_secret_class = zk
+        .spec
+        .cluster_config
+        .tls
+        .as_ref()
+        .and_then(|tls| tls.server_secret_class.as_ref());
+    if zk.spec.cluster_config.platform_access.is_some() && server_secret_class.is_none() {
+        return PlatformAccessRequiresServerTlsSnafu.fail();
+    }
 
     // The per-role-group logging validation needs it to build the Vector container config.
     let vector_aggregator_config_map_name = zk

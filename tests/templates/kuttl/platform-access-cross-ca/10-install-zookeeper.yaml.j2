@@ -1,0 +1,84 @@
+{% if lookup('env', 'VECTOR_AGGREGATOR') %}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-aggregator-discovery
+data:
+  ADDRESS: {{ lookup('env', 'VECTOR_AGGREGATOR') }}
+{% endif %}
+---
+# CROSS-CA scenario (test ②). Two *independent* SecretClasses, each with its own CA:
+#
+#   * zk-server-tls   — backs the ZooKeeper server certificate (serverSecretClass). CA "A".
+#   * zk-platform-tls — backs the platform trust anchor AND the agent credential.        CA "B".
+#
+# This is the interesting case the single-CA `platform-access` test cannot reach: the CA that signs
+# the server cert (A) differs from the CA that signs the agent's client cert (B). mTLS still has to
+# work in *both* directions:
+#
+#   * ZooKeeper trusts the agent's client cert because its truststore is the platform trust anchor
+#     (B) — the "truststore split" — and the agent credential is issued by B.
+#   * The agent trusts ZooKeeper's server cert because it verifies against the *server* SecretClass
+#     CA (A), mounted separately at --platform-access-server-ca-dir. Verifying against the credential
+#     CA (B) — as the code did before this fix — would fail here, which is exactly what ② guards.
+apiVersion: secrets.stackable.tech/v1alpha1
+kind: SecretClass
+metadata:
+  name: zk-server-tls
+spec:
+  backend:
+    autoTls:
+      ca:
+        secret:
+          name: secret-provisioner-tls-zk-server-ca
+          namespace: default
+        autoGenerate: true
+---
+apiVersion: secrets.stackable.tech/v1alpha1
+kind: SecretClass
+metadata:
+  name: zk-platform-tls
+spec:
+  backend:
+    autoTls:
+      ca:
+        secret:
+          name: secret-provisioner-tls-zk-platform-ca
+          namespace: default
+        autoGenerate: true
+---
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: test-zk
+spec:
+  image:
+{% if test_scenario['values']['zookeeper-latest'].find(",") > 0 %}
+    custom: "{{ test_scenario['values']['zookeeper-latest'].split(',')[1] }}"
+    productVersion: "{{ test_scenario['values']['zookeeper-latest'].split(',')[0] }}"
+{% else %}
+    productVersion: "{{ test_scenario['values']['zookeeper-latest'] }}"
+{% endif %}
+    pullPolicy: IfNotPresent
+  clusterConfig:
+    tls:
+      # Server cert from CA "A".
+      serverSecretClass: zk-server-tls
+    # Trust anchor + agent credential from CA "B" — a *different* issuer than the server cert.
+    platformAccess:
+      trustAnchorSecretClass: zk-platform-tls
+      credential:
+        secretClass: zk-platform-tls
+{% if lookup('env', 'VECTOR_AGGREGATOR') %}
+    vectorAggregatorConfigMapName: vector-aggregator-discovery
+{% endif %}
+  servers:
+    config:
+      logging:
+        enableVectorAgent: {{ lookup('env', 'VECTOR_AGGREGATOR') | length > 0 }}
+      # NB: do NOT shorten `requestedSecretLifetime` — secret-operator rejects any lifetime below its
+      # pod-restart buffer (~6h): it can't schedule the pre-expiry restart in the past.
+    roleGroups:
+      default:
+        replicas: 1

@@ -1,0 +1,25 @@
+---
+# The demonstration: a plaintext (unauthenticated) client connects — port unification is still on —
+# but must fail to read the agent-owned znode with NoAuth.
+#
+# This is a `TestAssert` (not a `TestStep`): kuttl retries its `commands` until they exit 0 within the
+# timeout, which also absorbs the brief race between the ZookeeperZnode being created (previous step)
+# and the agent writing `.status.znodePath`. (A `commands`-only file named `NN-assert-*` is parsed by
+# kuttl as an assertion — it must be `kind: TestAssert`, else kuttl treats the doc as an object and
+# polls for a nonexistent `TestStep` resource until timeout.)
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+timeout: 300
+commands:
+  - script: |
+      set -euo pipefail
+      ZNODE=$(kubectl get zookeeperznode/test-znode -n "$NAMESPACE" -o jsonpath='{.status.znodePath}')
+      if [ -z "$ZNODE" ]; then
+        echo "ZookeeperZnode .status.znodePath is not set yet; retrying..."
+        exit 1
+      fi
+      echo "Agent-owned znode path: ${ZNODE}"
+      kubectl cp -n "$NAMESPACE" ./test_platform_access.sh \
+        test-zk-server-default-0:/tmp --container=zookeeper
+      kubectl exec -n "$NAMESPACE" test-zk-server-default-0 --container=zookeeper -- \
+        bash /tmp/test_platform_access.sh "$NAMESPACE" "${ZNODE}"

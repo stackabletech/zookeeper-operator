@@ -8,3 +8,4 @@ pub mod pdb;
 pub mod rbac;
 pub mod service;
 pub mod statefulset;
+pub mod znode_agent;

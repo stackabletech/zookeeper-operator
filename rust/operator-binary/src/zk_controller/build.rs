@@ -31,6 +31,7 @@ use crate::{
                 build_server_rolegroup_headless_service, build_server_rolegroup_metrics_service,
             },
             statefulset::{self, build_server_rolegroup_statefulset},
+            znode_agent::{self, build_znode_agent},
         },
         validate::ValidatedCluster,
     },
@@ -63,6 +64,9 @@ pub enum Error {
         source: statefulset::Error,
         rolegroup: RoleGroupName,
     },
+
+    #[snafu(display("failed to build the znode agent"))]
+    ZnodeAgent { source: znode_agent::Error },
 }
 
 /// Builds every Kubernetes resource for the given validated cluster.
@@ -78,6 +82,8 @@ pub enum Error {
 pub fn build(
     cluster: &ValidatedCluster,
     cluster_info: &KubernetesClusterInfo,
+    operator_image: Option<&str>,
+    image_repository: &str,
 ) -> Result<KubernetesResources, Error> {
     let mut stateful_sets = vec![];
     let mut services = vec![];
@@ -127,14 +133,29 @@ pub fn build(
 
     let listeners = vec![build_role_listener(cluster, &zk_role)];
 
+    let mut service_accounts = vec![build_service_account(cluster)];
+    let mut role_bindings = vec![build_role_binding(cluster)];
+    let mut deployments = vec![];
+
+    // Per-cluster znode agent (spike): only when `platformAccess` is configured.
+    if let Some(agent) =
+        build_znode_agent(cluster, operator_image, image_repository, cluster_info)
+            .context(ZnodeAgentSnafu)?
+    {
+        service_accounts.push(agent.service_account);
+        role_bindings.push(agent.role_binding);
+        deployments.push(agent.deployment);
+    }
+
     Ok(KubernetesResources {
         stateful_sets,
         services,
         listeners,
         config_maps,
         pod_disruption_budgets,
-        service_accounts: vec![build_service_account(cluster)],
-        role_bindings: vec![build_role_binding(cluster)],
+        service_accounts,
+        role_bindings,
+        deployments,
     })
 }
 
@@ -194,7 +215,8 @@ mod tests {
         let zookeeper = minimal_zk(zookeeper_yaml);
         let cluster = validated_cluster(&zookeeper);
 
-        let resources = build(&cluster, &cluster_info()).expect("build succeeds");
+        let resources = build(&cluster, &cluster_info(), None, "oci.example.org")
+            .expect("build succeeds");
 
         // One StatefulSet per role group.
         assert_eq!(

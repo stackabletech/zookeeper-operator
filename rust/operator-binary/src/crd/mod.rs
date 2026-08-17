@@ -41,6 +41,7 @@ use crate::crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig};
 
 pub mod affinity;
 pub mod authentication;
+pub mod platform_access;
 pub mod security;
 pub mod tls;
 
@@ -166,6 +167,13 @@ pub mod versioned {
             skip_serializing_if = "Option::is_none"
         )]
         pub tls: Option<tls::v1alpha1::ZookeeperTls>,
+
+        /// Grants the Stackable platform authenticated access to this ZooKeeper ensemble via a
+        /// per-cluster [`ZookeeperZnode`] agent. Absent (the default) means no dedicated agent;
+        /// znode provisioning uses the central operator's plaintext connection.
+        /// Read more in the platform-access design (spike ADR).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub platform_access: Option<platform_access::v1alpha1::ZookeeperPlatformAccess>,
     }
 
     #[derive(Clone, Debug, Default, Fragment, JsonSchema, PartialEq)]
@@ -303,7 +311,19 @@ pub mod versioned {
         /// The absolute ZNode allocated to the ZookeeperZnode. This will typically be set by the operator.
         ///
         /// This can be set explicitly by an administrator, such as when restoring from a backup.
+        // `skip_serializing_if` so the condition writer's `merge_patch_status` (which carries no
+        // `znode_path`) does not null it out.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         pub znode_path: Option<String>,
+
+        /// Conditions describing the znode's provisioning state. When no platform-access credential
+        /// can be provided (a typo'd SecretClass, a missing Secret, a certificate ZooKeeper rejects,
+        /// or a cert whose renewal is failing), or when no agent is running to provision the znode at
+        /// all, this surfaces as `Degraded=True` with a distinguishing `reason`. See the spike ADR.
+        // `skip_serializing_if` so the `znode_path` writer's `merge_patch_status` does not clear
+        // conditions, and vice versa.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub conditions: Vec<ClusterCondition>,
     }
 }
 
@@ -355,6 +375,7 @@ fn cluster_config_default() -> v1alpha1::ZookeeperClusterConfig {
         authentication: vec![],
         vector_aggregator_config_map_name: None,
         tls: tls::default_zookeeper_tls(),
+        platform_access: None,
     }
 }
 
@@ -415,6 +436,15 @@ impl v1alpha1::ZookeeperConfig {
 }
 
 impl HasStatusCondition for v1alpha1::ZookeeperCluster {
+    fn conditions(&self) -> Vec<ClusterCondition> {
+        match &self.status {
+            Some(status) => status.conditions.clone(),
+            None => vec![],
+        }
+    }
+}
+
+impl HasStatusCondition for v1alpha1::ZookeeperZnode {
     fn conditions(&self) -> Vec<ClusterCondition> {
         match &self.status {
             Some(status) => status.conditions.clone(),
