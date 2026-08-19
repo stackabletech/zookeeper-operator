@@ -10471,7 +10471,6 @@ rec {
           {
             name = "tokio-zookeeper";
             packageId = "tokio-zookeeper";
-            features = [ "tls" ];
           }
           {
             name = "tracing";
@@ -11332,7 +11331,6 @@ rec {
           {
             name = "tokio-rustls";
             packageId = "tokio-rustls";
-            optional = true;
             usesDefaultFeatures = false;
             features = [ "ring" "tls12" "logging" ];
           }
@@ -11350,9 +11348,7 @@ rec {
         ];
         features = {
           "leader_recipe" = [ "dep:backon" "dep:uuid" "tokio/sync" ];
-          "tls" = [ "dep:tokio-rustls" ];
         };
-        resolvedDefaultFeatures = [ "tls" ];
       };
       "tonic" = rec {
         crateName = "tonic";
