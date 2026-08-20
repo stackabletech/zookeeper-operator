@@ -1,19 +1,21 @@
 //! The apply step in the ZookeeperCluster controller.
 
-use std::{marker::PhantomData, str::FromStr};
+use std::marker::PhantomData;
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     client::Client,
     cluster_resources::{ClusterResource, ClusterResourceApplyStrategy, ClusterResources},
     deep_merger::ObjectOverrides,
-    v2::{cluster_resources::cluster_resources_new, types::operator::ControllerName},
+    v2::cluster_resources::cluster_resources_new,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
-use crate::zk_controller::{
-    Applied, KubernetesResources, Prepared, ZK_CONTROLLER_NAME,
-    validate::{ValidatedCluster, operator_name, product_name},
+use crate::{
+    crd::{OPERATOR_NAME, PRODUCT_NAME},
+    zk_controller::{
+        Applied, CONTROLLER_NAME, KubernetesResources, Prepared, validate::ValidatedCluster,
+    },
 };
 
 #[derive(Snafu, Debug, EnumDiscriminants)]
@@ -50,10 +52,9 @@ impl<'a> Applier<'a> {
     ) -> Applier<'a> {
         // Names are derived from compile-time constants.
         let cluster_resources = cluster_resources_new(
-            &product_name(),
-            &operator_name(),
-            &ControllerName::from_str(ZK_CONTROLLER_NAME)
-                .expect("ZK_CONTROLLER_NAME should be a valid controller name"),
+            &PRODUCT_NAME,
+            &OPERATOR_NAME,
+            &CONTROLLER_NAME,
             &cluster.name,
             &cluster.namespace,
             &cluster.uid,

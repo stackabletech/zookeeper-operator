@@ -10,10 +10,10 @@ use crate::{
     crd::{
         JMX_METRICS_PORT, JMX_METRICS_PORT_NAME, METRICS_PROVIDER_HTTP_PORT_NAME,
         ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME, ZOOKEEPER_LEADER_PORT,
-        ZOOKEEPER_LEADER_PORT_NAME,
+        ZOOKEEPER_LEADER_PORT_NAME, ZookeeperRole,
     },
     zk_controller::{
-        build::object_meta,
+        build::{object_meta, recommended_labels_for_role_group_resources, role_group_selector},
         validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
     },
 };
@@ -23,6 +23,7 @@ use crate::{
 /// This is mostly useful for internal communication between peers, or for clients that perform client-side load balancing.
 pub(crate) fn build_server_rolegroup_headless_service(
     cluster: &ValidatedCluster,
+    zk_role: &ZookeeperRole,
     role_group_name: &RoleGroupName,
 ) -> Service {
     let metadata = object_meta(
@@ -31,7 +32,7 @@ pub(crate) fn build_server_rolegroup_headless_service(
             .role_group_resource_names(role_group_name)
             .headless_service_name()
             .to_string(),
-        role_group_name,
+        recommended_labels_for_role_group_resources(cluster, zk_role, role_group_name),
     )
     .build();
 
@@ -53,7 +54,7 @@ pub(crate) fn build_server_rolegroup_headless_service(
                 ..ServicePort::default()
             },
         ]),
-        selector: Some(cluster.role_group_selector(role_group_name).into()),
+        selector: Some(role_group_selector(cluster, zk_role, role_group_name).into()),
         publish_not_ready_addresses: Some(true),
         ..ServiceSpec::default()
     };
@@ -68,6 +69,7 @@ pub(crate) fn build_server_rolegroup_headless_service(
 /// The rolegroup [`Service`] for exposing metrics
 pub(crate) fn build_server_rolegroup_metrics_service(
     cluster: &ValidatedCluster,
+    zk_role: &ZookeeperRole,
     role_group_name: &RoleGroupName,
     rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> Service {
@@ -77,7 +79,7 @@ pub(crate) fn build_server_rolegroup_metrics_service(
         cluster
             .role_group_resource_names(role_group_name)
             .metrics_service_name(),
-        role_group_name,
+        recommended_labels_for_role_group_resources(cluster, zk_role, role_group_name),
     )
     .with_labels(prometheus_labels(&Scraping::Enabled))
     .with_annotations(prometheus_annotations(
@@ -107,7 +109,7 @@ pub(crate) fn build_server_rolegroup_metrics_service(
                 ..ServicePort::default()
             },
         ]),
-        selector: Some(cluster.role_group_selector(role_group_name).into()),
+        selector: Some(role_group_selector(cluster, zk_role, role_group_name).into()),
         publish_not_ready_addresses: Some(true),
         ..ServiceSpec::default()
     };
@@ -155,8 +157,12 @@ mod tests {
         let rolegroup_config =
             &cluster.role_group_configs[&ZookeeperRole::Server][&role_group_name];
 
-        let service =
-            build_server_rolegroup_metrics_service(&cluster, &role_group_name, rolegroup_config);
+        let service = build_server_rolegroup_metrics_service(
+            &cluster,
+            &ZookeeperRole::Server,
+            &role_group_name,
+            rolegroup_config,
+        );
 
         assert_eq!(
             json!({

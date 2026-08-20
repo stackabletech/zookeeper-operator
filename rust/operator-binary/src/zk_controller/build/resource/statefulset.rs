@@ -10,20 +10,21 @@ use stackable_operator::{
         meta::ObjectMetaBuilder,
         pod::{
             PodBuilder,
-            container::ContainerBuilder,
+            container::{ContainerBuilder, FieldPathEnvVar},
             resources::ResourceRequirementsBuilder,
             security::PodSecurityContextBuilder,
             volume::{ListenerOperatorVolumeSourceBuilder, ListenerReference},
         },
     },
+    constant,
     constants::RESTART_CONTROLLER_ENABLED_LABEL,
     k8s_openapi::{
         DeepMerge,
         api::{
             apps::v1::{StatefulSet, StatefulSetSpec},
             core::v1::{
-                ConfigMapVolumeSource, EmptyDirVolumeSource, EnvVar, EnvVarSource, ExecAction,
-                ObjectFieldSelector, PersistentVolumeClaim, Probe, ResourceRequirements, Volume,
+                ConfigMapVolumeSource, EmptyDirVolumeSource, ExecAction, PersistentVolumeClaim,
+                Probe, ResourceRequirements, Volume,
             },
         },
         apimachinery::pkg::apis::meta::v1::LabelSelector,
@@ -62,8 +63,10 @@ use crate::{
             jvm::{construct_non_heap_jvm_args, construct_zk_server_heap_env},
             object_meta,
             properties::{self, ConfigFileName},
+            recommended_labels_for_role_group_resources,
+            recommended_labels_for_unversioned_role_group_resources, role_group_selector,
         },
-        validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
+        validate::{ValidatedCluster, ValidatedZookeeperConfig, ZookeeperRoleGroupConfig},
     },
 };
 
@@ -77,16 +80,27 @@ const MAX_PREPARE_LOG_FILE_SIZE: MemoryQuantity = MemoryQuantity {
 
 // Volume names. Each is shared between a `Volume`/PVC definition and one or more volume mounts; the
 // strings must match, so they are defined once here rather than repeated at every call site.
-stackable_operator::constant!(DATA_VOLUME_NAME: VolumeName = "data");
-stackable_operator::constant!(CONFIG_VOLUME_NAME: VolumeName = "config");
-stackable_operator::constant!(RW_CONFIG_VOLUME_NAME: VolumeName = "rwconfig");
-stackable_operator::constant!(LOG_VOLUME_NAME: VolumeName = "log");
-stackable_operator::constant!(LOG_CONFIG_VOLUME_NAME: VolumeName = "log-config");
+constant!(DATA_VOLUME_NAME: VolumeName = "data");
+constant!(CONFIG_VOLUME_NAME: VolumeName = "config");
+constant!(RW_CONFIG_VOLUME_NAME: VolumeName = "rwconfig");
+constant!(LOG_VOLUME_NAME: VolumeName = "log");
+constant!(LOG_CONFIG_VOLUME_NAME: VolumeName = "log-config");
 
 /// Name of the `prepare` init container (also used as its log subdirectory).
 const PREPARE_CONTAINER_NAME: &str = "prepare";
 
-stackable_operator::constant!(VECTOR_CONTAINER_NAME: ContainerName = "vector");
+constant!(VECTOR_CONTAINER_NAME: ContainerName = "vector");
+
+// Env vars the operator sets on the containers.
+constant!(POD_NAME: EnvVarName = "POD_NAME");
+constant!(MYID_OFFSET: EnvVarName = v1alpha1::ZookeeperConfig::MYID_OFFSET);
+// Used by zkEnv.sh and the shell scripts in bin/. If unset the scripts try to find the conf
+// directory automatically and that fails.
+constant!(ZOOCFGDIR: EnvVarName = "ZOOCFGDIR");
+constant!(ZK_SERVER_HEAP: EnvVarName = "ZK_SERVER_HEAP");
+constant!(SERVER_JVMFLAGS: EnvVarName = "SERVER_JVMFLAGS");
+// Needed for the `containerdebug` process to log its tracing information to.
+constant!(CONTAINERDEBUG_LOG_DIRECTORY: EnvVarName = "CONTAINERDEBUG_LOG_DIRECTORY");
 
 /// The shell invocation shared by the `prepare` init container and the main ZooKeeper container.
 fn container_command() -> Vec<String> {
@@ -152,6 +166,7 @@ fn build_role_listener_pvc(
 /// [`build_server_rolegroup_headless_service`](super::service::build_server_rolegroup_headless_service)).
 pub fn build_server_rolegroup_statefulset(
     cluster: &ValidatedCluster,
+    zk_role: &ZookeeperRole,
     role_group_name: &RoleGroupName,
     rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> Result<StatefulSet> {
@@ -161,18 +176,23 @@ pub fn build_server_rolegroup_statefulset(
     let zookeeper_security = &cluster.cluster_config.zookeeper_security;
     let metrics_port = cluster.metrics_http_port(rolegroup_config);
 
-    // The operator-injected environment variables plus the user-provided `envOverrides`
-    // (which win on conflict).
-    let env_vars = EnvVarSet::new()
+    // Operator-set env vars first; the user's `envOverrides` are merged on top last and win.
+    let prepare_env_vars = common_env_vars(merged_config)
+        .with_field_path(&POD_NAME, &FieldPathEnvVar::Name)
+        .merge(rolegroup_config.env_overrides.clone());
+
+    let zookeeper_env_vars = common_env_vars(merged_config)
         .with_value(
-            &EnvVarName::from_str_unsafe(v1alpha1::ZookeeperConfig::MYID_OFFSET),
-            merged_config.myid_offset.to_string(),
+            &ZK_SERVER_HEAP,
+            construct_zk_server_heap_env(merged_config).context(ConstructJvmArgumentsSnafu)?,
         )
-        // Used by zkEnv.sh and the shell scripts in bin/. If unset it tries to find the
-        // conf directory automatically and that fails.
         .with_value(
-            &EnvVarName::from_str_unsafe("ZOOCFGDIR"),
-            STACKABLE_RW_CONFIG_DIR,
+            &SERVER_JVMFLAGS,
+            construct_non_heap_jvm_args(rolegroup_config),
+        )
+        .with_value(
+            &CONTAINERDEBUG_LOG_DIRECTORY,
+            format!("{STACKABLE_LOG_DIR}/containerdebug"),
         )
         .merge(rolegroup_config.env_overrides.clone());
 
@@ -192,12 +212,13 @@ pub fn build_server_rolegroup_statefulset(
         ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
     let mut pod_builder = PodBuilder::new();
 
-    // Used for PVC templates that cannot be modified once they are deployed. A constant version
-    // keeps the labels stable across version upgrades.
-    let unversioned_recommended_labels = cluster.unversioned_recommended_labels(role_group_name);
+    // Used for PVC templates, which cannot be modified once they are deployed. The version label
+    // is omitted so the labels stay stable across version upgrades.
+    let unversioned_recommended_labels =
+        recommended_labels_for_unversioned_role_group_resources(cluster, zk_role, role_group_name);
 
     let listener_pvc = build_role_listener_pvc(
-        role_listener_name(cluster.name.as_ref(), &ZookeeperRole::Server).as_ref(),
+        role_listener_name(cluster.name.as_ref(), zk_role).as_ref(),
         &unversioned_recommended_labels,
     )?;
 
@@ -237,18 +258,7 @@ pub fn build_server_rolegroup_statefulset(
         .image_from_product_image(resolved_product_image)
         .command(container_command())
         .args(vec![args.join("\n")])
-        .add_env_vars(env_vars.clone())
-        .add_env_vars(vec![EnvVar {
-            name: "POD_NAME".to_string(),
-            value_from: Some(EnvVarSource {
-                field_ref: Some(ObjectFieldSelector {
-                    api_version: Some("v1".to_string()),
-                    field_path: "metadata.name".to_string(),
-                }),
-                ..EnvVarSource::default()
-            }),
-            ..EnvVar::default()
-        }])
+        .add_env_vars(prepare_env_vars)
         .add_volume_mount(&*DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
         .context(AddVolumeMountSnafu)?
         .add_volume_mount(&*CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
@@ -285,19 +295,7 @@ pub fn build_server_rolegroup_statefulset(
             create_vector_shutdown_file_command =
                 create_vector_shutdown_file_command(STACKABLE_LOG_DIR),
         }])
-        .add_env_vars(env_vars)
-        .add_env_var(
-            "ZK_SERVER_HEAP",
-            construct_zk_server_heap_env(merged_config).context(ConstructJvmArgumentsSnafu)?,
-        )
-        .add_env_var(
-            "SERVER_JVMFLAGS",
-            construct_non_heap_jvm_args(rolegroup_config),
-        )
-        .add_env_var(
-            "CONTAINERDEBUG_LOG_DIRECTORY",
-            format!("{STACKABLE_LOG_DIR}/containerdebug"),
-        )
+        .add_env_vars(zookeeper_env_vars)
         // Only allow the global load balancing service to send traffic to pods that are members of the quorum
         // This also acts as a hint to the StatefulSet controller to wait for each pod to enter quorum before taking down the next
         .readiness_probe(Probe {
@@ -341,7 +339,11 @@ pub fn build_server_rolegroup_statefulset(
         .build();
 
     let pb_metadata = ObjectMetaBuilder::new()
-        .with_labels(cluster.recommended_labels(role_group_name))
+        .with_labels(recommended_labels_for_role_group_resources(
+            cluster,
+            zk_role,
+            role_group_name,
+        ))
         .build();
 
     pod_builder
@@ -427,7 +429,7 @@ pub fn build_server_rolegroup_statefulset(
     let metadata = object_meta(
         cluster,
         resource_names.stateful_set_name().to_string(),
-        role_group_name,
+        recommended_labels_for_role_group_resources(cluster, zk_role, role_group_name),
     )
     .with_label(RESTART_CONTROLLER_ENABLED_LABEL.to_owned())
     .build();
@@ -438,7 +440,7 @@ pub fn build_server_rolegroup_statefulset(
         // HorizontalPodAutoscaler can manage the replica count.
         replicas: rolegroup_config.replicas.map(i32::from),
         selector: LabelSelector {
-            match_labels: Some(cluster.role_group_selector(role_group_name).into()),
+            match_labels: Some(role_group_selector(cluster, zk_role, role_group_name).into()),
             ..LabelSelector::default()
         },
         service_name: Some(resource_names.headless_service_name().to_string()),
@@ -454,10 +456,39 @@ pub fn build_server_rolegroup_statefulset(
     })
 }
 
+/// Environment variables the operator sets on both the `prepare` and the ZooKeeper container.
+///
+/// Returned as an [`EnvVarSet`] so the callers can merge the user's `envOverrides` on top,
+/// letting an override win on a name collision.
+fn common_env_vars(merged_config: &ValidatedZookeeperConfig) -> EnvVarSet {
+    EnvVarSet::new()
+        .with_value(&MYID_OFFSET, merged_config.myid_offset.to_string())
+        .with_value(&ZOOCFGDIR, STACKABLE_RW_CONFIG_DIR)
+}
+
 #[cfg(test)]
 mod tests {
+    use stackable_operator::k8s_openapi::api::core::v1::{Container, EnvVar};
+
     use super::*;
     use crate::zk_controller::test_support::{minimal_zk, validated_cluster};
+
+    #[test]
+    fn test_constants() {
+        // Test that dereferencing the constants does not panic.
+        let _ = *DATA_VOLUME_NAME;
+        let _ = *CONFIG_VOLUME_NAME;
+        let _ = *RW_CONFIG_VOLUME_NAME;
+        let _ = *LOG_VOLUME_NAME;
+        let _ = *LOG_CONFIG_VOLUME_NAME;
+        let _ = *VECTOR_CONTAINER_NAME;
+        let _ = *POD_NAME;
+        let _ = *MYID_OFFSET;
+        let _ = *ZOOCFGDIR;
+        let _ = *ZK_SERVER_HEAP;
+        let _ = *SERVER_JVMFLAGS;
+        let _ = *CONTAINERDEBUG_LOG_DIRECTORY;
+    }
 
     /// Builds the `default` server StatefulSet for `yaml` and returns the ConfigMap name mounted by
     /// its `log-config` volume.
@@ -465,7 +496,7 @@ mod tests {
         let validated = validated_cluster(&minimal_zk(yaml));
         let rg_name = RoleGroupName::from_str("default").expect("valid role group name");
         let rg = validated.role_group_configs[&ZookeeperRole::Server][&rg_name].clone();
-        build_server_rolegroup_statefulset(&validated, &rg_name, &rg)
+        build_server_rolegroup_statefulset(&validated, &ZookeeperRole::Server, &rg_name, &rg)
             .expect("statefulset builds")
             .spec
             .and_then(|spec| spec.template.spec)
@@ -526,5 +557,83 @@ mod tests {
         );
         assert_ne!(name, "my-log-config");
         assert!(name.contains("simple-zookeeper"), "{name}");
+    }
+
+    /// Builds the `default` server StatefulSet with the given env override applied and returns the
+    /// env vars of the container named `container_name`.
+    fn env_with_override(container_name: &str, name: &EnvVarName, value: &str) -> Vec<EnvVar> {
+        let validated = validated_cluster(&minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.5"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+        ));
+        let rg_name = RoleGroupName::from_str("default").expect("valid role group name");
+        let mut rg = validated.role_group_configs[&ZookeeperRole::Server][&rg_name].clone();
+        rg.env_overrides = rg.env_overrides.with_value(name, value);
+
+        let stateful_set =
+            build_server_rolegroup_statefulset(&validated, &ZookeeperRole::Server, &rg_name, &rg)
+                .expect("statefulset builds");
+
+        let pod_spec = stateful_set
+            .spec
+            .expect("the StatefulSet has a spec")
+            .template
+            .spec
+            .expect("the pod template has a spec");
+        pod_spec
+            .containers
+            .into_iter()
+            .chain(pod_spec.init_containers.into_iter().flatten())
+            .find(|container: &Container| container.name == container_name)
+            .unwrap_or_else(|| panic!("the {container_name} container exists"))
+            .env
+            .unwrap_or_else(|| panic!("the {container_name} container has env vars"))
+    }
+
+    /// The user-supplied `envOverrides` must be merged in after all operator-set environment
+    /// variables, so that they can override any of them. `CONTAINERDEBUG_LOG_DIRECTORY` is used
+    /// as the example here because it is set unconditionally by the operator.
+    #[test]
+    fn env_overrides_override_operator_set_env_vars() {
+        let env = env_with_override(APP_NAME, &CONTAINERDEBUG_LOG_DIRECTORY, "/custom/log/dir");
+
+        let containerdebug: Vec<_> = env
+            .iter()
+            .filter(|env_var| env_var.name == "CONTAINERDEBUG_LOG_DIRECTORY")
+            .collect();
+        assert_eq!(
+            containerdebug.len(),
+            1,
+            "the override must replace the operator-set value, not duplicate it"
+        );
+        assert_eq!(containerdebug[0].value.as_deref(), Some("/custom/log/dir"));
+    }
+
+    /// Same guarantee for the `prepare` init container, whose env vars are assembled separately.
+    #[test]
+    fn prepare_env_overrides_override_operator_set_env_vars() {
+        let env = env_with_override(PREPARE_CONTAINER_NAME, &ZOOCFGDIR, "/custom/conf/dir");
+
+        let zoocfgdir: Vec<_> = env
+            .iter()
+            .filter(|env_var| env_var.name == "ZOOCFGDIR")
+            .collect();
+        assert_eq!(
+            zoocfgdir.len(),
+            1,
+            "the override must replace the operator-set value, not duplicate it"
+        );
+        assert_eq!(zoocfgdir[0].value.as_deref(), Some("/custom/conf/dir"));
     }
 }

@@ -15,7 +15,7 @@ use stackable_operator::{
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
-    OPERATOR_NAME,
+    ZOOKEEPER_OPERATOR_NAME,
     crd::v1alpha1,
     zk_controller::{Applied, KubernetesResources},
 };
@@ -61,7 +61,7 @@ pub async fn update_status(
     };
 
     client
-        .apply_patch_status(OPERATOR_NAME, zk, &status)
+        .apply_patch_status(ZOOKEEPER_OPERATOR_NAME, zk, &status)
         .await
         .context(ApplyStatusSnafu)?;
 

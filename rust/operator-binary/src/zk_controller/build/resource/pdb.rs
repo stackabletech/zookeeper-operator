@@ -4,8 +4,8 @@ use stackable_operator::{
 };
 
 use crate::{
-    crd::ZookeeperRole,
-    zk_controller::validate::{ValidatedCluster, controller_name, operator_name, product_name},
+    crd::{OPERATOR_NAME, PRODUCT_NAME, ZookeeperRole},
+    zk_controller::{CONTROLLER_NAME, validate::ValidatedCluster},
 };
 
 /// Builds the [`PodDisruptionBudget`] for the given `role`, or `None` if PDBs are disabled.
@@ -23,10 +23,10 @@ pub fn build_pdb(
 
     let pdb = pod_disruption_budget_builder_with_role(
         cluster,
-        &product_name(),
-        &role.into(),
-        &operator_name(),
-        &controller_name(),
+        &PRODUCT_NAME,
+        role,
+        &OPERATOR_NAME,
+        &CONTROLLER_NAME,
     )
     .with_max_unavailable(max_unavailable)
     .build();

@@ -3,31 +3,24 @@
 //! Shared by the build steps of both controllers: the ZookeeperCluster controller publishes the
 //! whole ensemble, the ZookeeperZnode controller publishes the same ensemble narrowed to a chroot.
 
-use std::str::FromStr;
-
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
     k8s_openapi::api::core::v1::ConfigMap,
     kube::Resource,
+    kvp::{Label, Labels},
     v2::{
-        HasName, HasUid, NameIsValidLabelValue,
-        builder::meta::ownerreference_from_resource,
-        kvp::label::recommended_labels,
-        types::operator::{ControllerName, ProductVersion, RoleGroupName},
+        HasName, HasUid, NameIsValidLabelValue, builder::meta::ownerreference_from_resource,
+        kvp::label,
     },
 };
 
 use crate::{
-    crd::{ZookeeperRole, security::ZookeeperSecurity},
+    crd::{OPERATOR_NAME, PRODUCT_NAME, ZookeeperRole, security::ZookeeperSecurity},
     listener_addresses::ListenerAddresses,
-    zk_controller::validate::{ValidatedCluster, operator_name, product_name},
-    znode_controller::validate::ValidatedZnode,
+    zk_controller::{build::recommended_labels_for_role_resources, validate::ValidatedCluster},
+    znode_controller::{self, validate::ValidatedZnode},
 };
-
-// Placeholder role-group name used for the recommended labels of the role-level discovery
-// `ConfigMap` (which is not tied to a single role group).
-stackable_operator::constant!(PLACEHOLDER_DISCOVERY_ROLE_GROUP: RoleGroupName = "discovery");
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -58,14 +51,13 @@ pub enum Error {
 /// published.
 pub fn build_discovery_configmap(
     validated_cluster: &ValidatedCluster,
-    controller_name: &str,
+    zk_role: &ZookeeperRole,
     listener_addresses: &ListenerAddresses,
 ) -> Result<ConfigMap> {
     build_discovery_configmap_for_owner(
         validated_cluster,
         &validated_cluster.namespace,
-        controller_name,
-        &validated_cluster.product_version,
+        recommended_labels_for_role_resources(validated_cluster, zk_role),
         listener_addresses,
         None,
         &validated_cluster.cluster_config.zookeeper_security,
@@ -80,19 +72,40 @@ pub fn build_discovery_configmap(
 /// ensemble.
 pub fn build_znode_discovery_configmap(
     validated_znode: &ValidatedZnode,
-    controller_name: &str,
     listener_addresses: &ListenerAddresses,
     chroot: &str,
 ) -> Result<ConfigMap> {
     build_discovery_configmap_for_owner(
         validated_znode,
         &validated_znode.namespace,
-        controller_name,
-        &validated_znode.product_version,
+        znode_discovery_labels(validated_znode),
         listener_addresses,
         Some(chroot),
         &validated_znode.zookeeper_security,
     )
+}
+
+/// The recommended labels for the znode's discovery [`ConfigMap`].
+///
+/// The znode controller's discovery ConfigMap cannot use the label functions from
+/// [`stackable_operator::v2::kvp::label`], because its `app.kubernetes.io/instance` value is the
+/// name of the owning [`ZookeeperZnode`](crate::crd::v1alpha1::ZookeeperZnode), not a
+/// [`ClusterName`](stackable_operator::v2::types::operator::ClusterName). The label set matches
+/// the role-level recommended labels of the cluster controller's discovery ConfigMap otherwise.
+fn znode_discovery_labels(validated_znode: &ValidatedZnode) -> Labels {
+    Labels::from_iter([
+        Label::instance(&validated_znode.to_label_value()).expect(
+            "the value implements NameIsValidLabelValue and is therefore a valid label value",
+        ),
+        label::label_app_kubernetes_io_name(&PRODUCT_NAME),
+        label::label_app_kubernetes_io_version(&validated_znode.product_version),
+        label::label_app_kubernetes_io_component(&ZookeeperRole::Server),
+        label::label_app_kubernetes_io_managed_by(
+            &OPERATOR_NAME,
+            &znode_controller::CONTROLLER_NAME,
+        ),
+        label::label_stackable_tech_vendor(),
+    ])
 }
 
 /// Build a discovery [`ConfigMap`] containing ZooKeeper connection details from the
@@ -104,20 +117,12 @@ pub fn build_znode_discovery_configmap(
 fn build_discovery_configmap_for_owner(
     owner: &(impl Resource<DynamicType = ()> + HasName + HasUid + NameIsValidLabelValue),
     namespace: impl Into<String>,
-    controller_name: &str,
-    product_version: &ProductVersion,
+    labels: Labels,
     listener_addresses: &ListenerAddresses,
     chroot: Option<&str>,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<ConfigMap> {
     let name = owner.to_name();
-
-    // The discovery ConfigMap is a role-level resource of the `server` role, conventionally
-    // labelled with the `discovery` role group. The controller name differs between the cluster and
-    // znode controllers, so it is passed in and validated into the type-safe newtype here.
-    let controller_name = ControllerName::from_str(controller_name)
-        .expect("the controller name is a valid label value");
-    let role_group_name = PLACEHOLDER_DISCOVERY_ROLE_GROUP.clone();
 
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"
@@ -136,15 +141,7 @@ fn build_discovery_configmap_for_owner(
                 .name(name)
                 .namespace(namespace)
                 .ownerreference(ownerreference_from_resource(owner, None, Some(true)))
-                .with_labels(recommended_labels(
-                    owner,
-                    &product_name(),
-                    product_version,
-                    &operator_name(),
-                    &controller_name,
-                    &ZookeeperRole::Server.into(),
-                    &role_group_name,
-                ))
+                .with_labels(labels)
                 .build(),
         )
         .add_data("ZOOKEEPER", conn_str)
@@ -161,6 +158,8 @@ fn build_discovery_configmap_for_owner(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
     use crate::{
         crd::ZOOKEEPER_SERVER_PORT_NAME,
@@ -168,14 +167,10 @@ mod tests {
             listener_addresses,
             test_support::{ingress_address, role_listener},
         },
-        zk_controller::{
-            ZK_CONTROLLER_NAME,
-            test_support::{minimal_zk, try_validate_with_role_listener},
+        zk_controller::test_support::{
+            app_version_label, minimal_zk, try_validate_with_role_listener,
         },
-        znode_controller::{
-            ZNODE_CONTROLLER_NAME,
-            test_support::{minimal_znode, validated_znode},
-        },
+        znode_controller::test_support::{minimal_znode, validated_znode},
     };
 
     const ZK_YAML: &str = r#"
@@ -242,7 +237,7 @@ mod tests {
         let addresses = published_addresses(&[("node-0", 2282), ("node-1", 2282)]);
 
         let config_map =
-            build_discovery_configmap(&cluster, ZK_CONTROLLER_NAME, &addresses).expect("build");
+            build_discovery_configmap(&cluster, &ZookeeperRole::Server, &addresses).expect("build");
 
         assert_eq!(
             config_map.metadata.name.as_deref(),
@@ -266,9 +261,12 @@ mod tests {
         let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None)
             .expect("validate should succeed for the test fixture");
 
-        let config_map =
-            build_discovery_configmap(&cluster, ZK_CONTROLLER_NAME, &ListenerAddresses::default())
-                .expect("build");
+        let config_map = build_discovery_configmap(
+            &cluster,
+            &ZookeeperRole::Server,
+            &ListenerAddresses::default(),
+        )
+        .expect("build");
 
         assert_eq!(
             config_map.metadata.name.as_deref(),
@@ -287,13 +285,9 @@ mod tests {
     fn znode_discovery_config_map_narrows_the_ensemble_to_the_chroot() {
         let znode = validated_znode(&minimal_znode(ZNODE_YAML));
 
-        let config_map = build_znode_discovery_configmap(
-            &znode,
-            ZNODE_CONTROLLER_NAME,
-            &znode.discovery_addresses,
-            ZNODE_PATH,
-        )
-        .expect("build");
+        let config_map =
+            build_znode_discovery_configmap(&znode, &znode.discovery_addresses, ZNODE_PATH)
+                .expect("build");
 
         // The ConfigMap is named after the znode, not after the referenced cluster.
         assert_eq!(config_map.metadata.name.as_deref(), Some("simple-znode"));
@@ -315,11 +309,38 @@ mod tests {
         assert!(matches!(
             build_znode_discovery_configmap(
                 &znode,
-                ZNODE_CONTROLLER_NAME,
                 &znode.discovery_addresses,
                 "znode-without-a-leading-slash",
             ),
             Err(Error::RelativeChroot { .. })
         ));
+    }
+
+    /// The znode discovery ConfigMap's labels are hand-composed (see [`znode_discovery_labels`]),
+    /// so lock the whole set: `instance` is the znode name, the rest matches the role-level
+    /// recommended labels of the cluster controller's discovery ConfigMap.
+    #[test]
+    fn znode_discovery_config_map_carries_the_expected_labels() {
+        let znode = validated_znode(&minimal_znode(ZNODE_YAML));
+
+        let config_map =
+            build_znode_discovery_configmap(&znode, &znode.discovery_addresses, ZNODE_PATH)
+                .expect("build");
+
+        let expected_labels = BTreeMap::from(
+            [
+                ("app.kubernetes.io/component", "server".to_owned()),
+                ("app.kubernetes.io/instance", "simple-znode".to_owned()),
+                (
+                    "app.kubernetes.io/managed-by",
+                    "zookeeper.stackable.tech_znode".to_owned(),
+                ),
+                ("app.kubernetes.io/name", "zookeeper".to_owned()),
+                ("app.kubernetes.io/version", app_version_label("3.9.5")),
+                ("stackable.tech/vendor", "Stackable".to_owned()),
+            ]
+            .map(|(key, value)| (key.to_owned(), value)),
+        );
+        assert_eq!(config_map.metadata.labels, Some(expected_labels));
     }
 }

@@ -23,41 +23,33 @@ use stackable_operator::{
     deep_merger::ObjectOverrides,
     k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
     kube::{Resource, ResourceExt},
-    kvp::Labels,
     product_logging::spec::Logging,
-    role_utils::RoleGroup,
     shared::time::Duration,
     v2::{
         HasName, HasUid, NameIsValidLabelValue,
-        builder::pod::container::{EnvVarName, EnvVarSet},
         controller_utils::{get_cluster_name, get_namespace, get_uid},
-        kvp::label::{recommended_labels, role_group_selector},
         product_logging::framework::{
             ValidatedContainerLogConfigChoice, VectorContainerLogConfig,
             validate_logging_configuration_for_container,
         },
         role_group_utils::ResourceNames,
-        role_utils::{self, JavaCommonConfig, RoleGroupConfig, with_validated_config},
+        role_utils::{self, JavaCommonConfig, RoleGroup, RoleGroupConfig, with_validated_config},
         types::{
             kubernetes::{ConfigMapName, ListenerClassName, NamespaceName, Uid},
-            operator::{
-                ClusterName, ControllerName, OperatorName, ProductName, ProductVersion,
-                RoleGroupName, RoleName,
-            },
+            operator::{ClusterName, ProductVersion, RoleGroupName},
         },
     },
 };
-use strum::IntoEnumIterator;
 
 use crate::{
     crd::{
-        APP_NAME, CONTAINER_IMAGE_BASE_NAME, OPERATOR_NAME, ZOOKEEPER_SERVER_PORT_NAME,
-        ZookeeperRole, ZookeeperServerRoleType, authentication,
+        CONTAINER_IMAGE_BASE_NAME, PRODUCT_NAME, ZOOKEEPER_SERVER_PORT_NAME, ZookeeperRole,
+        ZookeeperServerRoleType, authentication,
         security::ZookeeperSecurity,
         v1alpha1::{self, ZookeeperConfig, ZookeeperConfigOverrides, ZookeeperServerRoleConfig},
     },
     listener_addresses::{self, ListenerAddresses, listener_addresses},
-    zk_controller::{ZK_CONTROLLER_NAME, dereference::DereferencedObjects},
+    zk_controller::dereference::DereferencedObjects,
 };
 
 #[derive(Snafu, Debug)]
@@ -85,12 +77,6 @@ pub enum Error {
     #[snafu(display("invalid config for role group {role_group:?}"))]
     ValidateConfig {
         source: fragment::ValidationError,
-        role_group: String,
-    },
-
-    #[snafu(display("invalid environment variable override name in role group {role_group:?}"))]
-    ParseEnvVarName {
-        source: stackable_operator::v2::macros::attributed_string_type::Error,
         role_group: String,
     },
 
@@ -255,10 +241,6 @@ pub struct ValidatedCluster {
     pub discovery_addresses: ListenerAddresses,
 }
 
-// Placeholder product version used for labels on PVC templates, which cannot be modified once
-// deployed. A constant value keeps the labels stable across version upgrades.
-stackable_operator::constant!(UNVERSIONED_PRODUCT_VERSION: ProductVersion = "none");
-
 impl ValidatedCluster {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -305,7 +287,7 @@ impl ValidatedCluster {
     ) -> ResourceNames {
         ResourceNames {
             cluster_name: self.name.clone(),
-            role_name: ZookeeperRole::Server.into(),
+            role_name: ZookeeperRole::Server.role_name(),
             role_group_name: role_group_name.clone(),
         }
     }
@@ -315,72 +297,9 @@ impl ValidatedCluster {
     pub fn cluster_resource_names(&self) -> role_utils::ResourceNames {
         role_utils::ResourceNames {
             cluster_name: self.name.clone(),
-            product_name: product_name(),
+            product_name: PRODUCT_NAME.clone(),
         }
     }
-
-    pub fn recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
-        self.recommended_labels_for(&ZookeeperRole::Server.into(), role_group_name)
-    }
-
-    pub fn recommended_labels_for(
-        &self,
-        role_name: &RoleName,
-        role_group_name: &RoleGroupName,
-    ) -> Labels {
-        self.recommended_labels_with(&self.product_version, role_name, role_group_name)
-    }
-
-    pub fn unversioned_recommended_labels(&self, role_group_name: &RoleGroupName) -> Labels {
-        self.recommended_labels_with(
-            &UNVERSIONED_PRODUCT_VERSION,
-            &ZookeeperRole::Server.into(),
-            role_group_name,
-        )
-    }
-
-    fn recommended_labels_with(
-        &self,
-        product_version: &ProductVersion,
-        role_name: &RoleName,
-        role_group_name: &RoleGroupName,
-    ) -> Labels {
-        recommended_labels(
-            self,
-            &product_name(),
-            product_version,
-            &operator_name(),
-            &controller_name(),
-            role_name,
-            role_group_name,
-        )
-    }
-
-    /// Selector labels matching the pods of a role group.
-    pub fn role_group_selector(&self, role_group_name: &RoleGroupName) -> Labels {
-        role_group_selector(
-            self,
-            &product_name(),
-            &ZookeeperRole::Server.into(),
-            role_group_name,
-        )
-    }
-}
-
-/// The product name (`zookeeper`) as a type-safe label value.
-pub(crate) fn product_name() -> ProductName {
-    ProductName::from_str(APP_NAME).expect("'zookeeper' is a valid product name")
-}
-
-/// The operator name as a type-safe label value.
-pub(crate) fn operator_name() -> OperatorName {
-    OperatorName::from_str(OPERATOR_NAME).expect("the operator name is a valid label value")
-}
-
-/// The controller name as a type-safe label value.
-pub(crate) fn controller_name() -> ControllerName {
-    ControllerName::from_str(ZK_CONTROLLER_NAME)
-        .expect("the controller name is a valid label value")
 }
 
 impl HasName for ValidatedCluster {
@@ -476,28 +395,26 @@ pub fn validate(
         .vector_aggregator_config_map_name
         .clone();
 
-    let mut role_group_configs = BTreeMap::new();
-    for zk_role in ZookeeperRole::iter() {
-        let role = zk.role(&zk_role);
-        let default_config = ZookeeperConfig::default_server_config(&zk.name_any(), &zk_role);
+    let zk_role = ZookeeperRole::Server;
+    let role = zk.role(&zk_role);
+    let default_config = ZookeeperConfig::default_server_config(&zk.name_any(), &zk_role);
 
-        let mut groups = BTreeMap::new();
-        for (rg_name, rg) in &role.role_groups {
-            let role_group_name =
-                RoleGroupName::from_str(rg_name).with_context(|_| ParseRoleGroupNameSnafu {
-                    role_group: rg_name.clone(),
-                })?;
-            let validated_rg = validate_role_group_config(
-                rg_name,
-                rg,
-                role,
-                &default_config,
-                &vector_aggregator_config_map_name,
-            )?;
-            groups.insert(role_group_name, validated_rg);
-        }
-        role_group_configs.insert(zk_role, groups);
+    let mut groups = BTreeMap::new();
+    for (rg_name, rg) in &role.role_groups {
+        let role_group_name =
+            RoleGroupName::from_str(rg_name).with_context(|_| ParseRoleGroupNameSnafu {
+                role_group: rg_name.clone(),
+            })?;
+        let validated_rg = validate_role_group_config(
+            rg_name,
+            rg,
+            role,
+            &default_config,
+            &vector_aggregator_config_map_name,
+        )?;
+        groups.insert(role_group_name, validated_rg);
     }
+    let role_group_configs = BTreeMap::from([(zk_role, groups)]);
 
     let name = get_cluster_name(zk).context(GetClusterNameSnafu)?;
     let namespace = get_namespace(zk).context(GetNamespaceSnafu)?;
@@ -575,16 +492,6 @@ fn validate_role_group_config(
         role_group: role_group_name.to_owned(),
     })?;
 
-    let mut env_overrides = EnvVarSet::new();
-    for (env_var_name, env_var_value) in merged.config.env_overrides {
-        env_overrides = env_overrides.with_value(
-            &EnvVarName::from_str(&env_var_name).with_context(|_| ParseEnvVarNameSnafu {
-                role_group: role_group_name.to_owned(),
-            })?,
-            env_var_value,
-        );
-    }
-
     let config = merged.config.config;
     let logging = validate_logging(&config.logging, vector_aggregator_config_map_name)?;
 
@@ -592,7 +499,8 @@ fn validate_role_group_config(
         replicas: merged.replicas,
         config: ValidatedZookeeperConfig::from_merged(config, logging),
         config_overrides: merged.config.config_overrides,
-        env_overrides,
+        // The env override names are validated on deserialization.
+        env_overrides: merged.config.env_overrides.into(),
         cli_overrides: merged.config.cli_overrides,
         pod_overrides: merged.config.pod_overrides,
         product_specific_common_config: merged.config.product_specific_common_config,
@@ -832,16 +740,6 @@ mod tests {
             from_role_group.config.resources.memory.limit,
             Some(Quantity("3Gi".to_owned()))
         );
-    }
-
-    /// Locks the invariant behind the `expect` in the `From<ZookeeperRole> for RoleName` impls:
-    /// every `ZookeeperRole` variant (present and future) must serialise to a valid `RoleName`.
-    #[test]
-    fn every_zookeeper_role_serialises_to_a_valid_role_name() {
-        for role in ZookeeperRole::iter() {
-            let _: RoleName = (&role).into();
-            let _: RoleName = role.into();
-        }
     }
 
     /// The `zk` port is a constant, so a role Listener that publishes addresses without it is a

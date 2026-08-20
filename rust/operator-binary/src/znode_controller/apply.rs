@@ -9,7 +9,7 @@ use stackable_operator::{
 };
 
 use crate::{
-    APP_NAME, OPERATOR_NAME,
+    APP_NAME, ZOOKEEPER_OPERATOR_NAME,
     znode_controller::{
         KubernetesResources, ZNODE_CONTROLLER_NAME, validate::ValidatedZnode, znode_mgmt,
     },
@@ -59,7 +59,7 @@ impl<'a> Applier<'a> {
         // requires.
         let cluster_resources = ClusterResources::new(
             APP_NAME,
-            OPERATOR_NAME,
+            ZOOKEEPER_OPERATOR_NAME,
             ZNODE_CONTROLLER_NAME,
             &znode.object_ref(&()),
             apply_strategy,
