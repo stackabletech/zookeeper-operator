@@ -20,16 +20,24 @@ use stackable_operator::{
         },
     },
     commons::secret_class::SecretClassVolumeProvisionParts,
+    constant,
     crd::authentication::core,
     k8s_openapi::api::core::v1::Volume,
     shared::time::Duration,
-    v2::types::{common::Port, kubernetes::SecretClassName},
+    v2::types::{
+        common::Port,
+        kubernetes::{SecretClassName, VolumeName},
+    },
 };
 
 use crate::{
     crd::{authentication::DereferencedAuthenticationClasses, tls, v1alpha1},
     zk_controller::LISTENER_VOLUME_NAME,
 };
+
+// TLS volume names (the mount name must match the volume name).
+constant!(SERVER_TLS_VOLUME_NAME: VolumeName = "server-tls");
+constant!(QUORUM_TLS_VOLUME_NAME: VolumeName = "quorum-tls");
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -66,14 +74,11 @@ impl ZookeeperSecurity {
     // directories
     pub const QUORUM_TLS_DIR: &'static str = "/stackable/quorum_tls";
     pub const QUORUM_TLS_MOUNT_DIR: &'static str = "/stackable/quorum_tls_mount";
-    pub const QUORUM_TLS_VOLUME_NAME: &'static str = "quorum-tls";
     pub const SECURE_CLIENT_PORT: Port = Port(2282);
     pub const SECURE_CLIENT_PORT_NAME: &'static str = "secureClientPort";
     pub const SERVER_CNXN_FACTORY: &'static str = "serverCnxnFactory";
     pub const SERVER_TLS_DIR: &'static str = "/stackable/server_tls";
     pub const SERVER_TLS_MOUNT_DIR: &'static str = "/stackable/server_tls_mount";
-    // TLS volume names (the mount name must match the volume name)
-    pub const SERVER_TLS_VOLUME_NAME: &'static str = "server-tls";
     // Common TLS
     pub const SSL_AUTH_PROVIDER_X509: &'static str = "authProvider.x509";
     // Client TLS
@@ -92,7 +97,6 @@ impl ZookeeperSecurity {
     pub const SSL_TRUST_STORE_LOCATION: &'static str = "ssl.trustStore.location";
     pub const SSL_TRUST_STORE_PASSWORD: &'static str = "ssl.trustStore.password";
     // Mis
-    pub const STORE_PASSWORD_ENV: &'static str = "STORE_PASSWORD";
     pub const SYSTEM_TRUST_STORE_DIR: &'static str = "/etc/pki/java/cacerts";
     pub const TRUSTSTORE_FILE: &'static str = "truststore.p12";
 
@@ -156,13 +160,12 @@ impl ZookeeperSecurity {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
-            let tls_volume_name = Self::SERVER_TLS_VOLUME_NAME;
             cb_zookeeper
-                .add_volume_mount(tls_volume_name, Self::SERVER_TLS_DIR)
+                .add_volume_mount(&*SERVER_TLS_VOLUME_NAME, Self::SERVER_TLS_DIR)
                 .context(AddVolumeMountSnafu)?;
             pod_builder
                 .add_volume(Self::create_server_tls_volume(
-                    tls_volume_name,
+                    &SERVER_TLS_VOLUME_NAME,
                     secret_class,
                     requested_secret_lifetime,
                 )?)
@@ -170,13 +173,12 @@ impl ZookeeperSecurity {
         }
 
         // quorum
-        let tls_volume_name = Self::QUORUM_TLS_VOLUME_NAME;
         cb_zookeeper
-            .add_volume_mount(tls_volume_name, Self::QUORUM_TLS_DIR)
+            .add_volume_mount(&*QUORUM_TLS_VOLUME_NAME, Self::QUORUM_TLS_DIR)
             .context(AddVolumeMountSnafu)?;
         pod_builder
             .add_volume(Self::create_quorum_tls_volume(
-                tls_volume_name,
+                &QUORUM_TLS_VOLUME_NAME,
                 self.quorum_secret_class.as_ref(),
                 requested_secret_lifetime,
             )?)
@@ -323,11 +325,11 @@ impl ZookeeperSecurity {
     ///
     /// [ListenerStatus]: ::stackable_operator::crd::listener::v1alpha1::ListenerStatus
     fn create_server_tls_volume(
-        volume_name: &str,
+        volume_name: &VolumeName,
         secret_class_name: &str,
         requested_secret_lifetime: &Duration,
     ) -> Result<Volume> {
-        let volume = VolumeBuilder::new(volume_name)
+        let volume = VolumeBuilder::new(volume_name.to_string())
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(
                     secret_class_name,
@@ -338,7 +340,9 @@ impl ZookeeperSecurity {
                 .with_format(SecretFormat::TlsPkcs12)
                 .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                 .build()
-                .context(BuildTlsVolumeSnafu { volume_name })?,
+                .context(BuildTlsVolumeSnafu {
+                    volume_name: volume_name.to_string(),
+                })?,
             )
             .build();
 
@@ -349,11 +353,11 @@ impl ZookeeperSecurity {
     ///
     /// The resulting volume will contain TLS certificates with the FQDN of the Pod in relation to the StatefulSet's headless service.
     fn create_quorum_tls_volume(
-        volume_name: &str,
+        volume_name: &VolumeName,
         secret_class_name: &str,
         requested_secret_lifetime: &Duration,
     ) -> Result<Volume> {
-        let volume = VolumeBuilder::new(volume_name)
+        let volume = VolumeBuilder::new(volume_name.to_string())
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(
                     secret_class_name,
@@ -364,7 +368,9 @@ impl ZookeeperSecurity {
                 .with_format(SecretFormat::TlsPkcs12)
                 .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                 .build()
-                .context(BuildTlsVolumeSnafu { volume_name })?,
+                .context(BuildTlsVolumeSnafu {
+                    volume_name: volume_name.to_string(),
+                })?,
             )
             .build();
 
@@ -381,5 +387,17 @@ impl ZookeeperSecurity {
             quorum_secret_class: SecretClassName::from_str("tls")
                 .expect("'tls' is a valid SecretClass name"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constants() {
+        // Test that dereferencing the constants does not panic.
+        let _ = *SERVER_TLS_VOLUME_NAME;
+        let _ = *QUORUM_TLS_VOLUME_NAME;
     }
 }

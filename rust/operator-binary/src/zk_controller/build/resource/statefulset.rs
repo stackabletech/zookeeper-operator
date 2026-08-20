@@ -9,11 +9,8 @@ use stackable_operator::{
         self,
         meta::ObjectMetaBuilder,
         pod::{
-            PodBuilder,
-            container::{ContainerBuilder, FieldPathEnvVar},
-            resources::ResourceRequirementsBuilder,
+            PodBuilder, container::FieldPathEnvVar, resources::ResourceRequirementsBuilder,
             security::PodSecurityContextBuilder,
-            volume::{ListenerOperatorVolumeSourceBuilder, ListenerReference},
         },
     },
     constant,
@@ -37,10 +34,13 @@ use stackable_operator::{
     },
     utils::COMMON_BASH_TRAP_FUNCTIONS,
     v2::{
-        builder::pod::container::{EnvVarName, EnvVarSet},
+        builder::pod::{
+            container::{EnvVarName, EnvVarSet, new_container_builder},
+            volume::{ListenerReference, listener_operator_volume_source_builder_build_pvc},
+        },
         product_logging::framework::{ValidatedContainerLogConfigChoice, vector_container},
         types::{
-            kubernetes::{ContainerName, VolumeName},
+            kubernetes::{ContainerName, ListenerName, PersistentVolumeClaimName, VolumeName},
             operator::RoleGroupName,
         },
     },
@@ -86,9 +86,16 @@ constant!(RW_CONFIG_VOLUME_NAME: VolumeName = "rwconfig");
 constant!(LOG_VOLUME_NAME: VolumeName = "log");
 constant!(LOG_CONFIG_VOLUME_NAME: VolumeName = "log-config");
 
-/// Name of the `prepare` init container (also used as its log subdirectory).
-const PREPARE_CONTAINER_NAME: &str = "prepare";
+// The listener volume is provisioned as a PVC by the listener-operator; this is its typed name.
+// It must match `LISTENER_VOLUME_NAME`, by which the volume mount and the secret-operator volume
+// scope reference it.
+constant!(LISTENER_PVC_NAME: PersistentVolumeClaimName = "listener");
 
+// Container names. These must match the corresponding (kebab-cased) `crate::crd::Container`
+// variants, which key the per-container logging config. The prepare container name is also used
+// as its log subdirectory.
+constant!(PREPARE_CONTAINER_NAME: ContainerName = "prepare");
+constant!(ZOOKEEPER_CONTAINER_NAME: ContainerName = APP_NAME);
 constant!(VECTOR_CONTAINER_NAME: ContainerName = "vector");
 
 // Env vars the operator sets on the containers.
@@ -139,23 +146,17 @@ pub enum Error {
     GracefulShutdown {
         source: crate::zk_controller::build::graceful_shutdown::Error,
     },
-
-    #[snafu(display("failed to build listener volume"))]
-    BuildListenerPersistentVolume {
-        source: stackable_operator::builder::pod::volume::ListenerOperatorVolumeSourceBuilderError,
-    },
 }
 
 fn build_role_listener_pvc(
-    group_listener_name: &str,
+    role_listener_name: ListenerName,
     unversioned_recommended_labels: &Labels,
-) -> Result<PersistentVolumeClaim> {
-    ListenerOperatorVolumeSourceBuilder::new(
-        &ListenerReference::ListenerName(group_listener_name.to_string()),
+) -> PersistentVolumeClaim {
+    listener_operator_volume_source_builder_build_pvc(
+        &ListenerReference::Listener(role_listener_name),
         unversioned_recommended_labels,
+        &LISTENER_PVC_NAME,
     )
-    .build_pvc(LISTENER_VOLUME_NAME.to_string())
-    .context(BuildListenerPersistentVolumeSnafu)
 }
 
 /// The rolegroup [`StatefulSet`] runs the rolegroup, as configured by the administrator.
@@ -206,10 +207,8 @@ pub fn build_server_rolegroup_statefulset(
     let original_pvcs = vec![data_pvc];
     let resources: ResourceRequirements = resources_config.into();
 
-    let mut cb_prepare =
-        ContainerBuilder::new(PREPARE_CONTAINER_NAME).expect("invalid hard-coded container name");
-    let mut cb_zookeeper =
-        ContainerBuilder::new(APP_NAME).expect("invalid hard-coded container name");
+    let mut cb_prepare = new_container_builder(&PREPARE_CONTAINER_NAME);
+    let mut cb_zookeeper = new_container_builder(&ZOOKEEPER_CONTAINER_NAME);
     let mut pod_builder = PodBuilder::new();
 
     // Used for PVC templates, which cannot be modified once they are deployed. The version label
@@ -218,9 +217,9 @@ pub fn build_server_rolegroup_statefulset(
         recommended_labels_for_unversioned_role_group_resources(cluster, zk_role, role_group_name);
 
     let listener_pvc = build_role_listener_pvc(
-        role_listener_name(cluster.name.as_ref(), zk_role).as_ref(),
+        role_listener_name(cluster.name.as_ref(), zk_role),
         &unversioned_recommended_labels,
-    )?;
+    );
 
     let mut pvcs = original_pvcs;
     pvcs.extend([listener_pvc]);
@@ -248,7 +247,7 @@ pub fn build_server_rolegroup_statefulset(
     {
         args.push(product_logging::framework::capture_shell_output(
             STACKABLE_LOG_DIR,
-            PREPARE_CONTAINER_NAME,
+            PREPARE_CONTAINER_NAME.as_ref(),
             log_config,
         ));
     }
@@ -481,6 +480,9 @@ mod tests {
         let _ = *RW_CONFIG_VOLUME_NAME;
         let _ = *LOG_VOLUME_NAME;
         let _ = *LOG_CONFIG_VOLUME_NAME;
+        let _ = *LISTENER_PVC_NAME;
+        let _ = *PREPARE_CONTAINER_NAME;
+        let _ = *ZOOKEEPER_CONTAINER_NAME;
         let _ = *VECTOR_CONTAINER_NAME;
         let _ = *POD_NAME;
         let _ = *MYID_OFFSET;
@@ -606,7 +608,11 @@ mod tests {
     /// as the example here because it is set unconditionally by the operator.
     #[test]
     fn env_overrides_override_operator_set_env_vars() {
-        let env = env_with_override(APP_NAME, &CONTAINERDEBUG_LOG_DIRECTORY, "/custom/log/dir");
+        let env = env_with_override(
+            ZOOKEEPER_CONTAINER_NAME.as_ref(),
+            &CONTAINERDEBUG_LOG_DIRECTORY,
+            "/custom/log/dir",
+        );
 
         let containerdebug: Vec<_> = env
             .iter()
@@ -623,7 +629,11 @@ mod tests {
     /// Same guarantee for the `prepare` init container, whose env vars are assembled separately.
     #[test]
     fn prepare_env_overrides_override_operator_set_env_vars() {
-        let env = env_with_override(PREPARE_CONTAINER_NAME, &ZOOCFGDIR, "/custom/conf/dir");
+        let env = env_with_override(
+            PREPARE_CONTAINER_NAME.as_ref(),
+            &ZOOCFGDIR,
+            "/custom/conf/dir",
+        );
 
         let zoocfgdir: Vec<_> = env
             .iter()
