@@ -3,13 +3,14 @@
 //! This is the controller driver: it runs the
 //! `dereference -> validate -> build -> apply -> update_status` pipeline, with each step living
 //! in its own submodule.
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, str::FromStr, sync::Arc};
 
 use const_format::concatcp;
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::ClusterResourceApplyStrategy,
+    constant,
     crd::listener::v1alpha1::Listener,
     k8s_openapi::api::{
         apps::v1::StatefulSet,
@@ -24,11 +25,12 @@ use stackable_operator::{
     },
     logging::controller::ReconcilerError,
     shared::time::Duration,
+    v2::types::operator::ControllerName,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 
 use crate::{
-    OPERATOR_NAME, ObjectRef,
+    ObjectRef, ZOOKEEPER_OPERATOR_NAME,
     crd::v1alpha1,
     zk_controller::{apply::Applier, update_status::update_status},
 };
@@ -40,9 +42,12 @@ mod update_status;
 pub(crate) mod validate;
 
 pub const ZK_CONTROLLER_NAME: &str = "zookeepercluster";
-pub const ZK_FULL_CONTROLLER_NAME: &str = concatcp!(ZK_CONTROLLER_NAME, '.', OPERATOR_NAME);
+pub const ZK_FULL_CONTROLLER_NAME: &str =
+    concatcp!(ZK_CONTROLLER_NAME, '.', ZOOKEEPER_OPERATOR_NAME);
 pub const LISTENER_VOLUME_NAME: &str = "listener";
 pub const LISTENER_VOLUME_DIR: &str = "/stackable/listener";
+
+constant!(pub(crate) CONTROLLER_NAME: ControllerName = ZK_CONTROLLER_NAME);
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -273,10 +278,17 @@ mod tests {
     use crate::{
         crd::ZookeeperRole,
         zk_controller::{
+            CONTROLLER_NAME,
             build::resource::config_map,
             test_support::{cluster_info, minimal_zk, validated_cluster},
         },
     };
+
+    #[test]
+    fn test_constants() {
+        // Test that dereferencing the constants does not panic.
+        let _ = *CONTROLLER_NAME;
+    }
 
     #[test]
     fn test_default_config() {
@@ -554,6 +566,7 @@ mod tests {
         config_map::build_server_rolegroup_config_map(
             &validated_cluster,
             &cluster_info(),
+            &ZookeeperRole::Server,
             &role_group_name,
             rolegroup_config,
         )

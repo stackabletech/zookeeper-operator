@@ -10,7 +10,7 @@ publish = false
 build = "build.rs"
 
 [dependencies]
-stackable-operator = { workspace = true, features = ["test-support"] }
+stackable-operator.workspace = true
 
 anyhow.workspace = true
 clap.workspace = true
@@ -30,6 +30,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 serde_yaml.workspace = true
+stackable-operator = { workspace = true, features = ["test-support"] }
 
 [build-dependencies]
 built.workspace = true

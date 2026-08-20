@@ -6,13 +6,14 @@
 //! pipeline, with each step living in its own submodule. There is no update_status step, because
 //! the only status the ZookeeperZnode carries (the znode path) is written before the finalizer
 //! runs.
-use std::{borrow::Cow, convert::Infallible, sync::Arc};
+use std::{borrow::Cow, convert::Infallible, str::FromStr, sync::Arc};
 
 use const_format::concatcp;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::ClusterResourceApplyStrategy,
+    constant,
     k8s_openapi::api::core::v1::ConfigMap,
     kube::{
         api::ObjectMeta,
@@ -22,12 +23,13 @@ use stackable_operator::{
     logging::controller::ReconcilerError,
     shared::time::Duration,
     utils::cluster_info::KubernetesClusterInfo,
+    v2::types::operator::ControllerName,
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 use tracing::{debug, info};
 
 use crate::{
-    OPERATOR_NAME,
+    ZOOKEEPER_OPERATOR_NAME,
     crd::{security::ZookeeperSecurity, v1alpha1},
     znode_controller::apply::{Applier, ensure_znode_exists},
 };
@@ -38,7 +40,10 @@ mod dereference;
 pub(crate) mod validate;
 
 pub const ZNODE_CONTROLLER_NAME: &str = "znode";
-pub const ZNODE_FULL_CONTROLLER_NAME: &str = concatcp!(ZNODE_CONTROLLER_NAME, '.', OPERATOR_NAME);
+pub const ZNODE_FULL_CONTROLLER_NAME: &str =
+    concatcp!(ZNODE_CONTROLLER_NAME, '.', ZOOKEEPER_OPERATOR_NAME);
+
+constant!(pub(crate) CONTROLLER_NAME: ControllerName = ZNODE_CONTROLLER_NAME);
 
 pub struct Ctx {
     pub client: stackable_operator::client::Client,
@@ -202,7 +207,7 @@ pub async fn reconcile_znode(
 
     finalizer(
         &client.get_api::<v1alpha1::ZookeeperZnode>(&ns),
-        &format!("{OPERATOR_NAME}/znode"),
+        &format!("{ZOOKEEPER_OPERATOR_NAME}/znode"),
         Arc::new(znode.clone()),
         |ev| async {
             match ev {
@@ -415,6 +420,17 @@ pub(crate) mod test_support {
             )]))),
         )
         .expect("validate should succeed for the test fixture")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CONTROLLER_NAME;
+
+    #[test]
+    fn test_constants() {
+        // Test that dereferencing the constants does not panic.
+        let _ = *CONTROLLER_NAME;
     }
 }
 

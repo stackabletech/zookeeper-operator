@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{ops::Deref, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 use stackable_operator::{
@@ -12,30 +12,31 @@ use stackable_operator::{
         },
     },
     config::{fragment::Fragment, merge::Merge},
+    constant,
     crd::ClusterRef,
     deep_merger::ObjectOverrides,
     k8s_openapi::apimachinery::pkg::api::resource::Quantity,
     kube::{CustomResource, ResourceExt},
     product_logging::{self, spec::Logging},
-    role_utils::{GenericRoleConfig, Role},
+    role_utils::GenericRoleConfig,
     schemars::{self, JsonSchema},
     shared::time::Duration,
     status::condition::{ClusterCondition, HasStatusCondition},
     utils::cluster_info::KubernetesClusterInfo,
     v2::{
         config_overrides::KeyValueConfigOverrides,
-        role_utils::JavaCommonConfig,
+        role_utils::{JavaCommonConfig, Role},
         types::{
             common::Port,
             kubernetes::{
                 ConfigMapName, ListenerClassName, ListenerName, NamespaceName, ServiceName,
             },
-            operator::RoleName,
+            operator::{OperatorName, ProductName, RoleName},
         },
     },
     versioned::versioned,
 };
-use strum::{Display, EnumIter, EnumString};
+use strum::{Display, EnumIter};
 
 use crate::crd::{affinity::get_affinity, v1alpha1::ZookeeperServerRoleConfig};
 
@@ -50,13 +51,20 @@ pub mod tls;
 /// Lives in the `crd` module (rather than the controller build tree) because it is shared by both
 /// controllers and by [`v1alpha1::ZookeeperCluster::server_role_listener_fqdn`].
 pub fn role_listener_name(cluster_name: &str, zk_role: &ZookeeperRole) -> ListenerName {
-    ListenerName::from_str(&format!("{cluster_name}-{zk_role}"))
+    ListenerName::from_str(&format!("{cluster_name}-{role}", role = zk_role.as_ref()))
         .expect("the role listener name should be a valid Listener name")
 }
 
 pub const APP_NAME: &str = "zookeeper";
-pub const OPERATOR_NAME: &str = "zookeeper.stackable.tech";
+pub const ZOOKEEPER_OPERATOR_NAME: &str = "zookeeper.stackable.tech";
 pub const FIELD_MANAGER: &str = "zookeeper-operator";
+
+// The product and operator names as type-safe label values. Shared by both controllers, so they
+// live here rather than in a controller module.
+constant!(pub PRODUCT_NAME: ProductName = APP_NAME);
+constant!(pub OPERATOR_NAME: OperatorName = ZOOKEEPER_OPERATOR_NAME);
+
+constant!(SERVER_ROLE_NAME: RoleName = "server");
 
 pub const ZOOKEEPER_SERVER_PORT_NAME: &str = "zk";
 pub const ZOOKEEPER_LEADER_PORT_NAME: &str = "zk-leader";
@@ -307,36 +315,27 @@ pub mod versioned {
     }
 }
 
-#[derive(
-    Clone,
-    Debug,
-    Deserialize,
-    Display,
-    EnumIter,
-    Eq,
-    Hash,
-    JsonSchema,
-    Ord,
-    PartialEq,
-    PartialOrd,
-    Serialize,
-    EnumString,
-)]
-#[strum(serialize_all = "camelCase")]
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ZookeeperRole {
-    #[strum(serialize = "server")]
     Server,
 }
 
-impl From<ZookeeperRole> for RoleName {
-    fn from(value: ZookeeperRole) -> Self {
-        RoleName::from_str(&value.to_string()).expect("a ZookeeperRole is a valid role name")
+impl Deref for ZookeeperRole {
+    type Target = RoleName;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            ZookeeperRole::Server => &SERVER_ROLE_NAME,
+        }
     }
 }
 
-impl From<&ZookeeperRole> for RoleName {
-    fn from(value: &ZookeeperRole) -> Self {
-        RoleName::from_str(&value.to_string()).expect("a ZookeeperRole is a valid role name")
+impl ZookeeperRole {
+    /// The type-safe name of this role, e.g. to build [`ResourceNames`][rn].
+    ///
+    /// [rn]: stackable_operator::v2::role_group_utils::ResourceNames
+    pub fn role_name(&self) -> RoleName {
+        RoleName::clone(self)
     }
 }
 
@@ -470,6 +469,14 @@ mod tests {
     use stackable_operator::versioned::test_utils::RoundtripTestData;
 
     use super::*;
+
+    #[test]
+    fn test_constants() {
+        // Test that dereferencing the constants does not panic.
+        let _ = *PRODUCT_NAME;
+        let _ = *OPERATOR_NAME;
+        let _ = *SERVER_ROLE_NAME;
+    }
 
     fn get_server_secret_class(zk: &v1alpha1::ZookeeperCluster) -> Option<&str> {
         zk.spec

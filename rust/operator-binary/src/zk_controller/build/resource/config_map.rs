@@ -19,12 +19,16 @@ use stackable_operator::{
     },
 };
 
-use crate::zk_controller::{
-    build::{
-        object_meta,
-        properties::{ConfigFileName, product_logging, security_properties, zoo_cfg},
+use crate::{
+    crd::ZookeeperRole,
+    zk_controller::{
+        build::{
+            object_meta,
+            properties::{ConfigFileName, product_logging, security_properties, zoo_cfg},
+            recommended_labels_for_role_group_resources,
+        },
+        validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
     },
-    validate::{ValidatedCluster, ZookeeperRoleGroupConfig},
 };
 
 #[derive(Snafu, Debug)]
@@ -55,6 +59,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub fn build_server_rolegroup_config_map(
     cluster: &ValidatedCluster,
     cluster_info: &KubernetesClusterInfo,
+    zk_role: &ZookeeperRole,
     role_group_name: &RoleGroupName,
     rolegroup_config: &ZookeeperRoleGroupConfig,
 ) -> Result<ConfigMap> {
@@ -106,7 +111,7 @@ pub fn build_server_rolegroup_config_map(
                     .role_group_resource_names(role_group_name)
                     .role_group_config_map()
                     .to_string(),
-                role_group_name,
+                recommended_labels_for_role_group_resources(cluster, zk_role, role_group_name),
             )
             .build(),
         )

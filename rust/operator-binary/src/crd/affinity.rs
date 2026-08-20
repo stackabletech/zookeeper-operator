@@ -7,7 +7,7 @@ use crate::crd::{APP_NAME, ZookeeperRole};
 
 pub fn get_affinity(cluster_name: &str, role: &ZookeeperRole) -> StackableAffinityFragment {
     let affinity_between_role_pods =
-        affinity_between_role_pods(APP_NAME, cluster_name, &role.to_string(), 70);
+        affinity_between_role_pods(APP_NAME, cluster_name, role.as_ref(), 70);
 
     StackableAffinityFragment {
         pod_affinity: None,

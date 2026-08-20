@@ -9,20 +9,25 @@
 //! remaining submodules ([`command`], [`graceful_shutdown`], [`jvm`],
 //! [`properties`]) produce fragments that those resource builders assemble.
 
-use std::{marker::PhantomData, str::FromStr};
+use std::marker::PhantomData;
 
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::meta::ObjectMetaBuilder,
+    kvp::Labels,
     utils::cluster_info::KubernetesClusterInfo,
-    v2::{builder::meta::ownerreference_from_resource, types::operator::RoleGroupName},
+    v2::{
+        builder::meta::ownerreference_from_resource,
+        kvp::label,
+        types::operator::{RoleGroupName, RoleName},
+    },
 };
 
 use crate::{
-    crd::ZookeeperRole,
+    crd::{OPERATOR_NAME, PRODUCT_NAME, ZookeeperRole},
     discovery,
     zk_controller::{
-        KubernetesResources, Prepared, ZK_CONTROLLER_NAME,
+        CONTROLLER_NAME, KubernetesResources, Prepared,
         build::resource::{
             config_map,
             listener::build_role_listener,
@@ -36,10 +41,6 @@ use crate::{
         validate::ValidatedCluster,
     },
 };
-
-// Placeholder role-group name used for the recommended labels of the role-level `Listener`
-// (which is not tied to a single role group).
-stackable_operator::constant!(pub(crate) NONE_ROLE_GROUP_NAME: RoleGroupName = "none");
 
 pub mod command;
 pub mod graceful_shutdown;
@@ -98,10 +99,12 @@ pub fn build(
         // the type-safe `RoleGroupName`.
         services.push(build_server_rolegroup_headless_service(
             cluster,
+            &zk_role,
             rolegroup_name,
         ));
         services.push(build_server_rolegroup_metrics_service(
             cluster,
+            &zk_role,
             rolegroup_name,
             rolegroup_config,
         ));
@@ -109,6 +112,7 @@ pub fn build(
             config_map::build_server_rolegroup_config_map(
                 cluster,
                 cluster_info,
+                &zk_role,
                 rolegroup_name,
                 rolegroup_config,
             )
@@ -117,7 +121,7 @@ pub fn build(
             })?,
         );
         stateful_sets.push(
-            build_server_rolegroup_statefulset(cluster, rolegroup_name, rolegroup_config)
+            build_server_rolegroup_statefulset(cluster, &zk_role, rolegroup_name, rolegroup_config)
                 .with_context(|_| StatefulSetSnafu {
                     rolegroup: rolegroup_name.clone(),
                 })?,
@@ -130,12 +134,9 @@ pub fn build(
 
     let listeners = vec![build_role_listener(cluster, &zk_role)];
 
-    let discovery_config_map = discovery::build_discovery_configmap(
-        cluster,
-        ZK_CONTROLLER_NAME,
-        &cluster.discovery_addresses,
-    )
-    .context(DiscoveryConfigMapSnafu)?;
+    let discovery_config_map =
+        discovery::build_discovery_configmap(cluster, &zk_role, &cluster.discovery_addresses)
+            .context(DiscoveryConfigMapSnafu)?;
 
     Ok(KubernetesResources {
         stateful_sets,
@@ -151,22 +152,87 @@ pub fn build(
 }
 
 /// Returns an [`ObjectMetaBuilder`] pre-filled with the namespace, an owner reference back to
-/// the cluster, and the recommended labels for a resource named `name` in `role_group_name`.
+/// the cluster, the given `name`, and the given `labels` (usually one of the recommended label
+/// sets built by the functions below).
 ///
 /// Consolidates the metadata chain repeated by the child-resource builders. Call sites that
 /// need extra labels/annotations chain them onto the returned builder.
 pub(crate) fn object_meta(
     cluster: &ValidatedCluster,
     name: impl Into<String>,
-    role_group_name: &RoleGroupName,
+    labels: Labels,
 ) -> ObjectMetaBuilder {
     let mut builder = ObjectMetaBuilder::new();
     builder
         .name_and_namespace(cluster)
         .name(name)
         .ownerreference(ownerreference_from_resource(cluster, None, Some(true)))
-        .with_labels(cluster.recommended_labels(role_group_name));
+        .with_labels(labels);
     builder
+}
+
+pub(crate) fn recommended_labels_for_cluster_resources(cluster: &ValidatedCluster) -> Labels {
+    label::recommended_labels_for_cluster_resources(
+        &cluster.name,
+        &PRODUCT_NAME,
+        &cluster.product_version,
+        &OPERATOR_NAME,
+        &CONTROLLER_NAME,
+    )
+}
+
+pub(crate) fn recommended_labels_for_role_resources(
+    cluster: &ValidatedCluster,
+    role_name: &RoleName,
+) -> Labels {
+    label::recommended_labels_for_role_resources(
+        &cluster.name,
+        &PRODUCT_NAME,
+        &cluster.product_version,
+        &OPERATOR_NAME,
+        &CONTROLLER_NAME,
+        role_name,
+    )
+}
+
+pub(crate) fn recommended_labels_for_role_group_resources(
+    cluster: &ValidatedCluster,
+    role_name: &RoleName,
+    role_group_name: &RoleGroupName,
+) -> Labels {
+    label::recommended_labels_for_role_group_resources(
+        &cluster.name,
+        &PRODUCT_NAME,
+        &cluster.product_version,
+        &OPERATOR_NAME,
+        &CONTROLLER_NAME,
+        role_name,
+        role_group_name,
+    )
+}
+
+pub(crate) fn recommended_labels_for_unversioned_role_group_resources(
+    cluster: &ValidatedCluster,
+    role_name: &RoleName,
+    role_group_name: &RoleGroupName,
+) -> Labels {
+    label::recommended_labels_for_unversioned_role_group_resources(
+        &cluster.name,
+        &PRODUCT_NAME,
+        &OPERATOR_NAME,
+        &CONTROLLER_NAME,
+        role_name,
+        role_group_name,
+    )
+}
+
+/// Selector labels matching the pods of a role group.
+pub(crate) fn role_group_selector(
+    cluster: &ValidatedCluster,
+    role_name: &RoleName,
+    role_group_name: &RoleGroupName,
+) -> Labels {
+    label::role_group_selector(&cluster.name, &PRODUCT_NAME, role_name, role_group_name)
 }
 
 #[cfg(test)]

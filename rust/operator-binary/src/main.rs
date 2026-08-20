@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use clap::Parser;
 use crd::{
-    APP_NAME, OPERATOR_NAME, ZookeeperCluster, ZookeeperClusterVersion, ZookeeperZnode,
+    APP_NAME, ZOOKEEPER_OPERATOR_NAME, ZookeeperCluster, ZookeeperClusterVersion, ZookeeperZnode,
     ZookeeperZnodeVersion, v1alpha1,
 };
 use futures::{FutureExt, StreamExt, TryFutureExt};
@@ -101,7 +101,7 @@ async fn main() -> anyhow::Result<()> {
                     .map(anyhow::Ok);
 
             let client = stackable_operator::client::initialize_operator(
-                Some(OPERATOR_NAME.to_string()),
+                Some(ZOOKEEPER_OPERATOR_NAME.to_string()),
                 &common.cluster_info,
             )
             .await?;
