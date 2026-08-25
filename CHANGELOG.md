@@ -37,6 +37,8 @@ All notable changes to this project will be documented in this file.
 - Fix a longstanding problem of including empty `categories`, `shortNames` and `additionalPrinterColumns` in the CRDs,
   which could cause problems with GitOps tools (e.g. ArgoCD) reporting a diff in the custom resources.
   See [our internal issue](https://github.com/stackabletech/hdfs-operator/issues/626) and [the fix](https://github.com/kube-rs/kube/pull/2042) for details ([#1070]).
+- The operator now watches all resources that it creates and early-exits the reconcile action when the
+  cluster is marked for deletion ([#1079]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
@@ -45,6 +47,7 @@ All notable changes to this project will be documented in this file.
 [#1069]: https://github.com/stackabletech/zookeeper-operator/pull/1069
 [#1070]: https://github.com/stackabletech/zookeeper-operator/pull/1070
 [#1077]: https://github.com/stackabletech/zookeeper-operator/pull/1077
+[#1079]: https://github.com/stackabletech/zookeeper-operator/pull/1079
 
 ## [26.7.0] - 2026-07-21
 

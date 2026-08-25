@@ -19,6 +19,7 @@ use stackable_operator::{
         rbac::v1::RoleBinding,
     },
     kube::{
+        Resource,
         api::DynamicObject,
         core::{DeserializeGuard, error_boundary},
         runtime::controller,
@@ -127,6 +128,11 @@ pub async fn reconcile_zk(
     ctx: Arc<Ctx>,
 ) -> Result<controller::Action> {
     tracing::info!("Starting reconcile");
+
+    if zk.meta().deletion_timestamp.is_some() {
+        return Ok(controller::Action::await_change());
+    }
+
     let zk =
         zk.0.as_ref()
             .map_err(error_boundary::InvalidObject::clone)
@@ -269,17 +275,22 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
+    use std::{str::FromStr, sync::Arc};
 
     use stackable_operator::{
-        k8s_openapi::api::core::v1::ConfigMap, v2::types::operator::RoleGroupName,
+        cli::OperatorEnvironmentOptions,
+        client::Client,
+        k8s_openapi::api::core::v1::ConfigMap,
+        kube::{Client as KubeClient, Config, runtime::controller::Action},
+        v2::types::operator::RoleGroupName,
     };
 
     use crate::{
         crd::ZookeeperRole,
         zk_controller::{
-            CONTROLLER_NAME,
+            CONTROLLER_NAME, Ctx,
             build::resource::config_map,
+            reconcile_zk,
             test_support::{cluster_info, minimal_zk, validated_cluster},
         },
     };
@@ -571,5 +582,52 @@ mod tests {
             rolegroup_config,
         )
         .unwrap()
+    }
+
+    /// The client points at a closed port, so any API call would fail the reconciliation: an `Ok`
+    /// proves that a cluster being deleted returns before the reconciler touches the Kubernetes
+    /// API, and because the spec is invalid, before the `DeserializeGuard` is unwrapped.
+    #[test]
+    fn reconcile_exits_early_for_deleted_cluster() {
+        let zk = serde_yaml::from_str(
+            r#"
+apiVersion: zookeeper.stackable.tech/v1alpha1
+kind: ZookeeperCluster
+metadata:
+  name: zookeeper
+  namespace: default
+  deletionTimestamp: "2026-08-14T12:00:00Z"
+spec: {}
+"#,
+        )
+        .expect("YAML parses; the invalid spec is captured inside the DeserializeGuard");
+
+        let action = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("current-thread tokio runtime")
+            .block_on(async {
+                let ctx = Arc::new(Ctx {
+                    client: Client::new(
+                        KubeClient::try_from(Config::new(
+                            "http://127.0.0.1:1".parse().expect("valid static URI"),
+                        ))
+                        .expect("client from static config"),
+                        None,
+                        "default".to_owned(),
+                        cluster_info(),
+                    ),
+                    operator_environment: OperatorEnvironmentOptions {
+                        operator_namespace: "stackable-operators".to_owned(),
+                        operator_service_name: "zookeeper-operator".to_owned(),
+                        image_repository: "oci.stackable.tech/sdp".to_owned(),
+                    },
+                });
+
+                reconcile_zk(Arc::new(zk), ctx).await
+            })
+            .expect("a deleted cluster reconciles without any API call");
+
+        assert_eq!(action, Action::await_change());
     }
 }

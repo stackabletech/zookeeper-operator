@@ -17,7 +17,9 @@ use stackable_operator::{
     eos::EndOfSupportChecker,
     k8s_openapi::api::{
         apps::v1::StatefulSet,
-        core::v1::{ConfigMap, Service},
+        core::v1::{ConfigMap, Service, ServiceAccount},
+        policy::v1::PodDisruptionBudget,
+        rbac::v1::RoleBinding,
     },
     kube::{
         CustomResourceExt as _, Resource,
@@ -131,14 +133,6 @@ async fn main() -> anyhow::Result<()> {
             ));
             let zk_controller = zk_controller
                 .owns(
-                    watch_namespace.get_api::<DeserializeGuard<Service>>(&client),
-                    watcher::Config::default(),
-                )
-                .owns(
-                    watch_namespace.get_api::<DeserializeGuard<StatefulSet>>(&client),
-                    watcher::Config::default(),
-                )
-                .owns(
                     watch_namespace.get_api::<DeserializeGuard<ConfigMap>>(&client),
                     watcher::Config::default(),
                 )
@@ -147,6 +141,26 @@ async fn main() -> anyhow::Result<()> {
                 // or change.
                 .owns(
                     watch_namespace.get_api::<DeserializeGuard<Listener>>(&client),
+                    watcher::Config::default(),
+                )
+                .owns(
+                    watch_namespace.get_api::<DeserializeGuard<PodDisruptionBudget>>(&client),
+                    watcher::Config::default(),
+                )
+                .owns(
+                    watch_namespace.get_api::<DeserializeGuard<RoleBinding>>(&client),
+                    watcher::Config::default(),
+                )
+                .owns(
+                    watch_namespace.get_api::<DeserializeGuard<Service>>(&client),
+                    watcher::Config::default(),
+                )
+                .owns(
+                    watch_namespace.get_api::<DeserializeGuard<ServiceAccount>>(&client),
+                    watcher::Config::default(),
+                )
+                .owns(
+                    watch_namespace.get_api::<DeserializeGuard<StatefulSet>>(&client),
                     watcher::Config::default(),
                 )
                 .graceful_shutdown_on(sigterm_watcher.handle())

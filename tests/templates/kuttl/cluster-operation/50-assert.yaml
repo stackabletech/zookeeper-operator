@@ -1,0 +1,94 @@
+---
+# The recreated StatefulSet must bring the cluster back to ready, and the recreated
+# objects must carry an owner reference back to the ZookeeperCluster so that garbage
+# collection still works for them.
+apiVersion: kuttl.dev/v1beta1
+kind: TestAssert
+metadata:
+  name: recreate-owned-resources
+timeout: 600
+commands:
+  - script: kubectl -n $NAMESPACE wait --for=condition=available zookeeperclusters.zookeeper.stackable.tech/test-zk --timeout 601s
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: test-zk-server-default
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+status:
+  readyReplicas: 1
+  replicas: 1
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: test-zk-serviceaccount
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: test-zk-rolebinding
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: test-zk-server
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-zk
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+---
+apiVersion: listeners.stackable.tech/v1alpha1
+kind: Listener
+metadata:
+  name: test-zk-server
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-default-headless
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-zk-server-default-metrics
+  ownerReferences:
+    - apiVersion: zookeeper.stackable.tech/v1alpha1
+      controller: true
+      kind: ZookeeperCluster
+      name: test-zk
