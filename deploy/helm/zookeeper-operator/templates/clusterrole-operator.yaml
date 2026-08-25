@@ -13,13 +13,14 @@ rules:
       - nodes/proxy
     verbs:
       - get
-  # Manage core workload resources created per ZookeeperCluster.
-  # All resources are applied via SSA (create + patch) and tracked for
-  # orphan cleanup (list + delete).
+  # Manage core workload resources created per ZookeeperCluster (the ServiceAccount
+  # provides workload pod identity). All resources are applied via SSA (create +
+  # patch), tracked for orphan cleanup (list + delete) and watched by the controller.
   - apiGroups:
       - ""
     resources:
       - configmaps
+      - serviceaccounts
       - services
     verbs:
       - create
@@ -28,20 +29,9 @@ rules:
       - list
       - patch
       - watch
-  # ServiceAccount created per ZookeeperCluster for workload pod identity.
-  # Applied via SSA and tracked for orphan cleanup.
-  - apiGroups:
-      - ""
-    resources:
-      - serviceaccounts
-    verbs:
-      - create
-      - delete
-      - get
-      - list
-      - patch
   # RoleBinding created per ZookeeperCluster to bind the product ClusterRole to the workload
-  # ServiceAccount. Applied via SSA and tracked for orphan cleanup.
+  # ServiceAccount. Applied via SSA and tracked for orphan cleanup and watched by the
+  # controller.
   - apiGroups:
       - rbac.authorization.k8s.io
     resources:
@@ -52,6 +42,7 @@ rules:
       - get
       - list
       - patch
+      - watch
   # Required to bind the product ClusterRole to the per-cluster ServiceAccount.
   - apiGroups:
       - rbac.authorization.k8s.io
@@ -75,6 +66,7 @@ rules:
       - patch
       - watch
   # PodDisruptionBudget created per role. Applied via SSA and tracked for orphan cleanup.
+  # Watched by the controller.
   - apiGroups:
       - policy
     resources:
@@ -85,6 +77,7 @@ rules:
       - get
       - list
       - patch
+      - watch
   # Required for maintaining the CRDs (including the conversion webhook certificate).
   # Also required for the startup condition check.
   - apiGroups:
