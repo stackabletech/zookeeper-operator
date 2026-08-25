@@ -275,9 +275,7 @@ pub(crate) mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use std::sync::Arc;
+    use std::{str::FromStr, sync::Arc};
 
     use stackable_operator::{
         cli::OperatorEnvironmentOptions,
@@ -290,8 +288,9 @@ mod tests {
     use crate::{
         crd::ZookeeperRole,
         zk_controller::{
-            CONTROLLER_NAME, Ctx, reconcile_zk,
+            CONTROLLER_NAME, Ctx,
             build::resource::config_map,
+            reconcile_zk,
             test_support::{cluster_info, minimal_zk, validated_cluster},
         },
     };
