@@ -2,9 +2,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "operator.fullname" . }}-clusterrole
+  name: {{ include "zookeeper-operator.fullname" . }}-clusterrole
   labels:
-  {{- include "operator.labels" . | nindent 4 }}
+  {{- include "zookeeper-operator.labels" . | nindent 4 }}
 rules:
   # For automatic cluster domain detection
   - apiGroups:
@@ -51,7 +51,7 @@ rules:
     verbs:
       - bind
     resourceNames:
-      - {{ include "operator.name" . }}-clusterrole
+      - {{ include "zookeeper-operator.name" . }}-clusterrole
   # StatefulSet created per role group. Applied via SSA, tracked for orphan cleanup,
   # and owned by the controller.
   - apiGroups:
@@ -127,9 +127,9 @@ rules:
       - watch
   # Primary CRD: watched and read during reconciliation.
   - apiGroups:
-      - {{ include "operator.name" . }}.stackable.tech
+      - {{ include "zookeeper-operator.name" . }}.stackable.tech
     resources:
-      - {{ include "operator.name" . }}clusters
+      - {{ include "zookeeper-operator.name" . }}clusters
     verbs:
       - get
       - list
@@ -137,9 +137,9 @@ rules:
   # ZookeeperZnode CRD: watched and read during reconciliation.
   # Patch is required to manage a finalizer for znode cleanup before deletion.
   - apiGroups:
-      - {{ include "operator.name" . }}.stackable.tech
+      - {{ include "zookeeper-operator.name" . }}.stackable.tech
     resources:
-      - {{ include "operator.name" . }}znodes
+      - {{ include "zookeeper-operator.name" . }}znodes
     verbs:
       - get
       - list
@@ -147,9 +147,9 @@ rules:
       - watch
   # Status subresource: updated at the end of every reconciliation.
   - apiGroups:
-      - {{ include "operator.name" . }}.stackable.tech
+      - {{ include "zookeeper-operator.name" . }}.stackable.tech
     resources:
-      - {{ include "operator.name" . }}clusters/status
-      - {{ include "operator.name" . }}znodes/status
+      - {{ include "zookeeper-operator.name" . }}clusters/status
+      - {{ include "zookeeper-operator.name" . }}znodes/status
     verbs:
       - patch

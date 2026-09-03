@@ -4,9 +4,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "operator.name" . }}-clusterrole
+  name: {{ include "zookeeper-operator.name" . }}-clusterrole
   labels:
-  {{- include "operator.labels" . | nindent 4 }}
+  {{- include "zookeeper-operator.labels" . | nindent 4 }}
 rules:
 {{ if .Capabilities.APIVersions.Has "security.openshift.io/v1" }}
   # Required on OpenShift to allow ZooKeeper pods to run as a non-root user.
