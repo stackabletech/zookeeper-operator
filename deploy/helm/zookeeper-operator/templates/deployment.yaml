@@ -38,6 +38,14 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: {{ include "zookeeper-operator.image" . }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8443
+              scheme: HTTPS
+            periodSeconds: 2
+            failureThreshold: 30
+            timeoutSeconds: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           env:

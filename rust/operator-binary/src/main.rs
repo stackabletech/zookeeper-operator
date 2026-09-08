@@ -11,17 +11,12 @@ use crd::{
 };
 use futures::{FutureExt, StreamExt, TryFutureExt};
 use stackable_operator::{
-    YamlSchema,
-    cli::{Command, RunArguments},
-    crd::listener::v1alpha1::Listener,
-    eos::EndOfSupportChecker,
-    k8s_openapi::api::{
+    YamlSchema, cli::{Command, RunArguments}, crd::listener::v1alpha1::Listener, eos::EndOfSupportChecker, k8s_openapi::api::{
         apps::v1::StatefulSet,
         core::v1::{ConfigMap, Service, ServiceAccount},
         policy::v1::PodDisruptionBudget,
         rbac::v1::RoleBinding,
-    },
-    kube::{
+    }, kube::{
         CustomResourceExt as _, Resource,
         core::DeserializeGuard,
         runtime::{
@@ -30,11 +25,7 @@ use stackable_operator::{
             reflector::ObjectRef,
             watcher,
         },
-    },
-    logging::controller::report_controller_reconciled,
-    shared::yaml::SerializeOptions,
-    telemetry::Tracing,
-    utils::signal::{self, SignalWatcher},
+    }, logging::controller::report_controller_reconciled, shared::{health::{HealthCheck, HealthCheckRegistry}, yaml::SerializeOptions}, telemetry::Tracing, utils::signal::{self, SignalWatcher},
 };
 
 use crate::{
@@ -108,9 +99,14 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
 
+            let mut readiness_checks = HealthCheckRegistry::new();
+            let zk_cluster_check = readiness_checks.register(v1alpha1::ZookeeperCluster::crd_name());
+            let zk_znode_check = readiness_checks.register(v1alpha1::ZookeeperZnode::crd_name());
+
             let webhook_server = create_webhook_server(
                 &operator_environment,
                 maintenance.disable_crd_maintenance,
+                readiness_checks,
                 client.as_kube_client(),
             )
             .await?;
@@ -257,14 +253,16 @@ async fn main() -> anyhow::Result<()> {
                 .map(anyhow::Ok);
 
             let delayed_zk_controller = async {
-                signal::crd_established(&client, v1alpha1::ZookeeperCluster::crd_name(), None)
+                signal::crd_established(&client, v1alpha1::ZookeeperCluster::crd_name())
                     .await?;
+                zk_cluster_check.mark_passed();
                 zk_controller.await
             };
 
             let delayed_znode_controller = async {
-                signal::crd_established(&client, v1alpha1::ZookeeperZnode::crd_name(), None)
+                signal::crd_established(&client, v1alpha1::ZookeeperZnode::crd_name())
                     .await?;
+                zk_znode_check.mark_passed();
                 znode_controller.await
             };
 

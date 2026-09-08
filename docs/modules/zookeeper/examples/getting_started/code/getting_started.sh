@@ -24,7 +24,7 @@ echo "Installing Operators with Helm"
 helm install --wait commons-operator oci://oci.stackable.tech/sdp-charts/commons-operator --version 0.0.0-dev
 helm install --wait secret-operator oci://oci.stackable.tech/sdp-charts/secret-operator --version 0.0.0-dev
 helm install --wait listener-operator oci://oci.stackable.tech/sdp-charts/listener-operator --version 0.0.0-dev
-helm install --wait zookeeper-operator oci://oci.stackable.tech/sdp-charts/zookeeper-operator --version 0.0.0-dev
+helm install --wait zookeeper-operator ../../../../../../deploy/helm/zookeeper-operator --set image.repository=oci.stackable.tech/sdp
 # end::helm-install-operators[]
 ;;
 "stackablectl")
@@ -42,13 +42,6 @@ echo "Need to give 'helm' or 'stackablectl' as an argument for which installatio
 exit 1
 ;;
 esac
-
-# TODO: Remove once https://github.com/stackabletech/issues/issues/828 has been
-# implemented (see that issue for details).
-until kubectl get crd zookeeperclusters.zookeeper.stackable.tech >/dev/null 2>&1; do
-  echo "Waiting for CRDs to be installed"
-  sleep 1
-done
 
 echo "Creating ZooKeeper cluster"
 # tag::install-zookeeper[]
