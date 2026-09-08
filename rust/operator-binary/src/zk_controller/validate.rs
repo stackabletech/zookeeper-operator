@@ -22,7 +22,7 @@ use stackable_operator::{
     config::fragment,
     deep_merger::ObjectOverrides,
     k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta,
-    kube::{Resource, ResourceExt},
+    kube::Resource,
     product_logging::spec::Logging,
     shared::time::Duration,
     v2::{
@@ -395,9 +395,13 @@ pub fn validate(
         .vector_aggregator_config_map_name
         .clone();
 
+    let name = get_cluster_name(zk).context(GetClusterNameSnafu)?;
+    let namespace = get_namespace(zk).context(GetNamespaceSnafu)?;
+    let uid = get_uid(zk).context(GetUidSnafu)?;
+
     let zk_role = ZookeeperRole::Server;
     let role = zk.role(&zk_role);
-    let default_config = ZookeeperConfig::default_server_config(&zk.name_any(), &zk_role);
+    let default_config = ZookeeperConfig::default_server_config(&name, &zk_role);
 
     let mut groups = BTreeMap::new();
     for (rg_name, rg) in &role.role_groups {
@@ -415,10 +419,6 @@ pub fn validate(
         groups.insert(role_group_name, validated_rg);
     }
     let role_group_configs = BTreeMap::from([(zk_role, groups)]);
-
-    let name = get_cluster_name(zk).context(GetClusterNameSnafu)?;
-    let namespace = get_namespace(zk).context(GetNamespaceSnafu)?;
-    let uid = get_uid(zk).context(GetUidSnafu)?;
 
     let product_version =
         ProductVersion::from_str(&image.app_version_label_value).with_context(|_| {

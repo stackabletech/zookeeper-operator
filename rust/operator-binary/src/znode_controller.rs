@@ -9,7 +9,7 @@
 use std::{borrow::Cow, convert::Infallible, str::FromStr, sync::Arc};
 
 use const_format::concatcp;
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     cli::OperatorEnvironmentOptions,
     cluster_resources::ClusterResourceApplyStrategy,
@@ -23,14 +23,17 @@ use stackable_operator::{
     logging::controller::ReconcilerError,
     shared::time::Duration,
     utils::cluster_info::KubernetesClusterInfo,
-    v2::types::operator::ControllerName,
+    v2::types::{
+        kubernetes::NamespaceName,
+        operator::{ClusterName, ControllerName},
+    },
 };
 use strum::{EnumDiscriminants, IntoStaticStr};
 use tracing::{debug, info};
 
 use crate::{
     ZOOKEEPER_OPERATOR_NAME,
-    crd::{security::ZookeeperSecurity, v1alpha1},
+    crd::{ZookeeperRole, role_listener_fqdn, security::ZookeeperSecurity, v1alpha1},
     znode_controller::apply::{Applier, ensure_znode_exists},
 };
 
@@ -69,11 +72,6 @@ pub enum Error {
         "object is missing metadata that should be created by the Kubernetes cluster",
     ))]
     ObjectMissingMetadata,
-
-    #[snafu(display("failed to calculate FQDN for {zk:?}"))]
-    NoZkFqdn {
-        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
-    },
 
     #[snafu(display("failed to ensure that ZNode {znode_path:?} is missing from {zk:?}"))]
     EnsureZnodeMissing {
@@ -132,7 +130,6 @@ impl ReconcilerError for Error {
             Error::Dereference { .. } => None,
             Error::ValidateCluster { .. } => None,
             Error::ObjectMissingMetadata => None,
-            Error::NoZkFqdn { zk } => Some(zk.clone().erase()),
             Error::EnsureZnodeMissing { zk, .. } => Some(zk.clone().erase()),
             Error::BuildResources { .. } => None,
             Error::ApplyResources { .. } => None,
@@ -216,7 +213,7 @@ pub async fn reconcile_znode(
                     let validated_znode =
                         validate::validate(&znode, &dereferenced, &ctx.operator_environment)
                             .context(ValidateClusterSnafu)?;
-                    reconcile_apply(client, &validated_znode, dereferenced.zk, &znode_path).await
+                    reconcile_apply(client, &validated_znode, &dereferenced, &znode_path).await
                 }
                 finalizer::Event::Cleanup(_znode) => {
                     let dereferenced = match dereferenced_objects {
@@ -234,7 +231,7 @@ pub async fn reconcile_znode(
                         &dereferenced.zk,
                         dereferenced.authentication_classes.clone(),
                     );
-                    reconcile_cleanup(client, dereferenced.zk, &zookeeper_security, &znode_path)
+                    reconcile_cleanup(client, &dereferenced, &zookeeper_security, &znode_path)
                         .await
                 }
             }
@@ -247,16 +244,17 @@ pub async fn reconcile_znode(
 async fn reconcile_apply(
     client: &stackable_operator::client::Client,
     validated_znode: &validate::ValidatedZnode,
-    zk: v1alpha1::ZookeeperCluster,
+    dereferenced: &dereference::DereferencedObjects,
     znode_path: &str,
 ) -> Result<controller::Action> {
     // The znode must exist in the ZooKeeper ensemble before the discovery ConfigMap advertises it.
     ensure_znode_exists(
         &zk_mgmt_addr(
-            &zk,
+            &dereferenced.zk_name,
+            &dereferenced.zk_namespace,
             &validated_znode.zookeeper_security,
             &client.kubernetes_cluster_info,
-        )?,
+        ),
         znode_path,
     )
     .await
@@ -281,18 +279,23 @@ async fn reconcile_apply(
 
 async fn reconcile_cleanup(
     client: &stackable_operator::client::Client,
-    zk: v1alpha1::ZookeeperCluster,
+    dereferenced: &dereference::DereferencedObjects,
     zookeeper_security: &ZookeeperSecurity,
     znode_path: &str,
 ) -> Result<controller::Action> {
     // Clean up znode from the ZooKeeper cluster before letting Kubernetes delete the object
     znode_mgmt::ensure_znode_missing(
-        &zk_mgmt_addr(&zk, zookeeper_security, &client.kubernetes_cluster_info)?,
+        &zk_mgmt_addr(
+            &dereferenced.zk_name,
+            &dereferenced.zk_namespace,
+            zookeeper_security,
+            &client.kubernetes_cluster_info,
+        ),
         znode_path,
     )
     .await
     .with_context(|_| EnsureZnodeMissingSnafu {
-        zk: ObjectRef::from_obj(&zk),
+        zk: ObjectRef::from_obj(&dereferenced.zk),
         znode_path,
     })?;
     // No need to delete the ConfigMap, since that has an OwnerReference on the ZookeeperZnode object
@@ -310,21 +313,18 @@ async fn reconcile_cleanup(
 // NOTE (@NickLarsenNZ): If we want to keep this traffic internal, we would need to choose one of
 // the RoleGroups headless services - or make a dedicated ClusterIP service for the operator to use.
 fn zk_mgmt_addr(
-    zk: &v1alpha1::ZookeeperCluster,
+    zk_name: &ClusterName,
+    zk_namespace: &NamespaceName,
     zookeeper_security: &ZookeeperSecurity,
     cluster_info: &KubernetesClusterInfo,
-) -> Result<String> {
+) -> String {
     // Rust ZooKeeper client does not support client-side load-balancing, so use
     // (load-balanced) global service instead.
-    Ok(format!(
+    format!(
         "{hostname}:{port}",
-        hostname = zk
-            .server_role_listener_fqdn(cluster_info)
-            .with_context(|| NoZkFqdnSnafu {
-                zk: ObjectRef::from_obj(zk),
-            })?,
+        hostname = role_listener_fqdn(zk_name, zk_namespace, &ZookeeperRole::Server, cluster_info),
         port = zookeeper_security.client_port(),
-    ))
+    )
 }
 
 pub fn error_policy(
@@ -338,7 +338,10 @@ pub fn error_policy(
 /// Shared helpers for building validated test znodes from minimal YAML fixtures.
 #[cfg(test)]
 pub(crate) mod test_support {
-    use stackable_operator::crd::listener;
+    use stackable_operator::{
+        crd::listener,
+        v2::controller_utils::{get_cluster_name, get_namespace},
+    };
 
     use crate::{
         crd::{authentication::DereferencedAuthenticationClasses, v1alpha1},
@@ -391,10 +394,13 @@ pub(crate) mod test_support {
         znode: &v1alpha1::ZookeeperZnode,
         maybe_role_listener: Option<listener::v1alpha1::Listener>,
     ) -> Result<ValidatedZnode, super::validate::Error> {
+        let zk = referenced_zk();
         validate(
             znode,
             &DereferencedObjects {
-                zk: referenced_zk(),
+                zk_name: get_cluster_name(&zk).expect("the fixture has a valid cluster name"),
+                zk_namespace: get_namespace(&zk).expect("the fixture has a namespace"),
+                zk,
                 authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
                 maybe_role_listener,
             },

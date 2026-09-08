@@ -24,7 +24,7 @@ pub fn build_role_listener(
     listener::v1alpha1::Listener {
         metadata: object_meta(
             cluster,
-            role_listener_name(cluster.name.as_ref(), zk_role),
+            role_listener_name(&cluster.name, zk_role),
             recommended_labels_for_role_resources(cluster, zk_role),
         )
         .build(),

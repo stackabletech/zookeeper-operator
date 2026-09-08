@@ -6,18 +6,11 @@
 //! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
 use std::{collections::BTreeMap, str::FromStr};
 
-use snafu::{ResultExt, Snafu};
 use stackable_operator::{
-    builder::{
-        self,
-        pod::{
-            PodBuilder,
-            container::ContainerBuilder,
-            volume::{
-                SecretFormat, SecretOperatorVolumeSourceBuilder,
-                SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
-            },
-        },
+    builder::pod::{
+        PodBuilder,
+        container::ContainerBuilder,
+        volume::{SecretFormat, SecretOperatorVolumeSourceBuilder, VolumeBuilder},
     },
     commons::secret_class::SecretClassVolumeProvisionParts,
     constant,
@@ -38,25 +31,6 @@ use crate::{
 // TLS volume names (the mount name must match the volume name).
 constant!(SERVER_TLS_VOLUME_NAME: VolumeName = "server-tls");
 constant!(QUORUM_TLS_VOLUME_NAME: VolumeName = "quorum-tls");
-
-type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Snafu, Debug)]
-pub enum Error {
-    #[snafu(display("failed to build TLS volume for {volume_name:?}"))]
-    BuildTlsVolume {
-        source: SecretOperatorVolumeSourceBuilderError,
-        volume_name: String,
-    },
-
-    #[snafu(display("failed to add needed volume"))]
-    AddVolume { source: builder::pod::Error },
-
-    #[snafu(display("failed to add needed volumeMount"))]
-    AddVolumeMount {
-        source: builder::pod::container::Error,
-    },
-}
 
 /// Helper struct combining TLS settings for server and quorum with the resolved AuthenticationClasses
 pub struct ZookeeperSecurity {
@@ -151,40 +125,47 @@ impl ZookeeperSecurity {
 
     /// Adds required volumes and volume mounts to the pod and container builders
     /// depending on the tls and authentication settings.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the volumes or volume mounts cannot be added to the builders. Only call this on
+    /// builders whose volume names and mount paths are still distinct from the ones added here.
     pub fn add_volume_mounts(
         &self,
         pod_builder: &mut PodBuilder,
         cb_zookeeper: &mut ContainerBuilder,
         requested_secret_lifetime: &Duration,
-    ) -> Result<()> {
+    ) {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
             cb_zookeeper
                 .add_volume_mount(&*SERVER_TLS_VOLUME_NAME, Self::SERVER_TLS_DIR)
-                .context(AddVolumeMountSnafu)?;
+                .expect(
+                    "The mount paths are statically defined and there should be no duplicates.",
+                );
             pod_builder
                 .add_volume(Self::create_server_tls_volume(
                     &SERVER_TLS_VOLUME_NAME,
                     secret_class,
                     requested_secret_lifetime,
-                )?)
-                .context(AddVolumeSnafu)?;
+                ))
+                .expect(
+                    "The volume names are statically defined and there should be no duplicates.",
+                );
         }
 
         // quorum
         cb_zookeeper
             .add_volume_mount(&*QUORUM_TLS_VOLUME_NAME, Self::QUORUM_TLS_DIR)
-            .context(AddVolumeMountSnafu)?;
+            .expect("The mount paths are statically defined and there should be no duplicates.");
         pod_builder
             .add_volume(Self::create_quorum_tls_volume(
                 &QUORUM_TLS_VOLUME_NAME,
                 self.quorum_secret_class.as_ref(),
                 requested_secret_lifetime,
-            )?)
-            .context(AddVolumeSnafu)?;
-
-        Ok(())
+            ))
+            .expect("The volume names are statically defined and there should be no duplicates.");
     }
 
     /// Returns required ZooKeeper configuration settings for the `zoo.cfg` properties file
@@ -328,8 +309,8 @@ impl ZookeeperSecurity {
         volume_name: &VolumeName,
         secret_class_name: &str,
         requested_secret_lifetime: &Duration,
-    ) -> Result<Volume> {
-        let volume = VolumeBuilder::new(volume_name.to_string())
+    ) -> Volume {
+        VolumeBuilder::new(volume_name.to_string())
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(
                     secret_class_name,
@@ -340,13 +321,9 @@ impl ZookeeperSecurity {
                 .with_format(SecretFormat::TlsPkcs12)
                 .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                 .build()
-                .context(BuildTlsVolumeSnafu {
-                    volume_name: volume_name.to_string(),
-                })?,
+                .expect("The annotation keys are static and annotation values cannot be invalid."),
             )
-            .build();
-
-        Ok(volume)
+            .build()
     }
 
     /// Creates ephemeral volumes to mount the `SecretClass` with the pod scope into the Pods.
@@ -356,8 +333,8 @@ impl ZookeeperSecurity {
         volume_name: &VolumeName,
         secret_class_name: &str,
         requested_secret_lifetime: &Duration,
-    ) -> Result<Volume> {
-        let volume = VolumeBuilder::new(volume_name.to_string())
+    ) -> Volume {
+        VolumeBuilder::new(volume_name.to_string())
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(
                     secret_class_name,
@@ -368,25 +345,9 @@ impl ZookeeperSecurity {
                 .with_format(SecretFormat::TlsPkcs12)
                 .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                 .build()
-                .context(BuildTlsVolumeSnafu {
-                    volume_name: volume_name.to_string(),
-                })?,
+                .expect("The annotation keys are static and annotation values cannot be invalid."),
             )
-            .build();
-
-        Ok(volume)
-    }
-
-    /// USE ONLY IN TESTS! We can not put it behind `#[cfg(test)]` because of <https://github.com/rust-lang/cargo/issues/8379>
-    pub fn new_for_tests() -> Self {
-        ZookeeperSecurity {
-            resolved_authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
-            server_secret_class: Some(
-                SecretClassName::from_str("tls").expect("'tls' is a valid SecretClass name"),
-            ),
-            quorum_secret_class: SecretClassName::from_str("tls")
-                .expect("'tls' is a valid SecretClass name"),
-        }
+            .build()
     }
 }
 

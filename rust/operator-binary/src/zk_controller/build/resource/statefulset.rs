@@ -6,7 +6,6 @@ use indoc::formatdoc;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
     builder::{
-        self,
         meta::ObjectMetaBuilder,
         pod::{
             PodBuilder, container::FieldPathEnvVar, resources::ResourceRequirementsBuilder,
@@ -53,7 +52,7 @@ use crate::{
         STACKABLE_CONFIG_DIR, STACKABLE_DATA_DIR, STACKABLE_LOG_CONFIG_DIR, STACKABLE_LOG_DIR,
         STACKABLE_RW_CONFIG_DIR, ZOOKEEPER_ELECTION_PORT, ZOOKEEPER_ELECTION_PORT_NAME,
         ZOOKEEPER_LEADER_PORT, ZOOKEEPER_LEADER_PORT_NAME, ZOOKEEPER_SERVER_PORT_NAME,
-        ZookeeperRole, role_listener_name, security, v1alpha1,
+        ZookeeperRole, role_listener_name, v1alpha1,
     },
     zk_controller::{
         LISTENER_VOLUME_DIR, LISTENER_VOLUME_NAME,
@@ -121,21 +120,9 @@ fn container_command() -> Vec<String> {
 }
 
 #[derive(Snafu, Debug)]
-#[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[snafu(display("missing secret lifetime"))]
     MissingSecretLifetime,
-
-    #[snafu(display("failed to add TLS volume mounts"))]
-    AddTlsVolumeMounts { source: security::Error },
-
-    #[snafu(display("failed to add needed volume"))]
-    AddVolume { source: builder::pod::Error },
-
-    #[snafu(display("failed to add needed volumeMount"))]
-    AddVolumeMount {
-        source: builder::pod::container::Error,
-    },
 
     #[snafu(display("failed to construct JVM arguments"))]
     ConstructJvmArguments {
@@ -217,28 +204,29 @@ pub fn build_server_rolegroup_statefulset(
         recommended_labels_for_unversioned_role_group_resources(cluster, zk_role, role_group_name);
 
     let listener_pvc = build_role_listener_pvc(
-        role_listener_name(cluster.name.as_ref(), zk_role),
+        role_listener_name(&cluster.name, zk_role),
         &unversioned_recommended_labels,
     );
 
     let mut pvcs = original_pvcs;
     pvcs.extend([listener_pvc]);
 
+    // Every volume name and mount path below is an operator-defined constant; there are no
+    // user-supplied or user-derived volumes. A collision would mean two of our own constants
+    // clash, which is an operator bug, so the adds use `expect`.
     cb_zookeeper
         .add_volume_mount(LISTENER_VOLUME_NAME, LISTENER_VOLUME_DIR)
-        .context(AddVolumeMountSnafu)?;
+        .expect("The mount paths are statically defined and there should be no duplicates.");
 
     let requested_secret_lifetime = merged_config
         .requested_secret_lifetime
         .context(MissingSecretLifetimeSnafu)?;
     // add volumes and mounts depending on tls / auth settings
-    zookeeper_security
-        .add_volume_mounts(
-            &mut pod_builder,
-            &mut cb_zookeeper,
-            &requested_secret_lifetime,
-        )
-        .context(AddTlsVolumeMountsSnafu)?;
+    zookeeper_security.add_volume_mounts(
+        &mut pod_builder,
+        &mut cb_zookeeper,
+        &requested_secret_lifetime,
+    );
 
     let mut args = Vec::new();
 
@@ -259,13 +247,13 @@ pub fn build_server_rolegroup_statefulset(
         .args(vec![args.join("\n")])
         .add_env_vars(prepare_env_vars)
         .add_volume_mount(&*DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .resources(
             ResourceRequirementsBuilder::new()
                 .with_cpu_request("200m")
@@ -325,15 +313,15 @@ pub fn build_server_rolegroup_statefulset(
         .add_container_port(JMX_METRICS_PORT_NAME, i32::from(JMX_METRICS_PORT))
         .add_container_port(METRICS_PROVIDER_HTTP_PORT_NAME, metrics_port.into())
         .add_volume_mount(&*DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*LOG_CONFIG_VOLUME_NAME, STACKABLE_LOG_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .resources(resources)
         .build();
 
@@ -359,7 +347,7 @@ pub fn build_server_rolegroup_statefulset(
             }),
             ..Volume::default()
         })
-        .context(AddVolumeSnafu)?
+        .expect("The volume names are statically defined and there should be no duplicates.")
         .add_volume(Volume {
             empty_dir: Some(EmptyDirVolumeSource {
                 medium: None,
@@ -368,7 +356,7 @@ pub fn build_server_rolegroup_statefulset(
             name: RW_CONFIG_VOLUME_NAME.to_string(),
             ..Volume::default()
         })
-        .context(AddVolumeSnafu)?
+        .expect("The volume names are statically defined and there should be no duplicates.")
         .add_empty_dir_volume(
             &*LOG_VOLUME_NAME,
             Some(product_logging::framework::calculate_log_volume_size_limit(
@@ -378,7 +366,7 @@ pub fn build_server_rolegroup_statefulset(
                 ],
             )),
         )
-        .context(AddVolumeSnafu)?
+        .expect("The volume names are statically defined and there should be no duplicates.")
         .security_context(
             PodSecurityContextBuilder::with_stackable_defaults()
                 .fs_group(1000)
@@ -403,7 +391,7 @@ pub fn build_server_rolegroup_statefulset(
             }),
             ..Volume::default()
         })
-        .context(AddVolumeSnafu)?;
+        .expect("The volume names are statically defined and there should be no duplicates.");
 
     // The static `vector.yaml` (in the rolegroup ConfigMap, mounted as the `config` volume) is
     // parameterised at runtime via env vars that the `vector_container` injects. The validated

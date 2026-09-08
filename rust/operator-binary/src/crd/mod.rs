@@ -16,7 +16,7 @@ use stackable_operator::{
     crd::ClusterRef,
     deep_merger::ObjectOverrides,
     k8s_openapi::apimachinery::pkg::api::resource::Quantity,
-    kube::{CustomResource, ResourceExt},
+    kube::CustomResource,
     product_logging::{self, spec::Logging},
     role_utils::GenericRoleConfig,
     schemars::{self, JsonSchema},
@@ -31,7 +31,7 @@ use stackable_operator::{
             kubernetes::{
                 ConfigMapName, ListenerClassName, ListenerName, NamespaceName, ServiceName,
             },
-            operator::{OperatorName, ProductName, RoleName},
+            operator::{ClusterName, OperatorName, ProductName, RoleName},
         },
     },
     versioned::versioned,
@@ -49,10 +49,35 @@ pub mod tls;
 /// exposing the given `zk_role`, `<cluster>-<role>`.
 ///
 /// Lives in the `crd` module (rather than the controller build tree) because it is shared by both
-/// controllers and by [`v1alpha1::ZookeeperCluster::server_role_listener_fqdn`].
-pub fn role_listener_name(cluster_name: &str, zk_role: &ZookeeperRole) -> ListenerName {
-    ListenerName::from_str(&format!("{cluster_name}-{role}", role = zk_role.as_ref()))
-        .expect("the role listener name should be a valid Listener name")
+/// controllers and by [`role_listener_fqdn`].
+pub fn role_listener_name(cluster_name: &ClusterName, zk_role: &ZookeeperRole) -> ListenerName {
+    const _: () = assert!(
+        ClusterName::MAX_LENGTH + 1 /* dash */ + RoleName::MAX_LENGTH <= ListenerName::MAX_LENGTH,
+        "The string `<cluster_name>-<role_name>` must not exceed the limit of Listener names."
+    );
+    // Both halves are RFC 1123 labels joined by a dash, which is a valid RFC 1123 subdomain.
+    let _ = ClusterName::IS_RFC_1123_SUBDOMAIN_NAME;
+    let _ = RoleName::IS_RFC_1123_LABEL_NAME;
+
+    let role_name: &RoleName = zk_role;
+    ListenerName::from_str(&format!("{cluster_name}-{role_name}"))
+        .expect("is a valid Listener name")
+}
+
+/// The fully-qualified domain name of the role-level
+/// [`Listener`](stackable_operator::crd::listener::v1alpha1::Listener) exposing the given
+/// `zk_role`, `<cluster>-<role>.<namespace>.svc.<cluster_domain>`.
+pub fn role_listener_fqdn(
+    cluster_name: &ClusterName,
+    namespace: &NamespaceName,
+    zk_role: &ZookeeperRole,
+    cluster_info: &KubernetesClusterInfo,
+) -> String {
+    format!(
+        "{role_listener_name}.{namespace}.svc.{cluster_domain}",
+        role_listener_name = role_listener_name(cluster_name, zk_role),
+        cluster_domain = cluster_info.cluster_domain
+    )
 }
 
 pub const APP_NAME: &str = "zookeeper";
@@ -87,7 +112,7 @@ pub const STACKABLE_RW_CONFIG_DIR: &str = "/stackable/rwconfig";
 pub const CONTAINER_IMAGE_BASE_NAME: &str = "zookeeper";
 
 const DEFAULT_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_minutes_unchecked(2);
-pub const DEFAULT_LISTENER_CLASS: &str = "cluster-internal";
+constant!(pub DEFAULT_LISTENER_CLASS: ListenerClassName = "cluster-internal");
 
 pub type ZookeeperServerRoleType = Role<
     v1alpha1::ZookeeperConfigFragment,
@@ -358,8 +383,7 @@ fn cluster_config_default() -> v1alpha1::ZookeeperClusterConfig {
 }
 
 pub(crate) fn default_listener_class() -> ListenerClassName {
-    ListenerClassName::from_str(DEFAULT_LISTENER_CLASS)
-        .expect("the default listener class should be a valid ListenerClass name")
+    DEFAULT_LISTENER_CLASS.clone()
 }
 
 impl Default for ZookeeperServerRoleConfig {
@@ -380,7 +404,7 @@ impl v1alpha1::ZookeeperConfig {
     pub const TICK_TIME: &'static str = "tickTime";
 
     pub(crate) fn default_server_config(
-        cluster_name: &str,
+        cluster_name: &ClusterName,
         role: &ZookeeperRole,
     ) -> v1alpha1::ZookeeperConfigFragment {
         v1alpha1::ZookeeperConfigFragment {
@@ -435,21 +459,6 @@ impl ZookeeperPodRef {
 }
 
 impl v1alpha1::ZookeeperCluster {
-    /// The fully-qualified domain name of the role-level [Listener]
-    ///
-    /// [Listener]: stackable_operator::crd::listener::v1alpha1::Listener
-    pub fn server_role_listener_fqdn(
-        &self,
-        cluster_info: &KubernetesClusterInfo,
-    ) -> Option<String> {
-        Some(format!(
-            "{role_listener_name}.{namespace}.svc.{cluster_domain}",
-            role_listener_name = role_listener_name(&self.name_any(), &ZookeeperRole::Server),
-            namespace = self.metadata.namespace.as_ref()?,
-            cluster_domain = cluster_info.cluster_domain
-        ))
-    }
-
     /// Returns the given role (the `servers` role is required by the CRD).
     pub fn role(&self, role_variant: &ZookeeperRole) -> &ZookeeperServerRoleType {
         match role_variant {
@@ -466,7 +475,9 @@ impl v1alpha1::ZookeeperCluster {
 
 #[cfg(test)]
 mod tests {
-    use stackable_operator::versioned::test_utils::RoundtripTestData;
+    use stackable_operator::{
+        commons::networking::DomainName, versioned::test_utils::RoundtripTestData,
+    };
 
     use super::*;
 
@@ -476,6 +487,26 @@ mod tests {
         let _ = *PRODUCT_NAME;
         let _ = *OPERATOR_NAME;
         let _ = *SERVER_ROLE_NAME;
+        let _ = *DEFAULT_LISTENER_CLASS;
+    }
+
+    #[test]
+    fn role_listener_fqdn_joins_name_namespace_and_cluster_domain() {
+        let cluster_name = ClusterName::from_str("simple-zookeeper").expect("valid cluster name");
+        let namespace = NamespaceName::from_str("default").expect("valid namespace");
+        let cluster_info = KubernetesClusterInfo {
+            cluster_domain: DomainName::from_str("cluster.local").expect("valid domain"),
+        };
+
+        assert_eq!(
+            role_listener_fqdn(
+                &cluster_name,
+                &namespace,
+                &ZookeeperRole::Server,
+                &cluster_info
+            ),
+            "simple-zookeeper-server.default.svc.cluster.local"
+        );
     }
 
     fn get_server_secret_class(zk: &v1alpha1::ZookeeperCluster) -> Option<&str> {

@@ -2,12 +2,13 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use stackable_operator::{
+    constant,
     schemars::{self, JsonSchema},
     v2::types::kubernetes::SecretClassName,
     versioned::versioned,
 };
 
-const TLS_DEFAULT_SECRET_CLASS: &str = "tls";
+constant!(TLS_DEFAULT_SECRET_CLASS: SecretClassName = "tls");
 
 #[versioned(version(name = "v1alpha1"))]
 pub mod versioned {
@@ -53,6 +54,16 @@ pub fn server_tls_default() -> Option<SecretClassName> {
 
 /// Helper methods to provide defaults in the CRDs and tests
 pub fn quorum_tls_default() -> SecretClassName {
-    SecretClassName::from_str(TLS_DEFAULT_SECRET_CLASS)
-        .expect("the default TLS secret class should be a valid SecretClass name")
+    TLS_DEFAULT_SECRET_CLASS.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constants() {
+        // Test that dereferencing the constant does not panic.
+        let _ = *TLS_DEFAULT_SECRET_CLASS;
+    }
 }

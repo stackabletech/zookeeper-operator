@@ -5,11 +5,15 @@
 //! cluster. Both Apply and Cleanup paths in `reconcile_znode` share this output. Synchronous
 //! validation of the fetched objects happens in the validate step.
 
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     client::Client,
     crd::listener,
-    kube::{self, ResourceExt, runtime::reflector::ObjectRef},
+    kube::{self, runtime::reflector::ObjectRef},
+    v2::{
+        controller_utils::{get_cluster_name, get_namespace},
+        types::{kubernetes::NamespaceName, operator::ClusterName},
+    },
 };
 
 use crate::crd::{
@@ -38,8 +42,15 @@ pub enum Error {
     #[snafu(display("failed to fetch authentication classes"))]
     FetchAuthenticationClasses { source: authentication::Error },
 
-    #[snafu(display("{zk} has no namespace"))]
-    ZkHasNoNamespace {
+    #[snafu(display("failed to get the cluster name of {zk}"))]
+    GetClusterName {
+        source: stackable_operator::v2::controller_utils::Error,
+        zk: ObjectRef<v1alpha1::ZookeeperCluster>,
+    },
+
+    #[snafu(display("failed to get the namespace of {zk}"))]
+    GetNamespace {
+        source: stackable_operator::v2::controller_utils::Error,
         zk: ObjectRef<v1alpha1::ZookeeperCluster>,
     },
 
@@ -55,6 +66,10 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 /// Kubernetes objects referenced from the [`v1alpha1::ZookeeperZnode`] spec, already fetched.
 pub struct DereferencedObjects {
     pub zk: v1alpha1::ZookeeperCluster,
+    /// The referenced cluster's name and namespace as typed values, from which the role Listener
+    /// name and the management address are derived.
+    pub zk_name: ClusterName,
+    pub zk_namespace: NamespaceName,
     pub authentication_classes: DereferencedAuthenticationClasses,
 
     /// The role Listener of the referenced cluster, if it exists already.
@@ -71,6 +86,11 @@ pub async fn dereference(
     znode: &v1alpha1::ZookeeperZnode,
 ) -> Result<DereferencedObjects> {
     let zk = find_zk_of_znode(client, znode).await?;
+    let zk_ref = ObjectRef::from_obj(&zk);
+    let zk_name =
+        get_cluster_name(&zk).with_context(|_| GetClusterNameSnafu { zk: zk_ref.clone() })?;
+    let zk_namespace =
+        get_namespace(&zk).with_context(|_| GetNamespaceSnafu { zk: zk_ref.clone() })?;
 
     let authentication_classes = DereferencedAuthenticationClasses::fetch_references(
         client,
@@ -79,10 +99,12 @@ pub async fn dereference(
     .await
     .context(FetchAuthenticationClassesSnafu)?;
 
-    let maybe_role_listener = fetch_role_listener(client, &zk).await?;
+    let maybe_role_listener = fetch_role_listener(client, &zk_name, &zk_namespace, zk_ref).await?;
 
     Ok(DereferencedObjects {
         zk,
+        zk_name,
+        zk_namespace,
         authentication_classes,
         maybe_role_listener,
     })
@@ -90,18 +112,14 @@ pub async fn dereference(
 
 async fn fetch_role_listener(
     client: &Client,
-    zk: &v1alpha1::ZookeeperCluster,
+    zk_name: &ClusterName,
+    zk_namespace: &NamespaceName,
+    zk_ref: ObjectRef<v1alpha1::ZookeeperCluster>,
 ) -> Result<Option<listener::v1alpha1::Listener>> {
-    let zk_ref = ObjectRef::from_obj(zk);
-    let namespace = zk
-        .metadata
-        .namespace
-        .as_deref()
-        .with_context(|| ZkHasNoNamespaceSnafu { zk: zk_ref.clone() })?;
-    let listener_name = role_listener_name(&zk.name_any(), &ZookeeperRole::Server);
+    let listener_name = role_listener_name(zk_name, &ZookeeperRole::Server);
 
     client
-        .get_opt(listener_name.as_ref(), namespace)
+        .get_opt(listener_name.as_ref(), zk_namespace.as_ref())
         .await
         .with_context(|_| FetchRoleListenerSnafu { zk: zk_ref })
 }
