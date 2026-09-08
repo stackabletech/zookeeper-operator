@@ -321,7 +321,7 @@ impl ZookeeperSecurity {
                 .with_format(SecretFormat::TlsPkcs12)
                 .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                 .build()
-                .expect("The annotation keys are static and annotation values cannot be invalid."),
+                .expect("All inputs are valid and complete, so the builder does not fail."),
             )
             .build()
     }
@@ -345,7 +345,7 @@ impl ZookeeperSecurity {
                 .with_format(SecretFormat::TlsPkcs12)
                 .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                 .build()
-                .expect("The annotation keys are static and annotation values cannot be invalid."),
+                .expect("All inputs are valid and complete, so the builder does not fail."),
             )
             .build()
     }
