@@ -3,7 +3,7 @@
 //! Shared by the build steps of both controllers: the ZookeeperCluster controller publishes the
 //! whole ensemble, the ZookeeperZnode controller publishes the same ensemble narrowed to a chroot.
 
-use snafu::Snafu;
+use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
     k8s_openapi::api::core::v1::ConfigMap,
@@ -28,6 +28,11 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     #[snafu(display("chroot path {} was relative (must be absolute)", chroot))]
     RelativeChroot { chroot: String },
+
+    #[snafu(display("failed to build ConfigMap"))]
+    BuildConfigMap {
+        source: stackable_operator::builder::configmap::Error,
+    },
 }
 
 /// Build the discovery [`ConfigMap`] for the cluster controller from the
@@ -130,7 +135,7 @@ fn build_discovery_configmap_for_owner(
         }
         conn_str.push_str(chroot);
     }
-    Ok(ConfigMapBuilder::new()
+    ConfigMapBuilder::new()
         .metadata(
             ObjectMetaBuilder::new()
                 .name(name)
@@ -148,7 +153,7 @@ fn build_discovery_configmap_for_owner(
         )
         .add_data("ZOOKEEPER_CHROOT", chroot.unwrap_or("/"))
         .build()
-        .expect("The ConfigMap metadata is set in this function."))
+        .context(BuildConfigMapSnafu)
 }
 
 #[cfg(test)]

@@ -39,6 +39,12 @@ pub enum Error {
         file: String,
         role_group: RoleGroupName,
     },
+
+    #[snafu(display("failed to build ConfigMap for role group {role_group}"))]
+    BuildConfigMap {
+        source: stackable_operator::builder::configmap::Error,
+        role_group: RoleGroupName,
+    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -97,7 +103,7 @@ pub fn build_server_rolegroup_config_map(
         );
     }
 
-    Ok(ConfigMapBuilder::new()
+    ConfigMapBuilder::new()
         .metadata(
             object_meta(
                 cluster,
@@ -111,5 +117,7 @@ pub fn build_server_rolegroup_config_map(
         )
         .data(data)
         .build()
-        .expect("The ConfigMap metadata is set in this function."))
+        .with_context(|_| BuildConfigMapSnafu {
+            role_group: role_group_name.clone(),
+        })
 }

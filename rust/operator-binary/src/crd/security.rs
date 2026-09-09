@@ -6,11 +6,18 @@
 //! This is required due to overlaps between TLS encryption and e.g. mTLS authentication or Kerberos
 use std::{collections::BTreeMap, str::FromStr};
 
+use snafu::{ResultExt, Snafu};
 use stackable_operator::{
-    builder::pod::{
-        PodBuilder,
-        container::ContainerBuilder,
-        volume::{SecretFormat, SecretOperatorVolumeSourceBuilder, VolumeBuilder},
+    builder::{
+        self,
+        pod::{
+            PodBuilder,
+            container::ContainerBuilder,
+            volume::{
+                SecretFormat, SecretOperatorVolumeSourceBuilder,
+                SecretOperatorVolumeSourceBuilderError, VolumeBuilder,
+            },
+        },
     },
     commons::secret_class::SecretClassVolumeProvisionParts,
     constant,
@@ -31,6 +38,20 @@ use crate::{
 // TLS volume names (the mount name must match the volume name).
 constant!(SERVER_TLS_VOLUME_NAME: VolumeName = "server-tls");
 constant!(QUORUM_TLS_VOLUME_NAME: VolumeName = "quorum-tls");
+
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Snafu, Debug)]
+pub enum Error {
+    #[snafu(display("failed to build TLS volume for {volume_name:?}"))]
+    BuildTlsVolume {
+        source: SecretOperatorVolumeSourceBuilderError,
+        volume_name: String,
+    },
+
+    #[snafu(display("failed to add needed volume"))]
+    AddVolume { source: builder::pod::Error },
+}
 
 /// Helper struct combining TLS settings for server and quorum with the resolved AuthenticationClasses
 pub struct ZookeeperSecurity {
@@ -128,14 +149,14 @@ impl ZookeeperSecurity {
     ///
     /// # Panics
     ///
-    /// Panics if the volumes or volume mounts cannot be added to the builders. Only call this on
-    /// builders whose volume names and mount paths are still distinct from the ones added here.
+    /// Panics if the volume mounts cannot be added to the container builder. Only call this on a
+    /// container builder whose mount paths are still distinct from the ones added here.
     pub fn add_volume_mounts(
         &self,
         pod_builder: &mut PodBuilder,
         cb_zookeeper: &mut ContainerBuilder,
         requested_secret_lifetime: &Duration,
-    ) {
+    ) -> Result<()> {
         let tls_secret_class = self.get_tls_secret_class();
 
         if let Some(secret_class) = tls_secret_class {
@@ -149,10 +170,8 @@ impl ZookeeperSecurity {
                     &SERVER_TLS_VOLUME_NAME,
                     secret_class,
                     requested_secret_lifetime,
-                ))
-                .expect(
-                    "The volume names are statically defined and there should be no duplicates.",
-                );
+                )?)
+                .context(AddVolumeSnafu)?;
         }
 
         // quorum
@@ -164,8 +183,10 @@ impl ZookeeperSecurity {
                 &QUORUM_TLS_VOLUME_NAME,
                 self.quorum_secret_class.as_ref(),
                 requested_secret_lifetime,
-            ))
-            .expect("The volume names are statically defined and there should be no duplicates.");
+            )?)
+            .context(AddVolumeSnafu)?;
+
+        Ok(())
     }
 
     /// Returns required ZooKeeper configuration settings for the `zoo.cfg` properties file
@@ -309,8 +330,8 @@ impl ZookeeperSecurity {
         volume_name: &VolumeName,
         secret_class_name: &str,
         requested_secret_lifetime: &Duration,
-    ) -> Volume {
-        VolumeBuilder::new(volume_name.to_string())
+    ) -> Result<Volume> {
+        let volume = VolumeBuilder::new(volume_name.to_string())
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(
                     secret_class_name,
@@ -321,9 +342,13 @@ impl ZookeeperSecurity {
                 .with_format(SecretFormat::TlsPkcs12)
                 .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                 .build()
-                .expect("All inputs are valid and complete, so the builder does not fail."),
+                .context(BuildTlsVolumeSnafu {
+                    volume_name: volume_name.to_string(),
+                })?,
             )
-            .build()
+            .build();
+
+        Ok(volume)
     }
 
     /// Creates ephemeral volumes to mount the `SecretClass` with the pod scope into the Pods.
@@ -333,8 +358,8 @@ impl ZookeeperSecurity {
         volume_name: &VolumeName,
         secret_class_name: &str,
         requested_secret_lifetime: &Duration,
-    ) -> Volume {
-        VolumeBuilder::new(volume_name.to_string())
+    ) -> Result<Volume> {
+        let volume = VolumeBuilder::new(volume_name.to_string())
             .ephemeral(
                 SecretOperatorVolumeSourceBuilder::new(
                     secret_class_name,
@@ -345,9 +370,13 @@ impl ZookeeperSecurity {
                 .with_format(SecretFormat::TlsPkcs12)
                 .with_auto_tls_cert_lifetime(*requested_secret_lifetime)
                 .build()
-                .expect("All inputs are valid and complete, so the builder does not fail."),
+                .context(BuildTlsVolumeSnafu {
+                    volume_name: volume_name.to_string(),
+                })?,
             )
-            .build()
+            .build();
+
+        Ok(volume)
     }
 }
 

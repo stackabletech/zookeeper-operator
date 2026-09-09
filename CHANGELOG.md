@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.
   environment variables by name, so an override replaces the operator's value instead of
   producing a duplicated entry whose precedence depended on Kubernetes' duplicate-name
   handling ([#1077]).
+- Make operations infallible where dependent on static inputs ([#1084]).
 
 ### Fixed
 
@@ -48,6 +49,7 @@ All notable changes to this project will be documented in this file.
 [#1070]: https://github.com/stackabletech/zookeeper-operator/pull/1070
 [#1077]: https://github.com/stackabletech/zookeeper-operator/pull/1077
 [#1079]: https://github.com/stackabletech/zookeeper-operator/pull/1079
+[#1084]: https://github.com/stackabletech/zookeeper-operator/pull/1084
 
 ## [26.7.0] - 2026-07-21
 
