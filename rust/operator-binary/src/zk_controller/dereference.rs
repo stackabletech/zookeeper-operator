@@ -85,7 +85,7 @@ async fn fetch_role_listener(
     cluster_name: &ClusterName,
     namespace: &NamespaceName,
 ) -> Result<Option<listener::v1alpha1::Listener>> {
-    let listener_name = role_listener_name(cluster_name.as_ref(), &ZookeeperRole::Server);
+    let listener_name = role_listener_name(cluster_name, &ZookeeperRole::Server);
 
     client
         .get_opt(listener_name.as_ref(), namespace.as_ref())

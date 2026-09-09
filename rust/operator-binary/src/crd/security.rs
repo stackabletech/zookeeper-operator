@@ -51,11 +51,6 @@ pub enum Error {
 
     #[snafu(display("failed to add needed volume"))]
     AddVolume { source: builder::pod::Error },
-
-    #[snafu(display("failed to add needed volumeMount"))]
-    AddVolumeMount {
-        source: builder::pod::container::Error,
-    },
 }
 
 /// Helper struct combining TLS settings for server and quorum with the resolved AuthenticationClasses
@@ -151,6 +146,11 @@ impl ZookeeperSecurity {
 
     /// Adds required volumes and volume mounts to the pod and container builders
     /// depending on the tls and authentication settings.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the volume mounts cannot be added to the container builder. Only call this on a
+    /// container builder whose mount paths are still distinct from the ones added here.
     pub fn add_volume_mounts(
         &self,
         pod_builder: &mut PodBuilder,
@@ -162,7 +162,9 @@ impl ZookeeperSecurity {
         if let Some(secret_class) = tls_secret_class {
             cb_zookeeper
                 .add_volume_mount(&*SERVER_TLS_VOLUME_NAME, Self::SERVER_TLS_DIR)
-                .context(AddVolumeMountSnafu)?;
+                .expect(
+                    "The mount paths are statically defined and there should be no duplicates.",
+                );
             pod_builder
                 .add_volume(Self::create_server_tls_volume(
                     &SERVER_TLS_VOLUME_NAME,
@@ -175,7 +177,7 @@ impl ZookeeperSecurity {
         // quorum
         cb_zookeeper
             .add_volume_mount(&*QUORUM_TLS_VOLUME_NAME, Self::QUORUM_TLS_DIR)
-            .context(AddVolumeMountSnafu)?;
+            .expect("The mount paths are statically defined and there should be no duplicates.");
         pod_builder
             .add_volume(Self::create_quorum_tls_volume(
                 &QUORUM_TLS_VOLUME_NAME,
@@ -375,18 +377,6 @@ impl ZookeeperSecurity {
             .build();
 
         Ok(volume)
-    }
-
-    /// USE ONLY IN TESTS! We can not put it behind `#[cfg(test)]` because of <https://github.com/rust-lang/cargo/issues/8379>
-    pub fn new_for_tests() -> Self {
-        ZookeeperSecurity {
-            resolved_authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
-            server_secret_class: Some(
-                SecretClassName::from_str("tls").expect("'tls' is a valid SecretClass name"),
-            ),
-            quorum_secret_class: SecretClassName::from_str("tls")
-                .expect("'tls' is a valid SecretClass name"),
-        }
     }
 }
 

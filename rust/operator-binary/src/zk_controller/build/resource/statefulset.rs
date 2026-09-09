@@ -121,7 +121,6 @@ fn container_command() -> Vec<String> {
 }
 
 #[derive(Snafu, Debug)]
-#[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[snafu(display("missing secret lifetime"))]
     MissingSecretLifetime,
@@ -131,11 +130,6 @@ pub enum Error {
 
     #[snafu(display("failed to add needed volume"))]
     AddVolume { source: builder::pod::Error },
-
-    #[snafu(display("failed to add needed volumeMount"))]
-    AddVolumeMount {
-        source: builder::pod::container::Error,
-    },
 
     #[snafu(display("failed to construct JVM arguments"))]
     ConstructJvmArguments {
@@ -217,16 +211,19 @@ pub fn build_server_rolegroup_statefulset(
         recommended_labels_for_unversioned_role_group_resources(cluster, zk_role, role_group_name);
 
     let listener_pvc = build_role_listener_pvc(
-        role_listener_name(cluster.name.as_ref(), zk_role),
+        role_listener_name(&cluster.name, zk_role),
         &unversioned_recommended_labels,
     );
 
     let mut pvcs = original_pvcs;
     pvcs.extend([listener_pvc]);
 
+    // Every mount path below is an operator-defined constant, so the mounts cannot collide with
+    // each other and adding them is infallible. Adding the volumes stays fallible, because the
+    // volumes are built from computed arguments (ConfigMap names, log volume size).
     cb_zookeeper
         .add_volume_mount(LISTENER_VOLUME_NAME, LISTENER_VOLUME_DIR)
-        .context(AddVolumeMountSnafu)?;
+        .expect("The mount paths are statically defined and there should be no duplicates.");
 
     let requested_secret_lifetime = merged_config
         .requested_secret_lifetime
@@ -259,13 +256,13 @@ pub fn build_server_rolegroup_statefulset(
         .args(vec![args.join("\n")])
         .add_env_vars(prepare_env_vars)
         .add_volume_mount(&*DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .resources(
             ResourceRequirementsBuilder::new()
                 .with_cpu_request("200m")
@@ -325,15 +322,15 @@ pub fn build_server_rolegroup_statefulset(
         .add_container_port(JMX_METRICS_PORT_NAME, i32::from(JMX_METRICS_PORT))
         .add_container_port(METRICS_PROVIDER_HTTP_PORT_NAME, metrics_port.into())
         .add_volume_mount(&*DATA_VOLUME_NAME, STACKABLE_DATA_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*CONFIG_VOLUME_NAME, STACKABLE_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*LOG_CONFIG_VOLUME_NAME, STACKABLE_LOG_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*RW_CONFIG_VOLUME_NAME, STACKABLE_RW_CONFIG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .add_volume_mount(&*LOG_VOLUME_NAME, STACKABLE_LOG_DIR)
-        .context(AddVolumeMountSnafu)?
+        .expect("The mount paths are statically defined and there should be no duplicates.")
         .resources(resources)
         .build();
 
