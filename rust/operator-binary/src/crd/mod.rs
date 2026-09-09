@@ -50,6 +50,8 @@ pub mod tls;
 ///
 /// Lives in the `crd` module (rather than the controller build tree) because it is shared by both
 /// controllers and by [`role_listener_fqdn`].
+///
+/// The returned ListenerName is a lowercase RFC 1035 label name (checked by a unit test).
 pub fn role_listener_name(cluster_name: &ClusterName, zk_role: &ZookeeperRole) -> ListenerName {
     const _: () = assert!(
         ClusterName::MAX_LENGTH + 1 /* dash */ + RoleName::MAX_LENGTH <= ListenerName::MAX_LENGTH,
@@ -340,7 +342,7 @@ pub mod versioned {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Eq, EnumIter, Hash, Ord, PartialEq, PartialOrd)]
 pub enum ZookeeperRole {
     Server,
 }
@@ -478,6 +480,7 @@ mod tests {
     use stackable_operator::{
         commons::networking::DomainName, versioned::test_utils::RoundtripTestData,
     };
+    use strum::IntoEnumIterator;
 
     use super::*;
 
@@ -772,6 +775,24 @@ mod tests {
                   namespace: default
         "})
             .expect("Failed to parse ZookeeperZnodeSpec YAML")
+        }
+    }
+
+    #[test]
+    fn role_listener_name_is_rfc_1035_label_name() {
+        // Every ClusterName is a valid RFC 1035 label name, so we use just some string with maximum
+        // length.
+        let _ = ClusterName::IS_RFC_1035_LABEL_NAME;
+        let cluster_name = ClusterName::from_str_unsafe(&"a".repeat(ClusterName::MAX_LENGTH));
+
+        for role in ZookeeperRole::iter() {
+            let role_listener_name = role_listener_name(&cluster_name, &role);
+            assert!(
+                stackable_operator::validation::is_lowercase_rfc_1035_label(
+                    role_listener_name.as_ref()
+                )
+                .is_ok()
+            );
         }
     }
 }
