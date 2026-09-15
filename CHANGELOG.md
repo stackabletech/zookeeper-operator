@@ -6,13 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Support floating tags for product images via the new `spec.image.stackableVersionPolicy` field
+  ([#1086]).
 - BREAKING: Enable auto-purge feature for data directory cleanup ([#1068]).
 
 ### Changed
 
+- BREAKING: `spec.image.stackableVersion` must now be a full, valid semver version, e.g. `26.7.1`.
+  Abbreviated values such as `26.7` are no longer accepted ([#1086]).
+- BREAKING: `spec.image.pullPolicy` now defaults to `IfNotPresent` for non-floating tags instead of
+  always defaulting to `Always` ([#1086]).
 - Internal operator refactoring: introduce a build() step in the reconciler that
   assembles all relevant Kubernetes resources before anything is applied ([#1053]).
-- Bump `stackable-operator` to 0.116.0 ([#1063], [#1077]).
+- Bump `stackable-operator` to 0.118.0 ([#1063], [#1077], [#1086]).
 - The RBAC ServiceAccount and RoleBinding are now built with the operator-rs `v2::rbac`
   functions and carry the full set of recommended labels ([#1060]).
 - BREAKING: The `servers` role is now required by the CRD.
@@ -50,6 +56,7 @@ All notable changes to this project will be documented in this file.
 [#1077]: https://github.com/stackabletech/zookeeper-operator/pull/1077
 [#1079]: https://github.com/stackabletech/zookeeper-operator/pull/1079
 [#1084]: https://github.com/stackabletech/zookeeper-operator/pull/1084
+[#1086]: https://github.com/stackabletech/zookeeper-operator/pull/1086
 
 ## [26.7.0] - 2026-07-21
 
