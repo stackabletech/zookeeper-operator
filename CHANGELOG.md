@@ -56,6 +56,7 @@ All notable changes to this project will be documented in this file.
 [#1077]: https://github.com/stackabletech/zookeeper-operator/pull/1077
 [#1079]: https://github.com/stackabletech/zookeeper-operator/pull/1079
 [#1084]: https://github.com/stackabletech/zookeeper-operator/pull/1084
+[#1086]: https://github.com/stackabletech/zookeeper-operator/pull/1086
 
 ## [26.7.0] - 2026-07-21
 
