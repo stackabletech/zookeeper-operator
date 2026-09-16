@@ -520,7 +520,7 @@ mod tests {
               name: simple-zookeeper
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -547,7 +547,7 @@ mod tests {
               name: simple-zookeeper
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -569,7 +569,7 @@ mod tests {
               name: simple-zookeeper
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:

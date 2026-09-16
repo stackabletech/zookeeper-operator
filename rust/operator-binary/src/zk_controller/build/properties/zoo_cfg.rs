@@ -228,7 +228,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -252,7 +252,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               clusterConfig:
                 tls:
                   serverSecretClass: null
@@ -279,7 +279,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default: {}
@@ -301,7 +301,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   primary:
@@ -334,7 +334,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -352,7 +352,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -373,7 +373,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -396,7 +396,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:

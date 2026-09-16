@@ -310,7 +310,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           servers:
             roleGroups:
               default:
@@ -337,7 +337,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           servers:
             configOverrides:
               zoo.cfg:
@@ -382,7 +382,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           servers:
             roleGroups:
               default:
@@ -425,7 +425,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           servers:
             roleGroups:
               default:
@@ -454,7 +454,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           clusterConfig:
             tls:
               serverSecretClass: null
@@ -482,7 +482,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           servers:
             roleGroups:
               default:
@@ -509,7 +509,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           servers:
             roleGroups:
               default:
@@ -525,7 +525,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           servers:
             roleGroups:
               default:
@@ -552,7 +552,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           clusterConfig:
             vectorAggregatorConfigMapName: vector-aggregator-discovery
           servers:

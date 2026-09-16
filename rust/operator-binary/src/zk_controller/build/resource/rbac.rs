@@ -45,7 +45,7 @@ mod tests {
               name: simple-zookeeper
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -70,7 +70,7 @@ mod tests {
                         "app.kubernetes.io/instance": "simple-zookeeper",
                         "app.kubernetes.io/managed-by": "zookeeper.stackable.tech_zookeepercluster",
                         "app.kubernetes.io/name": "zookeeper",
-                        "app.kubernetes.io/version": app_version_label("3.9.5"),
+                        "app.kubernetes.io/version": app_version_label("3.9.6"),
                         "stackable.tech/vendor": "Stackable"
                     },
                     "name": "simple-zookeeper-serviceaccount",
@@ -103,7 +103,7 @@ mod tests {
                         "app.kubernetes.io/instance": "simple-zookeeper",
                         "app.kubernetes.io/managed-by": "zookeeper.stackable.tech_zookeepercluster",
                         "app.kubernetes.io/name": "zookeeper",
-                        "app.kubernetes.io/version": app_version_label("3.9.5"),
+                        "app.kubernetes.io/version": app_version_label("3.9.6"),
                         "stackable.tech/vendor": "Stackable"
                     },
                     "name": "simple-zookeeper-rolebinding",

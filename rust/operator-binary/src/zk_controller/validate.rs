@@ -527,7 +527,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           servers:
             roleGroups:
               default:
@@ -551,7 +551,7 @@ mod tests {
               name: simple-zookeeper
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -568,12 +568,12 @@ mod tests {
         );
         assert_eq!(
             validated.image.image,
-            format!("oci.example.org/zookeeper:{}", app_version_label("3.9.5"))
+            format!("oci.example.org/zookeeper:{}", app_version_label("3.9.6"))
         );
-        assert_eq!(validated.image.product_version, "3.9.5");
+        assert_eq!(validated.image.product_version, "3.9.6");
         assert_eq!(
             validated.product_version.to_string(),
-            app_version_label("3.9.5")
+            app_version_label("3.9.6")
         );
 
         // TLS towards clients is enabled by default (the secure client port), and the listener
@@ -615,7 +615,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -641,7 +641,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               clusterConfig:
                 vectorAggregatorConfigMapName: vector-aggregator-discovery
               servers:
@@ -686,7 +686,7 @@ mod tests {
               name: test-zk
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 config:
                   resources:
