@@ -263,7 +263,7 @@ mod tests {
         // The product version comes from the referenced cluster, not from the znode.
         assert_eq!(
             validated.product_version.to_string(),
-            app_version_label("3.9.5")
+            app_version_label("3.9.6")
         );
         assert!(validated.zookeeper_security.tls_enabled());
         assert_eq!(

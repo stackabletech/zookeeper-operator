@@ -145,7 +145,7 @@ mod tests {
               name: simple-zookeeper
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:
@@ -181,7 +181,7 @@ mod tests {
                         "app.kubernetes.io/managed-by": "zookeeper.stackable.tech_zookeepercluster",
                         "app.kubernetes.io/name": "zookeeper",
                         "app.kubernetes.io/role-group": "default",
-                        "app.kubernetes.io/version": app_version_label("3.9.5"),
+                        "app.kubernetes.io/version": app_version_label("3.9.6"),
                         "prometheus.io/scrape": "true",
                         "stackable.tech/vendor": "Stackable"
                     },
