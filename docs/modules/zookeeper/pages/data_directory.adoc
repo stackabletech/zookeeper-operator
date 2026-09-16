@@ -1,6 +1,6 @@
 = Data directory
 :description: How ZooKeeper manages its data directory and which zoo.cfg properties control it.
-:zk-admin-advanced: https://zookeeper.apache.org/doc/r3.9.5/zookeeperAdmin.html#sc_advancedConfiguration
+:zk-admin-advanced: https://zookeeper.apache.org/doc/r3.9.6/zookeeperAdmin.html#sc_advancedConfiguration
 
 This page is meant as a general explanation of how ZooKeeper manages the files in its data directory over time.
 To see a simple list of the properties the operator sets in relation to that and their defaults, see xref:reference/zoo_cfg_properties.adoc#data-dir-props[`zoo.cfg` properties reference].
