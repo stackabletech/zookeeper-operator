@@ -349,6 +349,7 @@ commands:
         ssl.keyStore.location=/stackable/server_tls/keystore.p12
 {% endif %}
         ssl.quorum.clientAuth=need
+        ssl.quorum.clientHostnameVerification=false
         ssl.quorum.hostnameVerification=true
         ssl.quorum.keyStore.location=/stackable/quorum_tls/keystore.p12
         ssl.quorum.trustStore.location=/stackable/quorum_tls/truststore.p12
@@ -631,6 +632,7 @@ commands:
         ssl.keyStore.location=/stackable/server_tls/keystore.p12
 {% endif %}
         ssl.quorum.clientAuth=need
+        ssl.quorum.clientHostnameVerification=false
         ssl.quorum.hostnameVerification=true
         ssl.quorum.keyStore.location=/stackable/quorum_tls/keystore.p12
         ssl.quorum.trustStore.location=/stackable/quorum_tls/truststore.p12

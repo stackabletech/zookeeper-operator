@@ -84,6 +84,8 @@ impl ZookeeperSecurity {
     // Quorum TLS
     pub const SSL_QUORUM: &'static str = "sslQuorum";
     pub const SSL_QUORUM_CLIENT_AUTH: &'static str = "ssl.quorum.clientAuth";
+    pub const SSL_QUORUM_CLIENT_HOST_NAME_VERIFICATION: &'static str =
+        "ssl.quorum.clientHostnameVerification";
     pub const SSL_QUORUM_HOST_NAME_VERIFICATION: &'static str = "ssl.quorum.hostnameVerification";
     pub const SSL_QUORUM_KEY_STORE_LOCATION: &'static str = "ssl.quorum.keyStore.location";
     pub const SSL_QUORUM_KEY_STORE_PASSWORD: &'static str = "ssl.quorum.keyStore.password";
@@ -198,6 +200,13 @@ impl ZookeeperSecurity {
         config.insert(
             Self::SSL_QUORUM_HOST_NAME_VERIFICATION.to_string(),
             "true".to_string(),
+        );
+        // Explicitly disable client certification hostname verification for ZooKeeper 3.9.6 (no change to 3.9.5).
+        // The X509TrustManager (used in FIPS mode) does not do reverse DNS lookups to validation client hostnames.
+        // See: https://issues.apache.org/jira/browse/ZOOKEEPER-5096
+        config.insert(
+            Self::SSL_QUORUM_CLIENT_HOST_NAME_VERIFICATION.to_string(),
+            "false".to_string(),
         );
         config.insert(Self::SSL_QUORUM_CLIENT_AUTH.to_string(), "need".to_string());
         config.insert(

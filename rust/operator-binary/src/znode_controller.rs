@@ -379,7 +379,7 @@ pub(crate) mod test_support {
               name: simple-zookeeper
             spec:
               image:
-                productVersion: "3.9.5"
+                productVersion: "3.9.6"
               servers:
                 roleGroups:
                   default:

@@ -180,7 +180,7 @@ mod tests {
           name: simple-zookeeper
         spec:
           image:
-            productVersion: "3.9.5"
+            productVersion: "3.9.6"
           servers:
             roleGroups:
               default:
@@ -336,7 +336,7 @@ mod tests {
                     "zookeeper.stackable.tech_znode".to_owned(),
                 ),
                 ("app.kubernetes.io/name", "zookeeper".to_owned()),
-                ("app.kubernetes.io/version", app_version_label("3.9.5")),
+                ("app.kubernetes.io/version", app_version_label("3.9.6")),
                 ("stackable.tech/vendor", "Stackable".to_owned()),
             ]
             .map(|(key, value)| (key.to_owned(), value)),
