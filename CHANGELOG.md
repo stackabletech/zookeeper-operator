@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 - Support floating tags for product images via the new `spec.image.stackableVersionPolicy` field
   ([#1086]).
 - BREAKING: Enable auto-purge feature for data directory cleanup ([#1068]).
+- Add `/ready` endpoint to the operator Deployment, which reports the CRD installation status ([#1090]).
 
 ### Changed
 
@@ -38,6 +39,7 @@ All notable changes to this project will be documented in this file.
   producing a duplicated entry whose precedence depended on Kubernetes' duplicate-name
   handling ([#1077]).
 - Make operations infallible where dependent on static inputs ([#1084]).
+- Bump stackable-operator to 0.119.0 ([#1090]).
 
 ### Fixed
 
@@ -57,6 +59,7 @@ All notable changes to this project will be documented in this file.
 [#1079]: https://github.com/stackabletech/zookeeper-operator/pull/1079
 [#1084]: https://github.com/stackabletech/zookeeper-operator/pull/1084
 [#1086]: https://github.com/stackabletech/zookeeper-operator/pull/1086
+[#1090]: https://github.com/stackabletech/zookeeper-operator/pull/1090
 
 ## [26.7.0] - 2026-07-21
 
