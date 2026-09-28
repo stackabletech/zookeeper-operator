@@ -35,6 +35,7 @@ use stackable_operator::{
     shared::yaml::SerializeOptions,
     telemetry::Tracing,
     utils::signal::{self, SignalWatcher},
+    webhook::health::HealthCheckRegistry,
 };
 
 use crate::{
@@ -115,9 +116,20 @@ async fn main() -> anyhow::Result<()> {
             )
             .await?;
 
+            let mut readiness_checks = HealthCheckRegistry::new();
+            let zookeeper_cluster_crd_check = readiness_checks.register(format!(
+                "CRD {crd} established",
+                crd = v1alpha1::ZookeeperCluster::crd_name()
+            ));
+            let zookeeper_znode_crd_check = readiness_checks.register(format!(
+                "CRD {crd} established",
+                crd = v1alpha1::ZookeeperZnode::crd_name()
+            ));
+
             let webhook_server = create_webhook_server(
                 &operator_environment,
                 maintenance.disable_crd_maintenance,
+                readiness_checks,
                 client.as_kube_client(),
             )
             .await?;
@@ -264,14 +276,14 @@ async fn main() -> anyhow::Result<()> {
                 .map(anyhow::Ok);
 
             let delayed_zk_controller = async {
-                signal::crd_established(&client, v1alpha1::ZookeeperCluster::crd_name(), None)
-                    .await?;
+                signal::crd_established(&client, v1alpha1::ZookeeperCluster::crd_name()).await?;
+                zookeeper_cluster_crd_check.mark_passed();
                 zk_controller.await
             };
 
             let delayed_znode_controller = async {
-                signal::crd_established(&client, v1alpha1::ZookeeperZnode::crd_name(), None)
-                    .await?;
+                signal::crd_established(&client, v1alpha1::ZookeeperZnode::crd_name()).await?;
+                zookeeper_znode_crd_check.mark_passed();
                 znode_controller.await
             };
 
