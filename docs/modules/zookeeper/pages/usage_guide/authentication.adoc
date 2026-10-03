@@ -30,4 +30,4 @@ and unauthenticated access to the ZooKeeper cluster is still possible.
 == Learn more
 
 * Read the xref:concepts:authentication.adoc[authentication concept] of the Stackable Data Platform.
-* Read the {crd-docs}/authentication.stackable.tech/authenticationclass/v1alpha1/[AuthenticationClass reference {external-link-icon}^].
+* Read the {crd-ref}/authentication.stackable.tech/v1alpha1/authenticationclass{crd-ref-release}[AuthenticationClass reference {external-link-icon}^].
