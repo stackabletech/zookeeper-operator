@@ -9,7 +9,7 @@ as it sees fit. This can be thought of like a namespace for that client, and pre
 
 The Stackable Operator for Apache ZooKeeper manages ZNodes using the _ZookeeperZnode_ resource.
 
-IMPORTANT: The Operator connects directly to ZooKeeper to manage the ZNodes inside of the ZooKeeper ensemble. This means that network access to the ZooKeeper pods is necessary. If your Kubernetes cluster restricts network acess, you need to configure a NetworkPolicy to allow the operator to connect to ZooKeeper.
+IMPORTANT: The Operator connects directly to ZooKeeper to manage the ZNodes inside of the ZooKeeper ensemble. This means that network access to the ZooKeeper pods is necessary. If your Kubernetes cluster restricts network access, you need to configure a NetworkPolicy to allow the operator to connect to ZooKeeper.
 
 == Configuring ZNodes
 

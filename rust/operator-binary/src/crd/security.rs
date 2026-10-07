@@ -93,7 +93,7 @@ impl ZookeeperSecurity {
     pub const SSL_QUORUM_TRUST_STORE_PASSWORD: &'static str = "ssl.quorum.trustStore.password";
     pub const SSL_TRUST_STORE_LOCATION: &'static str = "ssl.trustStore.location";
     pub const SSL_TRUST_STORE_PASSWORD: &'static str = "ssl.trustStore.password";
-    // Mis
+    // Miscellaneous
     pub const SYSTEM_TRUST_STORE_DIR: &'static str = "/etc/pki/java/cacerts";
     pub const TRUSTSTORE_FILE: &'static str = "truststore.p12";
 
