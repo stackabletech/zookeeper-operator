@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
   handling ([#1077]).
 - Make operations infallible where dependent on static inputs ([#1084]).
 - Bump stackable-operator to 0.119.0 ([#1090]).
+- test: Bump vector-aggregator to 0.58.0 ([#1093]).
 
 ### Fixed
 
@@ -60,6 +61,7 @@ All notable changes to this project will be documented in this file.
 [#1084]: https://github.com/stackabletech/zookeeper-operator/pull/1084
 [#1086]: https://github.com/stackabletech/zookeeper-operator/pull/1086
 [#1090]: https://github.com/stackabletech/zookeeper-operator/pull/1090
+[#1093]: https://github.com/stackabletech/zookeeper-operator/pull/1093
 
 ## [26.7.0] - 2026-07-21
 
