@@ -39,7 +39,7 @@ All notable changes to this project will be documented in this file.
   producing a duplicated entry whose precedence depended on Kubernetes' duplicate-name
   handling ([#1077]).
 - Make operations infallible where dependent on static inputs ([#1084]).
-- test: Bump vector-aggregator to 0.58.0 ([#1093]).
+- Support Vector 0.58.0 ([#1093], [#1098]).
 - All pods now set `securityContext.seccompProfile.type` to `RuntimeDefault` ([#1097]).
 - Replace the unmaintained `serde_yaml` with `yaml_serde` ([#1097]).
 
@@ -64,6 +64,7 @@ All notable changes to this project will be documented in this file.
 [#1090]: https://github.com/stackabletech/zookeeper-operator/pull/1090
 [#1093]: https://github.com/stackabletech/zookeeper-operator/pull/1093
 [#1097]: https://github.com/stackabletech/zookeeper-operator/pull/1097
+[#1098]: https://github.com/stackabletech/zookeeper-operator/pull/1098
 
 ## [26.7.0] - 2026-07-21
 
