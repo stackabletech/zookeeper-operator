@@ -29,8 +29,8 @@ tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-serde_yaml.workspace = true
 stackable-operator = { workspace = true, features = ["test-support"] }
+yaml_serde.workspace = true
 
 [build-dependencies]
 built.workspace = true

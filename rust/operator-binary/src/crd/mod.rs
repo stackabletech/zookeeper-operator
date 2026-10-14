@@ -547,7 +547,7 @@ mod tests {
                 replicas: 1
         "#;
         let zookeeper: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(input).expect("illegal test input");
+            yaml_serde::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
             tls::server_tls_default().as_ref().map(AsRef::as_ref)
@@ -574,7 +574,7 @@ mod tests {
               serverSecretClass: simple-zookeeper-client-tls
         "#;
         let zookeeper: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(input).expect("illegal test input");
+            yaml_serde::from_str(input).expect("illegal test input");
 
         assert_eq!(
             get_server_secret_class(&zookeeper),
@@ -602,7 +602,7 @@ mod tests {
               serverSecretClass: null
         "#;
         let zookeeper: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(input).expect("illegal test input");
+            yaml_serde::from_str(input).expect("illegal test input");
         assert_eq!(get_server_secret_class(&zookeeper), None);
         assert_eq!(
             get_quorum_secret_class(&zookeeper),
@@ -626,7 +626,7 @@ mod tests {
               quorumSecretClass: simple-zookeeper-quorum-tls
         "#;
         let zookeeper: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(input).expect("illegal test input");
+            yaml_serde::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
             tls::server_tls_default().as_ref().map(AsRef::as_ref)
@@ -653,7 +653,7 @@ mod tests {
                 replicas: 1
         "#;
         let zookeeper: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(input).expect("illegal test input");
+            yaml_serde::from_str(input).expect("illegal test input");
 
         assert_eq!(
             get_server_secret_class(&zookeeper),
@@ -681,7 +681,7 @@ mod tests {
               quorumSecretClass: simple-zookeeper-quorum-tls
         "#;
         let zookeeper: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(input).expect("illegal test input");
+            yaml_serde::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
             tls::server_tls_default().as_ref().map(AsRef::as_ref)
@@ -708,7 +708,7 @@ mod tests {
               serverSecretClass: simple-zookeeper-server-tls
         "#;
         let zookeeper: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(input).expect("illegal test input");
+            yaml_serde::from_str(input).expect("illegal test input");
         assert_eq!(
             get_server_secret_class(&zookeeper),
             Some("simple-zookeeper-server-tls")

@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
   always defaulting to `Always` ([#1086]).
 - Internal operator refactoring: introduce a build() step in the reconciler that
   assembles all relevant Kubernetes resources before anything is applied ([#1053]).
-- Bump `stackable-operator` to 0.118.0 ([#1063], [#1077], [#1086]).
+- Bump `stackable-operator` to 0.121.0 ([#1063], [#1077], [#1086], [#1090], [#1097]).
 - The RBAC ServiceAccount and RoleBinding are now built with the operator-rs `v2::rbac`
   functions and carry the full set of recommended labels ([#1060]).
 - BREAKING: The `servers` role is now required by the CRD.
@@ -39,8 +39,9 @@ All notable changes to this project will be documented in this file.
   producing a duplicated entry whose precedence depended on Kubernetes' duplicate-name
   handling ([#1077]).
 - Make operations infallible where dependent on static inputs ([#1084]).
-- Bump stackable-operator to 0.119.0 ([#1090]).
 - test: Bump vector-aggregator to 0.58.0 ([#1093]).
+- All pods now set `securityContext.seccompProfile.type` to `RuntimeDefault` ([#1097]).
+- Replace the unmaintained `serde_yaml` with `yaml_serde` ([#1097]).
 
 ### Fixed
 
@@ -62,6 +63,7 @@ All notable changes to this project will be documented in this file.
 [#1086]: https://github.com/stackabletech/zookeeper-operator/pull/1086
 [#1090]: https://github.com/stackabletech/zookeeper-operator/pull/1090
 [#1093]: https://github.com/stackabletech/zookeeper-operator/pull/1093
+[#1097]: https://github.com/stackabletech/zookeeper-operator/pull/1097
 
 ## [26.7.0] - 2026-07-21
 
