@@ -219,7 +219,7 @@ pub(crate) mod test_support {
     /// asserting recommended labels catch swapped `name`/`instance` values.
     pub fn minimal_zk(yaml: &str) -> v1alpha1::ZookeeperCluster {
         let mut zk: v1alpha1::ZookeeperCluster =
-            serde_yaml::from_str(yaml).expect("invalid test ZookeeperCluster YAML");
+            yaml_serde::from_str(yaml).expect("invalid test ZookeeperCluster YAML");
         zk.metadata
             .namespace
             .get_or_insert_with(|| "default".to_owned());
@@ -589,7 +589,7 @@ mod tests {
     /// API, and because the spec is invalid, before the `DeserializeGuard` is unwrapped.
     #[test]
     fn reconcile_exits_early_for_deleted_cluster() {
-        let zk = serde_yaml::from_str(
+        let zk = yaml_serde::from_str(
             r#"
 apiVersion: zookeeper.stackable.tech/v1alpha1
 kind: ZookeeperCluster

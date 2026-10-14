@@ -356,7 +356,7 @@ pub(crate) mod test_support {
     /// step can build a [`ValidatedZnode`].
     pub fn minimal_znode(yaml: &str) -> v1alpha1::ZookeeperZnode {
         let mut znode: v1alpha1::ZookeeperZnode =
-            serde_yaml::from_str(yaml).expect("invalid test ZookeeperZnode YAML");
+            yaml_serde::from_str(yaml).expect("invalid test ZookeeperZnode YAML");
         znode
             .metadata
             .namespace
