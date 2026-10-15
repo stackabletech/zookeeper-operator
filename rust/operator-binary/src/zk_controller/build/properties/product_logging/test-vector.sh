@@ -8,7 +8,7 @@ export NAMESPACE=default
 export CLUSTER_NAME=test-zk
 export ROLE_NAME=server
 export ROLE_GROUP_NAME=default
-export VECTOR_AGGREGATOR_ADDRESS=vector-aggregator
+export VECTOR_AGGREGATOR_ADDRESS=http://vector-aggregator:6000
 export VECTOR_FILE_LOG_LEVEL=info
 
 # Required because vector.yaml contains ${...} placeholders
