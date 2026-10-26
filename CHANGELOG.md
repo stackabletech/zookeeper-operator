@@ -42,6 +42,7 @@ All notable changes to this project will be documented in this file.
 - Support Vector 0.58.0 ([#1093], [#1098], [#1099], [#1100]).
 - All pods now set `securityContext.seccompProfile.type` to `RuntimeDefault` ([#1097]).
 - Replace the unmaintained `serde_yaml` with `yaml_serde` ([#1097]).
+- The operator Deployment runs with a restricted security context and a read-only root filesystem, so it can be deployed into namespaces that enforce the `restricted` Pod Security Standard ([#1101]).
 
 ### Fixed
 
@@ -67,6 +68,7 @@ All notable changes to this project will be documented in this file.
 [#1098]: https://github.com/stackabletech/zookeeper-operator/pull/1098
 [#1099]: https://github.com/stackabletech/zookeeper-operator/pull/1099
 [#1100]: https://github.com/stackabletech/zookeeper-operator/pull/1100
+[#1101]: https://github.com/stackabletech/zookeeper-operator/pull/1101
 
 ## [26.7.0] - 2026-07-21
 
