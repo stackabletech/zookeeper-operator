@@ -205,8 +205,7 @@ pub fn build_server_rolegroup_statefulset(
     let mut cb_zookeeper = new_container_builder(&ZOOKEEPER_CONTAINER_NAME);
     let mut pod_builder = PodBuilder::new();
 
-    // Used for PVC templates, which cannot be modified once they are deployed. The version label
-    // is omitted so the labels stay stable across version upgrades.
+    // The PVC template is immutable once deployed, so its labels must stay stable.
     let unversioned_recommended_labels =
         recommended_labels_for_unversioned_role_group_resources(cluster, zk_role, role_group_name);
 
