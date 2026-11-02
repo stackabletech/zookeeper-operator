@@ -29,11 +29,9 @@ All notable changes to this project will be documented in this file.
 - The discovery ConfigMap is now always written, with empty `ZOOKEEPER` and `ZOOKEEPER_HOSTS` while
   the listener publishes no addresses ([#1069]).
 - All product containers now run with `securityContext.runAsNonRoot` set to `true` to improve security ([#1070]).
-- BREAKING: Remove the `app.kubernetes.io/component` and `app.kubernetes.io/role-group` labels
-  from the resources they don't apply to (previously set to `none` or the placeholder value
-  `discovery`).
-  Server StatefulSets created by older operator versions cannot be updated in place: after the operator
-  upgrade, delete each server StatefulSet so that the operator immediately recreates it with the new labels ([#1077]).
+- Remove the `app.kubernetes.io/component` and `app.kubernetes.io/role-group` labels from the
+  resources they don't apply to (previously set to `none` or the placeholder value `discovery`)
+  ([#1077], [#1102]).
 - Environment variable overrides (`envOverrides`) are now merged into the operator-set
   environment variables by name, so an override replaces the operator's value instead of
   producing a duplicated entry whose precedence depended on Kubernetes' duplicate-name
@@ -69,6 +67,7 @@ All notable changes to this project will be documented in this file.
 [#1099]: https://github.com/stackabletech/zookeeper-operator/pull/1099
 [#1100]: https://github.com/stackabletech/zookeeper-operator/pull/1100
 [#1101]: https://github.com/stackabletech/zookeeper-operator/pull/1101
+[#1102]: https://github.com/stackabletech/zookeeper-operator/pull/1102
 
 ## [26.7.0] - 2026-07-21
 
