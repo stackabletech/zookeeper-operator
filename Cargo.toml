@@ -37,3 +37,6 @@ yaml_serde = "0.10"
 [patch.crates-io]
 # tokio-zookeeper = { path = "../tokio-zookeeper" }
 # tokio-zookeeper = { git = "https://github.com/stackabletech/tokio-zookeeper.git", branch = "bugfix/whatever-thread-safety" }
+
+[workspace.lints.clippy]
+disallowed_methods = "deny"
