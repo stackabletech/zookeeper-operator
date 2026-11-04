@@ -39,6 +39,7 @@ use stackable_operator::{
             volume::{ListenerReference, listener_operator_volume_source_builder_build_pvc},
         },
         product_logging::framework::{ValidatedContainerLogConfigChoice, vector_container},
+        rbac::RbacResourceNames,
         types::{
             kubernetes::{ContainerName, ListenerName, PersistentVolumeClaimName, VolumeName},
             operator::RoleGroupName,
