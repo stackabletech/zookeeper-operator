@@ -1,4 +1,5 @@
 = Pod placement
+:description: Pod placement for Apache ZooKeeper on Kubernetes, covering the default affinity that spreads the servers of an ensemble across nodes.
 
 You can configure the Pod placement of the ZooKeeper pods as described in xref:concepts:operations/pod_placement.adoc[].
 
