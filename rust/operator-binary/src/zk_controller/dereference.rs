@@ -66,8 +66,9 @@ pub struct DereferencedObjects {
     /// controller watches Listeners, so a reconciliation is triggered as soon as that happens.
     pub maybe_role_listener: Option<listener::v1alpha1::Listener>,
 
-    /// The discovery ConfigMap as stored by an earlier reconciliation, or `None` before the first
-    /// successful build. The build step re-emits it while the role Listener has no usable address.
+    /// The discovery ConfigMap as stored by an earlier reconciliation (named by
+    /// [`discovery_config_map_name`]), or `None` while none is stored. The build step re-emits it
+    /// while the role Listener has no usable address.
     pub existing_discovery_config_map: Option<ConfigMap>,
 }
 

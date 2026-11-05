@@ -78,7 +78,13 @@ fn is_owned_by(config_map: &ConfigMap, uid: &Uid) -> bool {
 /// fresh ConfigMap can be built. The stored one is then re-emitted unchanged, so that it stays
 /// tracked by the apply step (an untracked ConfigMap would be deleted as an orphan) without
 /// changing its content: an unchanged ConfigMap gets no new resource version, so consumers are
-/// not restarted. `None` is returned only before a discovery ConfigMap has ever been stored.
+/// not restarted. Only the keys in [`DISCOVERY_CONFIG_MAP_KEYS`] are re-emitted, and only from a
+/// ConfigMap owned by this cluster.
+///
+/// `None` is returned while no discovery ConfigMap (owned by this cluster) is stored, e.g. before
+/// the first successful build, or after it was deleted while the Listener had no usable address.
+/// It is also returned while reconciliation is paused and none is stored yet: the paused apply
+/// step only fetches resources, and fetching a ConfigMap that does not exist would fail every run.
 /// The Listener watch triggers a new run once addresses are published.
 pub fn build_discovery_configmap(
     validated_cluster: &ValidatedCluster,

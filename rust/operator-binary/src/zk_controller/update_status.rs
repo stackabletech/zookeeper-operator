@@ -71,7 +71,7 @@ pub async fn update_status(
 /// Hashes the resource version of the applied discovery ConfigMap, so that clients can tell when
 /// the published connection details changed.
 ///
-/// No ConfigMap (not built yet) or one without a resource version hashes nothing.
+/// No ConfigMap (none built or re-emitted) or one without a resource version hashes nothing.
 fn discovery_hash(discovery_config_map: Option<&ConfigMap>) -> String {
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
