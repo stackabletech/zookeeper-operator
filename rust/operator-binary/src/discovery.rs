@@ -90,6 +90,12 @@ pub fn build_discovery_configmap(
         &validated_cluster.discovery_addresses,
         &validated_cluster.existing_discovery_config_map,
     ) {
+        (Some(_), None) if validated_cluster.cluster_operation.reconciliation_paused => {
+            tracing::debug!(
+                "reconciliation is paused and no discovery ConfigMap is stored yet, skipping it"
+            );
+            Ok(None)
+        }
         (Some(addresses), _) => build_discovery_configmap_for_owner(
             validated_cluster,
             &validated_cluster.namespace,
@@ -277,6 +283,23 @@ mod tests {
         spec:
           clusterRef:
             name: simple-zookeeper
+        "#;
+
+    /// The fixture cluster with reconciliation paused.
+    const PAUSED_ZK_YAML: &str = r#"
+        apiVersion: zookeeper.stackable.tech/v1alpha1
+        kind: ZookeeperCluster
+        metadata:
+          name: simple-zookeeper
+        spec:
+          image:
+            productVersion: "3.9.6"
+          clusterOperation:
+            reconciliationPaused: true
+          servers:
+            roleGroups:
+              default:
+                replicas: 3
         "#;
 
     /// The znode path that the znode controller derives from the fixture's UID.
@@ -575,5 +598,40 @@ mod tests {
             build_discovery_configmap(&cluster, &ZookeeperRole::Server).expect("build");
 
         assert!(config_map.is_none());
+    }
+
+    /// While reconciliation is paused, the apply step only fetches resources. A ConfigMap that was
+    /// never stored is therefore not built, even once addresses exist, or every paused run would
+    /// fail fetching it.
+    #[test]
+    fn skips_cluster_discovery_config_map_while_paused_and_none_is_stored() {
+        let cluster = try_validate_with_role_listener(
+            &minimal_zk(PAUSED_ZK_YAML),
+            Some(listener_with(&[("node-0", 2282)])),
+            None,
+        )
+        .expect("validate should succeed for the test fixture");
+
+        let config_map =
+            build_discovery_configmap(&cluster, &ZookeeperRole::Server).expect("build");
+
+        assert!(config_map.is_none());
+    }
+
+    /// While reconciliation is paused, a stored ConfigMap still goes through the apply step, which
+    /// fetches it, so the status keeps its hash.
+    #[test]
+    fn builds_cluster_discovery_config_map_while_paused_when_one_is_stored() {
+        let cluster = try_validate_with_role_listener(
+            &minimal_zk(PAUSED_ZK_YAML),
+            Some(listener_with(&[("node-0", 2282)])),
+            Some(stored_config_map("node-0:2282")),
+        )
+        .expect("validate should succeed for the test fixture");
+
+        let config_map =
+            build_discovery_configmap(&cluster, &ZookeeperRole::Server).expect("build");
+
+        assert!(config_map.is_some());
     }
 }
