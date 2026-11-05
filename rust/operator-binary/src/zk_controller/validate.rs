@@ -446,16 +446,24 @@ pub fn validate(
     // ConfigMap unchanged (see
     // [`build_discovery_configmap`](crate::discovery::build_discovery_configmap)):
     // - the role Listener does not exist (first reconciliation, or it was deleted),
-    // - it has no status yet (`Ok(None)`),
-    // - it publishes no address for the server port: an empty address list, or a stale status
-    //   whose port was renamed (`PortNotFound`). Failing here would abort the run before the apply
-    //   step, so the Listener spec carrying the right port would never be applied.
+    // - it has no status yet, or an empty address list (`Ok(None)`),
+    // - it publishes addresses, but none for the server port, e.g. a stale status whose port was
+    //   renamed (`PortNotFound`). Failing here would abort the run before the apply step, so the
+    //   Listener spec carrying the right port would never be applied. This is not expected in
+    //   normal operation, so it is logged as a warning.
     // Any other error (an invalid port number) still fails the run.
     let discovery_addresses = match &dereferenced_objects.maybe_role_listener {
         None => None,
         Some(listener) => match listener_addresses(listener, ZOOKEEPER_SERVER_PORT_NAME) {
             Ok(addresses) => addresses,
-            Err(listener_addresses::Error::PortNotFound { .. }) => None,
+            Err(error @ listener_addresses::Error::PortNotFound { .. }) => {
+                tracing::warn!(
+                    error = %error,
+                    "the role Listener publishes no address for the ZooKeeper server port, so the \
+                     discovery ConfigMap is not updated until it does"
+                );
+                None
+            }
             Err(source) => return Err(source).context(ReadRoleListenerAddressesSnafu),
         },
     };

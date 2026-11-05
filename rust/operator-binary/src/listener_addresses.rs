@@ -47,8 +47,9 @@ impl ListenerAddresses {
 
 /// Reads the addresses that `listener` publishes for `port_name`.
 ///
-/// Returns `Ok(None)` while the Listener carries no ingress addresses at all, which is the normal
-/// state between creating the Listener and the listener operator publishing its addresses. A
+/// Returns `Ok(None)` while the Listener carries no ingress addresses at all
+/// (no status yet, or an empty address list), which is the normal state between
+/// creating the Listener and the listener operator publishing its addresses. A
 /// Listener that does publish addresses, but none for `port_name`, is an error.
 // TODO (@NickLarsenNZ): Move this to stackable-operator, so it can be used as
 // listener.addresses_for_port(port_name)
@@ -63,6 +64,12 @@ pub fn listener_addresses(
     else {
         return Ok(None);
     };
+
+    // The listener operator publishes an empty list until it knows an address, e.g. before the
+    // Pods behind a NodePort Listener are scheduled. That is "not ready yet", not a missing port.
+    if ingress_addresses.is_empty() {
+        return Ok(None);
+    }
 
     let address_port_pairs = ingress_addresses
         .iter()
@@ -155,6 +162,15 @@ mod tests {
     fn listener_addresses_without_ingress_is_not_ready_yet() {
         assert_eq!(
             listener_addresses(&role_listener(None), ZOOKEEPER_SERVER_PORT_NAME)
+                .expect("addresses"),
+            None
+        );
+    }
+
+    #[test]
+    fn listener_addresses_with_empty_ingress_list_is_not_ready_yet() {
+        assert_eq!(
+            listener_addresses(&role_listener(Some(vec![])), ZOOKEEPER_SERVER_PORT_NAME)
                 .expect("addresses"),
             None
         );
