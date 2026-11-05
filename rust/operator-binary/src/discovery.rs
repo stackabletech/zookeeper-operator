@@ -93,7 +93,12 @@ pub fn build_discovery_configmap(
                     &validated_cluster.namespace,
                     labels,
                 ),
-                data: existing.data.clone(),
+                data: existing.data.as_ref().map(|data| {
+                    data.iter()
+                        .filter(|(key, _)| DISCOVERY_CONFIG_MAP_KEYS.contains(&key.as_str()))
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect()
+                }),
                 ..ConfigMap::default()
             }))
         }
@@ -149,6 +154,17 @@ fn znode_discovery_labels(validated_znode: &ValidatedZnode) -> Labels {
         label::label_stackable_tech_vendor(),
     ])
 }
+
+/// The keys of a discovery [`ConfigMap`], as written by [`build_discovery_configmap_for_owner`].
+///
+/// Only these are re-emitted, so that a key added by an objectOverride is not kept alive after the
+/// override was removed.
+const DISCOVERY_CONFIG_MAP_KEYS: [&str; 4] = [
+    "ZOOKEEPER",
+    "ZOOKEEPER_HOSTS",
+    "ZOOKEEPER_CLIENT_PORT",
+    "ZOOKEEPER_CHROOT",
+];
 
 /// Build a discovery [`ConfigMap`] containing ZooKeeper connection details from the
 /// [`ListenerAddresses`] published by the role Listener.
@@ -467,5 +483,53 @@ mod tests {
             config_map.metadata.name.as_deref(),
             Some(discovery_config_map_name(&cluster.name).as_ref())
         );
+    }
+
+    /// [`DISCOVERY_CONFIG_MAP_KEYS`] must list exactly the keys a fresh build writes, or the
+    /// re-emit would drop or keep the wrong ones.
+    #[test]
+    fn discovery_config_map_keys_match_a_fresh_build() {
+        let cluster = try_validate_with_role_listener(
+            &minimal_zk(ZK_YAML),
+            Some(listener_with(&[("node-0", 2282)])),
+            None,
+        )
+        .expect("validate should succeed for the test fixture");
+
+        let config_map = build_discovery_configmap(&cluster, &ZookeeperRole::Server)
+            .expect("build")
+            .expect("fresh");
+
+        let mut expected_keys = DISCOVERY_CONFIG_MAP_KEYS.to_vec();
+        expected_keys.sort_unstable();
+        assert_eq!(
+            config_map
+                .data
+                .expect("data")
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            expected_keys
+        );
+    }
+
+    /// Keys that the operator does not write (e.g. added by a since removed objectOverride) are
+    /// not re-emitted.
+    #[test]
+    fn reemit_keeps_only_the_discovery_keys() {
+        let mut stored = stored_config_map("node-0:2282");
+        stored
+            .data
+            .as_mut()
+            .expect("data")
+            .insert("EXTRA".to_owned(), "x".to_owned());
+        let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None, Some(stored))
+            .expect("validate should succeed for the test fixture");
+
+        let config_map = build_discovery_configmap(&cluster, &ZookeeperRole::Server)
+            .expect("build")
+            .expect("the stored ConfigMap is re-emitted");
+
+        assert_eq!(config_map.data, stored_config_map("node-0:2282").data);
     }
 }
