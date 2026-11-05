@@ -50,7 +50,7 @@ pub async fn update_status(
         ClusterOperationsConditionBuilder::new(&zk.spec.cluster_operation);
 
     let status = v1alpha1::ZookeeperClusterStatus {
-        discovery_hash: Some(discovery_hash(&applied.discovery_config_map)),
+        discovery_hash: Some(discovery_hash(applied.discovery_config_map.as_ref())),
         conditions: compute_conditions(
             zk,
             &[
@@ -71,14 +71,15 @@ pub async fn update_status(
 /// Hashes the resource version of the applied discovery ConfigMap, so that clients can tell when
 /// the published connection details changed.
 ///
-/// A ConfigMap that was never applied carries no resource version, in which case the hash covers
-/// nothing.
-fn discovery_hash(discovery_config_map: &ConfigMap) -> String {
+/// No ConfigMap (not built yet) or one without a resource version hashes nothing.
+fn discovery_hash(discovery_config_map: Option<&ConfigMap>) -> String {
     // std's SipHasher is deprecated, and DefaultHasher is unstable across Rust releases.
     // We don't /need/ stability, but it's still nice to avoid spurious changes where possible.
     let mut discovery_hash = FnvHasher::with_key(0);
 
-    if let Some(resource_version) = &discovery_config_map.metadata.resource_version {
+    if let Some(resource_version) =
+        discovery_config_map.and_then(|config_map| config_map.metadata.resource_version.as_ref())
+    {
         discovery_hash.write(resource_version.as_bytes())
     }
 
@@ -108,13 +109,29 @@ mod tests {
     /// it must follow the discovery ConfigMap's resource version.
     #[test]
     fn discovery_hash_tracks_the_resource_version() {
-        let hash = discovery_hash(&discovery_config_map(Some("42")));
+        let hash = discovery_hash(Some(&discovery_config_map(Some("42"))));
 
-        assert_ne!(hash, discovery_hash(&discovery_config_map(Some("43"))));
-        assert_eq!(hash, discovery_hash(&discovery_config_map(Some("42"))));
+        assert_ne!(
+            hash,
+            discovery_hash(Some(&discovery_config_map(Some("43"))))
+        );
+        assert_eq!(
+            hash,
+            discovery_hash(Some(&discovery_config_map(Some("42"))))
+        );
 
         // A ConfigMap that was never applied carries no resource version, in which case the hash
         // covers nothing and stays at the hasher's initial state.
-        assert_ne!(hash, discovery_hash(&discovery_config_map(None)));
+        assert_ne!(hash, discovery_hash(Some(&discovery_config_map(None))));
+    }
+
+    /// While no discovery ConfigMap has been built yet, the hash is the same as for one that was
+    /// never applied.
+    #[test]
+    fn discovery_hash_without_config_map_is_the_initial_hash() {
+        assert_eq!(
+            discovery_hash(None),
+            discovery_hash(Some(&discovery_config_map(None)))
+        );
     }
 }

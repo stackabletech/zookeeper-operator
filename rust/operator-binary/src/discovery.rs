@@ -7,7 +7,7 @@ use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
     k8s_openapi::api::core::v1::ConfigMap,
-    kube::Resource,
+    kube::{Resource, api::ObjectMeta},
     kvp::{Label, Labels},
     v2::{
         HasName, HasUid, NameIsValidLabelValue, builder::meta::ownerreference_from_resource,
@@ -35,33 +35,56 @@ pub enum Error {
     },
 }
 
-/// Build the discovery [`ConfigMap`] for the cluster controller from the
-/// [`ValidatedCluster`].
+/// Build the discovery [`ConfigMap`] for the cluster controller from the [`ValidatedCluster`].
 ///
-/// The ConfigMap is owned by, and placed in the namespace of, the cluster. The image and security
-/// settings are taken from the [`ValidatedCluster`] rather than being passed in separately.
-///
-/// The connection details are read from the addresses published by the role Listener (carried on
-/// [`ValidatedCluster::discovery_addresses`](ValidatedCluster#structfield.discovery_addresses),
-/// fetched in the dereference step), which only the listener operator writes. While no address
-/// exists around the first reconciliations, which create the Listener in the first place, the
-/// ConfigMap is still written, with an empty `ZOOKEEPER` value: omitting it instead would let the
-/// apply step delete an existing discovery ConfigMap as an orphan, breaking consumers that mount
-/// it. The Listener watch triggers a new run that fills in the value once the addresses are
-/// published.
+/// The connection details come from the addresses published by the role Listener
+/// ([`ValidatedCluster::discovery_addresses`]). While there is no usable address (around the
+/// first reconciliation, after the Listener was re-created, or while its status is stale), no
+/// fresh ConfigMap can be built. The stored one is then re-emitted unchanged, so that it stays
+/// tracked by the apply step (an untracked ConfigMap would be deleted as an orphan) without
+/// changing its content: an unchanged ConfigMap gets no new resource version, so consumers are
+/// not restarted. `None` is returned only before a discovery ConfigMap has ever been stored.
+/// The Listener watch triggers a new run once addresses are published.
 pub fn build_discovery_configmap(
     validated_cluster: &ValidatedCluster,
     zk_role: &ZookeeperRole,
-    listener_addresses: &ListenerAddresses,
-) -> Result<ConfigMap> {
-    build_discovery_configmap_for_owner(
-        validated_cluster,
-        &validated_cluster.namespace,
-        recommended_labels_for_role_resources(validated_cluster, zk_role),
-        listener_addresses,
-        None,
-        &validated_cluster.cluster_config.zookeeper_security,
-    )
+) -> Result<Option<ConfigMap>> {
+    let labels = recommended_labels_for_role_resources(validated_cluster, zk_role);
+
+    match (
+        &validated_cluster.discovery_addresses,
+        &validated_cluster.existing_discovery_config_map,
+    ) {
+        (Some(addresses), _) => build_discovery_configmap_for_owner(
+            validated_cluster,
+            &validated_cluster.namespace,
+            labels,
+            addresses,
+            None,
+            &validated_cluster.cluster_config.zookeeper_security,
+        )
+        .map(Some),
+        (None, Some(existing)) => {
+            tracing::debug!(
+                "the role Listener has no usable address, re-emitting the stored discovery ConfigMap"
+            );
+            Ok(Some(ConfigMap {
+                metadata: discovery_config_map_metadata(
+                    validated_cluster,
+                    &validated_cluster.namespace,
+                    labels,
+                ),
+                data: existing.data.clone(),
+                ..ConfigMap::default()
+            }))
+        }
+        (None, None) => {
+            tracing::debug!(
+                "the role Listener has no usable address and no discovery ConfigMap is stored yet, skipping it"
+            );
+            Ok(None)
+        }
+    }
 }
 
 /// Build the discovery [`ConfigMap`] for the znode controller.
@@ -122,8 +145,6 @@ fn build_discovery_configmap_for_owner(
     chroot: Option<&str>,
     zookeeper_security: &ZookeeperSecurity,
 ) -> Result<ConfigMap> {
-    let name = owner.to_name();
-
     // Write a connection string of the format that Java ZooKeeper client expects:
     // "{host1}:{port1},{host2:port2},.../{chroot}"
     // See https://zookeeper.apache.org/doc/current/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-
@@ -136,14 +157,7 @@ fn build_discovery_configmap_for_owner(
         conn_str.push_str(chroot);
     }
     ConfigMapBuilder::new()
-        .metadata(
-            ObjectMetaBuilder::new()
-                .name(name)
-                .namespace(namespace)
-                .ownerreference(ownerreference_from_resource(owner, None, Some(true)))
-                .with_labels(labels)
-                .build(),
-        )
+        .metadata(discovery_config_map_metadata(owner, namespace, labels))
         .add_data("ZOOKEEPER", conn_str)
         // Some clients don't support ZooKeeper's merged `hosts/chroot` format, so export them separately for these clients
         .add_data("ZOOKEEPER_HOSTS", listener_addresses)
@@ -156,17 +170,31 @@ fn build_discovery_configmap_for_owner(
         .context(BuildConfigMapSnafu)
 }
 
+/// The metadata of a discovery [`ConfigMap`], shared by freshly built and re-emitted ConfigMaps
+/// so that the two cannot drift apart.
+fn discovery_config_map_metadata(
+    owner: &(impl Resource<DynamicType = ()> + HasName + HasUid + NameIsValidLabelValue),
+    namespace: impl Into<String>,
+    labels: Labels,
+) -> ObjectMeta {
+    ObjectMetaBuilder::new()
+        .name(owner.to_name())
+        .namespace(namespace)
+        .ownerreference(ownerreference_from_resource(owner, None, Some(true)))
+        .with_labels(labels)
+        .build()
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
+    use stackable_operator::crd::listener;
+
     use super::*;
     use crate::{
         crd::ZOOKEEPER_SERVER_PORT_NAME,
-        listener_addresses::{
-            listener_addresses,
-            test_support::{ingress_address, role_listener},
-        },
+        listener_addresses::test_support::{ingress_address, role_listener},
         zk_controller::test_support::{
             app_version_label, minimal_zk, try_validate_with_role_listener,
         },
@@ -211,33 +239,56 @@ mod tests {
             .clone()
     }
 
-    /// Addresses published under the ZooKeeper server port name, built through the real reader so
-    /// the fixtures cannot drift from what the validate step produces.
-    fn published_addresses(addresses: &[(&str, u16)]) -> ListenerAddresses {
-        let listener = role_listener(Some(
+    /// A role Listener publishing the given addresses under the ZooKeeper server port name.
+    fn listener_with(addresses: &[(&str, u16)]) -> listener::v1alpha1::Listener {
+        role_listener(Some(
             addresses
                 .iter()
                 .map(|(address, port)| {
                     ingress_address(address, ZOOKEEPER_SERVER_PORT_NAME, i32::from(*port))
                 })
                 .collect(),
-        ));
+        ))
+    }
 
-        listener_addresses(&listener, ZOOKEEPER_SERVER_PORT_NAME)
-            .expect("the fixture publishes addresses under the server port name")
-            .expect("the fixture publishes addresses")
+    /// A discovery ConfigMap as the API server returns it: with server-populated metadata.
+    fn stored_config_map(zookeeper: &str) -> ConfigMap {
+        ConfigMap {
+            metadata: ObjectMeta {
+                name: Some("simple-zookeeper".to_owned()),
+                namespace: Some("default".to_owned()),
+                resource_version: Some("42".to_owned()),
+                uid: Some("0b5c7b8e-0000-0000-0000-000000000000".to_owned()),
+                managed_fields: Some(vec![]),
+                ..ObjectMeta::default()
+            },
+            data: Some(
+                [
+                    ("ZOOKEEPER".to_owned(), zookeeper.to_owned()),
+                    ("ZOOKEEPER_HOSTS".to_owned(), zookeeper.to_owned()),
+                    ("ZOOKEEPER_CLIENT_PORT".to_owned(), "2282".to_owned()),
+                    ("ZOOKEEPER_CHROOT".to_owned(), "/".to_owned()),
+                ]
+                .into(),
+            ),
+            ..ConfigMap::default()
+        }
     }
 
     /// The cluster controller advertises the whole ensemble, rooted at `/`. The fixture keeps TLS
     /// enabled, so the client port is the secure one.
     #[test]
     fn cluster_discovery_config_map_advertises_the_published_addresses() {
-        let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None)
-            .expect("validate should succeed for the test fixture");
-        let addresses = published_addresses(&[("node-0", 2282), ("node-1", 2282)]);
+        let cluster = try_validate_with_role_listener(
+            &minimal_zk(ZK_YAML),
+            Some(listener_with(&[("node-0", 2282), ("node-1", 2282)])),
+            None,
+        )
+        .expect("validate should succeed for the test fixture");
 
-        let config_map =
-            build_discovery_configmap(&cluster, &ZookeeperRole::Server, &addresses).expect("build");
+        let config_map = build_discovery_configmap(&cluster, &ZookeeperRole::Server)
+            .expect("build")
+            .expect("a fresh ConfigMap is built when addresses exist");
 
         assert_eq!(
             config_map.metadata.name.as_deref(),
@@ -249,32 +300,6 @@ mod tests {
             data(&config_map, "ZOOKEEPER_HOSTS"),
             "node-0:2282,node-1:2282"
         );
-        assert_eq!(data(&config_map, "ZOOKEEPER_CLIENT_PORT"), "2282");
-        assert_eq!(data(&config_map, "ZOOKEEPER_CHROOT"), "/");
-    }
-
-    /// While the role Listener publishes no addresses the ConfigMap is still written, with an
-    /// empty connection string, so that the apply step does not delete the published one as an
-    /// orphan.
-    #[test]
-    fn cluster_discovery_config_map_without_addresses_is_still_written() {
-        let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None)
-            .expect("validate should succeed for the test fixture");
-
-        let config_map = build_discovery_configmap(
-            &cluster,
-            &ZookeeperRole::Server,
-            &ListenerAddresses::default(),
-        )
-        .expect("build");
-
-        assert_eq!(
-            config_map.metadata.name.as_deref(),
-            Some("simple-zookeeper")
-        );
-        assert_eq!(data(&config_map, "ZOOKEEPER"), "");
-        assert_eq!(data(&config_map, "ZOOKEEPER_HOSTS"), "");
-        // The port and chroot do not depend on the addresses, so they stay populated.
         assert_eq!(data(&config_map, "ZOOKEEPER_CLIENT_PORT"), "2282");
         assert_eq!(data(&config_map, "ZOOKEEPER_CHROOT"), "/");
     }
@@ -342,5 +367,65 @@ mod tests {
             .map(|(key, value)| (key.to_owned(), value)),
         );
         assert_eq!(config_map.metadata.labels, Some(expected_labels));
+    }
+
+    /// Before the first successful build there is nothing to re-emit, so no ConfigMap is built.
+    #[test]
+    fn skips_cluster_discovery_config_map_without_addresses_and_without_stored_one() {
+        let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None, None)
+            .expect("validate should succeed for the test fixture");
+
+        let config_map =
+            build_discovery_configmap(&cluster, &ZookeeperRole::Server).expect("build");
+
+        assert!(config_map.is_none());
+    }
+
+    /// While the Listener has no usable address, the stored ConfigMap is re-emitted unchanged, with
+    /// fresh metadata that carries no server-populated fields.
+    #[test]
+    fn reemits_stored_cluster_discovery_config_map_without_addresses() {
+        let stored = stored_config_map("node-0:2282");
+        let cluster =
+            try_validate_with_role_listener(&minimal_zk(ZK_YAML), None, Some(stored.clone()))
+                .expect("validate should succeed for the test fixture");
+
+        let config_map = build_discovery_configmap(&cluster, &ZookeeperRole::Server)
+            .expect("build")
+            .expect("the stored ConfigMap is re-emitted");
+
+        assert_eq!(config_map.data, stored.data);
+        assert_eq!(config_map.metadata.resource_version, None);
+        assert_eq!(config_map.metadata.uid, None);
+        assert_eq!(config_map.metadata.managed_fields, None);
+
+        // Same metadata as a freshly built ConfigMap for this cluster.
+        let fresh_cluster = try_validate_with_role_listener(
+            &minimal_zk(ZK_YAML),
+            Some(listener_with(&[("node-0", 2282)])),
+            None,
+        )
+        .expect("validate should succeed for the test fixture");
+        let fresh = build_discovery_configmap(&fresh_cluster, &ZookeeperRole::Server)
+            .expect("build")
+            .expect("fresh");
+        assert_eq!(config_map.metadata, fresh.metadata);
+    }
+
+    /// Once addresses exist again, they replace whatever was stored.
+    #[test]
+    fn fresh_addresses_replace_stale_stored_data() {
+        let cluster = try_validate_with_role_listener(
+            &minimal_zk(ZK_YAML),
+            Some(listener_with(&[("node-0", 2282)])),
+            Some(stored_config_map("old:2282")),
+        )
+        .expect("validate should succeed for the test fixture");
+
+        let config_map = build_discovery_configmap(&cluster, &ZookeeperRole::Server)
+            .expect("build")
+            .expect("fresh");
+
+        assert_eq!(data(&config_map, "ZOOKEEPER"), "node-0:2282");
     }
 }

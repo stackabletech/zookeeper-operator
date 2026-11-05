@@ -9,6 +9,7 @@ use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     client::Client,
     crd::listener,
+    k8s_openapi::api::core::v1::ConfigMap,
     v2::{
         controller_utils::{get_cluster_name, get_namespace},
         types::{kubernetes::NamespaceName, operator::ClusterName},
@@ -40,6 +41,12 @@ pub enum Error {
     FetchRoleListener {
         source: stackable_operator::client::Error,
     },
+
+    #[snafu(display("failed to fetch the discovery ConfigMap {config_map}"))]
+    FetchExistingDiscoveryConfigMap {
+        source: stackable_operator::client::Error,
+        config_map: String,
+    },
 }
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -55,6 +62,10 @@ pub struct DereferencedObjects {
     /// this object, so it can only be built once the Listener exists and carries them. The
     /// controller watches Listeners, so a reconciliation is triggered as soon as that happens.
     pub maybe_role_listener: Option<listener::v1alpha1::Listener>,
+
+    /// The discovery ConfigMap as stored by an earlier reconciliation, or `None` before the first
+    /// successful build. The build step re-emits it while the role Listener has no usable address.
+    pub existing_discovery_config_map: Option<ConfigMap>,
 }
 
 /// Fetches all Kubernetes objects referenced from the [`v1alpha1::ZookeeperCluster`] spec.
@@ -74,9 +85,18 @@ pub async fn dereference(
 
     let maybe_role_listener = fetch_role_listener(client, &cluster_name, &namespace).await?;
 
+    let discovery_config_map_name = cluster_name.as_ref();
+    let existing_discovery_config_map = client
+        .get_opt::<ConfigMap>(discovery_config_map_name, namespace.as_ref())
+        .await
+        .context(FetchExistingDiscoveryConfigMapSnafu {
+            config_map: discovery_config_map_name,
+        })?;
+
     Ok(DereferencedObjects {
         authentication_classes,
         maybe_role_listener,
+        existing_discovery_config_map,
     })
 }
 

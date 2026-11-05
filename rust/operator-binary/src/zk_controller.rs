@@ -115,8 +115,8 @@ pub struct KubernetesResources<T> {
     pub listeners: Vec<Listener>,
     pub config_maps: Vec<ConfigMap>,
     /// The discovery `ConfigMap`, kept apart from the role group `config_maps` because the cluster
-    /// status carries a hash of it.
-    pub discovery_config_map: ConfigMap,
+    /// status carries a hash of it. `None` before it can be built for the first time.
+    pub discovery_config_map: Option<ConfigMap>,
     pub pod_disruption_budgets: Vec<PodDisruptionBudget>,
     pub service_accounts: Vec<ServiceAccount>,
     pub role_bindings: Vec<RoleBinding>,
@@ -190,7 +190,7 @@ pub fn error_policy(
 pub(crate) mod test_support {
     use stackable_operator::{
         cli::OperatorEnvironmentOptions, commons::networking::DomainName, crd::listener,
-        utils::cluster_info::KubernetesClusterInfo,
+        k8s_openapi::api::core::v1::ConfigMap, utils::cluster_info::KubernetesClusterInfo,
     };
 
     use crate::{
@@ -248,7 +248,7 @@ pub(crate) mod test_support {
     pub fn try_validate(
         zk: &v1alpha1::ZookeeperCluster,
     ) -> Result<ValidatedCluster, super::validate::Error> {
-        try_validate_with_role_listener(zk, None)
+        try_validate_with_role_listener(zk, None, None)
     }
 
     /// Runs the real validate step against a minimal (auth-free) fixture and the given role
@@ -256,12 +256,14 @@ pub(crate) mod test_support {
     pub fn try_validate_with_role_listener(
         zk: &v1alpha1::ZookeeperCluster,
         maybe_role_listener: Option<listener::v1alpha1::Listener>,
+        existing_discovery_config_map: Option<ConfigMap>,
     ) -> Result<ValidatedCluster, super::validate::Error> {
         validate(
             zk,
             &DereferencedObjects {
                 authentication_classes: DereferencedAuthenticationClasses::new_for_tests(),
                 maybe_role_listener,
+                existing_discovery_config_map,
             },
             &operator_environment(),
         )

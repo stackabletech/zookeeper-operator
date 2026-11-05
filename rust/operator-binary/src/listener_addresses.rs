@@ -30,9 +30,6 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 ///
 /// An address is a hostname or IP address of a node, a cluster IP or an external load balancer,
 /// depending on the Service type behind the Listener.
-///
-/// The [`Default`] value is empty, which renders as an empty connection string, see
-/// [`build_discovery_configmap`](crate::discovery::build_discovery_configmap).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ListenerAddresses(BTreeSet<(String, u16)>);
 
