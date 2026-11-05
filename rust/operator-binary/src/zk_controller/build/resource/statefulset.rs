@@ -2,6 +2,7 @@
 
 use std::str::FromStr;
 
+use const_format::concatcp;
 use indoc::formatdoc;
 use snafu::{OptionExt, ResultExt, Snafu};
 use stackable_operator::{
@@ -107,8 +108,13 @@ constant!(MYID_OFFSET: EnvVarName = v1alpha1::ZookeeperConfig::MYID_OFFSET);
 constant!(ZOOCFGDIR: EnvVarName = "ZOOCFGDIR");
 constant!(ZK_SERVER_HEAP: EnvVarName = "ZK_SERVER_HEAP");
 constant!(SERVER_JVMFLAGS: EnvVarName = "SERVER_JVMFLAGS");
-// Needed for the `containerdebug` process to log its tracing information to.
-constant!(CONTAINERDEBUG_LOG_DIRECTORY: EnvVarName = "CONTAINERDEBUG_LOG_DIRECTORY");
+// Let the `containerdebug` process write its tracing information to a file. These are the generic
+// `stackable-telemetry` variables and apply to the whole ZooKeeper container, so any other
+// telemetry-based process in it would log into the same directory and the Vector agent would label
+// its events with `container: containerdebug`.
+constant!(FILE_LOG_DIRECTORY: EnvVarName = "FILE_LOG_DIRECTORY");
+constant!(FILE_LOG_MAX_FILES: EnvVarName = "FILE_LOG_MAX_FILES");
+constant!(FILE_LOG_ROTATION_PERIOD: EnvVarName = "FILE_LOG_ROTATION_PERIOD");
 
 /// The shell invocation shared by the `prepare` init container and the main ZooKeeper container.
 fn container_command() -> Vec<String> {
@@ -186,10 +192,15 @@ pub fn build_server_rolegroup_statefulset(
             &SERVER_JVMFLAGS,
             construct_non_heap_jvm_args(rolegroup_config),
         )
+        // The directory must be exactly one level below the log directory, because the Vector
+        // agent derives the container name from that path segment.
         .with_value(
-            &CONTAINERDEBUG_LOG_DIRECTORY,
-            format!("{STACKABLE_LOG_DIR}/containerdebug"),
+            &FILE_LOG_DIRECTORY,
+            concatcp!(STACKABLE_LOG_DIR, "/containerdebug"),
         )
+        // Rotation is opt-in, so without these the file would grow unbounded.
+        .with_value(&FILE_LOG_ROTATION_PERIOD, "hourly")
+        .with_value(&FILE_LOG_MAX_FILES, "2")
         .merge(rolegroup_config.env_overrides.clone());
 
     // Build the `data` PVC and the container resource requirements from the merged config.
@@ -280,6 +291,7 @@ pub fn build_server_rolegroup_statefulset(
             {COMMON_BASH_TRAP_FUNCTIONS}
             {remove_vector_shutdown_file_command}
             prepare_signal_handlers
+            mkdir --parents \"$FILE_LOG_DIRECTORY\"
             containerdebug --output={STACKABLE_LOG_DIR}/containerdebug-state.json --loop &
             bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/{zoo_cfg} &
             wait_for_termination $!
@@ -368,6 +380,9 @@ pub fn build_server_rolegroup_statefulset(
         .context(AddVolumeSnafu)?
         .add_empty_dir_volume(
             &*LOG_VOLUME_NAME,
+            // Only the log files listed here are budgeted. The `containerdebug` files in this
+            // volume are rotated by time, not by size, so they have no budget; raising
+            // `FILE_LOG_LEVEL` via `envOverrides` can therefore evict the Pod.
             Some(product_logging::framework::calculate_log_volume_size_limit(
                 &[
                     properties::product_logging::MAX_ZK_LOG_FILES_SIZE,
@@ -486,7 +501,9 @@ mod tests {
         let _ = *ZOOCFGDIR;
         let _ = *ZK_SERVER_HEAP;
         let _ = *SERVER_JVMFLAGS;
-        let _ = *CONTAINERDEBUG_LOG_DIRECTORY;
+        let _ = *FILE_LOG_DIRECTORY;
+        let _ = *FILE_LOG_MAX_FILES;
+        let _ = *FILE_LOG_ROTATION_PERIOD;
     }
 
     /// Builds the `default` server StatefulSet for `yaml` and returns the ConfigMap name mounted by
@@ -601,19 +618,19 @@ mod tests {
     }
 
     /// The user-supplied `envOverrides` must be merged in after all operator-set environment
-    /// variables, so that they can override any of them. `CONTAINERDEBUG_LOG_DIRECTORY` is used
+    /// variables, so that they can override any of them. `FILE_LOG_DIRECTORY` is used
     /// as the example here because it is set unconditionally by the operator.
     #[test]
     fn env_overrides_override_operator_set_env_vars() {
         let env = env_with_override(
             ZOOKEEPER_CONTAINER_NAME.as_ref(),
-            &CONTAINERDEBUG_LOG_DIRECTORY,
+            &FILE_LOG_DIRECTORY,
             "/custom/log/dir",
         );
 
         let containerdebug: Vec<_> = env
             .iter()
-            .filter(|env_var| env_var.name == "CONTAINERDEBUG_LOG_DIRECTORY")
+            .filter(|env_var| env_var.name == "FILE_LOG_DIRECTORY")
             .collect();
         assert_eq!(
             containerdebug.len(),

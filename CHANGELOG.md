@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
   ([#1086]).
 - BREAKING: Enable auto-purge feature for data directory cleanup ([#1068]).
 - Add `/ready` endpoint to the operator Deployment, which reports the CRD installation status ([#1090]).
+- The logs of the `containerdebug` process are now collected by the Vector agent and forwarded to
+  the Vector aggregator ([#1106]).
 
 ### Changed
 
@@ -49,6 +51,10 @@ All notable changes to this project will be documented in this file.
   See [our internal issue](https://github.com/stackabletech/hdfs-operator/issues/626) and [the fix](https://github.com/kube-rs/kube/pull/2042) for details ([#1070]).
 - The operator now watches all resources that it creates and early-exits the reconcile action when the
   cluster is marked for deletion ([#1079]).
+- The `containerdebug` process writes its log file again. The operator set
+  `CONTAINERDEBUG_LOG_DIRECTORY`, which containerdebug stopped reading in its version 0.2.0 when it
+  moved to `stackable-telemetry`; the directory is now set via `FILE_LOG_DIRECTORY`. The file is
+  rotated hourly and at most two files are kept, because rotation is opt-in ([#1106]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
@@ -68,6 +74,7 @@ All notable changes to this project will be documented in this file.
 [#1100]: https://github.com/stackabletech/zookeeper-operator/pull/1100
 [#1101]: https://github.com/stackabletech/zookeeper-operator/pull/1101
 [#1102]: https://github.com/stackabletech/zookeeper-operator/pull/1102
+[#1106]: https://github.com/stackabletech/zookeeper-operator/pull/1106
 
 ## [26.7.0] - 2026-07-21
 
