@@ -16,10 +16,13 @@ use stackable_operator::{
     },
 };
 
-use crate::crd::{
-    ZookeeperRole,
-    authentication::{self, DereferencedAuthenticationClasses},
-    role_listener_name, v1alpha1,
+use crate::{
+    crd::{
+        ZookeeperRole,
+        authentication::{self, DereferencedAuthenticationClasses},
+        role_listener_name, v1alpha1,
+    },
+    discovery::discovery_config_map_name,
 };
 
 #[derive(Snafu, Debug)]
@@ -85,12 +88,12 @@ pub async fn dereference(
 
     let maybe_role_listener = fetch_role_listener(client, &cluster_name, &namespace).await?;
 
-    let discovery_config_map_name = cluster_name.as_ref();
+    let discovery_config_map_name = discovery_config_map_name(&cluster_name);
     let existing_discovery_config_map = client
-        .get_opt::<ConfigMap>(discovery_config_map_name, namespace.as_ref())
+        .get_opt::<ConfigMap>(discovery_config_map_name.as_ref(), namespace.as_ref())
         .await
         .context(FetchExistingDiscoveryConfigMapSnafu {
-            config_map: discovery_config_map_name,
+            config_map: discovery_config_map_name.as_ref(),
         })?;
 
     Ok(DereferencedObjects {

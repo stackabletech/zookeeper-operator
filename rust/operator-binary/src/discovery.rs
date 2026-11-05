@@ -3,6 +3,8 @@
 //! Shared by the build steps of both controllers: the ZookeeperCluster controller publishes the
 //! whole ensemble, the ZookeeperZnode controller publishes the same ensemble narrowed to a chroot.
 
+use std::str::FromStr;
+
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
@@ -10,8 +12,10 @@ use stackable_operator::{
     kube::{Resource, api::ObjectMeta},
     kvp::{Label, Labels},
     v2::{
-        HasName, HasUid, NameIsValidLabelValue, builder::meta::ownerreference_from_resource,
+        HasName, HasUid, NameIsValidLabelValue,
+        builder::meta::ownerreference_from_resource,
         kvp::label,
+        types::{kubernetes::ConfigMapName, operator::ClusterName},
     },
 };
 
@@ -33,6 +37,21 @@ pub enum Error {
     BuildConfigMap {
         source: stackable_operator::builder::configmap::Error,
     },
+}
+
+/// The name of the cluster controller's discovery [`ConfigMap`], which is the cluster name.
+///
+/// Takes the bare cluster name (not [`ValidatedCluster`]) so that the dereference step, which runs
+/// before validation, fetches the same ConfigMap that the build step writes.
+pub fn discovery_config_map_name(cluster_name: &ClusterName) -> ConfigMapName {
+    const _: () = assert!(
+        ClusterName::MAX_LENGTH <= ConfigMapName::MAX_LENGTH,
+        "The string `<cluster_name>` must not exceed the limit of ConfigMap names."
+    );
+    let _ = ClusterName::IS_RFC_1123_SUBDOMAIN_NAME;
+
+    ConfigMapName::from_str(cluster_name.as_ref())
+        .expect("a valid cluster name is a valid ConfigMap name")
 }
 
 /// Build the discovery [`ConfigMap`] for the cluster controller from the [`ValidatedCluster`].
@@ -113,8 +132,8 @@ pub fn build_znode_discovery_configmap(
 /// The znode controller's discovery ConfigMap cannot use the label functions from
 /// [`stackable_operator::v2::kvp::label`], because its `app.kubernetes.io/instance` value is the
 /// name of the owning [`ZookeeperZnode`](crate::crd::v1alpha1::ZookeeperZnode), not a
-/// [`ClusterName`](stackable_operator::v2::types::operator::ClusterName). The label set matches
-/// the role-level recommended labels of the cluster controller's discovery ConfigMap otherwise.
+/// [`ClusterName`]. The label set matches the role-level recommended labels of the
+/// cluster controller's discovery ConfigMap otherwise.
 fn znode_discovery_labels(validated_znode: &ValidatedZnode) -> Labels {
     Labels::from_iter([
         Label::instance(&validated_znode.to_label_value()).expect(
@@ -427,5 +446,26 @@ mod tests {
             .expect("fresh");
 
         assert_eq!(data(&config_map, "ZOOKEEPER"), "node-0:2282");
+    }
+
+    /// The dereference step fetches the stored ConfigMap by [`discovery_config_map_name`], so it
+    /// must be the name the build step writes; otherwise nothing would ever be re-emitted.
+    #[test]
+    fn discovery_config_map_name_matches_the_built_config_map() {
+        let cluster = try_validate_with_role_listener(
+            &minimal_zk(ZK_YAML),
+            Some(listener_with(&[("node-0", 2282)])),
+            None,
+        )
+        .expect("validate should succeed for the test fixture");
+
+        let config_map = build_discovery_configmap(&cluster, &ZookeeperRole::Server)
+            .expect("build")
+            .expect("fresh");
+
+        assert_eq!(
+            config_map.metadata.name.as_deref(),
+            Some(discovery_config_map_name(&cluster.name).as_ref())
+        );
     }
 }
