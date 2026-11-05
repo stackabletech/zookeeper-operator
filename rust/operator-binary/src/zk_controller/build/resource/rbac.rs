@@ -33,7 +33,9 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::zk_controller::test_support::{app_version_label, minimal_zk, validated_cluster};
+    use crate::zk_controller::test_support::{
+        CLUSTER_UID, app_version_label, minimal_zk, validated_cluster,
+    };
 
     // `simple-zookeeper` vs `zookeeper`: see the swap-guard note on `minimal_zk`.
     fn cluster() -> ValidatedCluster {
@@ -81,7 +83,7 @@ mod tests {
                             "controller": true,
                             "kind": "ZookeeperCluster",
                             "name": "simple-zookeeper",
-                            "uid": "c27b3971-ca72-42c1-80a4-abdfc1db0ddd"
+                            "uid": CLUSTER_UID.to_owned()
                         }
                     ]
                 }
@@ -114,7 +116,7 @@ mod tests {
                             "controller": true,
                             "kind": "ZookeeperCluster",
                             "name": "simple-zookeeper",
-                            "uid": "c27b3971-ca72-42c1-80a4-abdfc1db0ddd"
+                            "uid": CLUSTER_UID.to_owned()
                         }
                     ]
                 },

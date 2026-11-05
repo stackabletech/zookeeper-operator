@@ -15,7 +15,10 @@ use stackable_operator::{
         HasName, HasUid, NameIsValidLabelValue,
         builder::meta::ownerreference_from_resource,
         kvp::label,
-        types::{kubernetes::ConfigMapName, operator::ClusterName},
+        types::{
+            kubernetes::{ConfigMapName, Uid},
+            operator::ClusterName,
+        },
     },
 };
 
@@ -54,6 +57,19 @@ pub fn discovery_config_map_name(cluster_name: &ClusterName) -> ConfigMapName {
         .expect("a valid cluster name is a valid ConfigMap name")
 }
 
+/// Whether `config_map` is owned by the object with the given UID.
+///
+/// A ConfigMap of the same name left behind by a deleted cluster (e.g. after
+/// `kubectl delete --cascade=orphan`) must not be re-emitted for a new cluster.
+fn is_owned_by(config_map: &ConfigMap, uid: &Uid) -> bool {
+    config_map
+        .metadata
+        .owner_references
+        .iter()
+        .flatten()
+        .any(|owner_reference| owner_reference.uid == uid.to_string())
+}
+
 /// Build the discovery [`ConfigMap`] for the cluster controller from the [`ValidatedCluster`].
 ///
 /// The connection details come from the addresses published by the role Listener
@@ -83,7 +99,7 @@ pub fn build_discovery_configmap(
             &validated_cluster.cluster_config.zookeeper_security,
         )
         .map(Some),
-        (None, Some(existing)) => {
+        (None, Some(existing)) if is_owned_by(existing, &validated_cluster.uid) => {
             tracing::debug!(
                 "the role Listener has no usable address, re-emitting the stored discovery ConfigMap"
             );
@@ -102,9 +118,10 @@ pub fn build_discovery_configmap(
                 ..ConfigMap::default()
             }))
         }
-        (None, None) => {
+        (None, _) => {
             tracing::debug!(
-                "the role Listener has no usable address and no discovery ConfigMap is stored yet, skipping it"
+                "the role Listener has no usable address and no discovery ConfigMap of this cluster \
+                is stored, skipping it"
             );
             Ok(None)
         }
@@ -224,14 +241,16 @@ fn discovery_config_map_metadata(
 mod tests {
     use std::collections::BTreeMap;
 
-    use stackable_operator::crd::listener;
+    use stackable_operator::{
+        crd::listener, k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference,
+    };
 
     use super::*;
     use crate::{
         crd::ZOOKEEPER_SERVER_PORT_NAME,
         listener_addresses::test_support::{ingress_address, role_listener},
         zk_controller::test_support::{
-            app_version_label, minimal_zk, try_validate_with_role_listener,
+            CLUSTER_UID, app_version_label, minimal_zk, try_validate_with_role_listener,
         },
         znode_controller::test_support::{minimal_znode, validated_znode},
     };
@@ -295,6 +314,14 @@ mod tests {
                 resource_version: Some("42".to_owned()),
                 uid: Some("0b5c7b8e-0000-0000-0000-000000000000".to_owned()),
                 managed_fields: Some(vec![]),
+                owner_references: Some(vec![OwnerReference {
+                    api_version: "zookeeper.stackable.tech/v1alpha1".to_owned(),
+                    kind: "ZookeeperCluster".to_owned(),
+                    name: "simple-zookeeper".to_owned(),
+                    uid: CLUSTER_UID.to_owned(),
+                    controller: Some(true),
+                    block_owner_deletion: Some(true),
+                }]),
                 ..ObjectMeta::default()
             },
             data: Some(
@@ -531,5 +558,22 @@ mod tests {
             .expect("the stored ConfigMap is re-emitted");
 
         assert_eq!(config_map.data, stored_config_map("node-0:2282").data);
+    }
+
+    /// A stored ConfigMap that another object owns, e.g. left behind by a deleted cluster of the
+    /// same name, is not re-emitted.
+    #[test]
+    fn does_not_reemit_a_config_map_owned_by_another_cluster() {
+        let mut stored = stored_config_map("node-0:2282");
+        for owner_reference in stored.metadata.owner_references.iter_mut().flatten() {
+            owner_reference.uid = "00000000-0000-0000-0000-000000000000".to_owned();
+        }
+        let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None, Some(stored))
+            .expect("validate should succeed for the test fixture");
+
+        let config_map =
+            build_discovery_configmap(&cluster, &ZookeeperRole::Server).expect("build");
+
+        assert!(config_map.is_none());
     }
 }

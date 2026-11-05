@@ -533,8 +533,8 @@ mod tests {
     use crate::{
         listener_addresses::test_support::{ingress_address, role_listener},
         zk_controller::test_support::{
-            app_version_label, minimal_zk, try_validate, try_validate_with_role_listener,
-            validated_cluster,
+            CLUSTER_UID, app_version_label, minimal_zk, try_validate,
+            try_validate_with_role_listener, validated_cluster,
         },
     };
 
@@ -580,10 +580,7 @@ mod tests {
 
         assert_eq!(validated.name.to_string(), "simple-zookeeper");
         assert_eq!(validated.namespace.to_string(), "default");
-        assert_eq!(
-            validated.uid.to_string(),
-            "c27b3971-ca72-42c1-80a4-abdfc1db0ddd"
-        );
+        assert_eq!(validated.uid.to_string(), CLUSTER_UID.to_owned());
         assert_eq!(
             validated.image.image,
             format!("oci.example.org/zookeeper:{}", app_version_label("3.9.6"))

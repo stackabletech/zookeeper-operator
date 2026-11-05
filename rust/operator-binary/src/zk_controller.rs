@@ -201,6 +201,9 @@ pub(crate) mod test_support {
         },
     };
 
+    /// The UID that `minimal_zk` gives the fixture cluster.
+    pub const CLUSTER_UID: &str = "c27b3971-ca72-42c1-80a4-abdfc1db0ddd";
+
     /// The expected `app.kubernetes.io/version` label value for the given product version.
     ///
     /// The `-stackable` suffix carries the operator's own version, which is `0.0.0-dev` on main
@@ -225,7 +228,7 @@ pub(crate) mod test_support {
             .get_or_insert_with(|| "default".to_owned());
         zk.metadata
             .uid
-            .get_or_insert_with(|| "c27b3971-ca72-42c1-80a4-abdfc1db0ddd".to_owned());
+            .get_or_insert_with(|| CLUSTER_UID.to_owned());
         zk
     }
 
