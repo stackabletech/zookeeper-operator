@@ -80,5 +80,7 @@ mod tests {
         // ZooKeeper's logback writes log4j-format XML to `*.log4j.xml`, so the `files_log4j`
         // source matches it.
         assert!(content.contains("files_log4j"));
+        assert!(content.contains("files_tracing_rs"));
+        assert!(content.contains("*.tracing-rs.json"));
     }
 }
