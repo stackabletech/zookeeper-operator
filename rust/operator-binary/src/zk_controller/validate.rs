@@ -836,4 +836,21 @@ mod tests {
 
         assert_eq!(validated.discovery_addresses, None);
     }
+
+    /// A port number that does not fit into a u16 is a fault, unlike a missing port, and still
+    /// fails validation.
+    #[test]
+    fn role_listener_with_an_invalid_port_fails_validation() {
+        let zk = minimal_zk(MINIMAL_ZK_YAML);
+        let listener = role_listener(Some(vec![ingress_address(
+            "node-0",
+            ZOOKEEPER_SERVER_PORT_NAME,
+            70_000,
+        )]));
+
+        assert!(matches!(
+            try_validate_with_role_listener(&zk, Some(listener), None),
+            Err(Error::ReadRoleListenerAddresses { .. })
+        ));
+    }
 }
