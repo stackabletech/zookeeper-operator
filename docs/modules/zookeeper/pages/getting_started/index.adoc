@@ -1,4 +1,5 @@
 = Getting started
+:description: Getting started with Apache ZooKeeper on Kubernetes, covering the Stackable operator, a first ZooKeeper cluster and ZNode and connecting to them.
 
 This guide gets you started with Apache ZooKeeper using the Stackable Operator.
 It guides you through the installation of the Operator and its dependencies, setting up your first ZooKeeper cluster and connecting to it as well as setting up your first xref:znodes.adoc[ZNode].
