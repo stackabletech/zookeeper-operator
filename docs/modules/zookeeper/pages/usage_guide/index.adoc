@@ -1,3 +1,4 @@
 = Usage guide
+:description: In-depth guides to the Stackable operator for Apache ZooKeeper, covering ZNodes, authentication, encryption, resources, logging, monitoring and overrides.
 
 This section provides more in depth information about specific aspects of using the Stackable Operator for Apache ZooKeeper.
