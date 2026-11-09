@@ -1,4 +1,5 @@
 = First steps
+:description: First steps with Apache ZooKeeper, covering a first cluster and ZNode deployed by the Stackable operator and connecting through the discovery ConfigMap.
 
 Now that the operator is installed it is time to deploy a ZooKeeper cluster and connect to it.
 

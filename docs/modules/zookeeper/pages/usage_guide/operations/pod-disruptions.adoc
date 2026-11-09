@@ -1,4 +1,5 @@
 = Allowed Pod disruptions
+:description: The PodDisruptionBudget the Stackable operator writes for Apache ZooKeeper servers, and how to disable it.
 
 You can configure the permitted Pod disruptions for Zookeeper nodes as described in xref:concepts:operations/pod_disruptions.adoc[].
 
