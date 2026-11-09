@@ -291,13 +291,14 @@ pub fn build_server_rolegroup_statefulset(
             {COMMON_BASH_TRAP_FUNCTIONS}
             {remove_vector_shutdown_file_command}
             prepare_signal_handlers
-            mkdir --parents \"$FILE_LOG_DIRECTORY\"
+            mkdir --parents \"${file_log_directory}\" || true
             containerdebug --output={STACKABLE_LOG_DIR}/containerdebug-state.json --loop &
             bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/{zoo_cfg} &
             wait_for_termination $!
             {create_vector_shutdown_file_command}
             ",
             zoo_cfg = ConfigFileName::ZooCfg,
+            file_log_directory = FILE_LOG_DIRECTORY.as_ref(),
             remove_vector_shutdown_file_command =
                 remove_vector_shutdown_file_command(STACKABLE_LOG_DIR),
             create_vector_shutdown_file_command =
