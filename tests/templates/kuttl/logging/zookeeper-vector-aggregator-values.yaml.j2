@@ -22,41 +22,63 @@ customConfig:
   transforms:
     validEvents:
       type: filter
-      inputs: [vector]
+      inputs:
+        - vector
       condition: is_null(.errors)
     filteredAutomaticLogConfigPrepare:
       type: filter
-      inputs: [validEvents]
+      inputs:
+        - validEvents
       condition: |-
         .pod == "test-zk-server-automatic-log-config-0" && .container == "prepare"
+    filteredAutomaticLogConfigContainerdebug:
+      type: filter
+      inputs:
+        - validEvents
+      condition: >-
+        .pod == "test-zk-server-automatic-log-config-0" &&
+        .container == "containerdebug"
     filteredAutomaticLogConfigVector:
       type: filter
-      inputs: [validEvents]
+      inputs:
+        - validEvents
       condition: |-
         .pod == "test-zk-server-automatic-log-config-0" && .container == "vector"
     filteredAutomaticLogConfigZookeeper:
       type: filter
-      inputs: [validEvents]
+      inputs:
+        - validEvents
       condition: |-
         .pod == "test-zk-server-automatic-log-config-0" && .container == "zookeeper"
     filteredCustomLogConfigPrepare:
       type: filter
-      inputs: [validEvents]
+      inputs:
+        - validEvents
       condition: |-
         .pod == "test-zk-server-custom-log-config-0" && .container == "prepare"
+    filteredCustomLogConfigContainerdebug:
+      type: filter
+      inputs:
+        - validEvents
+      condition: >-
+        .pod == "test-zk-server-custom-log-config-0" &&
+        .container == "containerdebug"
     filteredCustomLogConfigVector:
       type: filter
-      inputs: [validEvents]
+      inputs:
+        - validEvents
       condition: |-
         .pod == "test-zk-server-custom-log-config-0" && .container == "vector"
     filteredCustomLogConfigZookeeper:
       type: filter
-      inputs: [validEvents]
+      inputs:
+        - validEvents
       condition: |-
         .pod == "test-zk-server-custom-log-config-0" && .container == "zookeeper"
     filteredInvalidEvents:
       type: filter
-      inputs: [vector]
+      inputs:
+        - vector
       condition: |-
         .timestamp == from_unix_timestamp!(0) ||
         is_null(.level) ||
@@ -64,11 +86,29 @@ customConfig:
         is_null(.message)
   sinks:
     test:
-      inputs: [filtered*]
+      inputs:
+        - filtered*
       type: blackhole
+    # Shows all events received from the agents. This sink is intentional and
+    # not a debugging leftover: if a "filtered*" transform gathers no event,
+    # then the assertion only reports a count, whereas this log shows which
+    # pod and container names actually arrived. A failure in CI cannot be
+    # reproduced by enabling this afterwards, so it is kept enabled at the
+    # price of the log volume.
+    stdout:
+      inputs:
+        - vector
+      type: console
+      encoding:
+        codec: json
+      buffer:
+        # Avoid back pressure from a stalling stdout. The test should not
+        # fail because of a sink which only aids debugging.
+        when_full: drop_newest
 {% if lookup('env', 'VECTOR_AGGREGATOR') %}
     aggregator:
-      inputs: [vector]
+      inputs:
+        - vector
       type: vector
       routing:
         endpoints:
