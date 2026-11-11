@@ -15,10 +15,7 @@ use stackable_operator::{
         HasName, HasUid, NameIsValidLabelValue,
         builder::meta::ownerreference_from_resource,
         kvp::label,
-        types::{
-            kubernetes::{ConfigMapName, Uid},
-            operator::ClusterName,
-        },
+        types::{kubernetes::ConfigMapName, operator::ClusterName},
     },
 };
 
@@ -57,19 +54,6 @@ pub fn discovery_config_map_name(cluster_name: &ClusterName) -> ConfigMapName {
         .expect("a valid cluster name is a valid ConfigMap name")
 }
 
-/// Whether `config_map` is owned by the object with the given UID.
-///
-/// A ConfigMap of the same name left behind by a deleted cluster (e.g. after
-/// `kubectl delete --cascade=orphan`) must not be re-emitted for a new cluster.
-fn is_owned_by(config_map: &ConfigMap, uid: &Uid) -> bool {
-    config_map
-        .metadata
-        .owner_references
-        .iter()
-        .flatten()
-        .any(|owner_reference| owner_reference.uid == uid.to_string())
-}
-
 /// Build the discovery [`ConfigMap`] for the cluster controller from the [`ValidatedCluster`].
 ///
 /// The connection details come from the addresses published by the role Listener
@@ -78,8 +62,7 @@ fn is_owned_by(config_map: &ConfigMap, uid: &Uid) -> bool {
 /// fresh ConfigMap can be built. The stored one is then re-emitted unchanged, so that it stays
 /// tracked by the apply step (an untracked ConfigMap would be deleted as an orphan) without
 /// changing its content: an unchanged ConfigMap gets no new resource version, so consumers are
-/// not restarted. Only the keys in [`DISCOVERY_CONFIG_MAP_KEYS`] are re-emitted, and only from a
-/// ConfigMap owned by this cluster.
+/// not restarted. Only the keys in [`DISCOVERY_CONFIG_MAP_KEYS`] are re-emitted.
 ///
 /// `None` is returned while no discovery ConfigMap (owned by this cluster) is stored, e.g. before
 /// the first successful build, or after it was deleted while the Listener had no usable address.
@@ -111,7 +94,7 @@ pub fn build_discovery_configmap(
             &validated_cluster.cluster_config.zookeeper_security,
         )
         .map(Some),
-        (None, Some(existing)) if is_owned_by(existing, &validated_cluster.uid) => {
+        (None, Some(existing)) => {
             tracing::debug!(
                 "the role Listener has no usable address, re-emitting the stored discovery ConfigMap"
             );
@@ -587,23 +570,6 @@ mod tests {
             .expect("the stored ConfigMap is re-emitted");
 
         assert_eq!(config_map.data, stored_config_map("node-0:2282").data);
-    }
-
-    /// A stored ConfigMap that another object owns, e.g. left behind by a deleted cluster of the
-    /// same name, is not re-emitted.
-    #[test]
-    fn does_not_reemit_a_config_map_owned_by_another_cluster() {
-        let mut stored = stored_config_map("node-0:2282");
-        for owner_reference in stored.metadata.owner_references.iter_mut().flatten() {
-            owner_reference.uid = "00000000-0000-0000-0000-000000000000".to_owned();
-        }
-        let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None, Some(stored))
-            .expect("validate should succeed for the test fixture");
-
-        let config_map =
-            build_discovery_configmap(&cluster, &ZookeeperRole::Server).expect("build");
-
-        assert!(config_map.is_none());
     }
 
     /// While reconciliation is paused, the apply step only fetches resources. A ConfigMap that was
