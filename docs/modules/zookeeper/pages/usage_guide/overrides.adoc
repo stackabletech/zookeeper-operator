@@ -1,5 +1,6 @@
 
 = Configuration and environment overrides
+:description: Overrides for Apache ZooKeeper, covering zoo.cfg and security.properties settings, environment variables, Pod specs and JVM arguments per role group.
 
 The cluster definition also supports overriding configuration properties and environment variables, either per role or per role group, where the more specific override (role group) has precedence over the less specific one (role).
 
