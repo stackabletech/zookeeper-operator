@@ -3,13 +3,14 @@
 //! Shared by the build steps of both controllers: the ZookeeperCluster controller publishes the
 //! whole ensemble, the ZookeeperZnode controller publishes the same ensemble narrowed to a chroot.
 
-use std::str::FromStr;
+use std::{collections::BTreeMap, str::FromStr};
 
+use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use stackable_operator::{
     builder::{configmap::ConfigMapBuilder, meta::ObjectMetaBuilder},
     k8s_openapi::api::core::v1::ConfigMap,
-    kube::{Resource, api::ObjectMeta},
+    kube::Resource,
     kvp::{Label, Labels},
     v2::{
         HasName, HasUid, NameIsValidLabelValue,
@@ -62,7 +63,8 @@ pub fn discovery_config_map_name(cluster_name: &ClusterName) -> ConfigMapName {
 /// fresh ConfigMap can be built. The stored one is then re-emitted unchanged, so that it stays
 /// tracked by the apply step (an untracked ConfigMap would be deleted as an orphan) without
 /// changing its content: an unchanged ConfigMap gets no new resource version, so consumers are
-/// not restarted. Only the keys in [`DISCOVERY_CONFIG_MAP_KEYS`] are re-emitted.
+/// not restarted. Only the keys of [`DiscoveryData`] are re-emitted; a stored ConfigMap that
+/// lacks one of them is not re-emitted.
 ///
 /// `None` is returned while no discovery ConfigMap (owned by this cluster) is stored, e.g. before
 /// the first successful build, or after it was deleted while the Listener had no usable address.
@@ -85,34 +87,42 @@ pub fn build_discovery_configmap(
             );
             Ok(None)
         }
-        (Some(addresses), _) => build_discovery_configmap_for_owner(
-            validated_cluster,
-            &validated_cluster.namespace,
-            labels,
-            addresses,
-            None,
-            &validated_cluster.cluster_config.zookeeper_security,
-        )
-        .map(Some),
-        (None, Some(existing)) => {
-            tracing::debug!(
-                "the role Listener has no usable address, re-emitting the stored discovery ConfigMap"
-            );
-            Ok(Some(ConfigMap {
-                metadata: discovery_config_map_metadata(
+        (Some(addresses), _) => {
+            let discovery_data = DiscoveryData::from_addresses(
+                addresses,
+                None,
+                &validated_cluster.cluster_config.zookeeper_security,
+            )?;
+            build_discovery_configmap_for_owner(
+                validated_cluster,
+                &validated_cluster.namespace,
+                labels,
+                discovery_data,
+            )
+            .map(Some)
+        }
+        (None, Some(existing)) => match DiscoveryData::from_stored(existing) {
+            Some(discovery_data) => {
+                tracing::debug!(
+                    "the role Listener has no usable address, re-emitting the stored discovery \
+                    ConfigMap"
+                );
+                build_discovery_configmap_for_owner(
                     validated_cluster,
                     &validated_cluster.namespace,
                     labels,
-                ),
-                data: existing.data.as_ref().map(|data| {
-                    data.iter()
-                        .filter(|(key, _)| DISCOVERY_CONFIG_MAP_KEYS.contains(&key.as_str()))
-                        .map(|(key, value)| (key.clone(), value.clone()))
-                        .collect()
-                }),
-                ..ConfigMap::default()
-            }))
-        }
+                    discovery_data,
+                )
+                .map(Some)
+            }
+            None => {
+                tracing::warn!(
+                    "the role Listener has no usable address and the stored discovery ConfigMap \
+                    lacks one of its keys, so it is not re-emitted"
+                );
+                Ok(None)
+            }
+        },
         (None, _) => {
             tracing::debug!(
                 "the role Listener has no usable address and no discovery ConfigMap of this cluster \
@@ -134,13 +144,16 @@ pub fn build_znode_discovery_configmap(
     listener_addresses: &ListenerAddresses,
     chroot: &str,
 ) -> Result<ConfigMap> {
+    let discovery_data = DiscoveryData::from_addresses(
+        listener_addresses,
+        Some(chroot),
+        &validated_znode.zookeeper_security,
+    )?;
     build_discovery_configmap_for_owner(
         validated_znode,
         &validated_znode.namespace,
         znode_discovery_labels(validated_znode),
-        listener_addresses,
-        Some(chroot),
-        &validated_znode.zookeeper_security,
+        discovery_data,
     )
 }
 
@@ -167,19 +180,70 @@ fn znode_discovery_labels(validated_znode: &ValidatedZnode) -> Labels {
     ])
 }
 
-/// The keys of a discovery [`ConfigMap`], as written by [`build_discovery_configmap_for_owner`].
+/// The contents of a discovery [`ConfigMap`]; each field is one key of the ConfigMap, named by its
+/// `serde(rename)`. The key names are part of the public interface, see
+/// `docs/modules/zookeeper/pages/reference/discovery.adoc`.
 ///
-/// Only these are re-emitted, so that a key added by an objectOverride is not kept alive after the
-/// override was removed.
-const DISCOVERY_CONFIG_MAP_KEYS: [&str; 4] = [
-    "ZOOKEEPER",
-    "ZOOKEEPER_HOSTS",
-    "ZOOKEEPER_CLIENT_PORT",
-    "ZOOKEEPER_CHROOT",
-];
+/// Built either fresh from the role Listener's addresses or from a stored discovery ConfigMap, so
+/// that both go through [`build_discovery_configmap_for_owner`]. Only these keys are written, so a
+/// key added by an objectOverride is not kept alive on re-emit after the override was removed.
+#[derive(Debug, Deserialize, PartialEq, Eq, Serialize)]
+struct DiscoveryData {
+    /// The connection string including the chroot.
+    #[serde(rename = "ZOOKEEPER")]
+    connection_string: String,
+    /// The connection string without the chroot, for clients that don't support ZooKeeper's
+    /// merged `hosts/chroot` format.
+    #[serde(rename = "ZOOKEEPER_HOSTS")]
+    hosts: String,
+    #[serde(rename = "ZOOKEEPER_CLIENT_PORT")]
+    client_port: String,
+    #[serde(rename = "ZOOKEEPER_CHROOT")]
+    chroot: String,
+}
 
-/// Build a discovery [`ConfigMap`] containing ZooKeeper connection details from the
-/// [`ListenerAddresses`] published by the role Listener.
+impl DiscoveryData {
+    fn from_addresses(
+        listener_addresses: &ListenerAddresses,
+        chroot: Option<&str>,
+        zookeeper_security: &ZookeeperSecurity,
+    ) -> Result<Self> {
+        // Write a connection string of the format that Java ZooKeeper client expects:
+        // "{host1}:{port1},{host2:port2},.../{chroot}"
+        // See https://zookeeper.apache.org/doc/current/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-
+        let hosts = listener_addresses.to_connection_string();
+        let mut connection_string = hosts.clone();
+        if let Some(chroot) = chroot {
+            if !chroot.starts_with('/') {
+                return RelativeChrootSnafu { chroot }.fail();
+            }
+            connection_string.push_str(chroot);
+        }
+        Ok(Self {
+            connection_string,
+            hosts,
+            client_port: zookeeper_security.client_port().to_string(),
+            chroot: chroot.unwrap_or("/").to_owned(),
+        })
+    }
+
+    /// Reads the keys back from a stored discovery ConfigMap; `None` if any of them is missing.
+    /// Other keys are ignored.
+    fn from_stored(config_map: &ConfigMap) -> Option<Self> {
+        let data = serde_json::to_value(config_map.data.as_ref()?).ok()?;
+        serde_json::from_value(data).ok()
+    }
+
+    /// The ConfigMap data, one entry per field.
+    fn into_config_map_data(self) -> BTreeMap<String, String> {
+        // Serialising a struct of `String` fields into a string map cannot fail.
+        serde_json::to_value(self)
+            .and_then(serde_json::from_value)
+            .expect("DiscoveryData has only String fields")
+    }
+}
+
+/// Build a discovery [`ConfigMap`] with the given [`DiscoveryData`].
 ///
 /// `owner` owns the ConfigMap (the [`ZookeeperCluster`](crate::crd::v1alpha1::ZookeeperCluster) for the cluster
 /// controller, or the [`ZookeeperZnode`](crate::crd::v1alpha1::ZookeeperZnode) for the znode controller) and
@@ -188,48 +252,20 @@ fn build_discovery_configmap_for_owner(
     owner: &(impl Resource<DynamicType = ()> + HasName + HasUid + NameIsValidLabelValue),
     namespace: impl Into<String>,
     labels: Labels,
-    listener_addresses: &ListenerAddresses,
-    chroot: Option<&str>,
-    zookeeper_security: &ZookeeperSecurity,
+    discovery_data: DiscoveryData,
 ) -> Result<ConfigMap> {
-    // Write a connection string of the format that Java ZooKeeper client expects:
-    // "{host1}:{port1},{host2:port2},.../{chroot}"
-    // See https://zookeeper.apache.org/doc/current/apidocs/zookeeper-server/org/apache/zookeeper/ZooKeeper.html#ZooKeeper-java.lang.String-int-org.apache.zookeeper.Watcher-
-    let listener_addresses = listener_addresses.to_connection_string();
-    let mut conn_str = listener_addresses.clone();
-    if let Some(chroot) = chroot {
-        if !chroot.starts_with('/') {
-            return RelativeChrootSnafu { chroot }.fail();
-        }
-        conn_str.push_str(chroot);
-    }
     ConfigMapBuilder::new()
-        .metadata(discovery_config_map_metadata(owner, namespace, labels))
-        .add_data("ZOOKEEPER", conn_str)
-        // Some clients don't support ZooKeeper's merged `hosts/chroot` format, so export them separately for these clients
-        .add_data("ZOOKEEPER_HOSTS", listener_addresses)
-        .add_data(
-            "ZOOKEEPER_CLIENT_PORT",
-            zookeeper_security.client_port().to_string(),
+        .metadata(
+            ObjectMetaBuilder::new()
+                .name(owner.to_name())
+                .namespace(namespace)
+                .ownerreference(ownerreference_from_resource(owner, None, Some(true)))
+                .with_labels(labels)
+                .build(),
         )
-        .add_data("ZOOKEEPER_CHROOT", chroot.unwrap_or("/"))
+        .data(discovery_data.into_config_map_data())
         .build()
         .context(BuildConfigMapSnafu)
-}
-
-/// The metadata of a discovery [`ConfigMap`], shared by freshly built and re-emitted ConfigMaps
-/// so that the two cannot drift apart.
-fn discovery_config_map_metadata(
-    owner: &(impl Resource<DynamicType = ()> + HasName + HasUid + NameIsValidLabelValue),
-    namespace: impl Into<String>,
-    labels: Labels,
-) -> ObjectMeta {
-    ObjectMetaBuilder::new()
-        .name(owner.to_name())
-        .namespace(namespace)
-        .ownerreference(ownerreference_from_resource(owner, None, Some(true)))
-        .with_labels(labels)
-        .build()
 }
 
 #[cfg(test)]
@@ -237,7 +273,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use stackable_operator::{
-        crd::listener, k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference,
+        crd::listener,
+        k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference},
     };
 
     use super::*;
@@ -524,32 +561,23 @@ mod tests {
         );
     }
 
-    /// [`DISCOVERY_CONFIG_MAP_KEYS`] must list exactly the keys a fresh build writes, or the
-    /// re-emit would drop or keep the wrong ones.
+    /// A stored ConfigMap that lacks one of the discovery keys (e.g. edited by hand) is not
+    /// re-emitted with an empty value; it is left untracked instead.
     #[test]
-    fn discovery_config_map_keys_match_a_fresh_build() {
-        let cluster = try_validate_with_role_listener(
-            &minimal_zk(ZK_YAML),
-            Some(listener_with(&[("node-0", 2282)])),
-            None,
-        )
-        .expect("validate should succeed for the test fixture");
+    fn does_not_reemit_a_stored_config_map_with_a_missing_key() {
+        let mut stored = stored_config_map("node-0:2282");
+        stored
+            .data
+            .as_mut()
+            .expect("data")
+            .remove("ZOOKEEPER_HOSTS");
+        let cluster = try_validate_with_role_listener(&minimal_zk(ZK_YAML), None, Some(stored))
+            .expect("validate should succeed for the test fixture");
 
-        let config_map = build_discovery_configmap(&cluster, &ZookeeperRole::Server)
-            .expect("build")
-            .expect("fresh");
+        let config_map =
+            build_discovery_configmap(&cluster, &ZookeeperRole::Server).expect("build");
 
-        let mut expected_keys = DISCOVERY_CONFIG_MAP_KEYS.to_vec();
-        expected_keys.sort_unstable();
-        assert_eq!(
-            config_map
-                .data
-                .expect("data")
-                .keys()
-                .map(String::as_str)
-                .collect::<Vec<_>>(),
-            expected_keys
-        );
+        assert!(config_map.is_none());
     }
 
     /// Keys that the operator does not write (e.g. added by a since removed objectOverride) are
