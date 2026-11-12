@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - Add `/ready` endpoint to the operator Deployment, which reports the CRD installation status ([#1090]).
 - The logs of the `containerdebug` process are now collected by the Vector agent and forwarded to
   the Vector aggregator ([#1106]).
+- Add `containerdebug` config CRD ([#1108]).
 
 ### Changed
 
@@ -76,6 +77,7 @@ All notable changes to this project will be documented in this file.
 [#1102]: https://github.com/stackabletech/zookeeper-operator/pull/1102
 [#1105]: https://github.com/stackabletech/zookeeper-operator/pull/1105
 [#1106]: https://github.com/stackabletech/zookeeper-operator/pull/1106
+[#1108]: https://github.com/stackabletech/zookeeper-operator/pull/1108
 
 ## [26.7.0] - 2026-07-21
 

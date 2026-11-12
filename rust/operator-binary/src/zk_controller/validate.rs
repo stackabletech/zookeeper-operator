@@ -20,6 +20,7 @@ use stackable_operator::{
         resources::{NoRuntimeLimits, Resources},
     },
     config::fragment,
+    crd::containerdebug::{self, ValidatedContainerdebugConfig},
     deep_merger::ObjectOverrides,
     k8s_openapi::{api::core::v1::ConfigMap, apimachinery::pkg::apis::meta::v1::ObjectMeta},
     kube::Resource,
@@ -80,6 +81,12 @@ pub enum Error {
         role_group: String,
     },
 
+    #[snafu(display("invalid containerdebug config for role group {role_group:?}"))]
+    InvalidContainerdebugConfig {
+        source: containerdebug::Error,
+        role_group: String,
+    },
+
     #[snafu(display("failed to get the cluster name"))]
     GetClusterName {
         source: stackable_operator::v2::controller_utils::Error,
@@ -123,14 +130,19 @@ pub struct ValidatedZookeeperConfig {
     pub resources: Resources<v1alpha1::ZookeeperStorageConfig, NoRuntimeLimits>,
     pub logging: ValidatedLogging,
     pub affinity: StackableAffinity,
+    pub containerdebug: ValidatedContainerdebugConfig,
     pub graceful_shutdown_timeout: Option<Duration>,
     pub requested_secret_lifetime: Option<Duration>,
 }
 
 impl ValidatedZookeeperConfig {
     /// Builds the validated config from the merged [`ZookeeperConfig`], swapping in the
-    /// already-validated logging.
-    fn from_merged(merged: ZookeeperConfig, logging: ValidatedLogging) -> Self {
+    /// already-validated `containerdebug` and logging configuration.
+    fn from_merged(
+        merged: ZookeeperConfig,
+        containerdebug: ValidatedContainerdebugConfig,
+        logging: ValidatedLogging,
+    ) -> Self {
         Self {
             init_limit: merged.init_limit,
             sync_limit: merged.sync_limit,
@@ -139,6 +151,7 @@ impl ValidatedZookeeperConfig {
             resources: merged.resources,
             logging,
             affinity: merged.affinity,
+            containerdebug,
             graceful_shutdown_timeout: merged.graceful_shutdown_timeout,
             requested_secret_lifetime: merged.requested_secret_lifetime,
         }
@@ -511,11 +524,18 @@ fn validate_role_group_config(
     })?;
 
     let config = merged.config.config;
+    let containerdebug =
+        config
+            .containerdebug
+            .validate()
+            .with_context(|_| InvalidContainerdebugConfigSnafu {
+                role_group: role_group_name.to_owned(),
+            })?;
     let logging = validate_logging(&config.logging, vector_aggregator_config_map_name)?;
 
     Ok(ZookeeperRoleGroupConfig {
         replicas: merged.replicas,
-        config: ValidatedZookeeperConfig::from_merged(config, logging),
+        config: ValidatedZookeeperConfig::from_merged(config, containerdebug, logging),
         config_overrides: merged.config.config_overrides,
         // The env override names are validated on deserialization.
         env_overrides: merged.config.env_overrides.into(),
