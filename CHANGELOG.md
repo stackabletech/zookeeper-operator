@@ -55,6 +55,10 @@ All notable changes to this project will be documented in this file.
   `CONTAINERDEBUG_LOG_DIRECTORY`, which containerdebug stopped reading in its version 0.2.0 when it
   moved to `stackable-telemetry`; the directory is now set via `FILE_LOG_DIRECTORY`. The file is
   rotated hourly and at most two files are kept, because rotation is opt-in ([#1106]).
+- Deleting a Namespace is no longer delayed by the znode finalizer for the length of the kernel's
+  TCP SYN retry budget. The ZooKeeper connection used to clean up a znode had no timeout, so once
+  the ensemble's Service was removed the connect blocked for over two minutes; it now gives up
+  after 10 seconds and is retried ([#1109]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
@@ -76,6 +80,7 @@ All notable changes to this project will be documented in this file.
 [#1102]: https://github.com/stackabletech/zookeeper-operator/pull/1102
 [#1105]: https://github.com/stackabletech/zookeeper-operator/pull/1105
 [#1106]: https://github.com/stackabletech/zookeeper-operator/pull/1106
+[#1109]: https://github.com/stackabletech/zookeeper-operator/pull/1109
 
 ## [26.7.0] - 2026-07-21
 

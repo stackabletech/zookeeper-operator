@@ -441,10 +441,10 @@ mod tests {
 }
 
 mod znode_mgmt {
-    use std::{collections::VecDeque, net::SocketAddr};
+    use std::{collections::VecDeque, net::SocketAddr, time::Duration};
 
     use snafu::{OptionExt, ResultExt, Snafu};
-    use tokio::net::lookup_host;
+    use tokio::{net::lookup_host, time::timeout};
     use tokio_zookeeper::{Acl, Permission, ZooKeeper};
 
     #[derive(Snafu, Debug)]
@@ -460,6 +460,12 @@ mod znode_mgmt {
         Connect {
             source: tokio_zookeeper::error::Error,
             addr: SocketAddr,
+        },
+        #[snafu(display("failed to connect to {addr:?} within {timeout:?}"))]
+        ConnectTimeout {
+            source: tokio::time::error::Elapsed,
+            addr: SocketAddr,
+            timeout: Duration,
         },
         #[snafu(display("protocol error creating znode {path:?}"))]
         CreateZnodeProtocol {
@@ -488,6 +494,20 @@ mod znode_mgmt {
         },
     }
 
+    /// How long to wait for a connection to the ZooKeeper ensemble before giving up.
+    ///
+    /// [`ZooKeeper::connect`] applies no deadline of its own, so without this the TCP connect falls
+    /// back to the kernel's SYN retry budget, which is over two minutes on Linux. That matters most
+    /// while a Namespace is being deleted: its contents are removed concurrently and in no
+    /// particular order, so the ensemble's Service and Pods are typically gone before the
+    /// ZookeeperCluster is. The znode cleanup then dials a ClusterIP that no longer routes
+    /// anywhere and silently drops traffic, and the znode finalizer blocks Namespace termination
+    /// for the whole retry budget.
+    ///
+    /// Timing out instead lets the reconcile fail fast and be retried by [`error_policy`][super::error_policy], by
+    /// which point the ZookeeperCluster is usually gone too and the cleanup is skipped entirely.
+    const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
     async fn connect(addr: &str) -> Result<ZooKeeper, Error> {
         tracing::debug!(addr, "Connecting to ZooKeeper");
         // TODO: Happy eyeballs?
@@ -496,8 +516,12 @@ mod znode_mgmt {
             .context(InvalidAddrSnafu { addr })?
             .next()
             .context(AddrResolutionSnafu { addr })?;
-        let (zk, _) = ZooKeeper::connect(&addr)
+        let (zk, _) = timeout(CONNECT_TIMEOUT, ZooKeeper::connect(&addr))
             .await
+            .context(ConnectTimeoutSnafu {
+                addr,
+                timeout: CONNECT_TIMEOUT,
+            })?
             .context(ConnectSnafu { addr })?;
         tracing::debug!("Connected to ZooKeeper");
         Ok(zk)
