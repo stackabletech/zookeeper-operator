@@ -343,10 +343,11 @@ fn zk_mgmt_addr(
 
 /// How long to wait before retrying a reconcile that left a ZooKeeper session behind.
 ///
-/// A request that times out leaves its connection open for another 15 minutes or so, because
-/// closing it cleanly would need an answer from the ensemble that just stopped answering. Retrying
-/// every 5 seconds would pile up around 60 of these per znode and hit ZooKeeper's per-client
-/// connection limit (`maxClientCnxns`, 60 by default), so these retries wait a minute instead.
+/// A request that times out does not close its connection, because closing it cleanly would need
+/// an answer from the ensemble that just stopped answering. The connection therefore lingers,
+/// until either the ensemble gets round to the close or the operating system gives up on a dead
+/// one. Retrying every 5 seconds would keep stacking these up on an ensemble that is already
+/// struggling, so these retries wait a minute instead.
 const ABANDONED_SESSION_REQUEUE: Duration = Duration::from_secs(60);
 
 /// How long to wait before retrying a reconcile that failed for any other reason.
