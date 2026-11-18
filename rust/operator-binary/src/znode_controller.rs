@@ -99,11 +99,10 @@ pub enum Error {
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl Error {
-    /// Whether the reconcile gave up waiting for the ZooKeeper ensemble to answer.
+    /// Whether the reconcile left an abandoned ZooKeeper session behind.
     ///
-    /// Both the apply and the cleanup step talk to the ensemble, so either error can carry a
-    /// timeout.
-    fn ensemble_timed_out(&self) -> bool {
+    /// Both the apply and the cleanup step talk to the ensemble, so either error can carry one.
+    fn abandoned_zookeeper_session(&self) -> bool {
         let zookeeper_error = match self {
             Error::EnsureZnodeMissing { source, .. } => source,
             Error::ApplyResources {
@@ -111,7 +110,7 @@ impl Error {
             } => source,
             _ => return false,
         };
-        zookeeper_error.timed_out()
+        zookeeper_error.abandoned_session()
     }
 
     fn extract_finalizer_err(err: finalizer::Error<Self>) -> Self {
@@ -342,16 +341,19 @@ fn zk_mgmt_addr(
     )
 }
 
-/// How long to wait before retrying a reconcile that gave up waiting for the ZooKeeper ensemble.
+/// How long to wait before retrying a reconcile that left a ZooKeeper session behind.
 ///
-/// A timeout unblocks the reconcile but leaves the connection behind until the kernel reaps it, up
-/// to ~15 minutes later (see `REQUEST_TIMEOUT` in [`znode_mgmt`]). On the usual
+/// Timing out a request unblocks the reconcile but leaves the session behind until the kernel
+/// reaps it, up to ~15 minutes later (see `REQUEST_TIMEOUT` in [`znode_mgmt`]). On the usual
 /// [`DEFAULT_REQUEUE`] interval those abandoned sessions stack up against an ensemble that accepts
 /// connections but cannot answer in time - around 60 per ZookeeperZnode, which is also ZooKeeper's
 /// default `maxClientCnxns` per client IP, past which it refuses every further connection from the
 /// operator. A minute keeps a handful in flight instead, while still recovering promptly from a
 /// transient blip such as a leader election.
-const UNRESPONSIVE_ENSEMBLE_REQUEUE: Duration = Duration::from_secs(60);
+///
+/// Only requests qualify. A connect that times out usually leaves nothing behind, and waiting a
+/// minute on it would slow down the Namespace deletion this is all meant to unblock.
+const ABANDONED_SESSION_REQUEUE: Duration = Duration::from_secs(60);
 
 /// How long to wait before retrying a reconcile that failed for any other reason.
 const DEFAULT_REQUEUE: Duration = Duration::from_secs(5);
@@ -361,8 +363,8 @@ pub fn error_policy(
     error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {
-    let requeue_after = if error.ensemble_timed_out() {
-        UNRESPONSIVE_ENSEMBLE_REQUEUE
+    let requeue_after = if error.abandoned_zookeeper_session() {
+        ABANDONED_SESSION_REQUEUE
     } else {
         DEFAULT_REQUEUE
     };
@@ -544,17 +546,14 @@ mod znode_mgmt {
     }
 
     impl Error {
-        /// Whether the ensemble ran out of time to answer, rather than answering with an error.
+        /// Whether giving up left an established ZooKeeper session behind to be reaped.
         ///
-        /// These leave a blocking resolver call or a ZooKeeper session behind, so they must be
-        /// retried more patiently than a prompt refusal; see [`REQUEST_TIMEOUT`].
-        pub fn timed_out(&self) -> bool {
-            matches!(
-                self,
-                Error::ResolveTimeout { .. }
-                    | Error::ConnectTimeout { .. }
-                    | Error::RequestTimeout { .. }
-            )
+        /// Only a request can: the session is established by then, and abandoning it costs the
+        /// full retransmission budget (see [`REQUEST_TIMEOUT`]). A connect that times out is
+        /// nearly always still in [`ZooKeeper::connect`]'s `TcpStream::connect`, which has spawned
+        /// nothing yet, and resolving never reaches the ensemble at all.
+        pub fn abandoned_session(&self) -> bool {
+            matches!(self, Error::RequestTimeout { .. })
         }
     }
 
@@ -600,7 +599,7 @@ mod znode_mgmt {
     /// a handle to a task that `tokio-zookeeper` spawns, and dropping it makes that task queue a
     /// `CloseSession` and wait for a close that costs the same retransmission budget again.
     /// Retries must therefore be spaced out - see
-    /// [`UNRESPONSIVE_ENSEMBLE_REQUEUE`][super::UNRESPONSIVE_ENSEMBLE_REQUEUE].
+    /// [`ABANDONED_SESSION_REQUEUE`][super::ABANDONED_SESSION_REQUEUE].
     const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
     /// Applies [`REQUEST_TIMEOUT`] to a single ZooKeeper request.
