@@ -99,6 +99,21 @@ pub enum Error {
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl Error {
+    /// Whether the reconcile gave up waiting for the ZooKeeper ensemble to answer.
+    ///
+    /// Both the apply and the cleanup step talk to the ensemble, so either error can carry a
+    /// timeout.
+    fn ensemble_timed_out(&self) -> bool {
+        let zookeeper_error = match self {
+            Error::EnsureZnodeMissing { source, .. } => source,
+            Error::ApplyResources {
+                source: apply::Error::EnsureZnode { source, .. },
+            } => source,
+            _ => return false,
+        };
+        zookeeper_error.timed_out()
+    }
+
     fn extract_finalizer_err(err: finalizer::Error<Self>) -> Self {
         match err {
             finalizer::Error::ApplyFailed(source) => source,
@@ -327,12 +342,31 @@ fn zk_mgmt_addr(
     )
 }
 
+/// How long to wait before retrying a reconcile that gave up waiting for the ZooKeeper ensemble.
+///
+/// A timeout unblocks the reconcile but leaves the connection behind until the kernel reaps it, up
+/// to ~15 minutes later (see `REQUEST_TIMEOUT` in [`znode_mgmt`]). On the usual
+/// [`DEFAULT_REQUEUE`] interval those abandoned sessions stack up against an ensemble that accepts
+/// connections but cannot answer in time - around 60 per ZookeeperZnode, which is also ZooKeeper's
+/// default `maxClientCnxns` per client IP, past which it refuses every further connection from the
+/// operator. A minute keeps a handful in flight instead, while still recovering promptly from a
+/// transient blip such as a leader election.
+const UNRESPONSIVE_ENSEMBLE_REQUEUE: Duration = Duration::from_secs(60);
+
+/// How long to wait before retrying a reconcile that failed for any other reason.
+const DEFAULT_REQUEUE: Duration = Duration::from_secs(5);
+
 pub fn error_policy(
     _obj: Arc<DeserializeGuard<v1alpha1::ZookeeperZnode>>,
-    _error: &Error,
+    error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {
-    controller::Action::requeue(*Duration::from_secs(5))
+    let requeue_after = if error.ensemble_timed_out() {
+        UNRESPONSIVE_ENSEMBLE_REQUEUE
+    } else {
+        DEFAULT_REQUEUE
+    };
+    controller::Action::requeue(*requeue_after)
 }
 
 /// Shared helpers for building validated test znodes from minimal YAML fixtures.
@@ -456,6 +490,12 @@ mod znode_mgmt {
         },
         #[snafu(display("address {addr:?} did not resolve to any socket addresses"))]
         AddrResolution { addr: String },
+        #[snafu(display("failed to resolve {addr:?} within {timeout:?}"))]
+        ResolveTimeout {
+            source: tokio::time::error::Elapsed,
+            addr: String,
+            timeout: Duration,
+        },
         #[snafu(display("failed to connect to {addr:?}"))]
         Connect {
             source: tokio_zookeeper::error::Error,
@@ -503,41 +543,70 @@ mod znode_mgmt {
         },
     }
 
+    impl Error {
+        /// Whether the ensemble ran out of time to answer, rather than answering with an error.
+        ///
+        /// These leave a blocking resolver call or a ZooKeeper session behind, so they must be
+        /// retried more patiently than a prompt refusal; see [`REQUEST_TIMEOUT`].
+        pub fn timed_out(&self) -> bool {
+            matches!(
+                self,
+                Error::ResolveTimeout { .. }
+                    | Error::ConnectTimeout { .. }
+                    | Error::RequestTimeout { .. }
+            )
+        }
+    }
+
+    /// How long to wait for the ensemble's address to resolve before giving up.
+    ///
+    /// [`lookup_host`] applies no deadline of its own, so an unresponsive CoreDNS costs
+    /// `timeout × attempts × search domains` before the resolver gives up. A deleted Service is not
+    /// the cause - that answers NXDOMAIN immediately - an unreachable or overloaded one is.
+    ///
+    /// [`lookup_host`] resolves on a blocking thread, so timing out unblocks the reconcile without
+    /// aborting the resolver call itself.
+    const RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
+
     /// How long to wait for a connection to the ZooKeeper ensemble before giving up.
     ///
     /// [`ZooKeeper::connect`] applies no deadline of its own, so without this the TCP connect falls
-    /// back to the kernel's SYN retry budget, which is over two minutes on Linux. That matters most
-    /// while a Namespace is being deleted: its contents are removed concurrently and in no
-    /// particular order, so the ensemble's Service and Pods are typically gone before the
-    /// ZookeeperCluster is. The znode cleanup then dials a ClusterIP that no longer routes
-    /// anywhere and silently drops traffic, and the znode finalizer blocks Namespace termination
-    /// for the whole retry budget.
+    /// back to the kernel's SYN retry budget, over two minutes on Linux. That matters most while a
+    /// Namespace is being deleted: its contents go in no particular order, so the ensemble's
+    /// Service and Pods are typically gone before the ZookeeperCluster is. The cleanup then dials a
+    /// ClusterIP that no longer routes anywhere, so the SYNs are dropped rather than refused and
+    /// the znode finalizer blocks Namespace termination for the whole budget.
     ///
-    /// Timing out instead lets the reconcile fail fast and be retried by [`error_policy`][super::error_policy], by
-    /// which point the ZookeeperCluster is usually gone too and the cleanup is skipped entirely.
+    /// Timing out instead lets the reconcile fail fast and be retried by
+    /// [`error_policy`][super::error_policy], by which point the ZookeeperCluster is usually gone
+    /// too and the cleanup is skipped entirely.
     const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-    /// How long to wait for a single request to an established ZooKeeper connection before giving
-    /// up.
+    /// How long to wait for one request on an established ZooKeeper connection before giving up.
     ///
     /// A successful connect is no guarantee that the ensemble is still reachable for the rest of
     /// the operation, and the requests of [`ZooKeeper`] apply no deadline of their own either.
     /// Deleting a znode walks its subtree one request at a time, so the ensemble's Pods can
     /// disappear midway through. Because they go away without closing the TCP connection, the
     /// in-flight request is neither answered nor failed until the kernel exhausts its
-    /// retransmission budget, which takes roughly 15 minutes with the default `tcp_retries2` on
-    /// Linux. A Namespace deletion was observed to be held up for 957 seconds by exactly this,
-    /// well past the point where the znode had become unreachable for good.
+    /// retransmission budget, roughly 15 minutes with the default `tcp_retries2` on Linux. A
+    /// Namespace deletion was observed to be held up for 957 seconds by exactly this, well past
+    /// the point where the znode had become unreachable for good.
     ///
-    /// The deletion is resumable, so timing out costs nothing but a retry: it is retried by
-    /// [`error_policy`][super::error_policy], and the retry either makes further progress or finds
-    /// the ZookeeperCluster gone and skips the cleanup entirely.
+    /// The deletion is resumable, so the retry from [`error_policy`][super::error_policy] either
+    /// makes further progress or finds the ZookeeperCluster gone and skips the cleanup entirely.
+    ///
+    /// The timeout only unblocks the reconcile, not the connection underneath it: [`ZooKeeper`] is
+    /// a handle to a task that `tokio-zookeeper` spawns, and dropping it makes that task queue a
+    /// `CloseSession` and wait for a close that costs the same retransmission budget again.
+    /// Retries must therefore be spaced out - see
+    /// [`UNRESPONSIVE_ENSEMBLE_REQUEUE`][super::UNRESPONSIVE_ENSEMBLE_REQUEUE].
     const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
     /// Applies [`REQUEST_TIMEOUT`] to a single ZooKeeper request.
     ///
-    /// The request's own result is passed through untouched so that callers keep attaching their
-    /// own error context to it.
+    /// The request's own result passes through untouched, so callers keep attaching their own
+    /// error context to it.
     async fn with_request_timeout<T>(
         request: &'static str,
         path: &str,
@@ -555,8 +624,12 @@ mod znode_mgmt {
     async fn connect(addr: &str) -> Result<ZooKeeper, Error> {
         tracing::debug!(addr, "Connecting to ZooKeeper");
         // TODO: Happy eyeballs?
-        let addr = lookup_host(addr)
+        let addr = timeout(RESOLVE_TIMEOUT, lookup_host(addr))
             .await
+            .context(ResolveTimeoutSnafu {
+                addr,
+                timeout: RESOLVE_TIMEOUT,
+            })?
             .context(InvalidAddrSnafu { addr })?
             .next()
             .context(AddrResolutionSnafu { addr })?;
@@ -576,22 +649,19 @@ mod znode_mgmt {
     pub async fn ensure_znode_exists(addr: &str, path: &str) -> Result<(), Error> {
         tracing::info!(znode = path, "Creating ZNode");
         let zk = connect(addr).await?;
-        let create_res = with_request_timeout(
-            "create",
+        let create_request = zk.create(
             path,
-            zk.create(
-                path,
-                vec![],
-                vec![Acl {
-                    perms: Permission::ALL,
-                    scheme: "world".to_string(),
-                    id: "anyone".to_string(),
-                }],
-                tokio_zookeeper::CreateMode::Persistent,
-            ),
-        )
-        .await?
-        .context(CreateZnodeProtocolSnafu { path })?;
+            vec![],
+            vec![Acl {
+                perms: Permission::ALL,
+                scheme: "world".to_string(),
+                id: "anyone".to_string(),
+            }],
+            tokio_zookeeper::CreateMode::Persistent,
+        );
+        let create_res = with_request_timeout("create", path, create_request)
+            .await?
+            .context(CreateZnodeProtocolSnafu { path })?;
         match create_res {
             Ok(_) => {
                 tracing::info!(znode = "Created ZNode");

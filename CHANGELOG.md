@@ -59,8 +59,10 @@ All notable changes to this project will be documented in this file.
   TCP retransmission budget. Neither the ZooKeeper connection used to clean up a znode nor the
   requests sent over it had a timeout, so the cleanup blocked for over two minutes when the
   ensemble's Service was already removed, and for around 15 minutes when the ensemble's Pods
-  disappeared while the znode subtree was being walked. Both now give up after 10 seconds and are
-  retried ([#1109]).
+  disappeared while the znode subtree was being walked. Address resolution, the connection and
+  every request now give up after 10 seconds and are retried, on the znode creation path as well as
+  the cleanup path. Because a timed-out connection lingers until the operating system reaps it,
+  such a reconcile is retried after 60 seconds rather than the usual 5 ([#1109]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
