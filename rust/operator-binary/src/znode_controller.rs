@@ -441,7 +441,7 @@ mod tests {
 }
 
 mod znode_mgmt {
-    use std::{collections::VecDeque, net::SocketAddr, time::Duration};
+    use std::{collections::VecDeque, future::Future, net::SocketAddr, time::Duration};
 
     use snafu::{OptionExt, ResultExt, Snafu};
     use tokio::{net::lookup_host, time::timeout};
@@ -465,6 +465,15 @@ mod znode_mgmt {
         ConnectTimeout {
             source: tokio::time::error::Elapsed,
             addr: SocketAddr,
+            timeout: Duration,
+        },
+        #[snafu(display(
+            "{request} request for znode {path:?} was not answered within {timeout:?}"
+        ))]
+        RequestTimeout {
+            source: tokio::time::error::Elapsed,
+            request: &'static str,
+            path: String,
             timeout: Duration,
         },
         #[snafu(display("protocol error creating znode {path:?}"))]
@@ -508,6 +517,41 @@ mod znode_mgmt {
     /// which point the ZookeeperCluster is usually gone too and the cleanup is skipped entirely.
     const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+    /// How long to wait for a single request to an established ZooKeeper connection before giving
+    /// up.
+    ///
+    /// A successful connect is no guarantee that the ensemble is still reachable for the rest of
+    /// the operation, and the requests of [`ZooKeeper`] apply no deadline of their own either.
+    /// Deleting a znode walks its subtree one request at a time, so the ensemble's Pods can
+    /// disappear midway through. Because they go away without closing the TCP connection, the
+    /// in-flight request is neither answered nor failed until the kernel exhausts its
+    /// retransmission budget, which takes roughly 15 minutes with the default `tcp_retries2` on
+    /// Linux. A Namespace deletion was observed to be held up for 957 seconds by exactly this,
+    /// well past the point where the znode had become unreachable for good.
+    ///
+    /// The deletion is resumable, so timing out costs nothing but a retry: it is retried by
+    /// [`error_policy`][super::error_policy], and the retry either makes further progress or finds
+    /// the ZookeeperCluster gone and skips the cleanup entirely.
+    const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// Applies [`REQUEST_TIMEOUT`] to a single ZooKeeper request.
+    ///
+    /// The request's own result is passed through untouched so that callers keep attaching their
+    /// own error context to it.
+    async fn with_request_timeout<T>(
+        request: &'static str,
+        path: &str,
+        zk_request: impl Future<Output = T>,
+    ) -> Result<T, Error> {
+        timeout(REQUEST_TIMEOUT, zk_request)
+            .await
+            .context(RequestTimeoutSnafu {
+                request,
+                path,
+                timeout: REQUEST_TIMEOUT,
+            })
+    }
+
     async fn connect(addr: &str) -> Result<ZooKeeper, Error> {
         tracing::debug!(addr, "Connecting to ZooKeeper");
         // TODO: Happy eyeballs?
@@ -532,8 +576,10 @@ mod znode_mgmt {
     pub async fn ensure_znode_exists(addr: &str, path: &str) -> Result<(), Error> {
         tracing::info!(znode = path, "Creating ZNode");
         let zk = connect(addr).await?;
-        let create_res = zk
-            .create(
+        let create_res = with_request_timeout(
+            "create",
+            path,
+            zk.create(
                 path,
                 vec![],
                 vec![Acl {
@@ -542,9 +588,10 @@ mod znode_mgmt {
                     id: "anyone".to_string(),
                 }],
                 tokio_zookeeper::CreateMode::Persistent,
-            )
-            .await
-            .context(CreateZnodeProtocolSnafu { path })?;
+            ),
+        )
+        .await?
+        .context(CreateZnodeProtocolSnafu { path })?;
         match create_res {
             Ok(_) => {
                 tracing::info!(znode = "Created ZNode");
@@ -573,10 +620,10 @@ mod znode_mgmt {
                 ?queue,
                 "Deleting ZNode from queue"
             );
-            let children = zk
-                .get_children(&curr_path)
-                .await
-                .context(DeleteZnodeFindChildrenProtocolSnafu { path: &curr_path })?;
+            let children =
+                with_request_timeout("get_children", &curr_path, zk.get_children(&curr_path))
+                    .await?
+                    .context(DeleteZnodeFindChildrenProtocolSnafu { path: &curr_path })?;
             match children {
                 None => {
                     tracing::warn!(
@@ -589,10 +636,10 @@ mod znode_mgmt {
                         znode = curr_path.as_str(),
                         "ZNode has no children, deleting..."
                     );
-                    let delete_res = zk
-                        .delete(&curr_path, None)
-                        .await
-                        .context(DeleteZnodeProtocolSnafu { path: &curr_path })?;
+                    let delete_res =
+                        with_request_timeout("delete", &curr_path, zk.delete(&curr_path, None))
+                            .await?
+                            .context(DeleteZnodeProtocolSnafu { path: &curr_path })?;
                     match delete_res {
                         Ok(_) => tracing::info!(znode = curr_path.as_str(), "Deleted ZNode"),
                         Err(tokio_zookeeper::error::Delete::NoNode) => tracing::info!(
