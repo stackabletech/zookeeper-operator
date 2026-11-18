@@ -55,14 +55,11 @@ All notable changes to this project will be documented in this file.
   `CONTAINERDEBUG_LOG_DIRECTORY`, which containerdebug stopped reading in its version 0.2.0 when it
   moved to `stackable-telemetry`; the directory is now set via `FILE_LOG_DIRECTORY`. The file is
   rotated hourly and at most two files are kept, because rotation is opt-in ([#1106]).
-- Deleting a Namespace is no longer delayed by the znode finalizer for the length of the kernel's
-  TCP retransmission budget. Neither the ZooKeeper connection used to clean up a znode nor the
-  requests sent over it had a timeout, so the cleanup blocked for over two minutes when the
-  ensemble's Service was already removed, and for around 15 minutes when the ensemble's Pods
-  disappeared while the znode subtree was being walked. Address resolution, the connection and
-  every request now give up after 10 seconds and are retried, on the znode creation path as well as
-  the cleanup path. Because a timed-out request leaves its ZooKeeper session to be reaped by the
-  operating system, that one case is retried after 60 seconds rather than the usual 5 ([#1109]).
+- Deleting a Namespace is no longer held up by the znode finalizer, which could block it for up to
+  15 minutes when the ZooKeeper ensemble was already gone. Resolving the ensemble's address,
+  connecting to it and each request now give up after 10 seconds and are retried, instead of
+  waiting for the operating system to notice that the connection is dead. Creating a znode is
+  bounded the same way and can now fail with a timeout error ([#1109]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
