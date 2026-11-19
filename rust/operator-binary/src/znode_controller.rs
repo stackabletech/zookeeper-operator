@@ -561,8 +561,7 @@ mod znode_mgmt {
     ///
     /// Requests have no deadline of their own either, so if the ensemble's Pods vanish while a
     /// znode is being deleted, the request simply never comes back and the kernel only gives up on
-    /// the dead connection after about 15 minutes. One Namespace deletion was stuck like this for
-    /// 957 seconds.
+    /// the dead connection after about 15 minutes.
     const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 
     /// Sends a single ZooKeeper request, bounded by [`REQUEST_TIMEOUT`].
