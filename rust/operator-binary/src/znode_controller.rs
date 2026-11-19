@@ -99,6 +99,20 @@ pub enum Error {
 type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl Error {
+    /// Whether the reconcile left an abandoned ZooKeeper session behind.
+    ///
+    /// Both the apply and the cleanup step talk to the ensemble, so either error can carry one.
+    fn abandoned_zookeeper_session(&self) -> bool {
+        let zookeeper_error = match self {
+            Error::EnsureZnodeMissing { source, .. } => source,
+            Error::ApplyResources {
+                source: apply::Error::EnsureZnode { source, .. },
+            } => source,
+            _ => return false,
+        };
+        zookeeper_error.abandoned_session()
+    }
+
     fn extract_finalizer_err(err: finalizer::Error<Self>) -> Self {
         match err {
             finalizer::Error::ApplyFailed(source) => source,
@@ -327,12 +341,29 @@ fn zk_mgmt_addr(
     )
 }
 
+/// How long to wait before retrying a reconcile that left a ZooKeeper session behind.
+///
+/// A request that times out does not close its connection, because closing it cleanly would need
+/// an answer from the ensemble that just stopped answering. The connection therefore lingers,
+/// until either the ensemble gets round to the close or the operating system gives up on a dead
+/// one. Retrying every 5 seconds would keep stacking these up on an ensemble that is already
+/// struggling, so these retries wait a minute instead.
+const ABANDONED_SESSION_REQUEUE: Duration = Duration::from_secs(60);
+
+/// How long to wait before retrying a reconcile that failed for any other reason.
+const DEFAULT_REQUEUE: Duration = Duration::from_secs(5);
+
 pub fn error_policy(
     _obj: Arc<DeserializeGuard<v1alpha1::ZookeeperZnode>>,
-    _error: &Error,
+    error: &Error,
     _ctx: Arc<Ctx>,
 ) -> controller::Action {
-    controller::Action::requeue(*Duration::from_secs(5))
+    let requeue_after = if error.abandoned_zookeeper_session() {
+        ABANDONED_SESSION_REQUEUE
+    } else {
+        DEFAULT_REQUEUE
+    };
+    controller::Action::requeue(*requeue_after)
 }
 
 /// Shared helpers for building validated test znodes from minimal YAML fixtures.
@@ -441,10 +472,10 @@ mod tests {
 }
 
 mod znode_mgmt {
-    use std::{collections::VecDeque, net::SocketAddr};
+    use std::{collections::VecDeque, future::Future, net::SocketAddr, time::Duration};
 
     use snafu::{OptionExt, ResultExt, Snafu};
-    use tokio::net::lookup_host;
+    use tokio::{net::lookup_host, time::timeout};
     use tokio_zookeeper::{Acl, Permission, ZooKeeper};
 
     #[derive(Snafu, Debug)]
@@ -456,14 +487,36 @@ mod znode_mgmt {
         },
         #[snafu(display("address {addr:?} did not resolve to any socket addresses"))]
         AddrResolution { addr: String },
+        #[snafu(display("failed to resolve {addr:?} within {timeout:?}"))]
+        ResolveTimeout {
+            source: tokio::time::error::Elapsed,
+            addr: String,
+            timeout: Duration,
+        },
         #[snafu(display("failed to connect to {addr:?}"))]
         Connect {
             source: tokio_zookeeper::error::Error,
             addr: SocketAddr,
         },
-        #[snafu(display("protocol error creating znode {path:?}"))]
-        CreateZnodeProtocol {
+        #[snafu(display("failed to connect to {addr:?} within {timeout:?}"))]
+        ConnectTimeout {
+            source: tokio::time::error::Elapsed,
+            addr: SocketAddr,
+            timeout: Duration,
+        },
+        #[snafu(display(
+            "{request} request for znode {path:?} was not answered within {timeout:?}"
+        ))]
+        RequestTimeout {
+            source: tokio::time::error::Elapsed,
+            request: &'static str,
+            path: String,
+            timeout: Duration,
+        },
+        #[snafu(display("{request} request for znode {path:?} failed"))]
+        RequestProtocol {
             source: tokio_zookeeper::error::Error,
+            request: &'static str,
             path: String,
         },
         #[snafu(display("failed to create znode {path:?}"))]
@@ -471,33 +524,84 @@ mod znode_mgmt {
             source: tokio_zookeeper::error::Create,
             path: String,
         },
-        #[snafu(display("protocol error deleting znode {path:?}"))]
-        DeleteZnodeProtocol {
-            source: tokio_zookeeper::error::Error,
-            path: String,
-        },
         #[snafu(display("failed to delete znode {path:?}"))]
         DeleteZnode {
             source: tokio_zookeeper::error::Delete,
             path: String,
         },
-        #[snafu(display("failed to find children to delete of {path:?}"))]
-        DeleteZnodeFindChildrenProtocol {
-            source: tokio_zookeeper::error::Error,
-            path: String,
-        },
+    }
+
+    impl Error {
+        /// Whether giving up left a live ZooKeeper session behind.
+        ///
+        /// Only a timed-out request can leave a session behind, because a session exists only
+        /// once the connection is established (see [`REQUEST_TIMEOUT`]). A connect that times out
+        /// usually has not opened a session yet, and a failed address lookup never reached the
+        /// ensemble at all.
+        pub fn abandoned_session(&self) -> bool {
+            matches!(self, Error::RequestTimeout { .. })
+        }
+    }
+
+    /// How long to wait for the ensemble's address to resolve before giving up.
+    ///
+    /// DNS lookups have no deadline of their own and can hang for a long time when CoreDNS is
+    /// unreachable. The lookup itself keeps running in the background; the timeout only frees up
+    /// the reconcile.
+    const RESOLVE_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// How long to wait for a connection to the ZooKeeper ensemble before giving up.
+    ///
+    /// Connecting has no deadline of its own, and when the ensemble's Service is already gone the
+    /// attempt is silently dropped rather than refused, so the kernel keeps retrying for over two
+    /// minutes. That is long enough to hold up the deletion of an entire Namespace.
+    const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// How long to wait for one request on an established ZooKeeper connection before giving up.
+    ///
+    /// Requests have no deadline of their own either, so if the ensemble's Pods vanish while a
+    /// znode is being deleted, the request simply never comes back and the kernel only gives up on
+    /// the dead connection after about 15 minutes.
+    const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+
+    /// Sends a single ZooKeeper request, bounded by [`REQUEST_TIMEOUT`].
+    ///
+    /// Both ways the connection itself can fail the request - the timeout and a protocol error -
+    /// are turned into an [`Error`] here, so callers are left with only ZooKeeper's own answer to
+    /// match on.
+    async fn request<T>(
+        request: &'static str,
+        path: &str,
+        zk_request: impl Future<Output = Result<T, tokio_zookeeper::error::Error>>,
+    ) -> Result<T, Error> {
+        timeout(REQUEST_TIMEOUT, zk_request)
+            .await
+            .context(RequestTimeoutSnafu {
+                request,
+                path,
+                timeout: REQUEST_TIMEOUT,
+            })?
+            .context(RequestProtocolSnafu { request, path })
     }
 
     async fn connect(addr: &str) -> Result<ZooKeeper, Error> {
         tracing::debug!(addr, "Connecting to ZooKeeper");
         // TODO: Happy eyeballs?
-        let addr = lookup_host(addr)
+        let addr = timeout(RESOLVE_TIMEOUT, lookup_host(addr))
             .await
+            .context(ResolveTimeoutSnafu {
+                addr,
+                timeout: RESOLVE_TIMEOUT,
+            })?
             .context(InvalidAddrSnafu { addr })?
             .next()
             .context(AddrResolutionSnafu { addr })?;
-        let (zk, _) = ZooKeeper::connect(&addr)
+        let (zk, _) = timeout(CONNECT_TIMEOUT, ZooKeeper::connect(&addr))
             .await
+            .context(ConnectTimeoutSnafu {
+                addr,
+                timeout: CONNECT_TIMEOUT,
+            })?
             .context(ConnectSnafu { addr })?;
         tracing::debug!("Connected to ZooKeeper");
         Ok(zk)
@@ -508,19 +612,17 @@ mod znode_mgmt {
     pub async fn ensure_znode_exists(addr: &str, path: &str) -> Result<(), Error> {
         tracing::info!(znode = path, "Creating ZNode");
         let zk = connect(addr).await?;
-        let create_res = zk
-            .create(
-                path,
-                vec![],
-                vec![Acl {
-                    perms: Permission::ALL,
-                    scheme: "world".to_string(),
-                    id: "anyone".to_string(),
-                }],
-                tokio_zookeeper::CreateMode::Persistent,
-            )
-            .await
-            .context(CreateZnodeProtocolSnafu { path })?;
+        let create_request = zk.create(
+            path,
+            vec![],
+            vec![Acl {
+                perms: Permission::ALL,
+                scheme: "world".to_string(),
+                id: "anyone".to_string(),
+            }],
+            tokio_zookeeper::CreateMode::Persistent,
+        );
+        let create_res = request("create", path, create_request).await?;
         match create_res {
             Ok(_) => {
                 tracing::info!(znode = "Created ZNode");
@@ -549,10 +651,7 @@ mod znode_mgmt {
                 ?queue,
                 "Deleting ZNode from queue"
             );
-            let children = zk
-                .get_children(&curr_path)
-                .await
-                .context(DeleteZnodeFindChildrenProtocolSnafu { path: &curr_path })?;
+            let children = request("get_children", &curr_path, zk.get_children(&curr_path)).await?;
             match children {
                 None => {
                     tracing::warn!(
@@ -565,10 +664,8 @@ mod znode_mgmt {
                         znode = curr_path.as_str(),
                         "ZNode has no children, deleting..."
                     );
-                    let delete_res = zk
-                        .delete(&curr_path, None)
-                        .await
-                        .context(DeleteZnodeProtocolSnafu { path: &curr_path })?;
+                    let delete_res =
+                        request("delete", &curr_path, zk.delete(&curr_path, None)).await?;
                     match delete_res {
                         Ok(_) => tracing::info!(znode = curr_path.as_str(), "Deleted ZNode"),
                         Err(tokio_zookeeper::error::Delete::NoNode) => tracing::info!(
