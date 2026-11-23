@@ -1,0 +1,46 @@
+---
+# While the role Listener is re-created it has no address for a moment. The stored discovery
+# ConfigMap must be re-emitted unchanged in that window: not blanked and refilled (a new
+# resourceVersion), and not deleted as an orphan and re-created (a new UID).
+apiVersion: kuttl.dev/v1beta1
+kind: TestStep
+metadata:
+  name: recreate-role-listener
+timeout: 300
+commands:
+  - script: |
+      set -eu
+
+      config_map() { kubectl get -n "$NAMESPACE" configmap test-zk -o jsonpath="$1"; }
+      listener() { kubectl get -n "$NAMESPACE" listener test-zk-server -o jsonpath="$1" 2>/dev/null || true; }
+
+      old_uid=$(config_map '{.metadata.uid}')
+      old_resource_version=$(config_map '{.metadata.resourceVersion}')
+      old_data=$(config_map '{.data}')
+      old_listener_uid=$(listener '{.metadata.uid}')
+
+      kubectl delete -n "$NAMESPACE" listener test-zk-server --wait=false
+
+      # Wait for the re-created Listener to publish an address again.
+      for _ in $(seq 1 120); do
+        listener_uid=$(listener '{.metadata.uid}')
+        address=$(listener '{.status.ingressAddresses[0].address}')
+        if [ -n "$listener_uid" ] && [ "$listener_uid" != "$old_listener_uid" ] && [ -n "$address" ]; then
+          break
+        fi
+        sleep 1
+      done
+      if [ -z "${address:-}" ] || [ "${listener_uid:-}" = "$old_listener_uid" ]; then
+        echo "the role Listener was not re-created with an address" >&2
+        exit 1
+      fi
+
+      # Let the reconcile triggered by the Listener status update finish.
+      sleep 10
+
+      [ "$(config_map '{.metadata.uid}')" = "$old_uid" ] \
+        || { echo "the discovery ConfigMap was deleted and re-created" >&2; exit 1; }
+      [ "$(config_map '{.data}')" = "$old_data" ] \
+        || { echo "the discovery ConfigMap data changed" >&2; exit 1; }
+      [ "$(config_map '{.metadata.resourceVersion}')" = "$old_resource_version" ] \
+        || { echo "the discovery ConfigMap was rewritten (resourceVersion changed)" >&2; exit 1; }

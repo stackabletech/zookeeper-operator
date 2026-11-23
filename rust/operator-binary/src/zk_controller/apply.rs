@@ -95,7 +95,10 @@ impl<'a> Applier<'a> {
         let services = self.add_resources(services).await?;
         let listeners = self.add_resources(listeners).await?;
         let config_maps = self.add_resources(config_maps).await?;
-        let discovery_config_map = self.add_resource(discovery_config_map).await?;
+        let discovery_config_map = match discovery_config_map {
+            Some(config_map) => Some(self.add_resource(config_map).await?),
+            None => None,
+        };
         let pod_disruption_budgets = self.add_resources(pod_disruption_budgets).await?;
         let stateful_sets = self.add_resources(stateful_sets).await?;
 

@@ -29,8 +29,6 @@ All notable changes to this project will be documented in this file.
   Previously a ZookeeperCluster without it was accepted by the API server but failed reconciliation ([#1060]).
 - The reconciler now applies resources and derives the cluster status in discrete
   apply and update_status steps for the `zk_controller` and `znode_controller` ([#1069]).
-- The discovery ConfigMap is now always written, with empty `ZOOKEEPER` and `ZOOKEEPER_HOSTS` while
-  the listener publishes no addresses ([#1069]).
 - All product containers now run with `securityContext.runAsNonRoot` set to `true` to improve security ([#1070]).
 - Remove the `app.kubernetes.io/component` and `app.kubernetes.io/role-group` labels from the
   resources they don't apply to (previously set to `none` or the placeholder value `discovery`)
@@ -44,6 +42,8 @@ All notable changes to this project will be documented in this file.
 - All pods now set `securityContext.seccompProfile.type` to `RuntimeDefault` ([#1097]).
 - Replace the unmaintained `serde_yaml` with `yaml_serde` ([#1097]).
 - The operator Deployment runs with a restricted security context and a read-only root filesystem, so it can be deployed into namespaces that enforce the `restricted` Pod Security Standard ([#1101]).
+- An existing discovery ConfigMap is kept unchanged while the role listener has no address and a new one is only created once the address is available.
+  Previously, reconciliation failed while the address was missing ([#1069], [#1105]).
 
 ### Fixed
 
@@ -56,6 +56,11 @@ All notable changes to this project will be documented in this file.
   `CONTAINERDEBUG_LOG_DIRECTORY`, which containerdebug stopped reading in its version 0.2.0 when it
   moved to `stackable-telemetry`; the directory is now set via `FILE_LOG_DIRECTORY`. The file is
   rotated hourly and at most two files are kept, because rotation is opt-in ([#1106]).
+- Deleting a Namespace is no longer held up by the znode finalizer, which could block it for up to
+  15 minutes when the ZooKeeper ensemble was already gone. Resolving the ensemble's address,
+  connecting to it and each request now give up after 10 seconds and are retried, instead of
+  waiting for the operating system to notice that the connection is dead. Creating a znode is
+  bounded the same way and can now fail with a timeout error ([#1109]).
 
 [#1053]: https://github.com/stackabletech/zookeeper-operator/pull/1053
 [#1060]: https://github.com/stackabletech/zookeeper-operator/pull/1060
@@ -75,8 +80,10 @@ All notable changes to this project will be documented in this file.
 [#1100]: https://github.com/stackabletech/zookeeper-operator/pull/1100
 [#1101]: https://github.com/stackabletech/zookeeper-operator/pull/1101
 [#1102]: https://github.com/stackabletech/zookeeper-operator/pull/1102
+[#1105]: https://github.com/stackabletech/zookeeper-operator/pull/1105
 [#1106]: https://github.com/stackabletech/zookeeper-operator/pull/1106
 [#1108]: https://github.com/stackabletech/zookeeper-operator/pull/1108
+[#1109]: https://github.com/stackabletech/zookeeper-operator/pull/1109
 
 ## [26.7.0] - 2026-07-21
 
