@@ -812,4 +812,82 @@ mod tests {
             .expect("validate should succeed for the test fixture");
         assert_eq!(validated.discovery_addresses, ListenerAddresses::default());
     }
+
+    /// A role `config` that does not mention `containerdebug` still gets the default, so the
+    /// `containerdebug` field of the CRD must be optional.
+    #[test]
+    fn containerdebug_defaults_when_not_configured() {
+        use stackable_operator::crd::containerdebug::{
+            DEFAULT_INTERVAL, ValidatedContainerdebugConfig,
+        };
+
+        let zk = minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.6"
+              servers:
+                config:
+                  gracefulShutdownTimeout: 1h
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+        );
+        let validated = validated_cluster(&zk);
+
+        assert_eq!(
+            server_role_group(&validated, "default")
+                .config
+                .containerdebug,
+            ValidatedContainerdebugConfig::Enabled {
+                interval: DEFAULT_INTERVAL
+            }
+        );
+    }
+
+    /// An invalid `containerdebug` config fails the validation, naming the role group.
+    #[test]
+    fn zero_containerdebug_interval_fails_validation() {
+        let zk = minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: test-zk
+            spec:
+              image:
+                productVersion: "3.9.6"
+              servers:
+                config:
+                  containerdebug:
+                    interval: 0s
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+        );
+
+        let Err(error) = try_validate(&zk) else {
+            panic!("the validation should fail");
+        };
+        let chain: Vec<String> =
+            std::iter::successors(Some(&error as &dyn std::error::Error), |error| {
+                error.source()
+            })
+            .map(ToString::to_string)
+            .collect();
+
+        assert_eq!(
+            chain,
+            [
+                r#"invalid containerdebug config for role group "default""#,
+                "the containerdebug interval must not be zero",
+            ]
+        );
+    }
 }
