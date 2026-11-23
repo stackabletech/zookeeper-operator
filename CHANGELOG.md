@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 - Add `/ready` endpoint to the operator Deployment, which reports the CRD installation status ([#1090]).
 - The logs of the `containerdebug` process are now collected by the Vector agent and forwarded to
   the Vector aggregator ([#1106]).
-- Add `containerdebug` config CRD ([#1108]).
+- Add the `config.containerdebug` field to roles and role groups ([#1108]).
 
 ### Changed
 
