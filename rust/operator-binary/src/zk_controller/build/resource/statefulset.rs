@@ -292,13 +292,17 @@ pub fn build_server_rolegroup_statefulset(
             {remove_vector_shutdown_file_command}
             prepare_signal_handlers
             mkdir --parents \"${file_log_directory}\" || true
-            containerdebug --output={STACKABLE_LOG_DIR}/containerdebug-state.json --loop &
+            {containerdebug_command}
             bin/zkServer.sh start-foreground {STACKABLE_RW_CONFIG_DIR}/{zoo_cfg} &
             wait_for_termination $!
             {create_vector_shutdown_file_command}
             ",
             zoo_cfg = ConfigFileName::ZooCfg,
             file_log_directory = FILE_LOG_DIRECTORY.as_ref(),
+            containerdebug_command = merged_config
+                .containerdebug
+                .background_command(STACKABLE_LOG_DIR)
+                .unwrap_or_default(),
             remove_vector_shutdown_file_command =
                 remove_vector_shutdown_file_command(STACKABLE_LOG_DIR),
             create_vector_shutdown_file_command =
@@ -480,7 +484,11 @@ fn common_env_vars(merged_config: &ValidatedZookeeperConfig) -> EnvVarSet {
 
 #[cfg(test)]
 mod tests {
-    use stackable_operator::k8s_openapi::api::core::v1::{Container, EnvVar};
+    use stackable_operator::{
+        crd::containerdebug::ValidatedContainerdebugConfig,
+        k8s_openapi::api::core::v1::{Container, EnvVar},
+        shared::time::Duration,
+    };
 
     use super::*;
     use crate::zk_controller::test_support::{minimal_zk, validated_cluster};
@@ -660,5 +668,65 @@ mod tests {
             "the override must replace the operator-set value, not duplicate it"
         );
         assert_eq!(zoocfgdir[0].value.as_deref(), Some("/custom/conf/dir"));
+    }
+
+    /// Builds the `default` server StatefulSet with the given `containerdebug` config and returns
+    /// the `containerdebug` line of the zookeeper container's args, if any.
+    fn containerdebug_line(containerdebug: ValidatedContainerdebugConfig) -> Option<String> {
+        let validated = validated_cluster(&minimal_zk(
+            r#"
+            apiVersion: zookeeper.stackable.tech/v1alpha1
+            kind: ZookeeperCluster
+            metadata:
+              name: simple-zookeeper
+            spec:
+              image:
+                productVersion: "3.9.6"
+              servers:
+                roleGroups:
+                  default:
+                    replicas: 1
+            "#,
+        ));
+        let rg_name = RoleGroupName::from_str("default").expect("valid role group name");
+        let mut rg = validated.role_group_configs[&ZookeeperRole::Server][&rg_name].clone();
+        rg.config.containerdebug = containerdebug;
+
+        build_server_rolegroup_statefulset(&validated, &ZookeeperRole::Server, &rg_name, &rg)
+            .expect("statefulset builds")
+            .spec
+            .and_then(|spec| spec.template.spec)
+            .expect("pod spec")
+            .containers
+            .into_iter()
+            .find(|container| container.name == ZOOKEEPER_CONTAINER_NAME.to_string())
+            .expect("the zookeeper container exists")
+            .args
+            .expect("the zookeeper container has args")
+            .join("\n")
+            .lines()
+            .map(str::trim)
+            .find(|line| line.starts_with("containerdebug "))
+            .map(str::to_owned)
+    }
+
+    /// The zookeeper container starts `containerdebug` from the role group's validated config. The
+    /// command itself is owned (and tested) by operator-rs, so only the wiring is checked here.
+    #[test]
+    fn zookeeper_container_starts_containerdebug_when_enabled() {
+        let containerdebug = ValidatedContainerdebugConfig::Enabled {
+            interval: Duration::from_minutes_unchecked(10),
+        };
+        let expected = containerdebug.background_command(STACKABLE_LOG_DIR);
+
+        assert_eq!(containerdebug_line(containerdebug), expected);
+    }
+
+    #[test]
+    fn zookeeper_container_does_not_start_containerdebug_when_disabled() {
+        assert_eq!(
+            containerdebug_line(ValidatedContainerdebugConfig::Disabled),
+            None
+        );
     }
 }
