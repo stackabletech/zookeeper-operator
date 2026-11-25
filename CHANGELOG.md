@@ -6,13 +6,22 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Add the `config.containerdebug` field to roles and role groups ([#1108]).
+
+[#1108]: https://github.com/stackabletech/zookeeper-operator/pull/1108
+
+## [26.11.0] - 2026-11-20
+
+## [26.11.0-rc1] - 2026-11-19
+
+### Added
+
 - Support floating tags for product images via the new `spec.image.stackableVersionPolicy` field
   ([#1086]).
 - BREAKING: Enable auto-purge feature for data directory cleanup ([#1068]).
 - Add `/ready` endpoint to the operator Deployment, which reports the CRD installation status ([#1090]).
 - The logs of the `containerdebug` process are now collected by the Vector agent and forwarded to
   the Vector aggregator ([#1106]).
-- Add the `config.containerdebug` field to roles and role groups ([#1108]).
 
 ### Changed
 
@@ -82,7 +91,6 @@ All notable changes to this project will be documented in this file.
 [#1102]: https://github.com/stackabletech/zookeeper-operator/pull/1102
 [#1105]: https://github.com/stackabletech/zookeeper-operator/pull/1105
 [#1106]: https://github.com/stackabletech/zookeeper-operator/pull/1106
-[#1108]: https://github.com/stackabletech/zookeeper-operator/pull/1108
 [#1109]: https://github.com/stackabletech/zookeeper-operator/pull/1109
 
 ## [26.7.0] - 2026-07-21
