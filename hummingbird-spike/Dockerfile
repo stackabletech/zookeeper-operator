@@ -8,16 +8,11 @@
 # - The `ubi10-rust-builder` and `ubi10-minimal` stages are replaced by a Hummingbird builder and by
 #   a Hummingbird runtime image (`RUNTIME_BASE`, default `hi/core-runtime`).
 # - The final image is built FROM the Hummingbird runtime image and only adds files on top of it.
-#   It is not `FROM scratch` and nothing is installed into it with dnf. Reason: the Red Hat certification check
-#   `BasedOnUbi` asks Red Hat Pyxis whether a certified image contains the layers of the image under test. A
-#   `FROM scratch` image with a single new layer is never found, even if its contents are the same RPMs.
-#   Installing RPMs on top of the base could also overwrite files the base layers own (check `HasModifiedFiles`).
+#   The runtime image has bash and coreutils but no package manager, so nothing is installed in it.
 # - No user is created. The image runs as a numeric UID without a passwd entry (works in Kubernetes and OpenShift),
 #   which avoids editing /etc/passwd and /etc/group, files that belong to RPMs of the base image.
 # - Not part of the image (they were in the UBI image and in the previous `FROM scratch` version of this spike):
 #   bash profile and aliases, `nano`, `iputils`, `libkadm5`, `krb5-libs` and the other tools from `ubi10-minimal`.
-#   TODO: check that nothing needs them. The build prints the shared libraries the binary needs (see `additions`),
-#   compare them with what the runtime image provides.
 # - The builder is `hi/rust:latest-builder`, which ships the Rust toolchain and dnf. Nothing here installs or pins Rust, so the
 #   image's Rust version must match rust-toolchain.toml (the build prints both, see the `builder` stage).
 #
@@ -31,9 +26,9 @@
 #   docker build -f hummingbird-spike/Dockerfile --build-arg VERSION=0.0.0-dev \
 #     --build-arg RUNTIME_BASE=registry.access.redhat.com/hi/core-runtime:<tag> -t zookeeper-operator-hum:spike .
 #
-# Useful intermediate targets: builder, additions
+# Useful intermediate target: builder
 #
-#   docker build -f hummingbird-spike/Dockerfile --target additions -t zk-op-hum-additions .
+#   docker build -f hummingbird-spike/Dockerfile --target builder -t zk-op-hum-builder .
 
 # https://docs.docker.com/build/checks/#fail-build-on-check-violations
 # check=error=true
@@ -42,12 +37,11 @@
 # The `-builder` variant of hi/rust. The plain `hi/rust:latest` has no dnf. The builder variants add
 # bash, dnf5 and shadow-utils (default_rpm_packages.builder in the Hummingbird containers repo,
 # images/variables.yml), on top of cargo, rust, git-core, make, glibc-devel and openssl-devel (images/rust/properties.yml).
+# The image also has gcc (gcc-16.2.1 when checked), which rustc needs as linker and the build scripts of
+# `ring` and the vendored libgit2 (via `git2` in the `built` crate) need as C compiler.
 ARG BUILDER_BASE=registry.access.redhat.com/hi/rust:latest-builder
-# Used for the `additions` stage only, it needs a shell, chown and ldd. The Rust toolchain in it is not used.
-ARG ROOTFS_BASE=${BUILDER_BASE}
 # The base of the final image. The final image must share its layers, so this has to be an image that
-# Red Hat certified (see the BasedOnUbi check of the preflight tool). It must be glibc based, the operator is
-# dynamically linked. `hi/static` has no glibc.
+# Red Hat certified. It must be glibc based, the operator is dynamically linked. `hi/static` has no glibc.
 # The binary is built against the glibc of BUILDER_BASE. Keep both bases on the same Hummingbird release.
 ARG RUNTIME_BASE=registry.access.redhat.com/hi/core-runtime:latest
 
@@ -67,12 +61,6 @@ ARG CARGO_AUDITABLE_CRATE_VERSION=0.7.7
 USER 0
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
 
-# What the build needs on top of the image's cargo, rust, git-core, make and glibc-devel:
-# - a C compiler: build scripts of `ring` and the vendored libgit2 (via `git2` in the `built` crate).
-#   hi/rust does not list gcc, so make sure it is there (a no-op if it already is).
-# hadolint ignore=DL3041
-RUN dnf install --assumeyes gcc && dnf clean all
-
 WORKDIR /src
 COPY . /src
 
@@ -91,48 +79,6 @@ cp target/release/stackable-zookeeper-operator /app/
 EOF
 
 # ==============================================================================
-# additions: collects the files that are added on top of the runtime base image into /additions
-
-# hadolint ignore=DL3006,DL3007
-FROM ${ROOTFS_BASE} AS additions
-
-ARG VERSION
-
-# This is chosen at random and is this high on purpose to have very little chance to clash with an existing user on the host system
-# NOTE: Please also update default.nix accordingly!
-# There is no passwd entry for it in the image, the UID only has to be numeric and non-zero.
-ARG STACKABLE_USER_UID="782252253"
-
-# hadolint ignore=DL3002
-USER 0
-SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
-
-RUN mkdir -p /additions/stackable /additions/usr/local/bin /additions/licenses
-
-COPY <<EOF /additions/README.md
-# Stackable Operator for Apache ZooKeeper
-
-* This image contains version ${VERSION} of the operator.
-* The operator binary can be found in `/usr/local/bin`
-* It is licensed under the OSL-3.0 - the full text can be found in `/licenses/LICENSE`
-EOF
-
-COPY LICENSE /additions/licenses/LICENSE
-COPY --from=builder /app/* /additions/usr/local/bin/
-
-# All files and folders owned by the user and the root group to support running as arbitrary users
-# This is best practice as all container users will belong to the root group (0)
-RUN <<EOF
-chown -R ${STACKABLE_USER_UID}:0 /additions/stackable /additions/usr/local/bin
-chmod -R g=u /additions/stackable
-
-# The runtime base has to provide these. Compare them with the output of `ldd` in the runtime image
-# (the shell-less runtime image cannot run it), a missing library shows up as a start failure of the operator.
-echo "Shared libraries needed by the operator binary:"
-ldd /additions/usr/local/bin/stackable-zookeeper-operator || true
-EOF
-
-# ==============================================================================
 # FINAL OPERATOR IMAGE
 
 # hadolint ignore=DL3006,DL3007
@@ -143,7 +89,39 @@ ARG RELEASE="1"
 ARG TARGETARCH
 ARG STACKABLE_USER_UID="782252253"
 
-COPY --from=additions /additions /
+# All files are owned by the user and the root group (g=u) to support running as arbitrary users.
+# This is best practice as all container users will belong to the root group (0).
+COPY --chown=${STACKABLE_USER_UID}:0 --chmod=0664 LICENSE /licenses/LICENSE
+COPY --from=builder --chown=${STACKABLE_USER_UID}:0 --chmod=0775 /app/stackable-zookeeper-operator /usr/local/bin/stackable-zookeeper-operator
+
+# The home directory and the README. The runtime image has bash and coreutils, so no extra stage is needed.
+# Runs as root only for this step, the USER instruction below sets the unprivileged user.
+# The check runs `ldd` in the runtime image: it fails the build if the base lacks a shared library of the binary.
+USER 0
+SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
+RUN <<EOF
+mkdir /stackable
+chown ${STACKABLE_USER_UID}:0 /stackable
+chmod g=u /stackable
+
+cat > /README.md <<README
+# Stackable Operator for Apache ZooKeeper
+
+* This image contains version ${VERSION} of the operator.
+* The operator binary can be found in \`/usr/local/bin\`
+* It is licensed under the OSL-3.0 - the full text can be found in \`/licenses/LICENSE\`
+README
+chown ${STACKABLE_USER_UID}:0 /README.md
+chmod 0664 /README.md
+
+libs="$(ldd /usr/local/bin/stackable-zookeeper-operator)"
+echo "Shared libraries needed by the operator binary:"
+echo "$libs"
+if [[ "$libs" == *"not found"* ]]; then
+  echo "The runtime base image does not provide all shared libraries of the operator."
+  exit 1
+fi
+EOF
 
 # These labels have mostly been superseded by the OpenContainer spec annotations below but it doesn't hurt to include them
 # http://label-schema.org/rc1/
