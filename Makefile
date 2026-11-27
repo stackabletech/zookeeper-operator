@@ -27,6 +27,9 @@ render-docs:
 docker-build:
 	docker build --force-rm --build-arg VERSION=${VERSION} -t "${OCI_REGISTRY_HOSTNAME}/${OCI_REGISTRY_PROJECT_IMAGES}/${OPERATOR_NAME}:${VERSION}-${ARCH}" -f docker/Dockerfile .
 
+docker-build-humm:
+	docker build --force-rm --build-arg VERSION=${VERSION} -t "${OCI_REGISTRY_HOSTNAME}/${OCI_REGISTRY_PROJECT_IMAGES}/${OPERATOR_NAME}:${VERSION}-${ARCH}-humm" -f hummingbird-spike/Dockerfile .
+
 ## Chart related targets
 compile-chart: version crds crd-annotation
 
